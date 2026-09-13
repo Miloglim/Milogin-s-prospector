@@ -1,0 +1,424 @@
+import * as path from "path";
+import { APP_ROOT } from "../config";
+import { Log } from "../logger";
+import { okResult, failResult, type Result } from "../errors";
+import { upsertEnv } from "../env-store";
+import { readActiveEndpoint, readLightEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn } from "./endpoint.service";
+import { readIdentity } from "./agent/identity";
+import { netFetch } from "../net-proxy";
+
+// ── .env 加载（dotenv：Node 不内置 .env 解析）──────────
+// 密钥不落代码、不进对话，只从 .env 读。
+import * as dotenv from "dotenv";
+dotenv.config({ path: path.join(APP_ROOT, ".env") });
+
+/** 读取密钥；未配置时返回 null（不崩溃，由调用方提示） */
+export function getApiKey(name: "DEEPSEEK_API_KEY" | "EXA_API_KEY" | "TAVILY_API_KEY"): string | null {
+  const v = process.env[name]?.trim();
+  if (!v) { Log.warn("ai.key", `${name} 未配置`); return null; }
+  return v;
+}
+
+export function isAiConfigured(): boolean {
+  return resolveLlmEndpoint() != null;
+}
+
+export const API_KEY_NAMES = ["DEEPSEEK_API_KEY", "EXA_API_KEY", "TAVILY_API_KEY"] as const;
+export type ApiKeyName = (typeof API_KEY_NAMES)[number];
+
+/** 查询各密钥配置状态（不返回明文，只返回是否已配置） */
+export function getApiKeyStatus(): Result<Record<ApiKeyName, boolean>> {
+  return okResult({
+    DEEPSEEK_API_KEY: !!getApiKey("DEEPSEEK_API_KEY"),
+    EXA_API_KEY: !!getApiKey("EXA_API_KEY"),
+    TAVILY_API_KEY: !!getApiKey("TAVILY_API_KEY"),
+  });
+}
+
+/** 写入 API 密钥到 .env。空值=清除。写后同步 process.env（本次运行立即生效，无需重启）。 */
+export function setApiKey(name: ApiKeyName, value: string): Result<void> {
+  if (!API_KEY_NAMES.includes(name)) return failResult(`未知密钥名: ${name}`);
+  try {
+    upsertEnv(name, value);
+    Log.info("ai.setKey", `${name} 已${value.trim() ? "更新" : "清除"}`);
+    return okResult(undefined);
+  } catch (err: unknown) {
+    Log.error("ai.setKey", `写入 ${name} 失败`, err instanceof Error ? err.stack : String(err));
+    return failResult("写入 .env 失败");
+  }
+}
+
+// ── LLM 调用（端点归一：与 agent 会话共用 AGENT_API_*，未配置时回落 DeepSeek）──
+// 归一理由：能力调用（背调/开发信/总结）与 agent 会话此前各自维护端点，密钥配置两套、
+// 行为不一致。现在统一从 AGENT_API_BASE_URL/KEY/MODEL 读取；仅当未配置时才回落旧
+// DeepSeek 专用密钥，保证老用户零改动可用。
+
+const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
+const DEEPSEEK_MODEL = "deepseek-chat";
+
+interface ChatMessage {
+  role: "system" | "user";
+  content: string;
+}
+
+/** 能力调用的端点解析：与 agent 会话同源（读同一份生效端点），未配置时回落 DeepSeek */
+function resolveLlmEndpoint(): { url: string; model: string; key: string; label: string } | null {
+  const e = readActiveEndpoint();
+  // 模型名必须显式配置：猜一个默认名只会在异族网关上换来一句看不懂的 400/404
+  if (e.baseUrl && e.apiKey && e.model) {
+    const url = e.baseUrl.endsWith("/chat/completions") ? e.baseUrl : `${e.baseUrl.replace(/\/$/, "")}/chat/completions`;
+    return { url, model: e.model, key: e.apiKey, label: "agent" };
+  }
+  const deepKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (deepKey) return { url: DEEPSEEK_ENDPOINT, model: DEEPSEEK_MODEL, key: deepKey, label: "deepseek" };
+  return null;
+}
+
+/** 轻任务 LLM 调用（会话压缩摘要等单发小任务；也被 agent.service 复用）。opts.thinking 供起草/背调等高价值合成开思考。 */
+export async function chat(system: string, user: string, opts?: { thinking?: boolean }): Promise<Result<string>> {
+  // 大小模型路由：能力调用（总结/背调/开发信/压缩摘要）优先走轻任务档 LIGHT_*，未配置回落主端点
+  const light = readLightEndpoint();
+  const ep = light.source === "light"
+    ? { url: light.baseUrl.endsWith("/chat/completions") ? light.baseUrl : light.baseUrl.replace(/\/$/, "") + "/chat/completions", model: light.model, key: light.apiKey, label: "light" }
+    : resolveLlmEndpoint();
+  if (!ep) return failResult("模型端点未配置：请到「设置 → 模型与端点」填好 Base URL / 密钥 / 模型名并启用（或在 .env 配 DEEPSEEK_API_KEY 作回落）");
+
+  const controller = new AbortController();
+  // 思考会显著加长首字前延迟：开思考的合成调用（起草/背调）放宽到 120s
+  const timeoutMs = opts?.thinking ? 120_000 : 60_000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    // 默认关思考（总结/压缩这类一次性出全文，推理只会拖慢）；起草/背调等高价值合成
+    // 由调用方传 {thinking:true} 走开思考方言 —— 单发无 assistant 历史，RC 回传约束不存在。
+    // 注入必须走方言（给 Gemini 塞 chat_template_kwargs 有 400 风险）
+    const payload = {
+      model: ep.model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      temperature: 0.7,
+      ...(opts?.thinking
+        ? thinkingExtrasOn(endpointFamily(ep.url))
+        : thinkingExtras(endpointFamily(ep.url))),
+    };
+    const res = await netFetch(ep.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ep.key}` },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      Log.error("ai.chat", `HTTP ${res.status} (${ep.label})`, body.slice(0, 500));
+      return failResult(`模型调用失败 (${res.status})`);
+    }
+
+    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = json.choices?.[0]?.message?.content?.trim();
+    if (!content) return failResult("模型返回为空");
+    return okResult(content);
+  } catch (err: unknown) {
+    const aborted = (err as { name?: string })?.name === "AbortError";
+    Log.error("ai.chat", aborted ? "超时" : "网络错误", err instanceof Error ? err.stack : String(err));
+    return failResult(aborted ? `模型请求超时（${timeoutMs / 1000}s）` : "模型网络错误");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 调 LLM 并要求返回 JSON，解析失败时给 fail */
+export async function chatJson<T>(system: string, user: string, opts?: { thinking?: boolean }): Promise<Result<T>> {
+  const r = await chat(system, user, opts);
+  if (!r.success) return r;
+  const cleaned = r.data.replace(/```json|```/g, "").trim();
+  try {
+    return okResult(JSON.parse(cleaned) as T);
+  } catch {
+    // 模型常在 JSON 外带垃圾（照抄提示词示例的「输出：」前缀、解释文字等）——
+    // 直接 parse 失败时降级为「抽取首个完整 JSON 值」（对象或数组），抽不到才算真失败。
+    // 实锤：agnes-2.5-flash 回 `输出：{"reply":false,...}`，到手的分类结果被整条扔掉。
+    const obj = /\{[\s\S]*\}/.exec(cleaned);
+    if (obj) {
+      try { return okResult(JSON.parse(obj[0]) as T); } catch { /* 对象体本身坏了，再试数组 */ }
+    }
+    const arr = /\[[\s\S]*\]/.exec(cleaned);
+    if (arr) {
+      try { return okResult(JSON.parse(arr[0]) as T); } catch { /* 数组体也坏了 */ }
+    }
+    Log.error("ai.json", "JSON 解析失败", r.data.slice(0, 500));
+    return failResult("AI 返回格式不正确，请重试");
+  }
+}
+
+/** 让模型基于本轮问答产出 2-3 个「追问」建议（助手页引导卡片）。失败回空，由调用方兜底规则建议。 */
+export async function suggestFollowUps(input: { userText: string; aiText: string }): Promise<Result<string[]>> {
+  const user =
+    `上一轮用户问：\n"""\n${(input.userText || "").slice(0, 600)}\n"""\n` +
+    `助手回答：\n"""\n${(input.aiText || "").slice(0, 1200)}\n"""\n` +
+    `请给出用户接下来最可能问的 2-3 个短问题（面向国际货代/外贸场景，具体可执行，每条不超过 20 字）。只输出一个 JSON 字符串数组。`;
+  const sys = "你是对话引导助手。只输出一个 JSON 数组（2-3 条中文短句），不要解释、不要代码块围栏。";
+  const r = await chatJson<unknown>(sys, user);
+  if (!r.success) return failResult(r.error);
+  const arr = Array.isArray(r.data) ? r.data.map((x) => String(x).trim()).filter(Boolean).slice(0, 3) : [];
+  if (!arr.length) return failResult("无有效建议");
+  return okResult(arr);
+}
+
+// ── 搜索调用（背调数据源）────────────────────────────────
+// 优先 Exa，其次 Tavily。两者都没配 → fail 提示。
+
+const EXA_ENDPOINT = "https://api.exa.ai/search";
+const TAVILY_ENDPOINT = "https://api.tavily.com/search";
+
+export interface SearchHit {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+/** 检索深度：背调用默认档（8 条 ×800 字）；联网调研要「少而深」，传 6 ×1200 */
+export interface SearchOpts { numResults?: number; textChars?: number }
+
+const DEFAULT_OPTS: Required<SearchOpts> = { numResults: 8, textChars: 800 };
+
+async function searchExa(query: string, opts: Required<SearchOpts>): Promise<Result<SearchHit[]>> {
+  const key = getApiKey("EXA_API_KEY");
+  if (!key) return failResult("EXA_API_KEY 未配置");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const res = await netFetch(EXA_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key },
+      body: JSON.stringify({ query, numResults: opts.numResults, contents: { text: { maxCharacters: opts.textChars } } }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return failResult(`Exa 调用失败 (${res.status})`);
+    const json = (await res.json()) as { results?: Array<{ title?: string; url?: string; text?: string }> };
+    return okResult((json.results || []).map(r => ({
+      title: r.title || "", url: r.url || "",
+      snippet: (r.text || "").slice(0, opts.textChars),
+    })));
+  } catch (err: unknown) {
+    Log.error("ai.exa", "Exa 搜索失败", err instanceof Error ? err.stack : String(err));
+    return failResult("Exa 搜索失败");
+  } finally { clearTimeout(timer); }
+}
+
+async function searchTavily(query: string, opts: Required<SearchOpts>): Promise<Result<SearchHit[]>> {
+  const key = getApiKey("TAVILY_API_KEY");
+  if (!key) return failResult("TAVILY_API_KEY 未配置");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const res = await netFetch(TAVILY_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key, query, max_results: opts.numResults }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return failResult(`Tavily 调用失败 (${res.status})`);
+    const json = (await res.json()) as { results?: Array<{ title?: string; url?: string; content?: string }> };
+    return okResult((json.results || []).map(r => ({
+      title: r.title || "", url: r.url || "",
+      snippet: (r.content || "").slice(0, opts.textChars),
+    })));
+  } catch (err: unknown) {
+    Log.error("ai.tavily", "Tavily 搜索失败", err instanceof Error ? err.stack : String(err));
+    return failResult("Tavily 搜索失败");
+  } finally { clearTimeout(timer); }
+}
+
+/** 联网检索统一入口：Exa 优先，无结果/未配时回落 Tavily（两者都没配 → fail，明确指路） */
+export async function searchWeb(query: string, opts: SearchOpts = {}): Promise<Result<SearchHit[]>> {
+  const o = { ...DEFAULT_OPTS, ...opts };
+  const exa = await searchExa(query, o);
+  if (exa.success && exa.data.length > 0) return exa;
+  return await searchTavily(query, o);
+}
+
+/** 至少配了一个联网检索源吗？上层用它做前置检查，避免把一批查询全发出去空跑一轮 */
+export function hasSearchSource(): boolean {
+  return !!(getApiKey("EXA_API_KEY") || getApiKey("TAVILY_API_KEY"));
+}
+
+/** 搜索公司资料：Exa 优先，失败/未配时尝试 Tavily */
+export async function searchCompany(query: string): Promise<Result<SearchHit[]>> {
+  return searchWeb(query);
+}
+
+// ── 功能调用：背调报告 / 开发信 / 邮件总结 ────────────────
+
+export interface BackcheckInput {
+  companyName: string;
+  website?: string;
+  country?: string;
+}
+
+export interface BackcheckReport {
+  summary: string;
+  importActivity: string;   // 进口活跃度判断
+  categories: string[];     // 主营品类
+  logisticsFit: string;     // 货代契合点
+  rating: number;           // 1-5
+  risk: string[];           // 风险/注意点
+  sources: Array<{ title: string; url: string }>;
+}
+
+export async function generateBackcheckReport(input: BackcheckInput, hits: SearchHit[]): Promise<Result<BackcheckReport>> {
+  const sources = hits.map(h => ({ title: h.title, url: h.url }));
+  const searchText = hits.map(h => `· ${h.title}\n${h.snippet}`).join("\n\n");
+  const system = "你是资深货代销售分析师。根据搜索资料生成公司背调报告。只输出 JSON，不要任何额外文字。";
+  const user = `公司：${input.companyName}\n网站：${input.website || "未知"}\n国家：${input.country || "未知"}\n\n搜索资料：\n${searchText || "（无）"}\n\n请输出 JSON：{"summary":"一句话总结","importActivity":"进口活跃度判断","categories":["主营品类"],"logisticsFit":"货代契合点（如何切入）","rating":1-5数字,"risk":["风险"],"sources":[{"title","url"}]}`;
+  return chatJson<BackcheckReport>(system, user, { thinking: true });
+}
+
+export interface DraftSender {
+  selfName?: string;
+  company?: string;
+  title?: string;
+  business?: string;
+  persona?: string;
+  signature?: string;
+}
+
+export interface EmailDraftInput {
+  language: string; // EN / ES / PT
+  companyName: string;
+  contactName: string;
+  backcheck?: BackcheckReport | null;
+  /** 我方身份（自称 / 公司 / 职位 / 业务口径 / 署名）；不传模型只能留占位符 */
+  sender?: DraftSender;
+}
+
+export async function generateEmailDraft(input: EmailDraftInput): Promise<Result<string>> {
+  const lang = input.language === "ES" ? "西班牙语" : input.language === "PT" ? "葡萄牙语" : "英语";
+  // 身份固定后缺省取全局档案：任何调用方（含批量跟进/后台任务）起草都不再"裸奔"
+  const s = input.sender ?? readIdentity();
+  const who = [s.selfName, s.company].filter(Boolean).join(" / ");
+  const system = `你是运去哪（YQN）国际物流的销售文案助理，代表运去哪用${lang}写一封给客户的经营性邮件（开发信 / 跟进信 / 回信）。语气专业但不生硬，像资深销售：简洁、有分寸、不堆砌客套、不过度承诺时效。3-4 段，带主题行（用 SUBJECT: 开头）和正文。不要多余解释。`;
+  const back = input.backcheck
+    ? `\n背调要点：${input.backcheck.summary ?? ""}${input.backcheck.logisticsFit ? `；契合点：${input.backcheck.logisticsFit}` : ""}`
+    : "";
+  // 身份 + 报价纪律进 prompt：模型不再编发件人、不留占位符、不承诺未确认价格
+  const idBlock = who
+    ? `\n【我方身份】${who}\n`
+      + "正文一律用上面的真实自称与身份落款，禁止留 {{firstName}} {{company}} {{phone}} 这类占位符。\n"
+      + "报价纪律：未经确认的运价、舱位、船期不向客户承诺；涉及价格注明「以最终确认为准」。"
+    : "";
+  const user = `收件公司：${input.companyName}\n收件人：${input.contactName}\n${back}${idBlock}\n\n请写这封邮件。`;
+  return chat(system, user, { thinking: true });
+}
+
+export interface ReplyRateLine {
+  carrier: string | null; container: string | null; pol: string | null; pod: string | null;
+  price: number | null; validFrom: string | null; validTo: string | null; note: string | null;
+}
+export interface ReplyEmailFacts {
+  container?: string | null; pol?: string | null; pod?: string | null;
+  incoterm?: string | null; cargo?: string | null; cargoValueUsd?: number | null; quoteRef?: string | null;
+}
+
+export interface EmailReplyInput {
+  /** 省略 = 跟随对方来信的语言 */
+  language?: string; // EN / ES / PT
+  companyName: string;
+  contactName: string;
+  fromEmail: string;
+  subject: string | null;
+  /** 来信正文纯文本（调用方负责 HTML 清洗，建议 ≤4000 字） */
+  bodyText: string;
+  focus?: string | null;
+  /** 我方身份；不传取全局档案 */
+  sender?: DraftSender;
+  /** 系统已从工作台取到的真实运价（据此报价，禁编造/占位）；无则不注入 */
+  rates?: ReplyRateLine[] | null;
+  /** 来信解析出的询价要素（柜型/起运/目的/条款…），让回复对准这些 */
+  emailFacts?: ReplyEmailFacts | null;
+  /** 客户报价表（英文十一列 Markdown，系统按台账生成）：给了就原样嵌进回信正文，一个字符都不许改 */
+  quoteTable?: string | null;
+}
+
+/**
+ * 把「来信要素 + 系统已查真价」渲染成提示块（纯函数，便于单测）。
+ * 有真价时口径变硬：必须据此报价、禁编造/占位；没有的项才走"后续补"。
+ */
+export function buildRateContext(
+  rates: ReplyRateLine[] | null | undefined,
+  inq: ReplyEmailFacts | null | undefined,
+  quoteTable?: string | null,
+): string {
+  const lines: string[] = [];
+  if (inq) {
+    const f = [
+      inq.container ? `柜型 ${inq.container}` : "",
+      inq.pol ? `起运港 ${inq.pol}` : "",
+      inq.pod ? `目的港 ${inq.pod}` : "",
+      inq.incoterm ? `贸易条款 ${inq.incoterm}` : "",
+      inq.cargo ? `货物 ${inq.cargo}` : "",
+      inq.cargoValueUsd ? `货值 USD ${inq.cargoValueUsd.toLocaleString("en-US")}` : "",
+      inq.quoteRef ? `询价编号 ${inq.quoteRef}` : "",
+    ].filter(Boolean);
+    if (f.length) lines.push(`【来信要素（已解析，回复须逐条对准）】${f.join("，")}`);
+  }
+  if (rates && rates.length) {
+    lines.push("【系统已查到的真实运价 —— 必须据此报价，禁止编造数字或用 {{占位}}；每条注明有效期，并整体加一句「以船司实时报价为准」】");
+    for (const r of rates.slice(0, 8)) {
+      const valid = r.validFrom || r.validTo ? `（有效期 ${r.validFrom ?? "?"}~${r.validTo ?? "?"}）` : "";
+      lines.push(`· ${r.carrier ?? "—"} ${r.pol ?? "—"}→${r.pod ?? "—"} ${r.container ?? ""} USD ${r.price ?? "议价"}${valid}${r.note ? ` ｜ ${r.note}` : ""}`);
+    }
+  }
+  // 客户报价表：系统按台账生成的成品（英文十一列、缺项 "/"、TT 恒 "/"）。
+  // 唯一要求是原样嵌入——模型改列名、并行、补值、把 "/" 换成数字，都等于自己造了一张错报价单。
+  if (quoteTable && quoteTable.trim()) {
+    lines.push("【客户报价表（成品，原样嵌进回信正文，禁止改列名/列序/数值，禁止把 \"/\" 补成数字，禁止另起一张表）】");
+    lines.push(quoteTable.trim());
+    lines.push("表后加一句：Prices are for reference and subject to final confirmation with the carrier.");
+  }
+  return lines.length ? `\n${lines.join("\n")}` : "";
+}
+
+/** 回信模式（docs/agent-draft-reply-spec.md）：针对来信逐条应答，不是泛泛的开发信 */
+export async function generateEmailReply(input: EmailReplyInput): Promise<Result<string>> {
+  const langHint = input.language === "ES" ? "用西班牙语" : input.language === "PT" ? "用葡萄牙语"
+    : input.language === "EN" ? "用英语" : "用对方来信使用的语言";
+  const s = input.sender ?? readIdentity();
+  const who = [s.selfName, s.company].filter(Boolean).join(" / ");
+  const hasRates = !!(input.rates && input.rates.length);
+  const hasTable = !!(input.quoteTable && input.quoteTable.trim());
+  const system = `你是运去哪（YQN）国际物流的销售助理，代表运去哪回复一封客户来信。语气专业但不生硬，像资深销售：简洁、有分寸、不堆砌客套、不过度承诺时效。${langHint}回复。先一两句正面回应来信，再逐条应答对方提出的问题与要求；${hasRates ? "下方给了系统已查到的真实运价，报价必须严格据此填写、不得编造或留占位符；" : ""}${hasTable ? "下方还给了成品客户报价表，必须原样嵌进正文（列名、列序、数值、\"/\" 占位一个都不许改），不要自己另拼一张表；" : ""}无法立即提供、且下方也没有的内容（资质文件等）坦诚说明会后续补，绝不编造。带主题行（用 SUBJECT: 开头）和正文，不要多余解释。`;
+  const idBlock = who
+    ? `\n【我方身份】${who}\n`
+      + "正文一律用上面的真实自称与身份落款，禁止留 {{firstName}} {{company}} {{phone}} 这类占位符。\n"
+      + "报价纪律：未经确认的运价、舱位、船期不向客户承诺；涉及价格注明「以最终确认为准」。"
+    : "";
+  const focus = input.focus ? `\n内容侧重：${input.focus}` : "";
+  const rateBlock = buildRateContext(input.rates, input.emailFacts, input.quoteTable);
+  const user = `来信人：${input.contactName}（${input.fromEmail}），公司：${input.companyName}\n来信主题：${input.subject || "（无）"}${focus}${idBlock}${rateBlock}\n\n【来信全文】\n${input.bodyText}\n\n请写这封回复。`;
+  return chat(system, user, { thinking: true });
+}
+
+export interface EmailSummaryInput {
+  fromName: string | null;
+  fromEmail: string;
+  subject: string | null;
+  bodyPreview: string | null;
+  matchedContactName?: string | null;
+  matchedCompany?: string | null;
+}
+
+export interface EmailSummary {
+  summary: string;
+  nextStep: string;
+}
+
+export async function summarizeEmail(input: EmailSummaryInput): Promise<Result<EmailSummary>> {
+  const system = "你是货代销售助理。总结这封邮件内容并给出下一步建议。只输出 JSON：{\"summary\":\"一句话总结\",\"nextStep\":\"具体下一步动作\"}。";
+  const user = `发件人：${input.fromName || input.fromEmail}（${input.fromEmail}）\n主题：${input.subject || "（无）"}\n关联联系人：${input.matchedContactName || "无"} / 公司：${input.matchedCompany || "无"}\n\n正文摘要：\n${input.bodyPreview || "（无）"}`;
+  return chatJson<EmailSummary>(system, user);
+}

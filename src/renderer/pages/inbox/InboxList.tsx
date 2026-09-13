@@ -1,0 +1,959 @@
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Button, message, Modal, Tooltip, Progress, notification } from "antd";
+
+// (Button etc. used in sub-components)
+import {
+  ReloadOutlined, MailOutlined,
+  DeleteOutlined,
+} from "@ant-design/icons";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { askAssistant } from "../../lib/ask-ai";
+import { DiamondLogo } from "../../components/DiamondLogo";
+
+interface InboxItem {
+  id: number; fromEmail: string; fromName: string | null;
+  subject: string | null; bodyPreview: string | null;
+  classification: string | null; intent: string | null; matchedContactId: number | null;
+  isRead: number; receivedAt: string;
+  to?: string | null;
+  cc?: string | null;
+  accountId?: number; messageId?: string | null;
+  _accountEmail?: string | null;
+  _contactStatus?: string | null;
+  _contactTags?: string | null;
+}
+
+const TYPE: Record<string, { label: string; dot: string }> = {
+  replied: { label: "回复", dot: "#22a644" },
+  bounce: { label: "退信", dot: "#e5484d" },
+  autoreply: { label: "自动回复", dot: "#e6a817" },
+  sent: { label: "已发送", dot: "#2563eb" },
+  other: { label: "其他", dot: "#8b8b8b" },
+};
+
+const FILTERS = [
+  { key: "all", label: "全部" },
+  { key: "sent", label: "已发送", dot: "#2563eb" },
+  { key: "replied", label: "回复", dot: "#22a644" },
+  { key: "autoreply", label: "自动回复", dot: "#e6a817" },
+  { key: "bounce", label: "退信", dot: "#e5484d" },
+  { key: "other", label: "其他", dot: "#8b8b8b" },
+];
+
+// ── 未读追踪：真源 = DB isRead（抓取认 \Seen + 程序内标读回写服务器 + 校准对齐，
+//    见 main/transport/inbox.ipc.ts 的未读校准）——列表未读点直接读行的 isRead 字段
+
+function shortTime(s: string): string {
+  if (!s) return "";
+  const d = new Date(s), n = new Date();
+  if (n.getTime() - d.getTime() < 864e5 && d.getDate() === n.getDate()) return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  if (n.getTime() - d.getTime() < 1728e5) return "昨天";
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+// ── 主组件 ──
+
+// ── 从邮箱地址提取公司名猜测 ──
+function guessCompanyFromEmail(email: string): string {
+  const m = email.match(/@(.+)$/);
+  if (!m || !m[1]) return "";
+  const domain = (m[1].split(".")[0] || "");
+  return domain
+    .replace(/[-_.]/g, " ")
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .slice(0, 50);
+}
+
+// ── 从姓名提取 firstName/lastName ──
+function guessName(fromName: string | null): { firstName: string; lastName: string } {
+  if (!fromName) return { firstName: "", lastName: "" };
+  const parts = fromName.trim().split(/\s+/);
+  if (parts.length === 1) return { firstName: parts[0] || "", lastName: "" };
+  return { firstName: parts[0] || "", lastName: parts[parts.length - 1] || "" };
+}
+
+export function InboxList() {
+  const qc = useQueryClient();
+  const [sid, setSid] = useState<number | null>(null);
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [body, setBody] = useState<string | null>(null);
+  const [bl, setBl] = useState(false);
+  // 前端正文缓存：点开过的邮件切回秒开，不重复 invoke / 不闪 loading
+  const bodyCache = useRef<Map<number, string | null>>(new Map());
+
+  // 联系人库（选中邮件后才加载）
+  const { data: contactsData, isLoading: contactsLoading } = useQuery({
+    queryKey: ["contacts", "match"],
+    queryFn: () => window.api.invoke("contacts:listForMatch") as Promise<{ success: boolean; data?: { id: number; email: string; companyName: string | null }[] }>,
+    enabled: sid !== null,
+  });
+
+  const [sel, setSel] = useState<Set<number>>(new Set());
+  const [last, setLast] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; item: InboxItem } | null>(null);
+  // 虚拟滚动：只渲染可视区，避免千余封邮件全量渲染卡顿
+  const ROW_H = 58; // 固定行高（压缩后：主题/发信人/标记三行的紧凑高度）
+  const SENDER_ROW_H = 46; // 发信人行高（固定）
+  const OVERSCAN = 6; // 上下多渲染几行，滚动不露白
+  const listRef = useRef<HTMLDivElement>(null);
+  const [listH, setListH] = useState(600);
+  const [scrollTop, setScrollTop] = useState(0);
+  // 视图切换：全部邮件 / 按发信人
+  const [view, setView] = useState<"flat" | "sender">("flat");
+  const [senderFilter, setSenderFilter] = useState<string | null>(null); // 选中的发信人邮箱
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["inbox"],
+    queryFn: () => window.api.invoke("inbox:list") as Promise<{ success: boolean; data?: InboxItem[]; error?: string }>,
+  });
+
+  const [fetching, setFetching] = useState(false);
+  // 多账号进度按 accountId 聚合，避免并行拉取时互相覆盖导致进度条跳变
+  const [fetchProgress, setFetchProgress] = useState<Record<string, { email?: string; scanned: number; total: number }>>({});
+  const doFetch = async () => {
+    setFetching(true);
+    setFetchProgress({});
+    try { await window.api.invoke("inbox:fetch"); } finally { setFetching(false); setFetchProgress({}); }
+    qc.invalidateQueries({ queryKey: ["inbox"] });
+  };
+
+  // 收信健康度：主进程每轮抓取推送 → 失败账号弹常驻通知，同时刷新设置页账号列表缓存
+  useEffect(() => {
+    return window.api.on("inbox:health", (data) => {
+      const list = data as Array<{ accountId: number; email: string; ok: boolean; error?: string }>;
+      const bad = (list || []).filter(x => !x.ok);
+      if (bad.length > 0) {
+        notification.error({
+          key: "inbox-health",
+          message: bad.length === 1 ? `${bad[0]!.email} 收信失败` : `${bad.length} 个账号收信失败`,
+          description: bad.map(b => `${b.email}：${b.error || "未知错误"}`).join("；"),
+          duration: 0,
+        });
+      } else if (list?.length) {
+        notification.destroy?.("inbox-health");
+      }
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+    });
+  }, [qc]);
+
+  const classMut = useMutation({
+    mutationFn: (p: { id: number; classification: string }) => window.api.invoke("inbox:classify", p),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
+  });
+  const readMut = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map(id => window.api.invoke("inbox:markRead", id))),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
+  });
+  const delMut = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map(id => window.api.invoke("inbox:delete", id))),
+    onSuccess: () => { setSid(null); setSel(new Set()); qc.invalidateQueries({ queryKey: ["inbox"] }); },
+  });
+  const delBounceMut = useMutation({
+    mutationFn: () => window.api.invoke("inbox:deleteBounce"),
+    onSuccess: (r: unknown) => {
+      const rr = r as { success: boolean; data?: { deleted: number; archive: string | null }; error?: string };
+      message[rr?.success ? "success" : "error"](rr?.success ? `已删除 ${rr.data?.deleted ?? 0} 位被退联系人，删除前档案已归档` : (rr?.error || "失败"));
+      setSid(null); setSel(new Set());
+      qc.invalidateQueries({ queryKey: ["inbox"] });
+      // 联系人已删 → 匹配索引必须失效，否则右侧详情还拿旧缓存显示「已匹配」
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["crm"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+
+  // 被退联系人同源数据（规范 docs/bounce-multi-match-spec.md）：
+  // 计数由后端全库现拉 —— 按钮显示多少、确认弹窗列谁、删的就是谁；单封列表供详情首栏
+  const { data: bounceStatsData } = useQuery({
+    queryKey: ["inbox", "bounceStats"],
+    queryFn: () => window.api.invoke("inbox:bounceMatchStats") as Promise<{ success: boolean; data?: { count: number; emails: string[] } }>,
+  });
+  const bounceStats = bounceStatsData?.success ? bounceStatsData.data : undefined;
+  const { data: bounceMatchesData } = useQuery({
+    queryKey: ["inbox", "bounceMatches", sid],
+    queryFn: () => window.api.invoke("inbox:bounceMatches", sid) as Promise<{ success: boolean; data?: Array<{ id: number; email: string; companyName: string | null }> }>,
+    enabled: !!sid,
+  });
+  const bounceMatches = bounceMatchesData?.success ? bounceMatchesData.data || [] : [];
+
+  /** 删除单个联系人（详情两栏共用：被退栏 / 正文提及栏）；级联与孤儿公司清理在主进程 */
+  const confirmDeleteContact = (c: { id: number; email: string }) => {
+    Modal.confirm({
+      title: `删除联系人 ${c.email}？`,
+      content: "其往来记录一并删除，此操作不可撤销。",
+      okText: "删除", okType: "danger", cancelText: "取消",
+      onOk: async () => {
+        const r = await window.api.invoke("contacts:delete", c.id) as { success: boolean; error?: string };
+        if (r?.success) {
+          message.success("已删除");
+          qc.invalidateQueries({ queryKey: ["inbox"] });
+          qc.invalidateQueries({ queryKey: ["contacts"] });
+        } else message.error(r?.error || "删除失败");
+      },
+    });
+  };
+
+  let items = data?.success ? data.data || [] : [];
+  if (filter !== "all") items = items.filter(i => i.classification === filter);
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    items = items.filter(i => (i.subject || "").toLowerCase().includes(q) || i.fromEmail.toLowerCase().includes(q) || (i.fromName || "").toLowerCase().includes(q));
+  }
+
+  // 发信人聚合（按 fromEmail 精确分组，邮件数降序）
+  const senderGroups = (() => {
+    const map = new Map<string, { email: string; name: string | null; count: number; types: Set<string>; latest: string }>();
+    for (const i of items) {
+      const g = map.get(i.fromEmail);
+      if (g) {
+        g.count++;
+        if (i.classification) g.types.add(i.classification);
+        if (i.receivedAt > g.latest) g.latest = i.receivedAt;
+      } else {
+        map.set(i.fromEmail, { email: i.fromEmail, name: i.fromName, count: 1, types: new Set(i.classification ? [i.classification] : []), latest: i.receivedAt });
+      }
+    }
+    return [...map.values()].sort((a, b) => (b.latest > a.latest ? 1 : b.latest < a.latest ? -1 : 0));
+  })();
+
+  // 发信人视图：选中某发信人则过滤
+  if (view === "sender" && senderFilter) {
+    items = items.filter(i => i.fromEmail === senderFilter);
+  }
+  // 退信页：已匹配联系人的排最前（能一键删除的先看到）。sort 是稳定的，组内仍按时间倒序
+  if (filter === "bounce") {
+    items = [...items].sort((a, b) => (b.matchedContactId ? 1 : 0) - (a.matchedContactId ? 1 : 0));
+  }
+  const sel_ = items.find(i => i.id === sid) || null;
+
+  // 虚拟滚动可视区计算
+  const startIdx = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const endIdx = Math.min(items.length, Math.ceil((scrollTop + listH) / ROW_H) + OVERSCAN);
+  const visibleItems = items.slice(startIdx, endIdx);
+  // 发信人可视区（独立行高）
+  const senderStart = Math.max(0, Math.floor(scrollTop / SENDER_ROW_H) - OVERSCAN);
+  const senderEnd = Math.min(senderGroups.length, Math.ceil((scrollTop + listH) / SENDER_ROW_H) + OVERSCAN);
+  const visibleSenders = senderGroups.slice(senderStart, senderEnd);
+
+  // 邮箱匹配 — 参照旧 PE _extractBodyContacts（memo 化，避免每次渲染重复正则处理大正文）
+  const { matchedContacts, unmatchedEmails, senderContact, matchReady } = useMemo(() => {
+    const matched: { email: string; company: string; id: number }[] = [];
+    const unmatched: string[] = [];
+    let sender: { company: string; id: number } | null = null;
+    const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    const ready = !!(body && contactsData?.success);
+    if (ready) {
+      const contacts = contactsData!.data || [];
+      const idx: Record<string, { company: string; id: number }> = {};
+      for (const c of contacts) {
+        if (c.email) idx[c.email.toLowerCase().trim()] = { company: c.companyName || "", id: c.id };
+      }
+      // ① 发件人
+      if (sel_) {
+        const sk = sel_.fromEmail.toLowerCase().trim();
+        const sc = idx[sk];
+        if (sc) { sender = sc; matched.push({ email: sel_.fromEmail, company: sc.company, id: sc.id }); }
+        else unmatched.push(sel_.fromEmail);
+      }
+      // ② 正文：剥 HTML 标签 + 拼接 raw 原文，跟旧 PE 一样
+      const seen = new Set<string>();
+      if (sel_) seen.add(sel_.fromEmail.toLowerCase().trim());
+      const textBody = body!
+        .replace(/<[^>]+>/g, " ")      // 剥 HTML → 纯文本
+        .replace(/&[#a-z0-9]+;/gi, " ") // 实体解码
+        .replace(/\s+/g, " ");          // 合并空白
+      const emails = textBody.match(EMAIL_RE) || [];
+      for (const em of emails) {
+        if (matched.length >= 20) break;
+        const key = em.toLowerCase().trim();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const c = idx[key];
+        if (c) matched.push({ email: em, company: c.company, id: c.id });
+        else unmatched.push(em);
+      }
+    }
+    return { matchedContacts: matched, unmatchedEmails: unmatched, senderContact: sender, matchReady: ready };
+  }, [body, contactsData, sel_]);
+
+  // 正文 iframe 文档（memo 化，避免每次渲染重新拼接大字符串触发 iframe 重载）
+  const bodyDoc = useMemo(() => {
+    if (!body) return undefined;
+    return "<!DOCTYPE html><html><head><meta charset=utf-8><style>" +
+      "html,body{margin:0;padding:0}" +
+      "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.8;color:#333;padding:0 20px 20px}" +
+      "a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}" +
+      "blockquote{border-left:3px solid #d0d5dd;padding:4px 0 4px 12px;color:#667085;margin:12px 0}" +
+      "table{border-collapse:collapse}" +
+      "td,th{border:1px solid #e5e5e5;padding:6px 10px;font-size:13px}" +
+      "pre{background:#f5f5f5;padding:10px 14px;border-radius:4px;font-size:12px;overflow-x:auto}" +
+      "</style><script>var z=1;document.addEventListener('wheel',function(e){if(e.ctrlKey){e.preventDefault();z*=e.deltaY<0?1.1:0.9;z=Math.min(3,Math.max(0.3,z));document.body.style.zoom=z}},{passive:false})</script></head><body>" + body + "</body></html>";
+  }, [body]);
+
+  useEffect(() => { setSid(null); setSel(new Set()); setLast(null); }, [filter]);
+
+  // 测量列表容器高度
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const measure = () => setListH(el.clientHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // 过滤/搜索/视图/发信人变化时回到顶部
+  useEffect(() => {
+    setScrollTop(0);
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [filter, search, view, senderFilter]);
+
+  // 选中邮件 → 加载正文 + 量高度（优先前端缓存，切回已看邮件秒开）
+  useEffect(() => {
+    if (!sid) { setBody(null); return; }
+    const cached = bodyCache.current.get(sid);
+    if (cached !== undefined) {
+      setBody(cached);
+      return;
+    }
+    setBl(true);
+    window.api.invoke("inbox:getBody", sid).then((r: unknown) => {
+      const rr = r as { success: boolean; data?: string };
+      const html = rr?.success ? rr.data || null : null;
+      bodyCache.current.set(sid, html);
+      setBody(html);
+    }).catch(() => setBody(null)).finally(() => setBl(false));
+  }, [sid, bodyCache]);
+
+
+  // 未读标记只随点击/右键标读消失（存 localStorage 跨会话）；不再「首载全标已读」——
+  // 那会把你还没看的邮件在打开页面瞬间全部清标
+
+  useEffect(() => {
+    const off = window.api.on("inbox:newMail", (p: unknown) => {
+      const pp = p as { count: number; byClass?: Record<string, number> };
+      if (pp?.count) {
+        const labels: Record<string, string> = { replied: "回复", bounce: "退信", autoreply: "自动回复", other: "其他", sent: "已发送" };
+        const detail = pp.byClass ? Object.entries(pp.byClass).map(([k, v]) => `${labels[k] || k} ${v}`).join("、") : "";
+        message.info(`拉取到 ${pp.count} 封新邮件${detail ? `：${detail}` : ""}`);
+      }
+      qc.invalidateQueries({ queryKey: ["inbox"] });
+    });
+    return off;
+  }, [qc]);
+  useEffect(() => {
+    const off = window.api.on("inbox:fetchProgress", (p: unknown) => {
+      const pp = p as { accountId: number; email?: string; scanned: number; total: number };
+      if (pp && typeof pp.scanned === "number") {
+        setFetchProgress(prev => ({ ...prev, [String(pp.accountId ?? 0)]: { email: pp.email, scanned: pp.scanned, total: pp.total || 0 } }));
+      }
+    });
+    return off;
+  }, []);
+
+  // 从联系人/CRM跳转来 → 自动搜索邮箱
+  useEffect(() => {
+    const rawHash = window.location.hash;
+    const qs = rawHash.includes("?") ? rawHash.split("?")[1] : "";
+    if (!qs) return;
+    const sp = new URLSearchParams(qs);
+    const q = sp.get("search");
+    if (q) {
+      setSearch(q);
+      const base = rawHash.split("?")[0]!;
+      window.location.hash = base;
+    }
+  }, []);
+
+  const click = useCallback((e: React.MouseEvent, item: InboxItem) => {
+    const id = item.id;
+    let ns = new Set(sel);
+    if (e.shiftKey && last !== null) {
+      const vi = items.map(i => i.id), ap = vi.indexOf(last), cp = vi.indexOf(id);
+      if (ap >= 0 && cp >= 0) { const [f, t] = ap < cp ? [ap, cp] : [cp, ap]; ns = new Set(vi.slice(f, t + 1)); }
+    } else if (e.ctrlKey || e.metaKey) { ns.has(id) ? ns.delete(id) : ns.add(id); }
+    else { ns = ns.has(id) && ns.size === 1 ? new Set() : new Set([id]); }
+    setSel(ns); setLast(id); setSid(id);
+    readMut.mutate([id]);
+  }, [items, sel, last]);
+
+  const ctxMenu = useCallback((e: React.MouseEvent, item: InboxItem) => {
+    e.preventDefault();
+    if (!sel.has(item.id)) { setSel(new Set([item.id])); setSid(item.id); }
+    setMenu({ x: e.clientX, y: e.clientY, item });
+  }, [sel]);
+
+  useEffect(() => { if (!menu) return; const c = () => setMenu(null); document.addEventListener("click", c); return () => document.removeEventListener("click", c); }, [menu]);
+
+  const batchRead = () => {
+    readMut.mutate([...sel]);
+    message.success("已标为已读");
+  };
+  const batchDel = () => {
+    if (!sel.size) return;
+    Modal.confirm({ title: `删除 ${sel.size} 封？`, okText: "删除", okType: "danger", cancelText: "取消", onOk: () => delMut.mutate([...sel]) });
+  };
+  const batchType = async (t: string) => {
+    for (const id of sel) await classMut.mutateAsync({ id, classification: t });
+    message.success(`已标为 ${TYPE[t]?.label || t}`);
+  };
+
+  // ── 键盘选择层（实测缺口：选择只有鼠标三件套，Ctrl+A 被浏览器抢去「全选文字」，看着像坏了）──
+  // Ctrl/Cmd+A 全选（虚拟列表按全量选，不只看得见的那几行）· Esc 清空 · ↑/↓ 移动并打开
+  // （Shift 扩选）· Space 切换选中 · Delete 删除所选（走既有确认弹窗）。输入框/弹层内一律不劫持。
+  const batchDelRef = useRef(batchDel);
+  batchDelRef.current = batchDel;
+  const kbRef = useRef({ items, sid, sel, last, groupMode: view === "sender" && !senderFilter });
+  kbRef.current = { items, sid, sel, last, groupMode: view === "sender" && !senderFilter };
+
+  const scrollRowIntoView = useCallback((idx: number) => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = idx * ROW_H;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (top + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_H - el.clientHeight;
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable
+        || t.closest?.(".ant-modal-wrap, .ant-drawer, .ant-popover"))) return;
+      const s = kbRef.current;
+      if (s.groupMode) return;                 // 发信人分组视图没有邮件选择语义，不抢键
+      const n = s.items.length;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();                    // 不给浏览器原生「全选文字」留机会
+        setSel(new Set(s.items.map(i => i.id)));
+        if (n) setLast(s.sid ?? s.items[0]!.id);
+        return;
+      }
+      if (e.key === "Escape") { setSel(new Set()); setMenu(null); return; }
+      if (e.key === "Delete" && s.sel.size) { e.preventDefault(); batchDelRef.current(); return; }
+      if (e.key === " " && s.sid !== null) {
+        e.preventDefault();
+        const id = s.sid;
+        setSel(prev => { const ns = new Set(prev); if (ns.has(id)) ns.delete(id); else ns.add(id); return ns; });
+        return;
+      }
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && n) {
+        e.preventDefault();
+        const dir = e.key === "ArrowDown" ? 1 : -1;
+        const cur = s.items.findIndex(i => i.id === s.sid);
+        const next = cur < 0 ? 0 : Math.min(n - 1, Math.max(0, cur + dir));
+        const it = s.items[next]!;
+        if (e.shiftKey && s.sid !== null && cur >= 0) {
+          const anchor = s.items.findIndex(i => i.id === (s.last ?? s.sid));
+          const [f, tt] = anchor <= next ? [anchor, next] : [next, anchor];
+          setSel(new Set(s.items.slice(Math.max(0, f), tt + 1).map(i => i.id)));
+        } else {
+          setSel(new Set([it.id]));
+          setLast(it.id);
+        }
+        setSid(it.id);
+        scrollRowIntoView(next);
+        // 与点击同语义：打开即算已读
+        readMut.mutate([it.id]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [scrollRowIntoView]);
+
+  // 统计基于全量数据，未读只看有分类的
+  const allItems = data?.success ? data.data || [] : [];
+  const counts: Record<string, number> = { bounce: 0, replied: 0, autoreply: 0, sent: 0, other: 0 };
+  allItems.forEach(i => { const t = i.classification || "other"; if (counts[t] !== undefined) counts[t]++; });
+  const nCounts: Record<string, number> = { bounce: 0, replied: 0, autoreply: 0, other: 0 };
+  allItems.forEach(i => { if (!i.isRead) { const t = i.classification || "other"; if (nCounts[t] !== undefined) nCounts[t]++; } });
+
+  // ── 渲染 ──
+
+  return (
+    <div className="flex h-full" style={{ minHeight: "calc(100vh - 130px)" }} onClick={() => setMenu(null)}>
+
+      {/* ══ 左侧 ══ */}
+      <div className="flex flex-col flex-shrink-0 bg-white" style={{ width: "40%", minWidth: 340, userSelect: "none", borderRight: "1px solid #e8e8e8" }}>
+
+        {/* 顶部 */}
+        <div style={{ padding: "7px 10px 5px", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <button onClick={doFetch} disabled={fetching} className="btn"
+            style={{ padding: "2px 7px", fontSize: 10, gap: 3, borderRadius: 5, lineHeight: "16px" }}>
+            <ReloadOutlined className={fetching ? "animate-spin" : ""} style={{ fontSize: 11 }} /> 刷新
+          </button>
+          <input
+            placeholder="搜索..." value={search} onChange={e => setSearch(e.target.value)}
+            style={{ flex: 1, border: "1px solid #e5e5e5", borderRadius: 5, padding: "2px 7px", fontSize: 10, outline: "none", minWidth: 0, lineHeight: "16px" }} />
+          {sel.size > 1 && <button onClick={batchRead} className="btn" title="Ctrl+A 全选 · ↑↓ 移动（Shift 扩选）· Space 切换选中" style={{ padding: "2px 6px", fontSize: 10, borderRadius: 5, lineHeight: "16px" }}>已读</button>}
+          {sel.size > 1 && <button onClick={batchDel} className="btn" title="已选 {n} 封 · Delete 键同样可删（有确认）· Esc 取消选择" style={{ padding: "2px 6px", fontSize: 10, color: "#e5484d", borderColor: "#fecaca", borderRadius: 5, lineHeight: "16px" }}>删({sel.size})</button>}
+        </div>
+        {/* 拉取进度弹窗 — 分账号详细显示 */}
+        <Modal title="拉取邮件" open={fetching} footer={null} closable={false} width={420}>
+          <div className="space-y-3">
+            {Object.entries(fetchProgress).map(([aid, p]) => (
+              <div key={aid}>
+                <div className="flex justify-between text-[11px] mb-1">
+                  <span className="text-gray-600 font-mono">{p.email || `账号 #${aid}`}</span>
+                  <span className="text-gray-400">{p.scanned}/{p.total}</span>
+                </div>
+                <Progress percent={p.total > 0 ? Math.round((p.scanned / p.total) * 100) : 0}
+                  size="small" status="active" strokeColor="#2563eb" />
+              </div>
+            ))}
+            {Object.keys(fetchProgress).length === 0 && (
+              <div className="text-xs text-gray-400 text-center py-4">正在连接服务器...</div>
+            )}
+          </div>
+        </Modal>
+
+        {/* 视图切换 */}
+        <div style={{ display: "flex", padding: "2px 10px 4px", gap: 4, flexShrink: 0 }}>
+          {(["flat", "sender"] as const).map(v => {
+            const on = view === v;
+            return (
+              <button key={v} onClick={() => { setView(v); setSenderFilter(null); }}
+                style={{
+                  flex: 1, padding: "2px 0", fontSize: 10, cursor: "pointer", border: "1px solid #e5e5e5",
+                  borderRadius: 6, background: on ? "#1a1a1a" : "#fff", color: on ? "#fff" : "#666",
+                  fontWeight: on ? 600 : 400, transition: "all .12s",
+                }}>
+                {v === "flat" ? "全部邮件" : "按发信人"}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 发信人选中后的面包屑栏：让用户一眼看出是从发信人列表点进来的邮件汇总 */}
+        {view === "sender" && senderFilter && (() => {
+          const cur = senderGroups.find(g => g.email === senderFilter);
+          const curName = cur?.name || senderFilter;
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderBottom: "1px solid #e8e8e8", background: "#fafafa", flexShrink: 0 }}>
+              <button onClick={() => setSenderFilter(null)}
+                style={{ display: "flex", alignItems: "center", gap: 4, padding: "1px 7px", fontSize: 10, cursor: "pointer", border: "1px solid #e5e5e5", borderRadius: 5, background: "#fff", color: "#555", flexShrink: 0, transition: "all .12s" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2563eb"; (e.currentTarget as HTMLElement).style.color = "#2563eb"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e5e5e5"; (e.currentTarget as HTMLElement).style.color = "#555"; }}>
+                ← 返回发信人列表
+              </button>
+              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#1a1a1a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{curName}</span>
+                {curName !== senderFilter && (
+                  <span style={{ fontSize: 10, color: "#999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{senderFilter}</span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* 筛选 */}
+        <div style={{ display: "flex", borderBottom: "1px solid #e8e8e8", flexShrink: 0 }}>
+          {FILTERS.map(f => {
+            const on = filter === f.key;
+            return (
+              <button key={f.key} onClick={() => setFilter(f.key)}
+                style={{
+                  flex: 1, padding: "5px 0", fontSize: 10.5, cursor: "pointer", border: 0, background: "none",
+                  color: on ? "#1a1a1a" : "#999", fontWeight: on ? 600 : 400,
+                  boxShadow: on ? "inset 0 -1.5px 0 #1a1a1a" : "none",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 3, whiteSpace: "nowrap",
+                  transition: "color .12s",
+                }}
+                onMouseEnter={e => { if (!on) (e.currentTarget as HTMLElement).style.color = "#666"; }}
+                onMouseLeave={e => { if (!on) (e.currentTarget as HTMLElement).style.color = "#999"; }}
+              >
+                {"dot" in f && <span style={{ fontSize: 8, color: f.dot, lineHeight: 1, flexShrink: 0 }}>●</span>}
+                {f.label}
+                {f.key !== "all" && (nCounts[f.key] ?? 0) > 0 && <span style={{ fontSize: 8, color: "#e5484d", lineHeight: 1, flexShrink: 0 }}>●</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 退信删除：计数/弹窗/执行同一数据源（后端全库），所见即所删；删除前主进程先归档 */}
+        {filter === "bounce" && (bounceStats?.count ?? 0) > 0 && (() => {
+          const cnt = bounceStats!.count;
+          const shown = bounceStats!.emails.slice(0, 6).join("、");
+          return (
+            <button onClick={() => { Modal.confirm({
+              title: `确定删除这 ${cnt} 个被退联系人？`,
+              content: (
+                <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+                  <div>联系人及其往来记录一并删除，退信邮件保留。此操作不可撤销。</div>
+                  <div style={{ color: "#888", wordBreak: "break-all" }}>{shown}{cnt > bounceStats!.emails.length ? ` …共 ${cnt} 人` : ""}</div>
+                  <div style={{ color: "#888" }}>删除前先把被删者档案归档一份。</div>
+                </div>
+              ),
+              okText: "删除", okType: "danger", cancelText: "取消", onOk: () => delBounceMut.mutate() }); }}
+              style={{ width: "100%", padding: "4px 0", border: 0, fontSize: 10.5, fontWeight: 500, cursor: "pointer", color: "#fff", background: "#e5484d", flexShrink: 0 }}>一键删除被退联系人 ({cnt})</button>
+          );
+        })()}
+
+        {/* 列表 */}
+        <div ref={listRef} style={{ flex: 1, overflow: "auto" }}
+          onScroll={e => {
+            const top = e.currentTarget.scrollTop;
+            const rowH = (view === "sender" && !senderFilter) ? SENDER_ROW_H : ROW_H;
+            setScrollTop(prev => (Math.abs(prev - top) >= rowH ? top : prev));
+          }}>
+          {view === "sender" && !senderFilter ? (
+            senderGroups.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: "#ccc" }}>暂无邮件</div>
+            ) : (
+              <div style={{ height: senderGroups.length * SENDER_ROW_H, position: "relative" }}>
+                {visibleSenders.map((g, idx) => {
+                  const realIdx = senderStart + idx;
+                  return (
+                    <div key={g.email} onClick={() => setSenderFilter(g.email)}
+                      style={{ position: "absolute", top: realIdx * SENDER_ROW_H, left: 0, right: 0, height: SENDER_ROW_H, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 8, padding: "4px 12px", cursor: "pointer", borderBottom: "1px solid #f5f5f5" }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,.015)"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {g.name || g.email}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {g.email} · {shortTime(g.latest)}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                        {(["replied", "bounce", "autoreply", "other", "sent"] as const).filter(t => g.types.has(t)).map(t => (
+                          <span key={t} style={{ width: 6, height: 6, borderRadius: "50%", background: TYPE[t]?.dot || "#8b8b8b" }} />
+                        ))}
+                      </div>
+                      <span style={{ fontSize: 10, color: "#bbb", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{g.count} 封</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : isLoading ? <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: "#ccc" }}>加载中...</div>
+            : items.length === 0 ? <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: "#ccc" }}>{search ? "无匹配" : "暂无邮件"}</div>
+              : (
+                <div style={{ height: items.length * ROW_H, position: "relative" }}>
+                  {visibleItems.map((i, idx) => {
+                    const realIdx = startIdx + idx;
+                    const t = TYPE[i.classification || "other"]!;
+                const isNew = !i.isRead;
+                const isSel = sel.has(i.id);
+                const isAct = i.id === sid;
+                return (
+                  <div key={i.id}
+                    onClick={e => click(e, i)}
+                    onContextMenu={e => ctxMenu(e, i)}
+                    style={{
+                      position: "absolute", top: realIdx * ROW_H, left: 0, right: 0, height: ROW_H,
+                      boxSizing: "border-box",
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "6px 12px 6px 9px", cursor: "pointer",
+                      background: isAct ? "rgba(0,0,0,.04)" : isSel ? "rgba(0,191,165,.07)" : "transparent",
+                      borderLeft: isAct ? "3px solid #1a1a1a" : isSel ? "3px solid rgba(0,191,165,.45)" : "3px solid transparent",
+                      borderBottom: "1px solid #f5f5f5",
+                      transition: "background .12s",
+                    }}
+                    onMouseEnter={e => { if (!isAct && !isSel) (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,.015)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isAct ? "rgba(0,0,0,.04)" : isSel ? "rgba(0,191,165,.07)" : "transparent"; }}
+                  >
+                    <span style={{ flexShrink: 0, width: 10, textAlign: "center" }}>
+                      <span style={{ color: t.dot, fontSize: 8, lineHeight: 1, display: "inline-block", transform: isNew ? "scale(1.8)" : "scale(1)", transition: "transform .3s ease" }}>●</span>
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 1 }}>
+                        <span style={{ fontSize: 12, fontWeight: isNew ? 500 : 400, color: "#1a1a1a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {i.subject || i.fromName || i.fromEmail}
+                        </span>
+                        <span style={{ fontSize: 10, color: "#bbb", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{shortTime(i.receivedAt)}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 1 }}>
+                        <span style={{ fontSize: 11, color: "#999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{i.fromName || i.fromEmail}</span>
+                        {i.classification && i.classification !== "other" && <span style={{ fontSize: 9, padding: "0 6px", borderRadius: 10, background: t.dot + "15", color: t.dot, flexShrink: 0 }}>{t.label}</span>}
+                      </div>
+                      {/* 已匹配 + 联系人状态（始终显示） */}
+                      {(() => {
+                        const tags = (() => { try { const t = JSON.parse(i._contactTags || "[]"); return Array.isArray(t) ? t : []; } catch { return []; } })();
+                        const hasAny = i.matchedContactId || i._contactStatus || tags.length > 0;
+                        if (!hasAny) return null;
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, color: "#bbb", marginTop: 1 }}>
+                            {i.matchedContactId && <span>已匹配</span>}
+                            {i._contactStatus && (
+                              <>
+                                <span style={{
+                                  width: 5, height: 5, borderRadius: "50%", display: "inline-block",
+                                  background: i._contactStatus === "replied" ? "#22a644" : i._contactStatus === "bounced" ? "#e5484d" : i._contactStatus === "autoreply" ? "#e6a817" : i._contactStatus === "reached" ? "#2563eb" : "#ccc",
+                                }} />
+                                <span>{i._contactStatus}</span>
+                              </>
+                            )}
+                            {tags.length > 0 && <span>{tags.join(", ")}</span>}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                );
+                  })}
+                </div>
+              )}
+        </div>
+      </div>
+
+      {/* ══ 右侧 ══ */}
+      <div className="flex-1 bg-white flex flex-col overflow-hidden">
+        {!sel_ ? (
+          <div className="flex-1 flex flex-col items-center justify-center" style={{ color: "#ddd" }}>
+            <MailOutlined style={{ fontSize: 32, marginBottom: 10 }} />
+            {/* 原先左侧列表顶部那行计数条迁到这里：左栏少一行、多出一屏邮件 */}
+            <div style={{ fontSize: 11, color: "#c4c4c4", display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", lineHeight: 1.9 }}>
+              <span>退信 {counts.bounce ?? 0}</span>
+              <span>回复 {counts.replied ?? 0}</span>
+              <span>已发送 {counts.sent ?? 0}</span>
+              <span>自动回复 {counts.autoreply ?? 0}</span>
+              <span>其他 {counts.other ?? 0}</span>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* 头部 — 紧凑双列网格（label 宽度压缩，账号+关联一行，状态+标签一行） */}
+            <div className="selectable" style={{ borderBottom: "1px solid #e8e8e8", flexShrink: 0 }}>
+              {[
+                ["发件人", `${sel_.fromName || ""} <${sel_.fromEmail}>`, true],
+                ["收件人", sel_.to || (sel_.classification === "sent" ? `${sel_.fromName || ""} <${sel_.fromEmail}>` : "—"), true],
+                ["抄送", sel_.cc || "—", true],
+                ["主题", sel_.subject || "无主题", true],
+                ["时间", new Date(sel_.receivedAt).toLocaleString("zh-CN"), false],
+                ["分类", sel_.classification || "other", false],
+              ].map(([label, value, full], idx) => (
+                <div key={idx}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", borderBottom: "1px solid #f5f5f5", width: full ? "100%" : "50%" }}>
+                  <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>{label}</span>
+                  <span style={{ wordBreak: "break-all", lineHeight: 1.4, minWidth: 0 }}>
+                    {label === "分类" ? (
+                      <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: (TYPE as Record<string, {dot: string}>)[String(value)]?.dot || "#8b8b8b" }} />
+                        {(TYPE as Record<string, {label: string}>)[String(value)]?.label || String(value)}
+                      </span>
+                    ) : String(value)}
+                    {/* 菱形 = 引用这封邮件让 AI 起草回复（原「AI」整行两按钮收敛成一个图标） */}
+                    {label === "发件人" && (
+                      <Tooltip title="引用这封邮件，让 AI 起草回复" placement="top">
+                        <span
+                          onClick={() => askAssistant({
+                            ctx: `message:${sel_.id}`,
+                            question: "根据这封邮件帮我起草一封回复，语气专业简洁",
+                          })}
+                          style={{ display: "inline-flex", alignItems: "center", verticalAlign: "-1px", marginLeft: 5, cursor: "pointer", color: "#00bfa5", opacity: 0.9 }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "0.9"; }}
+                        >
+                          <DiamondLogo size={11} state="static"   /* 静态：不呼吸、无中心点，只做入口标识 */ />
+                        </span>
+                      </Tooltip>
+                    )}
+                  </span>
+                </div>
+              ))}
+              {/* 账号 + 关联 一行两栏 */}
+              <div style={{ display: "flex", borderBottom: "1px solid #f5f5f5" }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: senderContact ? "50%" : "100%" }}>
+                  <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>账号</span>
+                  <span style={{ fontSize: 11, color: (sel_ as InboxItem & { _accountEmail?: string })._accountEmail ? "#555" : "#ccc", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {(sel_ as InboxItem & { _accountEmail?: string })._accountEmail || "—"}
+                  </span>
+                </div>
+                {senderContact && (
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
+                    <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>关联</span>
+                    <span
+                      onClick={() => { window.location.hash = `#/customers?view=table&detail=${senderContact.id}`; }}
+                      style={{ color: "#1565c0", fontWeight: 500, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "2px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      title="点击打开联系人详情"
+                    >{senderContact.company || "已匹配联系人"}</span>
+                  </div>
+                )}
+              </div>
+              {/* 状态 + 标签 一行两栏 */}
+              {sel_ && (() => {
+                const status = (sel_ as InboxItem & { _contactStatus?: string })._contactStatus || null;
+                const rawTags = (sel_ as InboxItem & { _contactTags?: string })._contactTags || "[]";
+                const tags: string[] = (() => { try { const t = JSON.parse(rawTags); return Array.isArray(t) ? t : []; } catch { return []; } })();
+                const statusDot: Record<string, string> = { replied: "#22a644", bounce: "#e5484d", autoreply: "#e6a817", reached: "#2563eb" };
+                const statusLabel: Record<string, string> = { replied: "已回复", bounce: "退信", autoreply: "自动回复", reached: "已触达" };
+                return (
+                  <div style={{ display: "flex", borderBottom: "1px solid #f5f5f5" }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
+                      <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>状态</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        {status && <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusDot[status] || "#ccc" }} />}
+                        <span style={{ fontSize: 11, color: status ? "#555" : "#ccc" }}>{status ? (statusLabel[status] || status) : "—"}</span>
+                      </span>
+                    </div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
+                      <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>标签</span>
+                      <span style={{ fontSize: 11, color: tags.length > 0 ? "#555" : "#ccc", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tags.length > 0 ? tags.join(", ") : "—"}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 联系人匹配栏 — 始终显示 */}
+            {sid && (
+              <div style={{ borderBottom: "1px solid #e8e8e8", flexShrink: 0, padding: "6px 18px", fontSize: 11 }}>
+                {/* 被退联系人：一键删除同源名单（红色段）——不依赖正文扫描，正文未加载也在 */}
+                {bounceMatches.length > 0 && (
+                  <div style={{ marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, color: "#e5484d", textTransform: "uppercase", letterSpacing: ".5px" }}>被退 {bounceMatches.length} 人</span>
+                    {bounceMatches.map(c => (
+                      <div key={`bm-${c.id}`} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0", fontSize: 11 }}>
+                        <span
+                          onClick={() => { window.location.hash = `#/customers?view=table&detail=${c.id}`; }}
+                          style={{ color: "#1565c0", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "2px" }}
+                          title="点击打开联系人详情"
+                        >{c.email}</span>
+                        <span style={{ color: "#ccc" }}>→</span>
+                        <b>{c.companyName || "未知公司"}</b>
+                        <DeleteOutlined
+                          style={{ fontSize: 11, color: "#ccc", cursor: "pointer", marginLeft: 4 }}
+                          title="删除该联系人"
+                          onClick={(e) => { e.stopPropagation(); confirmDeleteContact({ id: c.id, email: c.email }); }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!matchReady ? (
+                  <span style={{ fontSize: 10, color: "#ccc" }}>{contactsLoading || bl ? "加载中..." : "未提取"}</span>
+                ) : (() => {
+                  // 松口径扫描（正文里出现的在库地址：签名/抄送/被引用者都可能在）排除已入「被退」段的，避免两栏重复+误导
+                  const bset = new Set(bounceMatches.map(b => b.id));
+                  const others = matchedContacts.filter(c => !bset.has(c.id));
+                  return (
+                  <>
+                    {others.length > 0 && (
+                      <div style={{ marginBottom: unmatchedEmails.length > 0 ? 4 : 0 }}>
+                        <span style={{ fontSize: 10, color: "#999", textTransform: "uppercase", letterSpacing: ".5px" }}>正文提到的其他联系人 {others.length} 人</span>
+                        {others.map((c, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0", fontSize: 11 }}>
+                            <span
+                              onClick={() => { window.location.hash = `#/customers?view=table&detail=${c.id}`; }}
+                              style={{ color: "#1565c0", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "2px" }}
+                              title="点击打开联系人详情"
+                            >{c.email}</span>
+                            <span style={{ color: "#ccc" }}>→</span>
+                            <b>{c.company || "未知公司"}</b>
+                            <DeleteOutlined
+                              style={{ fontSize: 11, color: "#ccc", cursor: "pointer", marginLeft: 4 }}
+                              title="删除该联系人"
+                              onClick={(e) => { e.stopPropagation(); confirmDeleteContact({ id: c.id, email: c.email }); }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {unmatchedEmails.length > 0 && (
+                      <div>
+                        <span style={{ fontSize: 10, color: "#999", textTransform: "uppercase", letterSpacing: ".5px" }}>未匹配 {unmatchedEmails.length} 个邮箱 — 点击添加</span>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 6px", marginTop: 2 }}>
+                          {unmatchedEmails.slice(0, 10).map((e, i) => {
+                            const company = guessCompanyFromEmail(e);
+                            const name = sel_ ? guessName(sel_.fromName) : { firstName: "", lastName: "" };
+                            return (
+                              <Tooltip key={i} title={company ? `推测公司: ${company}` : "添加为联系人"}>
+                                <span
+                                  onClick={() => {
+                                    const params = new URLSearchParams();
+                                    params.set("view", "table");
+                                    params.set("add", "1");
+                                    params.set("email", e);
+                                    if (company) params.set("company", company);
+                                    if (name.firstName) params.set("firstName", name.firstName);
+                                    if (name.lastName) params.set("lastName", name.lastName);
+                                    window.location.hash = `#/customers?${params.toString()}`;
+                                  }}
+                                  style={{
+                                    fontSize: 10, background: "#e8f4fd", padding: "1px 8px",
+                                    borderRadius: 3, color: "#1565c0", cursor: "pointer",
+                                    border: "1px solid #bbdefb", transition: "all .12s",
+                                  }}
+                                  onMouseEnter={t => {
+                                    t.currentTarget.style.background = "#bbdefb";
+                                    t.currentTarget.style.borderColor = "#90caf9";
+                                  }}
+                                  onMouseLeave={t => {
+                                    t.currentTarget.style.background = "#e8f4fd";
+                                    t.currentTarget.style.borderColor = "#bbdefb";
+                                  }}
+                                >+ {e}</span>
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {others.length === 0 && unmatchedEmails.length === 0 && bounceMatches.length === 0 && (
+                      <span style={{ fontSize: 10, color: "#ccc" }}>未提取</span>
+                    )}
+                  </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* 正文 */}
+            <div className="detail-body">
+              <div className="body-pane" style={{ height: "calc(100vh - 290px)", display: "flex", flexDirection: "column" }}>
+                {bl ? (
+                  <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc", fontSize: 13 }}>加载正文中...</div>
+                ) : body ? (
+                  <iframe className="body-iframe" style={{ flex: 1, minHeight: 0, width: "100%" }}
+                    scrolling="auto" sandbox="allow-scripts"
+                    srcDoc={bodyDoc}
+                  />
+                ) : (
+                  <div className="body-preview selectable">{sel_.bodyPreview || "(无法加载正文)"}</div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 右键菜单 */}
+      {menu && (
+        <div style={{ position: "fixed", zIndex: 50, left: menu.x, top: menu.y, minWidth: 140, background: "#fff", borderRadius: 8, padding: "4px 0", border: "1px solid #e5e5e5", boxShadow: "0 4px 16px rgba(0,0,0,.08)", fontSize: 12 }}>
+          <div className="ctx-item" onClick={() => { batchRead(); setMenu(null); }}>一键已读</div>
+          <div className="ctx-item" onClick={() => {
+            const rs = menu.item.subject?.match(/^Re:\s*/i) ? menu.item.subject : `Re: ${menu.item.subject || ""}`;
+            window.open(`mailto:${menu.item.fromEmail}?subject=${encodeURIComponent(rs)}`, "_blank");
+            setMenu(null);
+          }}>回复</div>
+          <div style={{ borderTop: "1px solid #eee", margin: "2px 0" }} />
+          {(["replied", "bounce", "autoreply", "sent", "other"] as const).filter(t => t !== (menu.item.classification || "other")).map(t => (
+            <div key={t} className="ctx-item" onClick={() => { batchType(t); setMenu(null); }} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: TYPE[t]!.dot }} />设为 {TYPE[t]!.label}
+            </div>
+          ))}
+          <div style={{ borderTop: "1px solid #eee", margin: "2px 0" }} />
+          <div className="ctx-item" style={{ color: "#e5484d" }} onClick={() => { delMut.mutate([...sel]); setMenu(null); }}>
+            {sel.size > 1 ? `删除选中 (${sel.size})` : "删除"}
+          </div>
+        </div>
+      )}
+
+      {/* 右键菜单 hover 样式 */}
+      <style>{`
+        .ctx-item{padding:6px 12px;cursor:pointer;transition:background .1s}.ctx-item:hover{background:#f5f5f5}
+        .btn{border:1px solid #e5e5e5;border-radius:6px;background:#fff;cursor:pointer;transition:all .12s;display:flex;align-items:center}
+        .btn:hover{background:#f5f5f5;border-color:#d5d5d5}
+        .btn:active{background:#eee}
+        .detail-body .ant-tabs-tabpane{overflow:visible!important}
+        .body-pane{overflow:hidden!important}
+        .body-iframe{width:100%!important;border:0!important;display:block!important}
+        .body-preview{flex:1!important;padding:20px!important;font-size:14px!important;color:#555!important;white-space:pre-wrap!important;line-height:1.9!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;overflow-y:auto!important}
+      `}</style>
+    </div>
+  );
+}
+

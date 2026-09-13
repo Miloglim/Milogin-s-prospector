@@ -1,0 +1,144 @@
+// ── 生效端点解析（唯一入口）───────────────────────────────────
+// 谁在读模型配置：agent 会话（harness）、能力调用（背调/开发信/总结）。
+// 过去两处各自读 env，容易出现"会话切了新端点、背调还在用旧 key"。现在统一走这里。
+//
+// 密钥存放规则（红线：只进 .env，不进库、不进对话、不回传渲染端）：
+//   AGENT_KEY_ENV=PROVIDER_KEY_<ID>   ← 激活某个 profile 时写入的「指针」
+//   PROVIDER_KEY_<ID>=sk-xxx          ← 该 profile 的密钥本体
+//   AGENT_API_KEY=sk-xxx              ← 兼容旧的手写配置（无指针时回落它）
+// 解析优先级：指针指向的密钥 > AGENT_API_KEY > 旧 DEEPSEEK_API_KEY（仅能力调用回落）。
+import { Log } from "../logger";
+
+export interface ActiveEndpoint {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  /** profile=界面激活的端点 / legacy=.env 手写 / none=未配置 */
+  source: "profile" | "legacy" | "none";
+}
+
+export function readActiveEndpoint(): ActiveEndpoint {
+  const baseUrl = (process.env.AGENT_API_BASE_URL || "").trim();
+  const model = (process.env.AGENT_MODEL || "").trim();
+  const keyEnv = (process.env.AGENT_KEY_ENV || "").trim();
+  const pointed = keyEnv ? (process.env[keyEnv] || "").trim() : "";
+  const legacy = (process.env.AGENT_API_KEY || "").trim();
+  const apiKey = pointed || legacy;
+  const source: ActiveEndpoint["source"] = !baseUrl || !apiKey
+    ? "none"
+    : (pointed && keyEnv) ? "profile" : "legacy";
+  if (source === "none" && (baseUrl || legacy) && process.env.AGENT_DEBUG_ENDPOINT) {
+    Log.debug("endpoint", `未就绪 baseUrl=${!!baseUrl} key=${!!legacy}`);
+  }
+  return { baseUrl, apiKey, model, source };
+}
+
+/** 端点是否就绪：缺 base 或 key 都算未配置（对话会直接失败并提示去设置） */
+export function isLiveEndpoint(e: ActiveEndpoint = readActiveEndpoint()): boolean {
+  return !!(e.baseUrl && e.apiKey);
+}
+
+// ── 端点族识别与思考开关的参数方言 ───────────────────────────
+// 各家对「非标准请求体字段」的容忍度不同：vLLM/agnes 认 chat_template_kwargs，
+// Ollama 认 chat_template_kwargs.thinking，Google 的 OpenAI 兼容层只认自己的
+// google.thinking_config —— 给 Google 塞 chat_template_kwargs 有被判 400 的风险。
+// 所以注入必须按族走，不能一把梭。
+export type EndpointFamily = "google" | "ollama" | "openai" | "strict" | "compat";
+
+export function endpointFamily(baseUrl: string): EndpointFamily {
+  const u = (baseUrl || "").toLowerCase();
+  if (u.includes("generativelanguage.googleapis.com")) return "google";
+  if (/localhost|127\.0\.0\.1|:11434/.test(u)) return "ollama";
+  if (u.includes("api.openai.com") || u.includes(".openai.azure.com") || u.includes("api.azure.com")) return "openai";
+  // DeepSeek：OpenAI 兼容但参数白名单严格的托管服务，塞 vLLM 私有键有被判非法的风险；
+  // 它的推理能力在另一档模型（deepseek-reasoner）上，本来也不靠这个开关
+  if (u.includes("api.deepseek.com")) return "strict";
+  return "compat";   // agnes / vLLM / 自建 OpenAI 兼容网关
+}
+
+/**
+ * 要合并进请求体的额外字段（按端点族）。思考开关已从产品里移除，这里恒为「关思考」：
+ * 尽力关掉各家推理换首字速度、并规避思考模式带来的多轮回传约束；关不掉也不能把请求搞坏。
+ */
+export function thinkingExtras(family: EndpointFamily): Record<string, unknown> {
+  switch (family) {
+    case "google":
+      // 实测（.trash 探针）：Gemini 的 OpenAI 兼容层对顶层 google / thinking_budget /
+      // generation_config 一律判 400「Unknown name」，没有可用的思考控制字段。
+      // 所以这里不注入任何东西；推理由端点自己决定，工具回合改走非流式（见 harness）来
+      // 保住 thought_signature —— 那才是它在兼容层下的真正约束。
+      return {};
+    case "ollama":
+      return { chat_template_kwargs: { thinking: false } };
+    case "openai":
+      // OpenAI 自家不认这些扩展键；关思考即不传 reasoning_effort
+      return {};
+    case "strict":
+      // DeepSeek 原生认顶层 thinking:{type} 开关（实测 deepseek-chat / v4-flash / v4-pro 传它均 200）。
+      // 必须显式关：V4 默认就思考，一旦思考，API 就要求历史里每条 assistant 带回 reasoning_content，
+      // 而 agent/memory.ts 的历史回放从不带 RC → 多轮时不时被判
+      // 「400 The reasoning_content in the thinking mode must be passed back to the API」。
+      // 关思考后模型不再吐 RC，这条规则从根上无从触发。
+      return { thinking: { type: "disabled" } };
+    default:
+      // vLLM/agnes：enable_thinking（flash 系）与 thinking（pro 系）混发，jinja 模板忽略未知键
+      return { chat_template_kwargs: { enable_thinking: false, thinking: false } };
+  }
+}
+
+/**
+ * 单发合成类调用（起草/回信/背调）开思考的方言。
+ * 为什么能安全开：单发请求只有 system+user、没有 assistant 历史，DeepSeek 思考模式的
+ * 「reasoning_content 必须回传」约束无从触发（实测单发+thinking=200）；agent 多轮仍恒关。
+ */
+export function thinkingExtrasOn(family: EndpointFamily): Record<string, unknown> {
+  switch (family) {
+    case "google":
+      return {};   // 兼容层没有可用的思考控制字段（同 thinkingExtras 的实测结论），交给端点自己
+    case "ollama":
+      return { chat_template_kwargs: { thinking: true } };
+    case "openai":
+      return { reasoning_effort: "low" };
+    case "strict":
+      return { thinking: { type: "enabled" } };
+    default:
+      return { chat_template_kwargs: { enable_thinking: true, thinking: true } };
+  }
+}
+
+// ── 轻任务端点（大小模型路由的「小」档）──────────────────────
+// 适用：会话压缩摘要、邮件总结、背调报告——单发、无工具循环，便宜档足够。
+// 未配置时回落主端点（行为与今天一致）；密钥同样只进 .env。
+export interface LightEndpoint {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  /** main=未配置轻任务档，回落主端点 */
+  source: "light" | "main";
+}
+
+export function readLightEndpoint(main: ActiveEndpoint = readActiveEndpoint()): LightEndpoint {
+  const baseUrl = (process.env.LIGHT_API_BASE_URL || "").trim();
+  const keyEnv = (process.env.LIGHT_KEY_ENV || "").trim();
+  const model = (process.env.LIGHT_MODEL || "").trim();
+  const pointed = keyEnv ? (process.env[keyEnv] || "").trim() : "";
+  const legacy = (process.env.LIGHT_API_KEY || "").trim();
+  const apiKey = pointed || legacy;
+  if (baseUrl && apiKey && model) {
+    return { baseUrl, apiKey, model, source: "light" };
+  }
+  return { baseUrl: main.baseUrl, apiKey: main.apiKey, model: main.model, source: "main" };
+}
+
+/** 供 UI 展示的安全视图（绝不含密钥值） */
+export function endpointView(e: ActiveEndpoint = readActiveEndpoint()):
+  { hasBaseUrl: boolean; hasKey: boolean; baseUrl: string; model: string; source: ActiveEndpoint["source"]; keyEnv: string } {
+  return {
+    hasBaseUrl: !!e.baseUrl,
+    hasKey: !!e.apiKey,
+    baseUrl: e.baseUrl,
+    model: e.model,
+    source: e.source,
+    keyEnv: (process.env.AGENT_KEY_ENV || "").trim(),
+  };
+}

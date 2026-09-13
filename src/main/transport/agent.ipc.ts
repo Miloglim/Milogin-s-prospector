@@ -1,0 +1,120 @@
+import { ipcMain, BrowserWindow, shell } from "electron";
+import { IPC } from "../contract";
+import * as Agent from "../services/agent.service";
+import * as BgTask from "../services/bg-task.service";
+import * as Diagnostics from "../services/diagnostics.service";
+import * as Gaps from "../services/gap.service";
+import * as Suggestions from "../services/suggestion.service";
+import { initSuggestionBus } from "../services/suggestion-bus";
+import { isInsideArtifactDir } from "../services/artifact.service";
+import { failResult, okResult } from "../errors";
+import { Log } from "../logger";
+
+/** 渲染进程事件推送器 — 与 send.ipc/inbox.ipc 同模式，service 层不接触 electron */
+function makePush() {
+  return (channel: string, data: unknown) => {
+    try { BrowserWindow.getAllWindows()[0]?.webContents.send(channel, data); } catch { /* 窗口已销毁 */ }
+  };
+}
+
+export function registerAgentIPC() {
+  const push = makePush();
+
+  // 启动时记录端点就绪状态 — 排查「助手不回话」的第一现场
+  const st = Agent.status();
+  if (st.success) {
+    const d = st.data as { configured: boolean; model: string };
+    Log.info("agent.init", d.configured
+      ? `端点就绪 model=${d.model}`
+      : "未配置模型端点（设置 → 模型与端点 里新增并启用后，无需重启即可对话）");
+  }
+
+  // 发起一轮对话（立即返回 ID，正文走 agent:chunk 事件流）
+  ipcMain.handle(IPC.AGENT.CHAT, (_e, input: Agent.ChatInput) => Agent.chat(push, input));
+
+  // 中断当前生成
+  ipcMain.handle(IPC.AGENT.STOP, (_e, conversationId: string) => {
+    if (!conversationId) return failResult("缺少 conversationId");
+    return Agent.stop(conversationId);
+  });
+
+  // 写操作审批结论回填（harness 中断流的人工确认环节）
+  ipcMain.handle(IPC.AGENT.RESOLVE_APPROVAL, (_e, input: Agent.ApprovalInput) =>
+    Agent.resolveApprovalRequest(push, input ?? {}));
+
+  // 端点就绪状态（供对话页角标与提示）
+  ipcMain.handle(IPC.AGENT.STATUS, () => Agent.status());
+
+  // 工具元数据（UI 中文名 + 追问引导）：渲染端经此取，不再各自维护清单
+  ipcMain.handle(IPC.AGENT.TOOL_META, () => Agent.toolMeta());
+
+  // 会话管理（左侧历史列表）
+  ipcMain.handle(IPC.AGENT.LIST_CONVERSATIONS, () => Agent.listConversations());
+
+  ipcMain.handle(IPC.AGENT.GET_CONVERSATION, (_e, conversationId: string) => Agent.getMessages(conversationId));
+
+  ipcMain.handle(IPC.AGENT.RENAME_CONVERSATION,
+    (_e, input: { conversationId?: string; title?: string }) =>
+      Agent.renameConversation(input?.conversationId ?? "", input?.title ?? ""));
+
+  ipcMain.handle(IPC.AGENT.DELETE_CONVERSATION, (_e, conversationId: string) =>
+    Agent.deleteConversation(conversationId));
+
+  // 移入归档（侧栏「删除」的实际动作；数据保留，设置页可恢复或彻底删）
+  ipcMain.handle(IPC.AGENT.ARCHIVE_CONVERSATION, (_e, conversationId: string) =>
+    Agent.archiveConversation(conversationId));
+  ipcMain.handle(IPC.AGENT.UNARCHIVE_CONVERSATION, (_e, conversationId: string) =>
+    Agent.unarchiveConversation(conversationId));
+  ipcMain.handle(IPC.AGENT.LIST_ARCHIVED_CONVERSATIONS, () => Agent.listArchivedConversations());
+
+  // 批量彻底删除会话（设置页「归档会话」勾选后一次删）
+  ipcMain.handle(IPC.AGENT.DELETE_CONVERSATIONS, (_e, ids: string[]) =>
+    Agent.deleteConversations(ids));
+
+  // AI 活动审计：最近工具调用记录（设置页）
+  ipcMain.handle(IPC.AGENT.TOOL_CALLS, (_e, limit?: number) => Agent.listToolCalls(limit));
+
+  // 结果卡「写入类」动作：用户点击后执行主进程留存的闭包（过期/重启即失效）
+  ipcMain.handle(IPC.AGENT.RUN_ACTION, (_e, actionId: string) => Agent.runAction(actionId));
+
+  // P2 产物卡「打开位置」：仅允许 outputs/agent 目录内的路径（防注入 ../ 越权）
+  ipcMain.handle(IPC.AGENT.OPEN_PATH, (_e, input: { path?: string }) => {
+    const p = input?.path?.trim();
+    if (!p) return failResult("缺少文件路径");
+    if (!isInsideArtifactDir(p)) {
+      Log.warn("agent.openPath", `拒绝打开产物目录之外的路径：${p.slice(0, 120)}`);
+      return failResult("只允许打开助手生成的产物文件");
+    }
+    try {
+      shell.showItemInFolder(p);
+      return okResult(undefined);
+    } catch (err) {
+      return failResult(`打开失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
+  // P2 后台任务：任务卡挂载时取快照（此后靠 agent:task 事件增量刷新）
+  ipcMain.handle(IPC.AGENT.GET_TASK, (_e, input: { taskId?: string }) => BgTask.getTask(input?.taskId ?? ""));
+
+  // P2 后台任务：取消（当前项做完即停）
+  ipcMain.handle(IPC.AGENT.CANCEL_TASK, (_e, input: { taskId?: string }) => BgTask.cancelTask(input?.taskId ?? ""));
+
+  // 诊断包导出：日志尾部 + 配置掩码快照 + 库行数 + 最近异常 → outputs/agent 的 md
+  ipcMain.handle(IPC.AGENT.EXPORT_DIAGNOSTICS, () => Diagnostics.exportDiagnostics());
+
+  // 能力缺口台账（/缺口 命令查看，按被抱怨次数降序）
+  ipcMain.handle(IPC.AGENT.LIST_GAPS, (_e, limit?: number) => Gaps.listGaps(limit ?? 20));
+
+  // 新对话「行动建议」流：本地候选实时拼装（规范 docs/suggestion-feed-spec.md）
+  // ctx 锚点（contact:12）随拉取传入命中候选置顶；rotate=「换一批」页码；热更新走 SUGGESTIONS_CHANGED 推送
+  ipcMain.handle(IPC.AGENT.SUGGESTIONS, (_e, ctx?: string, rotate?: number) =>
+    Suggestions.suggestions(typeof ctx === "string" ? ctx : undefined, Number.isInteger(rotate) && (rotate as number) > 0 ? (rotate as number) : 0));
+  // chip 被点击 → 当天不再推荐同一条（dismissed 记忆落盘）
+  ipcMain.handle(IPC.AGENT.DISMISS_SUGGESTION, (_e, key: unknown) => {
+    if (typeof key === "string" && key) Suggestions.dismiss(key);
+    return okResult(true);
+  });
+  // 热更新总线：数据事件 nudge → debounce 重算 → 推送（推送用 ctx-less 全局 feed；
+  // 带锚点的会话由渲染端收到事件后自行重拉，见 AssistantPage）
+  initSuggestionBus(() => Suggestions.feed(), push);
+}

@@ -1,0 +1,1081 @@
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Card, Tag, Button, Tabs, Input, Select, message, Empty, Timeline, DatePicker, Modal, Popconfirm, Tooltip, Checkbox } from "antd";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { HtmlText } from "../../components/RichTextEditor";
+import { RateUpdatePanel } from "./RateUpdatePanel";
+import { COUNTRIES, STAGE_META } from "../../components/ContactDetail";
+import {
+  ClockCircleOutlined, CloseOutlined, MailOutlined, SearchOutlined,
+  DownOutlined, RightOutlined, EditOutlined, SaveOutlined,
+  DeleteOutlined, PlusOutlined, SendOutlined, EnvironmentOutlined, CopyOutlined,
+} from "@ant-design/icons";
+import dayjs from "dayjs";
+
+// ══════════════════════════════════════════════════════════════
+// 类型 & 常量（沿用旧 PE）
+// ══════════════════════════════════════════════════════════════
+
+interface PipelineContact {
+  id: number; email: string; firstName: string | null; lastName: string | null;
+  title: string | null; phone: string | null; linkedinUrl: string | null;
+  companyName: string | null; companyId: number | null;
+  stage: string; sendStage: string;
+  reminderAt: string | null;
+  /** 服务端统一口径：沉默天数与是否逾期（看板红点与助手 reminders_due 同源） */
+  staleDays: number | null; overdue: boolean;
+  lastFollowupAt: string | null; lastFollowupNote: string | null;
+  country: string | null; language: string | null; clientType: string | null;
+  assignee: string | null;
+  stageChangedAt: string | null;
+}
+
+interface StageData { key: string; label: string; color: string; contacts: PipelineContact[]; }
+
+const STAGES = [
+  { key: "reaching", label: "触达中", color: "#ff9800" },
+  { key: "quoting", label: "报价中", color: "#2196f3" },
+  { key: "trial", label: "试单", color: "#8e24aa" },
+  { key: "cooperating", label: "合作中", color: "#4caf50" },
+  { key: "lost", label: "已流失", color: "#b0b0b0" },
+  { key: "other", label: "其他", color: "#333333" },
+];
+
+const TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  sent: { label: "已发送", color: "#2563eb" },
+  replied: { label: "已回复", color: "#22a644" },
+  bounced: { label: "退信", color: "#d93025" },
+  autoreply: { label: "自动回复", color: "#ff9800" },
+  cc: { label: "抄送", color: "#0891b2" },
+  note: { label: "跟进", color: "#607d8b" },
+};
+
+const EMAIL_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  sent: { label: "发件", color: "#2563eb" },
+  replied: { label: "回复", color: "#22a644" },
+  cc: { label: "抄送", color: "#ff9800" },
+};
+
+function daysAgo(d: string) {
+  const delta = Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+  if (delta === 0) return "今天";
+  if (delta === 1) return "昨天";
+  return `${delta} 天前`;
+}
+
+/**
+ * 最近跟进预警色：与 reminders_due 同一口径（服务端算好的 staleDays/overdue），
+ * 避免出现「看板标红、助手说没逾期」这种自相矛盾。
+ * 红 = 沉默超期（>5 天，看板与助手都算逾期）；橙 = >3 天预警；其余灰。
+ */
+function followAgeClass(d: string, overdue?: boolean): string {
+  if (overdue) return "text-red-500 font-medium";
+  const days = (Date.now() - new Date(d).getTime()) / 86400000;
+  if (days > 5) return "text-red-500 font-medium";
+  if (days > 3) return "text-orange-500 font-medium";
+  return "text-gray-400";
+}
+
+// 阶段内排序：最近跟进倒序（见渲染处 sort；旧按跟进人分组已废弃 — 筛选栏有专门的跟进人筛选）
+
+// ══════════════════════════════════════════════════════════════
+// 主组件
+// ══════════════════════════════════════════════════════════════
+
+export function CrmPipeline() {
+  const qc = useQueryClient();
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [currentTab, setCurrentTab] = useState("info");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem("crm-stage-state") || "{}"); } catch { return {}; }
+  });
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  // 从联系人页跳转来 → 记录待打开 ID；?ratepush=1 → 直接打开运价更新面板（agent 方案卡/建议卡深链入口）
+  const [ratePushOpen, setRatePushOpen] = useState(false);
+  const pendingDetailRef = useRef<number | null>(null);
+  useEffect(() => {
+    const rawHash = window.location.hash;
+    const qs = rawHash.includes("?") ? rawHash.split("?")[1] : "";
+    if (!qs) return;
+    const sp = new URLSearchParams(qs);
+    if (sp.get("ratepush")) setRatePushOpen(true);
+    const detailStr = sp.get("detail");
+    if (!detailStr) {
+      if (sp.get("ratepush")) {
+        window.location.hash = rawHash.split("?")[0]!;
+      }
+      return;
+    }
+    const id = Number(detailStr);
+    if (!isNaN(id)) {
+      pendingDetailRef.current = id;
+      setDetailId(id);
+    }
+    window.location.hash = rawHash.split("?")[0]!;
+  }, []);
+  const [emailPopup, setEmailPopup] = useState<{
+    id?: number; fromEmail: string; subject: string | null; receivedAt: string; bodyPreview: string | null;
+  } | null>(null);
+  const [emailBody, setEmailBody] = useState<string | null>(null);
+  const [emailBodyLoading, setEmailBodyLoading] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+  const [crmNote, setCrmNote] = useState("");
+  const [portsDraft, setPortsDraft] = useState<Array<{ pol: string; pod: string }>>([]);
+  const portsRef = useRef<Array<{ pol: string; pod: string }>>([]);
+  const extraRef = useRef<Record<string, unknown>>({});
+  const [sendContact, setSendContact] = useState<PipelineContact | null>(null);
+  const [sendTemplateId, setSendTemplateId] = useState<number | undefined>();
+  const [sendAccountId, setSendAccountId] = useState<number | undefined>();
+  const [sendPreview, setSendPreview] = useState<{ subject: string; body: string } | null>(null);
+  const [sendSending, setSendSending] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["crm", "pipeline"],
+    queryFn: () => window.api.invoke("crm:listPipeline") as Promise<{ success: boolean; data?: StageData[] }>,
+  });
+
+  const { data: detail, isLoading: detailLoading } = useQuery({
+    queryKey: ["crm", "detail", detailId],
+    queryFn: () => window.api.invoke("crm:getDetail", detailId) as Promise<{
+      success: boolean; data?: {
+        contact: PipelineContact | null;
+        interactions: Array<{ id?: number; type: string; direction: string; subject: string | null; bodyPreview: string | null; createdAt: string }>;
+        emails: Array<{ id?: number; fromEmail: string; direction?: string; type?: string; classification?: string; subject: string | null; receivedAt: string; bodyPreview?: string | null }>;
+        timeline: Array<{ id?: number | null; type: string; direction?: string; fromEmail?: string | null; subject: string | null; bodyPreview: string | null; createdAt: string }>;
+      };
+    }>,
+    enabled: !!detailId,
+  });
+
+  // 来信推断的港口偏好（只在打开「偏好设置」时拉一次；方案引擎与运价更新推送同一口径）
+  const { data: derivedPorts } = useQuery({
+    queryKey: ["rate-update", "ports", detailId],
+    queryFn: () => window.api.invoke("rateUpdate:ports", detailId) as Promise<{
+      success: boolean; data?: Array<{ pod: string; pol: string | null; container: string | null; score: number; sources: string[]; lastSeenAt: string | null; hits: number }>;
+    }>,
+    enabled: !!detailId && currentTab === "prefs",
+  });
+
+  const setStageMut = useMutation({
+    mutationFn: (p: { contactId: number; stage: string }) => window.api.invoke("crm:setStage", p),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm"] }); },
+  });
+
+  const upsertMut = useMutation({
+    mutationFn: (p: Record<string, unknown>) => window.api.invoke("contacts:upsert", p),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm"] }); },
+  });
+
+  const addReminderMut = useMutation({
+    mutationFn: (p: { contactId: number; reminderAt: string; note?: string }) => window.api.invoke("crm:addReminder", p),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm"] }); },
+  });
+
+  const clearReminderMut = useMutation({
+    mutationFn: (contactId: number) => window.api.invoke("crm:clearReminder", contactId),
+    onSuccess: (result) => {
+      const r = result as { success: boolean; error?: string };
+      if (r?.success) {
+        qc.invalidateQueries({ queryKey: ["crm"] });
+        message.success("提醒已清除");
+      } else {
+        message.error(r?.error || "清除失败");
+      }
+    },
+    onError: (err) => { message.error("清除失败: " + (err instanceof Error ? err.message : String(err))); },
+  });
+
+  const updateNoteMut = useMutation({
+    mutationFn: (p: { interactionId: number; text: string }) => window.api.invoke("crm:updateNote", p),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm"] }); },
+  });
+
+  const deleteNoteMut = useMutation({
+    mutationFn: (interactionId: number) => window.api.invoke("crm:deleteNote", interactionId),
+    onSuccess: (result) => {
+      const r = result as { success: boolean; error?: string };
+      r?.success ? message.success("已删除") : message.error(r?.error || "删除失败");
+      qc.invalidateQueries({ queryKey: ["crm"] });
+    },
+  });
+
+  // 模板 + 账号（快速发送用）
+  const { data: templatesData } = useQuery({
+    queryKey: ["templates"],
+    queryFn: () => window.api.invoke("templates:list") as Promise<{ success: boolean; data?: Array<{ id: number; name: string; subject: string; body: string }> }>,
+  });
+  const { data: accountsData } = useQuery({
+    queryKey: ["accounts"],
+    queryFn: () => window.api.invoke("accounts:list") as Promise<{ success: boolean; data?: Array<{ id: number; email: string }> }>,
+  });
+  const templates = templatesData?.success ? templatesData.data || [] : [];
+  const accounts = accountsData?.success ? accountsData.data || [] : [];
+
+  const handleQuickSend = async () => {
+    if (!sendContact || !sendTemplateId || !sendAccountId) return;
+    setSendSending(true);
+    try {
+      const tpl = templates.find(t => t.id === sendTemplateId);
+      const r = await window.api.invoke("send:test", {
+        to: sendContact.email,
+        accountId: sendAccountId,
+        subject: tpl?.subject,
+        body: tpl?.body,
+        contactId: sendContact.id,
+      }) as { success: boolean; error?: string };
+      r?.success ? message.success(`已发送到 ${sendContact.email}`) : message.error(r?.error || "发送失败");
+      if (r?.success) setSendContact(null);
+    } catch (err) {
+      message.error("发送失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSendSending(false);
+    }
+  };
+
+  const stages: StageData[] = data?.success ? data.data || [] : STAGES.map(s => ({ ...s, contacts: [] }));
+
+  // 分类筛选 — 国家 / 跟进人（下拉多选；选项按联系人数量降序，选中的并集匹配）
+  const [fCountries, setFCountries] = useState<string[]>([]);
+  const [fAssignees, setFAssignees] = useState<string[]>([]);
+  const allPipelineContacts = useMemo(() => stages.flatMap(s => s.contacts), [stages]);
+  const optionCounts = (get: (c: PipelineContact) => string | null) => {
+    const m = new Map<string, number>();
+    for (const c of allPipelineContacts) {
+      const k = get(c);
+      if (k) m.set(k, (m.get(k) || 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  };
+  const countryOptions = useMemo(() => optionCounts(c => c.country), [allPipelineContacts]);   // [value, count][]
+  const assigneeOptions = useMemo(() => optionCounts(c => (c.assignee || "").trim() || null), [allPipelineContacts]);
+  const visibleOf = useCallback((list: PipelineContact[]) =>
+    list.filter(c =>
+      (fCountries.length === 0 || (c.country && fCountries.includes(c.country)))
+      && (fAssignees.length === 0 || fAssignees.includes((c.assignee || "").trim()))),
+    [fCountries, fAssignees]);
+  const contact = detail?.success ? detail.data?.contact : null;
+  const detailData = detail?.success ? detail.data : null;
+
+  /** 打开邮件正文详情弹窗（邮件往来 Tab 与跟进时间线共用）：先占位再懒加载正文 */
+  const openEmailDetail = (email: { id?: number | null; fromEmail?: string | null; subject: string | null; receivedAt: string; bodyPreview?: string | null }) => {
+    setEmailPopup({
+      id: email.id ?? undefined,
+      fromEmail: email.fromEmail || "",
+      subject: email.subject,
+      receivedAt: email.receivedAt,
+      bodyPreview: email.bodyPreview ?? null,
+    });
+    setEmailBody(null);
+    setEmailBodyLoading(!!email.id);
+    if (email.id) {
+      window.api.invoke("inbox:getBody", email.id).then((res) => {
+        const r = res as { success: boolean; data?: string };
+        setEmailBody(r?.success ? (r.data || null) : null);
+        setEmailBodyLoading(false);
+      }).catch(() => setEmailBodyLoading(false));
+    }
+  };
+
+  // 备注/港口草稿：contact 切换时同步 extra 到本地 state（含 ref，供 saveExtra 读最新值避免并发覆盖）
+  useEffect(() => {
+    if (!contact) {
+      setCrmNote("");
+      setPortsDraft([]); portsRef.current = [];
+      extraRef.current = {};
+      return;
+    }
+    try {
+      const extra = (contact as unknown as Record<string, unknown>).extra as Record<string, unknown> || {};
+      extraRef.current = extra;
+      // #17: 兼容旧导入字段 extra.note
+      setCrmNote(String(extra.crmNote || extra.note || ""));
+      const p = JSON.parse(String(extra.preferredPorts || "[]"));
+      const arr = Array.isArray(p) ? (p as Array<{ pol: string; pod: string }>) : [];
+      setPortsDraft(arr); portsRef.current = arr;
+    } catch {
+      extraRef.current = {};
+      setCrmNote("");
+      setPortsDraft([]); portsRef.current = [];
+    }
+  }, [contact]);
+
+  // 自动展开有联系人的阶段，收起空阶段（collapsed=true 表示收起）
+  useEffect(() => {
+    if (!data?.success) return;
+    const next: Record<string, boolean> = {};
+    for (const s of stages) {
+      next[s.key] = s.contacts.length === 0; // 空的→收起，有人的→展开
+    }
+    setCollapsed(next);
+  }, [data]);
+
+  // 数据加载后 → 展开阶段 + 滚动到联系人
+  useEffect(() => {
+    if (pendingDetailRef.current === null) return;
+    const id = pendingDetailRef.current;
+    const contactStage = stages.find(s => s.contacts.some(c => c.id === id));
+    if (contactStage) {
+      setCollapsed(prev => ({ ...prev, [contactStage.key]: false }));
+      setTimeout(() => {
+        const el = document.getElementById(`crm-contact-${id}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 200);
+    }
+    pendingDetailRef.current = null;
+  }, [stages]);
+
+  const toggleStage = (key: string) => {
+    const next = { ...collapsed, [key]: !collapsed[key] };
+    setCollapsed(next);
+    localStorage.setItem("crm-stage-state", JSON.stringify(next));
+  };
+
+  const saveNote = async () => {
+    if (!noteText.trim() || !contact) return;
+    // 只写跟进记录，不设置提醒（提醒由用户通过 DatePicker 手动设置）
+    await window.api.invoke("crm:addNote", { contactId: contact.id, text: noteText.trim() });
+    setNoteText("");
+    qc.invalidateQueries({ queryKey: ["crm"] }); // 刷新详情 + 看板「最近跟进」
+  };
+
+  // 选取联系人（多选）+ 分行复制邮箱
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const copyEmails = async () => {
+    const emails = stages.flatMap(s => s.contacts).filter(c => selectedIds.has(c.id)).map(c => c.email);
+    if (emails.length === 0) { message.warning("未选中联系人"); return; }
+    try {
+      await navigator.clipboard.writeText(emails.join("\n"));
+      message.success(`已复制 ${emails.length} 个邮箱`);
+    } catch { message.error("复制失败"); }
+  };
+
+  // 复制联系人完整信息（分行），供分享给同事
+  const copyContactInfo = async () => {
+    if (!contact) return;
+    const extra = (contact as unknown as Record<string, unknown>).extra as Record<string, unknown> || {};
+    let ports = "";
+    try {
+      const p = JSON.parse(String(extra.preferredPorts || "[]"));
+      if (Array.isArray(p)) ports = p.map((x: { pol?: string; pod?: string }) => [x.pol, x.pod].filter(Boolean).join("→")).join("；");
+    } catch { /* 忽略 */ }
+    const CLIENT_LABEL: Record<string, string> = { agent: "代理", direct: "直客" };
+    const SEND_STAGE_LABEL: Record<string, string> = Object.fromEntries(
+      Object.entries(STAGE_META).map(([k, m]) => [k, m.label]),
+    );
+    const lines = [
+      `姓名: ${[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "—"}`,
+      `邮箱: ${contact.email}`,
+      `公司: ${contact.companyName || "—"}`,
+      `国家: ${contact.country || "—"}`,
+      `语言: ${contact.language || "—"}`,
+      `职位: ${contact.title || "—"}`,
+      `电话: ${contact.phone || "—"}`,
+      `领英: ${contact.linkedinUrl || "—"}`,
+      `客户类型: ${CLIENT_LABEL[contact.clientType || ""] || contact.clientType || "—"}`,
+      `阶段: ${SEND_STAGE_LABEL[contact.sendStage || ""] || contact.sendStage || "—"}`,
+      `偏好港口: ${ports || "—"}`,
+      `备注: ${extra.crmNote || extra.note || "—"}`,
+    ];
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      message.success("已复制联系人信息");
+    } catch { message.error("复制失败"); }
+  };
+
+  // 跟进记录编辑：保存并退出编辑态（onBlur 与按钮共用）
+  const commitEditNote = async () => {
+    if (!editingNoteId) return;
+    const r = await updateNoteMut.mutateAsync({ interactionId: editingNoteId, text: editText });
+    if (r && typeof r === "object" && "success" in r) {
+      const rr = r as { success: boolean; error?: string };
+      rr.success ? message.success("已更新") : message.error(rr.error || "更新失败");
+    }
+    setEditingNoteId(null);
+  };
+
+  // 浮层卡片 fixed 于视口、不占布局流 → 打开详情时给整行垫出等宽空间（同一条 clamp 公式），
+  // 行尾的提醒/跟进人/复选框就不会从卡片底下钻过去
+  return (
+    <div
+      className="flex gap-4 h-full"
+      style={{
+        minHeight: "calc(100vh - 130px)",
+        ...(detailId ? { paddingRight: "calc(clamp(300px, 30vw, 460px) + 20px)" } : {}),
+      }}
+    >
+      {/* ═══ 左侧看板 ═══ */}
+      <div className="flex-1 overflow-y-auto pb-4 space-y-1">
+        {/* 分类筛选 — 国家 / 跟进人：下拉多选（选项再多也只占一行） */}
+        <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-3 py-1.5 flex items-center gap-2">
+          <span className="text-[10px] text-gray-400 flex-shrink-0">筛选</span>
+          <Select mode="multiple" size="small" allowClear placeholder="全部国家" showSearch value={fCountries}
+            onChange={v => setFCountries(v as string[])} style={{ minWidth: 150, maxWidth: 300 }} maxTagCount="responsive"
+            popupMatchSelectWidth={false}
+            options={countryOptions.map(([v, n]) => ({ value: v, label: `${v} (${n})` }))} />
+          <Select mode="multiple" size="small" allowClear placeholder="全部跟进人" showSearch value={fAssignees}
+            onChange={v => setFAssignees(v as string[])} style={{ minWidth: 150, maxWidth: 300 }} maxTagCount="responsive"
+            popupMatchSelectWidth={false}
+            options={assigneeOptions.map(([v, n]) => ({ value: v, label: `${v} (${n})` }))} />
+          {(fCountries.length > 0 || fAssignees.length > 0) && (
+            <Button size="small" type="text" className="!text-[10px] !px-1"
+              onClick={() => { setFCountries([]); setFAssignees([]); }}>重置</Button>
+          )}
+          <Tooltip title="按各客户的港口偏好，把当期运价分组推给他们（先出方案，入队后仍由你在发送中心点开始）">
+            <Button size="small" className="ml-auto" icon={<SendOutlined />}
+              onClick={() => setRatePushOpen(true)}>运价更新</Button>
+          </Tooltip>
+        </div>
+        {selectedIds.size > 0 && (
+          <div className="sticky top-[34px] z-20 bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-2">
+            <span className="text-xs text-gray-600">已选 {selectedIds.size} 人</span>
+            <Button size="small" type="primary" onClick={copyEmails}>复制邮箱</Button>
+            <Button size="small" onClick={() => setRatePushOpen(true)}>运价更新</Button>
+            <Button size="small" onClick={() => setSelectedIds(new Set())}>清空</Button>
+          </div>
+        )}
+        {isLoading ? <Card loading className="w-full" /> :
+          stages.map(s => {
+            const visible = visibleOf(s.contacts);
+            return (
+            <div key={s.key}>
+              <div
+                className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none sticky top-0 z-10 bg-gray-50"
+                style={{ borderLeft: `3px solid ${s.color}` }}
+                onClick={() => toggleStage(s.key)}
+              >
+                {collapsed[s.key] ? <RightOutlined className="text-[10px] text-gray-400" /> : <DownOutlined className="text-[10px] text-gray-400" />}
+                <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
+                <span className="font-semibold text-xs">{s.label}</span>
+                <span className="text-[11px] text-gray-400 ml-auto">
+                  {visible.length}{visible.length !== s.contacts.length ? <span className="text-gray-300">/{s.contacts.length}</span> : ""}
+                </span>
+              </div>
+              {!collapsed[s.key] && (
+                <div>
+                  {[...visible]
+                    .sort((a, b) => {
+                      // 最近跟进倒序（最新在最上）；无跟进记录的沉底（按创建时间新旧再排）
+                      const ta = a.lastFollowupAt ? new Date(a.lastFollowupAt).getTime() : 0;
+                      const tb = b.lastFollowupAt ? new Date(b.lastFollowupAt).getTime() : 0;
+                      return tb - ta;
+                    })
+                    .map(c => (
+                      <div key={c.id}
+                        id={`crm-contact-${c.id}`}
+                        className={`flex items-center gap-2 px-4 py-2 cursor-pointer border-b border-gray-50 hover:bg-gray-50 transition-colors text-xs ${detailId === c.id ? "bg-violet-50 border-l-2 border-l-violet-400" : ""}`}
+                        onClick={() => { setDetailId(c.id); setCurrentTab("info"); }}
+                      >
+                        <span className="font-medium flex-shrink-0 w-24 truncate" title={[c.firstName, c.lastName].filter(Boolean).join(" ") || undefined}>{[c.firstName, c.lastName].filter(Boolean).join(" ") || "—"}</span>
+                        {c.country ? (
+                          <span className="text-[9px] text-gray-400 flex-shrink-0 px-1 rounded bg-gray-50">{c.country}</span>
+                        ) : null}
+                        <span className="text-[11px] text-gray-400 flex-1 truncate">{c.companyName || "—"}</span>
+                        <span className="flex items-center gap-2 flex-shrink-0">
+                          {c.lastFollowupAt ? (
+                            <span className={`text-[10px] flex items-center gap-1 ${followAgeClass(c.lastFollowupAt, c.overdue)}`}>
+                              <span className="flex-shrink-0">{daysAgo(c.lastFollowupAt)}</span>
+                              <EditOutlined className="text-[9px] flex-shrink-0" />
+                              <span className="truncate">{(c.lastFollowupNote || "").slice(0, 10)}</span>
+                            </span>
+                          ) : null}
+                          {c.reminderAt ? (
+                            <span className={`text-[10px] flex items-center gap-0.5 ${new Date(c.reminderAt) < new Date() ? "text-red-500 font-semibold" : "text-amber-500"}`}>
+                              <ClockCircleOutlined className="text-[9px]" />
+                              {new Date(c.reminderAt) < new Date() ? `逾期${daysAgo(c.reminderAt)}` : dayjs(c.reminderAt).format("MM/DD")}
+                            </span>
+                          ) : null}
+                          {c.assignee ? (
+                            <Tag color="geekblue" className="text-[10px] my-0 leading-none py-0.5 px-1.5 flex-shrink-0">{c.assignee}</Tag>
+                          ) : null}
+                        </span>
+                        <Checkbox checked={selectedIds.has(c.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggleSelect(c.id)} />
+                      </div>
+                    ))}
+                  {visible.length === 0 && (
+                    <div className="text-center text-[11px] text-gray-300 py-4">
+                      {s.contacts.length === 0 ? "暂无" : "无符合筛选的联系人"}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            );
+          })
+        }
+      </div>
+
+      {/* ═══ 右侧详情：常驻浮层卡片（position: fixed）═══
+          钉在视口右侧：滚动时位置不变、永远浮在列表上层；
+          上下贴边定位 → 高度天然随窗口伸缩，宽度 clamp 按视口比例自适应，内容超出走卡片内部滚动。 */}
+      {detailId && (
+        <div
+          className="fixed z-30 bg-white border border-gray-200 rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.16)] flex flex-col overflow-hidden"
+          style={{ top: 44, right: 36, bottom: 28, width: "clamp(300px, 30vw, 460px)" }}
+        >
+          {/* 头部 */}
+          <div className="p-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-sm">
+                {contact?.firstName} {contact?.lastName}
+              </span>
+              <Tooltip title="在联系人中查看">
+                <SearchOutlined
+                  className="text-[11px] text-gray-400 hover:text-blue-500 cursor-pointer transition-colors"
+                  onClick={() => {
+                    if (contact?.id) window.location.hash = `#/customers?view=table&detail=${contact.id}`;
+                  }}
+                />
+              </Tooltip>
+              <Tooltip title="在收件箱中查看">
+                <MailOutlined
+                  className="text-[11px] text-gray-400 hover:text-blue-500 cursor-pointer transition-colors"
+                  onClick={() => {
+                    if (contact?.email) window.location.hash = `#/inbox?search=${encodeURIComponent(contact.email)}`;
+                  }}
+                />
+              </Tooltip>
+              <Tooltip title="复制联系人信息">
+                <CopyOutlined
+                  className="text-[11px] text-gray-400 hover:text-blue-500 cursor-pointer transition-colors"
+                  onClick={copyContactInfo}
+                />
+              </Tooltip>
+            </div>
+            <Button type="text" size="small" onClick={() => { setDetailId(null); setEmailPopup(null); }}>
+              <CloseOutlined />
+            </Button>
+          </div>
+
+          {/* Tabs */}
+          <Tabs activeKey={currentTab} onChange={setCurrentTab} size="small"
+            tabBarStyle={{ margin: 0, padding: "0 8px" }}
+            items={[
+              { key: "info", label: <span className="text-[10px]">基本信息</span> },
+              { key: "prefs", label: <span className="text-[10px]">偏好设置</span> },
+              { key: "followup", label: <span className="text-[10px]">跟进记录</span> },
+              { key: "emails", label: <span className="text-[10px]">邮件往来</span> },
+            ]}
+          />
+
+          <div className="flex-1 p-3 flex flex-col crm-detail-scroll" style={{ overflowY: "auto" }}>
+            {detailLoading && <Card loading />}
+
+            {/* Tab 1: 基本信息 */}
+            {currentTab === "info" && contact && (
+              <div className="space-y-1 text-xs">
+                {([
+                  { label: "姓名", type: "double", field1: "firstName", field2: "lastName" },
+                  { label: "邮箱", type: "text", field: "email" },
+                  { label: "公司", type: "text", field: "companyName" },
+                  { label: "国家", type: "select", field: "country", options: COUNTRIES.map(c => ({ key: c.code, label: `${c.code} ${c.label}` })) },
+                  { label: "语言", type: "select", field: "language", options: [
+                    { key: "EN", label: "EN 英语", color: "#1565c0" },
+                    { key: "ES", label: "ES 西班牙语", color: "#e65100" },
+                    { key: "PT", label: "PT 葡萄牙语", color: "#2e7d32" },
+                    { key: "", label: "未设置", color: "#999" },
+                  ] },
+                  { label: "职位", type: "text", field: "title" },
+                  { label: "负责人", type: "text", field: "assignee" },
+                  { label: "发送阶段", type: "select", field: "sendStage", saveField: "stage", options: [
+                    // label 对齐 STAGE_META（此处配色与之不同，故未整体复用）
+                    { key: "cold", label: "Cold", color: "#1565c0" },
+                    { key: "f1", label: "F1", color: "#2e7d32" },
+                    { key: "f2", label: "F2", color: "#e65100" },
+                    { key: "f3", label: "F3", color: "#7b1fa2" },
+                    { key: "f4", label: "F4", color: "#546e7a" },
+                    { key: "", label: "未设置", color: "#999" },
+                  ] },
+                  { label: "电话", type: "text", field: "phone" },
+                  { label: "领英", type: "text", field: "linkedinUrl" },
+                  { label: "客户类型", type: "select", field: "clientType", options: [
+                    { key: "agent", label: "代理", color: "#5c6bc0" },
+                    { key: "direct", label: "直客", color: "#22a644" },
+                    { key: "", label: "未设置", color: "#999" },
+                  ] },
+                ] as const).map(row => (
+                  <div key={row.label} className="flex items-center py-1.5 border-b border-gray-50">
+                    <span className="w-14 text-[10px] text-gray-400">{row.label}</span>
+                    {row.type === "select" && "options" in row ? (
+                      <StagePicker
+                        value={String((contact as unknown as Record<string, string>)[(row as unknown as { field: string }).field] || "—")}
+                        options={(row as unknown as { options: string[] | { key: string; label: string; color?: string }[] }).options}
+                        onChange={async (v) => {
+                          const saveField = (row as unknown as { saveField?: string }).saveField ?? (row as { field: string }).field;
+                          await upsertMut.mutateAsync({ id: contact.id, email: contact.email, [saveField]: v });
+                          qc.invalidateQueries({ queryKey: ["crm", "detail", detailId] });
+                        }}
+                      />
+                    ) : (
+                      <InlineEdit
+                        value={row.type === "double"
+                          ? `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "—"
+                          : String((contact as unknown as Record<string, string>)[(row as { field: string }).field || ""] || "—")
+                        }
+                        onSave={async (val) => {
+                          if (row.type === "double") {
+                            const [first, ...rest] = val.split(" ");
+                            await upsertMut.mutateAsync({ id: contact.id, email: contact.email, firstName: first || "", lastName: rest.join(" ") || "" });
+                          } else {
+                            await upsertMut.mutateAsync({ id: contact.id, email: contact.email, [(row as { field: string }).field]: val });
+                          }
+                          qc.invalidateQueries({ queryKey: ["crm", "detail", detailId] });
+                        }}
+                      />
+                    )}
+                  </div>
+                ))}
+
+                {/* 阶段 — 弹窗选择器（沿用旧 PE stage picker） */}
+                <div className="flex items-center py-1.5 border-b border-gray-50">
+                  <span className="w-14 text-[10px] text-gray-400">阶段</span>
+                  <StagePicker
+                    value={contact.stage}
+                    options={STAGES}
+                    onChange={v => setStageMut.mutate({ contactId: contact.id, stage: v })}
+                  />
+                </div>
+
+                {/* 提醒 */}
+                <div className="flex items-center py-1.5 border-b border-gray-50">
+                  <span className="w-14 text-[10px] text-gray-400">提醒</span>
+                  <DatePicker showTime size="small" style={{ width: 170, fontSize: 11 }}
+                    value={contact.reminderAt ? dayjs(contact.reminderAt) : null}
+                    onChange={v => {
+                      if (v) {
+                        addReminderMut.mutate({ contactId: contact.id, reminderAt: v.toISOString() });
+                      } else {
+                        clearReminderMut.mutate(contact.id);
+                      }
+                    }}
+                    placeholder="设置跟进提醒"
+                    allowClear
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: 偏好设置 — 存储在 contact.extra */}
+            {currentTab === "prefs" && contact && (() => {
+              const extra = extraRef.current;
+
+              const saveExtra = async (patch: Record<string, unknown>) => {
+                const newExtra = { ...extraRef.current, ...patch };
+                extraRef.current = newExtra; // 立即更新 ref，港口/备注共用避免并发覆盖
+                await upsertMut.mutateAsync({ id: contact.id, email: contact.email, extra: JSON.stringify(newExtra) });
+                qc.invalidateQueries({ queryKey: ["crm", "detail", detailId] });
+              };
+
+              // 港口：本地 draft 同步击键（无异步竞态），blur 一次性持久化
+              const updatePort = (idx: number, field: "pol" | "pod", val: string) => {
+                setPortsDraft(prev => {
+                  const next = prev.map((p, i) => i === idx ? { ...p, [field]: val } : p);
+                  portsRef.current = next;
+                  return next;
+                });
+              };
+              const persistPorts = async () => {
+                await saveExtra({ preferredPorts: JSON.stringify(portsRef.current) });
+              };
+              const addPort = async () => {
+                const next = [...portsRef.current, { pol: "", pod: "" }];
+                portsRef.current = next; setPortsDraft(next);
+                await saveExtra({ preferredPorts: JSON.stringify(next) });
+              };
+              const removePort = async (idx: number) => {
+                const next = portsRef.current.filter((_, i) => i !== idx);
+                portsRef.current = next; setPortsDraft(next);
+                await saveExtra({ preferredPorts: JSON.stringify(next) });
+              };
+
+              return (
+                <div className="flex flex-col flex-1 min-h-0">
+                  <div className="space-y-3 text-xs flex-shrink-0">
+                    {/* 偏好港口 — 自由输入 */}
+                    <div className="pb-2 border-b border-gray-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-semibold text-gray-500 uppercase">偏好港口</span>
+                        <Button size="small" type="dashed" icon={<PlusOutlined />} style={{ fontSize: 10, height: 22 }}
+                          onClick={addPort}>添加</Button>
+                      </div>
+                      {portsDraft.length === 0 ? (
+                        <div className="text-[10px] text-gray-300 py-2 text-center">暂无，点击"添加"录入</div>
+                      ) : (
+                        <div className="space-y-1">
+                          {portsDraft.map((p, idx) => (
+                            <div key={idx} className="flex items-center gap-1.5">
+                              <span className="text-[9px] text-gray-400 w-4 flex-shrink-0">#{idx + 1}</span>
+                              <Input size="small" style={{ width: 120, fontSize: 10 }}
+                                value={p.pol || ""} placeholder="装货港 POL"
+                                onChange={e => updatePort(idx, "pol", e.target.value)}
+                                onBlur={persistPorts}
+                              />
+                              <span className="text-[9px] text-gray-300">→</span>
+                              <Input size="small" style={{ width: 120, fontSize: 10 }}
+                                value={p.pod || ""} placeholder="卸货港 POD"
+                                onChange={e => updatePort(idx, "pod", e.target.value)}
+                                onBlur={persistPorts}
+                              />
+                              <Button type="text" size="small" danger icon={<DeleteOutlined />}
+                                style={{ padding: 0, minWidth: 16, height: 16, fontSize: 10 }}
+                                onClick={() => removePort(idx)} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 来信推断的港口（只读展示 + 一键采用为偏好；让偏好能自己长出来，不用销售手打） */}
+                    {(() => {
+                      const derived = (derivedPorts?.success ? derivedPorts.data ?? [] : [])
+                        .filter(d => !portsRef.current.some(p => (p.pod || "").trim().toUpperCase() === d.pod.toUpperCase()));
+                      if (!derived.length) return null;
+                      const adopt = async () => {
+                        const next = [...portsRef.current, ...derived.map(d => ({ pol: d.pol ?? "", pod: d.pod }))];
+                        portsRef.current = next; setPortsDraft(next);
+                        await saveExtra({ preferredPorts: JSON.stringify(next) });
+                        qc.invalidateQueries({ queryKey: ["rate-update", "ports", detailId] });
+                      };
+                      return (
+                        <div className="pb-2 border-b border-gray-100">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-semibold text-gray-500 uppercase">近 90 天来信提到</span>
+                            <Button size="small" type="link" className="!text-[10px] !px-0" onClick={adopt}>采用为偏好</Button>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {derived.map(d => (
+                              <Tooltip key={d.pod}
+                                title={`${d.sources.includes("inbound") ? `${d.hits} 封来信提到` : "看板登记"}${d.pol ? ` · 起运 ${d.pol}` : ""}${d.container ? ` · ${d.container}` : ""}${d.lastSeenAt ? ` · 最近 ${d.lastSeenAt.slice(0, 10)}` : ""}`}>
+                                <Tag className="!mr-0 !text-[10px]" color="blue">
+                                  {d.pol ? `${d.pol} → ${d.pod}` : d.pod}
+                                </Tag>
+                              </Tooltip>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 其他偏好 */}
+                    {([
+                      { label: "决策角色", field: "decisionRole", opts: ["", "决策者", "影响者", "信息提供者"] },
+                      { label: "价格敏感度", field: "priceSensitivity", opts: ["", "高", "中", "低"] },
+                      { label: "年度货量", field: "annualVolume", opts: ["", "<100TEU", "100-500TEU", "500-2000TEU", ">2000TEU"] },
+                    ]).map(row => {
+                      const currentVal = String(extra[row.field] || "");
+                      return (
+                        <div key={row.field} className="flex items-center py-1.5 border-b border-gray-50">
+                          <span className="w-20 text-[10px] text-gray-400">{row.label}</span>
+                          <Select size="small" style={{ width: 150, fontSize: 11 }}
+                            value={currentVal || undefined}
+                            onChange={async (v) => {
+                              await saveExtra({ [row.field]: v || null });
+                            }}
+                            options={row.opts.map(o => ({ value: o, label: o || "—" }))}
+                            allowClear
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* 备注 — 自适应拉伸到底部 */}
+                  <div className="flex-1 min-h-0 mt-3 flex flex-col">
+                    <span className="text-[10px] font-semibold text-gray-500 uppercase mb-1 flex-shrink-0">备注</span>
+                    <Input.TextArea
+                      className="flex-1"
+                      style={{ fontSize: 11, resize: "none" }}
+                      value={crmNote}
+                      placeholder="客户的特殊需求、偏好细节、注意事项…"
+                      onChange={e => setCrmNote(e.target.value)}
+                      onBlur={async (e) => {
+                        await saveExtra({ crmNote: e.target.value || null });
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Tab 3: 跟进记录 */}
+            {currentTab === "followup" && detailData && (
+              <div className="flex flex-col flex-1 min-h-0">
+                {/* 输入区 — 固定在顶部 */}
+                <div className="flex-shrink-0 space-y-2 mb-3">
+                  <div className="flex gap-2">
+                    <Input.TextArea size="small" rows={2} value={noteText}
+                      onChange={e => setNoteText(e.target.value)}
+                      placeholder="添加跟进记录..."
+                      style={{ fontSize: 11 }}
+                    />
+                  </div>
+                  <Button size="small" type="primary" icon={<PlusOutlined />}
+                    onClick={saveNote} block>保存</Button>
+                </div>
+
+                {/* 时间线 — 独立滚动，有边框 */}
+                <div className="flex-1 overflow-y-auto min-h-0 border border-gray-200 rounded-lg p-3 bg-white">
+                  <Timeline items={detailData.timeline.slice(0, 40).map(i => {
+                  // sent/replied/cc 来自 inbox_messages 行（id=邮件id，可点开详情）；note/bounced/autoreply 来自 interactions，无邮件 id
+                  const isOpenable = !!i.id && (i.type === "sent" || i.type === "replied" || i.type === "cc");
+                  return {
+                  color: TYPE_LABELS[i.type]?.color || "gray",
+                  children: (
+                    <div className={`text-[10px] ${isOpenable ? "cursor-pointer group" : ""}`}
+                      onClick={isOpenable ? () => openEmailDetail({ id: i.id, fromEmail: i.fromEmail, subject: i.subject, receivedAt: i.createdAt, bodyPreview: i.bodyPreview }) : undefined}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Tag color={TYPE_LABELS[i.type]?.color} className="text-[9px] leading-none px-1">
+                          {TYPE_LABELS[i.type]?.label || i.type}
+                        </Tag>
+                        <span className="text-gray-400">{new Date(i.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                        {i.type === "note" && editingNoteId === i.id ? (
+                          <Button type="text" size="small" icon={<SaveOutlined />}
+                            style={{ padding: 0, minWidth: 16, height: 16 }}
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={commitEditNote} />
+                        ) : i.type === "note" ? (
+                          <>
+                            <Button type="text" size="small" icon={<EditOutlined />}
+                              style={{ padding: 0, minWidth: 16, height: 16 }}
+                              onClick={() => { setEditingNoteId(i.id || null); setEditText(i.bodyPreview || ""); }} />
+                            <Popconfirm title="确定删除？" onConfirm={() => deleteNoteMut.mutate(i.id as number)}
+                              okText="删除" cancelText="取消">
+                              <Button type="text" size="small" danger icon={<DeleteOutlined />}
+                                style={{ padding: 0, minWidth: 16, height: 16 }} />
+                            </Popconfirm>
+                          </>
+                        ) : null}
+                      </div>
+                      {editingNoteId === i.id ? (
+                        <div className="mt-1">
+                          <Input.TextArea size="small" rows={2} value={editText}
+                            onChange={e => setEditText(e.target.value)} style={{ fontSize: 10 }}
+                            onBlur={commitEditNote} />
+                          <div className="flex gap-1 mt-1">
+                            <Button size="small" type="primary" loading={updateNoteMut.isPending}
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={commitEditNote}>保存</Button>
+                            <Button size="small" onMouseDown={e => e.preventDefault()}
+                              onClick={() => setEditingNoteId(null)}>取消</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {i.type === "note" ? (
+                            i.bodyPreview && <div className="text-[11px] mt-0.5 text-gray-600 leading-relaxed">{i.bodyPreview}</div>
+                          ) : (
+                            i.subject && <div className={`text-[11px] mt-0.5 font-medium truncate ${isOpenable ? "text-gray-700 group-hover:text-blue-600" : "text-gray-700"}`} title={i.subject}>{i.subject}</div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ),
+                  };
+                })} />
+                {!detailData.timeline.length && <Empty description="暂无跟进记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 4: 邮件往来 */}
+            {currentTab === "emails" && detailData && (
+              <div className="space-y-1.5">
+                {detailData.emails.map((e, i) => (
+                  <div key={i} className="border border-gray-100 rounded p-2 text-xs hover:border-gray-300 cursor-pointer"
+                    onClick={() => openEmailDetail(e)}
+                  >
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <MailOutlined className="text-[9px] text-gray-400" />
+                      <Tag color={EMAIL_TYPE_LABELS[e.type || ""]?.color || "default"}
+                        className="text-[9px] leading-none px-1"
+                      >{EMAIL_TYPE_LABELS[e.type || ""]?.label || "收"}</Tag>
+                      <span className="text-[10px] font-mono">{e.fromEmail}</span>
+                    </div>
+                    <div className="text-[10px] truncate">{e.subject || "无主题"}</div>
+                    <div className="text-[9px] text-gray-400 mt-0.5">{new Date(e.receivedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+                  </div>
+                ))}
+                {!detailData.emails.length && <Empty description="暂无邮件记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* 邮件正文弹窗 */}
+      <Modal title={emailPopup?.subject || "邮件详情"} open={!!emailPopup}
+        onCancel={() => setEmailPopup(null)} footer={null} width={640}
+      >
+        {emailPopup && (
+          <div className="text-xs space-y-2">
+            <div className="flex gap-4 text-gray-500">
+              <span>发件人: {emailPopup.fromEmail}</span>
+              <span>{new Date(emailPopup.receivedAt).toLocaleString("zh-CN")}</span>
+            </div>
+            <div className="border-t pt-2 text-[11px] leading-relaxed selectable">
+              {emailBodyLoading
+                ? "加载正文中..."
+                : emailBody
+                  ? <HtmlText html={emailBody} />
+                  : (emailPopup.bodyPreview || "（无法加载正文）")}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* 快速发送弹窗 */}
+      <Modal title={["发送邮件", sendContact?.firstName, sendContact?.lastName].filter(Boolean).join(" — ")}
+        open={!!sendContact} onCancel={() => setSendContact(null)}
+        okText="发送" confirmLoading={sendSending}
+        onOk={handleQuickSend}
+        okButtonProps={{ disabled: !sendTemplateId || !sendAccountId }}
+      >
+        <div className="space-y-3 text-xs">
+          <div>
+            <span className="text-gray-400">收件人：</span>
+            <span className="font-mono text-blue-600">{sendContact?.email}</span>
+            {sendContact?.companyName && <span className="text-gray-400 ml-2">({sendContact.companyName})</span>}
+          </div>
+          <Select size="small" placeholder="选择模板" style={{ width: "100%" }}
+            value={sendTemplateId}
+            onChange={v => { setSendTemplateId(v); setSendPreview(null); }}
+            options={templates.map(t => ({ value: t.id, label: t.name }))}
+          />
+          {sendTemplateId && (
+            <Button size="small" type="link" onClick={() => {
+              const tpl = templates.find(t => t.id === sendTemplateId);
+              if (tpl && sendContact) {
+                const pre = (s: string) => s
+                  .replace(/\{\{firstName\}\}/g, sendContact.firstName || "")
+                  .replace(/\{\{lastName\}\}/g, sendContact.lastName || "")
+                  .replace(/\{\{company\}\}/g, sendContact.companyName || "");
+                setSendPreview({ subject: pre(tpl.subject), body: pre(tpl.body) });
+              }
+            }}>预览渲染效果</Button>
+          )}
+          {sendPreview && (
+            <div className="bg-gray-50 rounded p-2 space-y-2 text-[11px]">
+              <div className="font-semibold text-gray-800">{sendPreview.subject}</div>
+              <div className="text-gray-600 whitespace-pre-wrap leading-relaxed">{sendPreview.body}</div>
+            </div>
+          )}
+          <Select size="small" placeholder="选择发件账号" style={{ width: "100%" }}
+            value={sendAccountId}
+            onChange={setSendAccountId}
+            options={accounts.map(a => ({ value: a.id, label: a.email }))}
+          />
+        </div>
+      </Modal>
+
+      {/* 运价更新：按客户港口偏好定向投递（与 agent 的 rate_update_plan 同一个方案引擎） */}
+      <RateUpdatePanel
+        open={ratePushOpen}
+        onClose={() => setRatePushOpen(false)}
+        contactIds={selectedIds.size > 0 ? [...selectedIds] : undefined}
+      />
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// 小组件：阶段/选项选择器（沿用旧 PE 弹窗模式）
+// ══════════════════════════════════════════════════════════════
+
+function StagePicker({ value, options, onChange }: {
+  value: string; options: string[] | { key: string; label: string; color?: string }[];
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [kw, setKw] = useState("");
+  const btnRef = useRef<HTMLDivElement>(null);
+
+  const items = options.map(o =>
+    typeof o === "string" ? { key: o, label: o, color: "#999" } : { key: o.key, label: o.label, color: o.color || "#999" }
+  );
+  const filtered = kw
+    ? items.filter(i => (i.label || "").toLowerCase().includes(kw.toLowerCase()) || i.key.toLowerCase().includes(kw.toLowerCase()))
+    : items;
+  const current = items.find(i => i.key === value);
+  const color = current?.color || "#999";
+  const showSearch = items.length > 10;
+
+  return (
+    <div className="flex-1 relative">
+      <div ref={btnRef}
+        className="flex items-center gap-1.5 cursor-pointer text-[11px] px-1 py-0.5 hover:bg-gray-50 rounded"
+        onClick={() => { setOpen(!open); setKw(""); }}
+      >
+        <span>{current?.label || value || "—"}</span>
+      </div>
+      {open && (
+        <div className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[140px] text-xs"
+          style={{
+            left: Math.min((btnRef.current?.getBoundingClientRect().left || 0), window.innerWidth - 200),
+            top: (btnRef.current?.getBoundingClientRect().bottom || 0) + 4,
+          }}
+        >
+          {showSearch && (
+            <div className="px-2 pb-1 mb-1 border-b border-gray-100">
+              <Input size="small" autoFocus placeholder="搜索..." value={kw}
+                onChange={e => setKw(e.target.value)} style={{ fontSize: 11 }} />
+            </div>
+          )}
+          <div className="max-h-[260px] overflow-y-auto">
+            {filtered.map(item => (
+              <div key={item.key}
+                className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-50 ${item.key === value ? "font-semibold" : ""}`}
+                onClick={() => { onChange(item.key); setOpen(false); }}
+              >
+                {item.key === value ? "● " : ""}{item.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// 内联编辑
+// ══════════════════════════════════════════════════════════════
+
+function InlineEdit({ value, onSave }: { value: string; onSave: (v: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(value);
+
+  const save = async () => {
+    setEditing(false);
+    if (val !== value) await onSave(val);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex-1 flex gap-1">
+        <Input size="small" value={val} onChange={e => setVal(e.target.value)}
+          onPressEnter={save} autoFocus style={{ fontSize: 11, height: 22 }}
+          onBlur={save}
+          onKeyDown={e => { if (e.key === "Escape") { setVal(value); setEditing(false); } }}
+        />
+        <Button type="text" size="small" icon={<SaveOutlined />} style={{ padding: 0, minWidth: 18, height: 18 }} onMouseDown={e => e.preventDefault()} onClick={save} />
+        <Button type="text" size="small" icon={<CloseOutlined />} style={{ padding: 0, minWidth: 18, height: 18 }} onMouseDown={e => e.preventDefault()} onClick={() => { setVal(value); setEditing(false); }} />
+      </div>
+    );
+  }
+
+  return (
+    <span className="flex-1 text-[11px] cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5" onClick={() => { setVal(value); setEditing(true); }}>
+      {value}
+    </span>
+  );
+}

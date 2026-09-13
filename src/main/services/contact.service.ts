@@ -1,0 +1,669 @@
+import { getDb, getRawDb } from "../db";
+import { contacts, type ContactRow, type InsertContactRow } from "../db/schema/contacts";
+import { companies } from "../db/schema/companies";
+import { interactions } from "../db/schema/interactions";
+import { crmStages, crmRelations } from "../db/schema/crm";
+import { inboxMessages, inboxBounceMatches } from "../db/schema/inbox";
+import { emailAccounts } from "../db/schema/accounts";
+import { eq, like, or, and, count, desc, inArray, sql as dsql, type SQL } from "drizzle-orm";
+import { okResult, failResult, type Result } from "../errors";
+import { Log } from "../logger";
+import { saveDatabase } from "../db";
+import { nudge as nudgeSuggestions } from "./suggestion-bus";
+import { linkInboxForContact, linkInboxForContacts } from "./inbox-link";
+import * as XLSX from "xlsx";
+
+// ── 导入：列名别名 → 字段映射 ──
+const COLUMN_ALIASES: Record<string, string[]> = {
+  email:        ["email", "e-mail", "mail", "邮箱", "邮件"],
+  companyName:  ["company", "公司", "company name", "企业", "organization", "org", "公司名称"],
+  companyDomain:["website", "domain", "网站", "网址", "域名"],
+  firstName:    ["first name", "firstname", "given name", "名", "名字", "first"],
+  lastName:     ["last name", "lastname", "surname", "姓", "姓氏", "last"],
+  title:        ["title", "职位", "职务", "job title", "job"],
+  phone:        ["phone", "电话", "手机", "tel", "telephone", "mobile"],
+  linkedinUrl:  ["linkedin", "领英", "linkedin url", "linkedinurl"],
+  country:      ["country", "国家", "语言", "language", "lang"],
+  stage:        ["stage", "阶段", "发送阶段"],
+  status:       ["status", "状态"],
+  clientType:   ["client type", "clienttype", "客户类型", "类型", "type"],
+  tags:         ["tags", "标签"],
+  assignee:     ["assignee", "负责人", "跟进人", "owner", "assigned to"],
+  createdAt:    ["createdat", "添加时间", "创建时间", "added at", "date added"],
+  extraNote:    ["备注", "跟进备注", "notes", "note", "退信原因", "bounce reason"],
+};
+
+function normalizeKey(s: string): string {
+  return s.trim().toLowerCase().replace(/[-_.\s]+/g, "");
+}
+
+function buildAliasMap(): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
+    for (const a of aliases) m.set(normalizeKey(a), field);
+  }
+  return m;
+}
+
+function autoMap(headers: string[]): Record<string, string> {
+  const aliasMap = buildAliasMap();
+  const mapping: Record<string, string> = {};
+  for (const h of headers) {
+    mapping[h] = aliasMap.get(normalizeKey(h)) || "";
+  }
+  return mapping;
+}
+
+function parseRows(type: string, raw: string): string[][] {
+  try {
+    if (type === "xlsx") {
+      Log.debug("contact.parseRows.xlsx", `raw len=${raw.length}`);
+      const buf = Buffer.from(raw, "base64");
+      Log.debug("contact.parseRows.xlsx", `buffer len=${buf.length}`);
+      const wb = XLSX.read(buf, { type: "buffer" });
+      Log.debug("contact.parseRows.xlsx", `sheets=${wb.SheetNames.join(",")}`);
+      const name = wb.SheetNames[0];
+      if (!name || !wb.Sheets[name]) return [];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name]!, { header: 1 }) as string[][];
+      Log.debug("contact.parseRows.xlsx", `rows=${rows.length}`);
+      return rows;
+    }
+    if (type === "csv") {
+      Log.debug("contact.parseRows.csv", `raw len=${raw.length}`);
+      const wb = XLSX.read(raw, { type: "string" });
+      const name = wb.SheetNames[0];
+      if (!name || !wb.Sheets[name]) return [];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name]!, { header: 1 }) as string[][];
+      Log.debug("contact.parseRows.csv", `rows=${rows.length}`);
+      return rows;
+    }
+    // tsv（粘贴）
+    Log.debug("contact.parseRows.tsv", `raw len=${raw.length}`);
+    const lines = raw.trim().split("\n");
+    if (lines.length === 0) return [];
+    // 检测分隔符：如果第一行 tab 数量 > 逗号数量，用 tab
+    const tabs0 = (lines[0]?.match(/\t/g) || []).length;
+    const commas0 = (lines[0]?.match(/,/g) || []).length;
+    const sep = tabs0 >= commas0 ? "\t" : ",";
+    return lines.map(line => line.split(sep));
+  } catch (err) {
+    Log.error("contact.parseRows", err instanceof Error ? err.stack || err.message : String(err));
+    return [];
+  }
+}
+
+export async function getContactById(id: number): Promise<Result<ContactRow>> {
+  Log.debug("contact.getById", `id=${id}`);
+  if (!Number.isInteger(id) || id <= 0) return failResult(`无效的 ID: ${id}`);
+  const row = getDb().select().from(contacts).where(eq(contacts.id, id)).get();
+  if (!row) return failResult(`联系人不存在: id=${id}`);
+  return okResult(row);
+}
+
+/** 由 search + 各筛选项拼出 contacts 的 WHERE（分页查询与"取全部匹配 id"共用，避免条件漂移） */
+function buildContactWhere(params?: {
+  search?: string;
+  stage?: string; status?: string; tags?: string; clientType?: string; country?: string;
+}): SQL {
+  const search = params?.search?.trim();
+  const conds: (SQL | undefined)[] = [];
+  if (search) {
+    const pattern = `%${search}%`;
+    conds.push(or(
+      like(contacts.email, pattern),
+      like(contacts.firstName, pattern),
+      like(contacts.lastName, pattern),
+      like(contacts.title, pattern),
+      like(companies.name, pattern),
+    ));
+  }
+  if (params?.stage) conds.push(eq(contacts.stage, params.stage));
+  if (params?.status) conds.push(eq(contacts.status, params.status));
+  if (params?.tags) conds.push(like(contacts.tags, `%${params.tags}%`));
+  if (params?.clientType) conds.push(eq(contacts.clientType, params.clientType));
+  if (params?.country) conds.push(eq(contacts.country, params.country));
+  return (conds.length ? and(...conds) : dsql`1=1`) as SQL;
+}
+
+/** 选人页瘦行：只取展示列，砍掉 extra/tags/sourceDetail 等大字段（IPC 体积 3.2MB → ~1.2MB） */
+export interface SlimContactRow {
+  id: number; email: string; companyId: number | null;
+  firstName: string | null; lastName: string | null;
+  country: string | null; language: string | null;
+  clientType: string | null; stage: string | null; status: string | null;
+  assignee: string | null; companyName: string | null;
+}
+
+export interface ListContactsParams {
+  page?: number; pageSize?: number; search?: string;
+  stage?: string; status?: string; tags?: string; clientType?: string; country?: string;
+  slim?: boolean;
+}
+
+export async function listContacts(params?: ListContactsParams): Promise<Result<{ items: (ContactRow & { companyName: string | null })[]; total: number }>>;
+export async function listContacts(params: ListContactsParams & { slim: true }): Promise<Result<{ items: SlimContactRow[]; total: number }>>;
+export async function listContacts(params: ListContactsParams = {}): Promise<Result<{ items: Array<(ContactRow & { companyName: string | null }) | SlimContactRow>; total: number }>> {
+  const page = params?.page || 1;
+  const pageSize = params?.pageSize || 50;
+  const where = buildContactWhere(params);
+
+  // 总数：COUNT 一次，不查全表
+  const total = Number(getDb().select({ n: count() })
+    .from(contacts).leftJoin(companies, eq(contacts.companyId, companies.id))
+    .where(where).get()?.n) || 0;
+
+  const slimColumns = {
+    id: contacts.id, email: contacts.email, companyId: contacts.companyId,
+    firstName: contacts.firstName, lastName: contacts.lastName,
+    country: contacts.country, language: contacts.language,
+    clientType: contacts.clientType, stage: contacts.stage, status: contacts.status,
+    assignee: contacts.assignee,
+  };
+  const fullColumns = {
+    ...slimColumns,
+    title: contacts.title, phone: contacts.phone, linkedinUrl: contacts.linkedinUrl,
+    tags: contacts.tags, extra: contacts.extra,
+    source: contacts.source, sourceDetail: contacts.sourceDetail,
+    createdAt: contacts.createdAt, updatedAt: contacts.updatedAt,
+  };
+
+  // 真分页：SQL LIMIT/OFFSET
+  const items = getDb().select({
+    ...(params?.slim ? slimColumns : fullColumns),
+    companyName: companies.name,
+  }).from(contacts).leftJoin(companies, eq(contacts.companyId, companies.id))
+    .where(where)
+    .orderBy(dsql`${contacts.updatedAt} DESC`)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize)
+    .all();
+
+  return okResult({ items, total } as { items: Array<(ContactRow & { companyName: string | null }) | SlimContactRow>; total: number });
+}
+
+/** 收件箱匹配用：全量联系人 id/email/companyName（不分页，供右侧匹配栏建邮箱索引） */
+export function listContactsForMatch(): Result<{ id: number; email: string; companyName: string | null }[]> {
+  const rows = getDb().select({
+    id: contacts.id, email: contacts.email, companyName: companies.name,
+  }).from(contacts).leftJoin(companies, eq(contacts.companyId, companies.id)).all();
+  return okResult(rows);
+}
+
+/** 解析 tags 列（JSON 数组文本 → string[]），坏 JSON/空 → [] */
+function parseTagsArr(s: string | null | undefined): string[] {
+  if (!s) return [];
+  try { const a = JSON.parse(s); return Array.isArray(a) ? a.map(String) : []; } catch { return []; }
+}
+
+/** 返回符合当前 search/筛选的**全部**联系人 id（不分页）。供前端"选择全部匹配项"跨页多选使用。 */
+export function listContactIds(params?: {
+  search?: string;
+  stage?: string; status?: string; tags?: string; clientType?: string; country?: string;
+}): Result<{ ids: number[]; total: number }> {
+  const where = buildContactWhere(params);
+  const rows = getDb().select({ id: contacts.id })
+    .from(contacts).leftJoin(companies, eq(contacts.companyId, companies.id))
+    .where(where).all();
+  const ids = rows.map(r => r.id);
+  return okResult({ ids, total: ids.length });
+}
+
+/** 批量删除联系人：逐条走级联清理 + 空壳公司回收，最后统一 saveDatabase 一次。
+ *  比前端循环调 deleteContact 快得多（后者每封都落盘一次）。 */
+export function deleteContactsBatch(rawIds: number[]): Result<{ deleted: number; companiesRemoved: number }> {
+  const ids = Array.isArray(rawIds) ? rawIds.filter((id): id is number => Number.isInteger(id) && id > 0) : [];
+  if (ids.length === 0) return failResult("没有有效的联系人 ID");
+  Log.debug("contact.deleteBatch", `${ids.length} 个`);
+
+  let deleted = 0;
+  let companiesRemoved = 0;
+  try {
+    // 整体包事务：任一联系人级联失败则整批回滚（内层 deleteContactCascade 事务退化为 savepoint）
+    getRawDb().transaction(() => {
+      for (const id of ids) {
+        const existing = getDb().select({ companyId: contacts.companyId }).from(contacts).where(eq(contacts.id, id)).get();
+        if (!existing) continue; // 不存在 → 跳过
+        deleteContactCascade(id);
+        deleted++;
+        // 公司无联系人时自动回收（与单条删除一致）
+        if (existing.companyId) {
+          const remaining = getDb().select({ id: contacts.id })
+            .from(contacts).where(eq(contacts.companyId, existing.companyId)).all();
+          if (remaining.length === 0) {
+            getDb().delete(companies).where(eq(companies.id, existing.companyId)).run();
+            companiesRemoved++;
+          }
+        }
+      }
+    })();
+    saveDatabase();
+    return okResult({ deleted, companiesRemoved });
+  } catch (err) {
+    Log.error("contact.deleteBatch", `批量删除失败`, err instanceof Error ? err.stack : String(err));
+    return failResult(`批量删除失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function upsertContact(input: Partial<InsertContactRow> & { id?: number; email?: string }): Promise<Result<ContactRow>> {
+  Log.debug("contact.upsert", `email=${input.email}`);
+  if (!input.email) return failResult("email 必填");
+  // ponytail: 空字符串 → null（clientType 等可选字段）
+  const cleanInput = Object.fromEntries(
+    Object.entries(input).map(([k, v]) => [k, v === "" ? null : v])
+  ) as typeof input;
+
+  // 编辑时按 id 定位（email 可改）；新增/导入按 email（唯一键）
+  const existing = input.id
+    ? getDb().select().from(contacts).where(eq(contacts.id, input.id)).get()
+    : getDb().select().from(contacts).where(eq(contacts.email, input.email)).get();
+  // 改邮箱时校验唯一性（避免撞 UNIQUE 约束报错）
+  if (existing && existing.email !== input.email) {
+    const dup = getDb().select().from(contacts).where(eq(contacts.email, input.email)).get();
+    if (dup) return failResult(`邮箱已被占用: ${input.email}`);
+  }
+  const now = new Date().toISOString();
+
+  // 公司名 → companyId 解析（新增/编辑联系人时传入 companyName 而非 companyId）
+  const companyName = (input as Record<string, unknown>).companyName as string | undefined;
+  const hasCompanyName = "companyName" in (input as Record<string, unknown>);
+  if (companyName) {
+    let company = getDb().select().from(companies).where(eq(companies.name, companyName)).get();
+    if (!company) {
+      getDb().insert(companies).values({ name: companyName, createdAt: now, updatedAt: now }).run();
+      company = getDb().select().from(companies).where(eq(companies.name, companyName)).get()!;
+    }
+    cleanInput.companyId = company.id;
+  } else if (hasCompanyName) {
+    // 显式传了空 companyName → 清除公司关联
+    cleanInput.companyId = null;
+  }
+  const oldCompanyId = existing?.companyId;
+  delete (cleanInput as Record<string, unknown>).companyName;
+
+  if (existing) {
+    // v4.0 status/tags 双向联动（tags = CRM 分类，固定 6 值单选）
+    const newTags = cleanInput.tags !== undefined ? parseTagsArr(cleanInput.tags) : null;
+    // 反向：设置分类（有值）且非已触达 → 强制已触达，使其进入 CRM 管线
+    if (newTags && newTags.length > 0 && existing.status !== "reached") {
+      cleanInput.status = "reached";
+    }
+    // 正向：最终状态为已触达 且 无分类 → 自动写触达中（默认值）
+    const finalStatus = cleanInput.status ?? existing.status;
+    const finalTags = newTags ?? parseTagsArr(existing.tags);
+    if (finalStatus === "reached" && finalTags.length === 0) {
+      cleanInput.tags = JSON.stringify(["reaching"]);
+    }
+    // 单向清除：status 被显式改为非 reached → 清空 tags（用户没同时设 tags 时才清）
+    if (cleanInput.status !== undefined && cleanInput.status !== "reached" && cleanInput.tags === undefined) {
+      cleanInput.tags = null;
+    }
+
+    // 合并更新：只更新传入的字段
+    getDb().update(contacts).set({
+      ...cleanInput,
+      updatedAt: now,
+    } as InsertContactRow).where(eq(contacts.id, existing.id)).run();
+
+    // 公司变更时清理旧空壳公司（含清空公司的情况）
+    const newCid = cleanInput.companyId !== undefined ? cleanInput.companyId : oldCompanyId;
+    if (oldCompanyId && oldCompanyId !== newCid) {
+      const remaining = getDb().select({ id: contacts.id })
+        .from(contacts).where(eq(contacts.companyId, oldCompanyId)).all();
+      if (remaining.length === 0) {
+        getDb().delete(companies).where(eq(companies.id, oldCompanyId)).run();
+      }
+    }
+
+    saveDatabase();
+    const updated = getDb().select().from(contacts).where(eq(contacts.id, existing.id)).get()!;
+    linkInboxForContact(updated.id, updated.email);   // 存量邮件即时挂链（改过邮箱也能当场看到往来，不必等重启）
+    nudgeSuggestions();   // 联系人变化 → 建议流热更新（沉默名单/往来匹配可能变）
+    return okResult(updated);
+  }
+
+  // 插入新联系人
+  getDb().insert(contacts).values({
+    email: input.email,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    title: input.title,
+    phone: input.phone,
+    companyId: cleanInput.companyId ?? null,
+    country: input.country,
+    language: (input as Record<string, unknown>).language as string || null,
+    clientType: input.clientType || null,
+    source: input.source || "manual",
+    status: input.status || "",
+    tags: input.tags ?? null,
+    extra: input.extra || "{}",
+    stage: input.stage || "cold",
+    createdAt: now,
+    updatedAt: now,
+  } as InsertContactRow).run();
+  saveDatabase();
+  const created = getDb().select().from(contacts).where(eq(contacts.email, input.email)).get()!;
+  linkInboxForContact(created.id, created.email);   // 新建即挂链：先收信后建档的往来历史当场可见（治「重启才同步」）
+  nudgeSuggestions();   // 新建联系人 → 建议流热更新
+
+  return okResult(created);
+}
+
+/** 删除联系人的级联清理（子表删除 + 收件箱解绑 + 删本人）。不 saveDatabase，由调用方统一持久化。 */
+export function deleteContactCascade(id: number): void {
+  // 级联清理关联数据（PRAGMA foreign_keys=ON 会阻止直接删除有引用的人）
+  // 整体包事务：中途失败自动回滚，不残留孤儿子表数据（P1 数据一致性）
+  getRawDb().transaction(() => {
+    getDb().delete(interactions).where(eq(interactions.contactId, id)).run();
+    getDb().delete(crmStages).where(eq(crmStages.contactId, id)).run();
+    getDb().delete(crmRelations).where(or(eq(crmRelations.contactIdA, id), eq(crmRelations.contactIdB, id))).run();
+    // 收件箱邮件保留，仅解除联系人关联（含退信↔被退关联表）
+    getDb().update(inboxMessages).set({ matchedContactId: null }).where(eq(inboxMessages.matchedContactId, id)).run();
+    getDb().delete(inboxBounceMatches).where(eq(inboxBounceMatches.contactId, id)).run();
+    getDb().delete(contacts).where(eq(contacts.id, id)).run();
+  })();
+}
+
+/** 公司名下已无联系人时随手清掉（单个删除与退信批量删除共用口径，防留孤儿公司） */
+export function removeCompanyIfOrphan(companyId: number | null | undefined): void {
+  if (!companyId) return;
+  const remaining = getDb().select({ id: contacts.id }).from(contacts).where(eq(contacts.companyId, companyId)).all();
+  if (remaining.length === 0) {
+    getDb().delete(companies).where(eq(companies.id, companyId)).run();
+    Log.debug("contact.delete", `已删除空壳公司 id=${companyId}`);
+  }
+}
+
+export async function deleteContact(id: number): Promise<Result<void>> {
+  Log.debug("contact.delete", `id=${id}`);
+  if (!Number.isInteger(id) || id <= 0) return failResult(`无效的 ID: ${id}`);
+  const existing = getDb().select().from(contacts).where(eq(contacts.id, id)).get();
+  if (!existing) return failResult(`联系人不存在: id=${id}`);
+  const companyId = existing.companyId;
+
+  // 内存删除（真正的删除）：SQL 异常才报失败
+  try {
+    deleteContactCascade(id);
+    removeCompanyIfOrphan(companyId);
+  } catch (err) {
+    Log.error("contact.delete", `删除失败 id=${id}`, err instanceof Error ? err.stack : String(err));
+    return failResult(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 持久化：写盘失败不阻塞删除（内存已删，30s 自动保存会重试，避免误报「删除失败」）
+  try {
+    saveDatabase();
+  } catch (err) {
+    Log.warn("contact.delete", `持久化失败 id=${id}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return okResult(undefined);
+}
+
+/**
+ * 查询联系人互动历史（详情抽屉时间线）。
+ * 与 crm.service.getDetail 的 timeline 同一套读时合并规则：
+ * interactions 只取 note/bounced/autoreply（sent/replied 由邮件行覆盖防双份）；
+ * 邮件全部取 inbox_messages（matchedContactId 或 relatedContactIds 含该联系人，抄送进来），
+ * bounce/autoreply 邮件行不重复进（由事件行表达）。历史数据无需回填，读时即一致。
+ */
+export async function getContactInteractions(id: number): Promise<Result<Array<{
+  id: number | null; type: string; direction: string; fromEmail: string | null;
+  subject: string | null; bodyPreview: string | null; createdAt: string;
+}>>> {
+  if (!Number.isInteger(id) || id <= 0) return failResult("无效的 ID");
+  const interactionRows = getDb().select().from(interactions)
+    .where(eq(interactions.contactId, id))
+    .orderBy(desc(interactions.createdAt))
+    .limit(50)
+    .all();
+  const eventRows = interactionRows
+    .filter(r => r.type === "note" || r.type === "bounced" || r.type === "autoreply")
+    .map(r => ({ id: r.id ?? null, type: r.type, direction: r.direction, fromEmail: null as string | null, subject: r.subject ?? null, bodyPreview: r.bodyPreview ?? null, createdAt: r.createdAt }));
+
+  const accountEmails = new Set(
+    getDb().select({ email: emailAccounts.email }).from(emailAccounts).all().map(a => a.email.toLowerCase()),
+  );
+  const contactEmail = (getDb().select({ email: contacts.email }).from(contacts).where(eq(contacts.id, id)).get()?.email || "").toLowerCase();
+
+  const emailEvents = getDb().select().from(inboxMessages)
+    .where(dsql`(${inboxMessages.matchedContactId} = ${id} OR instr(',' || COALESCE(${inboxMessages.relatedContactIds}, '') || ',', ',' || ${id} || ',') > 0)`)
+    .orderBy(desc(inboxMessages.receivedAt)).limit(60).all()
+    .map(e => {
+      const fromLower = (e.fromEmail || "").toLowerCase();
+      let direction: "inbound" | "outbound";
+      let type: "sent" | "replied" | "cc";
+      if (e.classification === "sent" || accountEmails.has(fromLower)) {
+        direction = "outbound"; type = "sent";
+      } else if (contactEmail && fromLower === contactEmail) {
+        direction = "inbound"; type = "replied";
+      } else {
+        direction = "inbound"; type = "cc";
+      }
+      return { id: e.id, type, direction, fromEmail: e.fromEmail, subject: e.subject, bodyPreview: e.bodyPreview, createdAt: e.receivedAt, classification: e.classification || "other" };
+    })
+    .filter(e => e.classification !== "bounce" && e.classification !== "autoreply")
+    .map(({ classification: _c, ...rest }) => rest);
+
+  const timeline = [...eventRows, ...emailEvents]
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+    .slice(0, 80);
+  return okResult(timeline);
+}
+
+/** 更新联系人状态（send/inbox 引擎调用） */
+export function updateContactStatus(id: number, status: string): void {
+  const set: { status: string; updatedAt: string; tags?: string } = {
+    status, updatedAt: new Date().toISOString(),
+  };
+  // v4.0 正向联动：状态改为已触达 且 无分类 → 自动写触达中
+  if (status === "reached") {
+    const contact = getDb().select().from(contacts).where(eq(contacts.id, id)).get();
+    if (contact && parseTagsArr(contact.tags).length === 0) set.tags = JSON.stringify(["reaching"]);
+  }
+  getDb().update(contacts).set(set as InsertContactRow).where(eq(contacts.id, id)).run();
+  saveDatabase();
+}
+
+/** 标记退信（退信原因记录在 interactions type=bounced） */
+export function markAsBounced(id: number): void {
+  getDb().update(contacts).set({
+    status: "bounced",
+    updatedAt: new Date().toISOString(),
+  } as InsertContactRow).where(eq(contacts.id, id)).run();
+  saveDatabase();
+}
+
+// ── 批量导入 ──
+
+export interface ImportPreview {
+  headers: string[];
+  previewRows: string[][];
+  totalRows: number;
+  suggestedMapping: Record<string, string>;
+  duplicateEmails: string[];
+}
+
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+}
+
+export async function importContacts(params: {
+  mode: "preview"; type: "csv" | "xlsx" | "tsv"; data: string;
+}): Promise<Result<ImportPreview>>;
+export async function importContacts(params: {
+  mode: "execute"; type: "csv" | "xlsx" | "tsv"; data: string; mapping: Record<string, string>;
+}): Promise<Result<ImportResult>>;
+export async function importContacts(params: {
+  mode: "preview" | "execute";
+  type?: "csv" | "xlsx" | "tsv";
+  data?: string;
+  mapping?: Record<string, string>;
+}): Promise<Result<ImportPreview | ImportResult>> {
+  if (params.mode === "preview") {
+    Log.debug("contact.importPreview", `type=${params.type}`);
+    if (!params.data) return failResult("数据为空");
+    const allRows = parseRows(params.type!, params.data);
+    if (allRows.length < 2) return failResult("至少需要一行表头 + 一行数据");
+
+    const headerRow = allRows[0]!;
+    const headers = headerRow.map(c => String(c ?? "").trim()).filter(h => h !== "");
+    if (headers.length === 0) return failResult("表头为空");
+    const dataRows = allRows.slice(1).map(row => headers.map((_, i) => String(row[i] ?? "").trim()));
+    const previewRows = dataRows.slice(0, 20);
+    const suggestedMapping = autoMap(headers);
+
+    // 检测预览中已在库的邮箱
+    const emailCol = headers.find(h => suggestedMapping[h] === "email");
+    const duplicateEmails: string[] = [];
+    if (emailCol) {
+      const emailIdx = headers.indexOf(emailCol);
+      const existingSet = new Set(
+        getDb().select({ e: contacts.email }).from(contacts).all().map(r => r.e.toLowerCase()),
+      );
+      for (const row of dataRows) {
+        const e = (row[emailIdx] || "").toLowerCase().trim();
+        if (e && existingSet.has(e)) duplicateEmails.push(e);
+      }
+    }
+
+    return okResult({ headers, previewRows, totalRows: dataRows.length, suggestedMapping, duplicateEmails });
+  }
+
+  // ── execute ──
+  Log.debug("contact.importExecute", `type=${params.type}`);
+  const allRows = parseRows(params.type!, params.data!);
+  if (allRows.length < 2) return failResult("数据为空");
+  const headerRow = allRows[0]!;
+  const headers = headerRow.map(c => String(c ?? "").trim()).filter(h => h !== "");
+  const dataRows = allRows.slice(1).map(row => headers.map((_, i) => String(row[i] ?? "").trim()));
+  const mapping = params.mapping!;
+
+  const emailHeader = headers.find(h => mapping[h] === "email");
+  if (!emailHeader) return failResult("未映射 email 列");
+  const emailIdx = headers.indexOf(emailHeader);
+  const now = new Date().toISOString();
+
+  const existingSet = new Set(
+    getDb().select({ e: contacts.email }).from(contacts).all().map(r => r.e.toLowerCase()),
+  );
+
+  let imported = 0, skipped = 0;
+  const importedEmails: string[] = [];
+
+  // 公司 Map 预载 + 全程单事务：1500+ 行导入原先逐行查公司（无索引全表扫）+ 每行一个隐式事务
+  // （每行一次 WAL fsync），是导入时整程序冻死的主因之一。
+  const companyMap = new Map<string, { id: number; domain: string | null }>(
+    getDb().select().from(companies).all().map(c => [c.name, { id: c.id, domain: c.domain }]),
+  );
+
+  const runImport = getRawDb().transaction(() => {
+    for (const row of dataRows) {
+      const email = (row[emailIdx] || "").toLowerCase().trim();
+      if (!email) { skipped++; continue; }
+      if (existingSet.has(email)) { skipped++; continue; }
+
+      // 收集映射字段
+      const fields: Record<string, string> = {};
+      for (const [header, field] of Object.entries(mapping)) {
+        if (!field || field === "email") continue;
+        const idx = headers.indexOf(header);
+        const val = (row[idx] || "").trim();
+        if (val) fields[field] = val;
+      }
+
+      // 旧 PE 中文值 → 新系统 key 翻译
+      const STAGE_XLATE: Record<string, string> = {
+        "冷开发": "cold", "跟进1": "f1", "跟进2": "f2", "跟进3": "f3", "跟进4": "f4",
+        "f1": "f1", "f2": "f2", "f3": "f3", "f4": "f4",
+      };
+      const STATUS_XLATE: Record<string, string> = {
+        "未触达": "", "已触达": "reached", "有回复": "replied", "已回复": "replied",
+        "退信": "bounced", "自动回复": "autoreply",
+      };
+      const CTYPE_XLATE: Record<string, string> = { "代理": "agent", "直客": "direct", "同行": "agent" };
+      if (fields.stage) {
+        if (STAGE_XLATE[fields.stage] !== undefined) fields.stage = STAGE_XLATE[fields.stage]!;
+        else fields.stage = fields.stage.toLowerCase(); // 大小写归一化（F1→f1）
+      }
+      if (fields.status !== undefined && STATUS_XLATE[fields.status] !== undefined) fields.status = STATUS_XLATE[fields.status]!;
+      if (fields.clientType && CTYPE_XLATE[fields.clientType]) fields.clientType = CTYPE_XLATE[fields.clientType]!;
+
+      // 公司名 → companyId（Map 命中零查询；新公司插完即入 Map，同批同名公司只建一次）
+      let companyId: number | null = null;
+      if (fields.companyName) {
+        let company = companyMap.get(fields.companyName);
+        if (!company) {
+          getDb().insert(companies).values({
+            name: fields.companyName,
+            domain: fields.companyDomain || null,
+            createdAt: now, updatedAt: now,
+          }).run();
+          // last_insert_rowid() 跨驱动稳(sql.js / better-sqlite3 都支持)，不赌 drizzle run() 返回形状
+          const got = getRawDb().prepare("SELECT last_insert_rowid() AS id").get() as { id: number };
+          company = { id: Number(got.id), domain: fields.companyDomain || null };
+          companyMap.set(fields.companyName, company);
+        } else if (fields.companyDomain && !company.domain) {
+          getDb().update(companies).set({ domain: fields.companyDomain, updatedAt: now })
+            .where(eq(companies.id, company.id)).run();
+          company.domain = fields.companyDomain;
+        }
+        companyId = company.id;
+        delete fields.companyName;
+      }
+      delete fields.companyDomain;
+
+      // 备注 / 退信原因 → extra JSON
+      let extra: Record<string, unknown> = {};
+      if (fields.extraNote) {
+        extra.note = fields.extraNote;
+        delete fields.extraNote;
+      }
+
+      const insert: Record<string, unknown> = {
+        email,
+        companyId,
+        source: "import",
+        stage: fields.stage || "cold",
+        status: fields.status || "",
+        extra: Object.keys(extra).length > 0 ? JSON.stringify(extra) : "{}",
+        createdAt: fields.createdAt || now,
+        updatedAt: now,
+      };
+      delete fields.createdAt;
+      delete fields.status;
+      // ponytail: 字段已写入 insert，从 fields 中移除避免重复写
+      for (const [k, v] of Object.entries(fields)) {
+        if (k === "stage") continue;
+        insert[k] = v;
+      }
+
+      try {
+        getDb().insert(contacts).values(insert as InsertContactRow).run();
+        imported++;
+        importedEmails.push(email);
+        existingSet.add(email);
+      } catch (err) {
+        Log.warn("contact.import", `跳过 ${email}: ${err instanceof Error ? err.message : String(err)}`);
+        skipped++;
+      }
+    }
+  });
+  runImport();
+
+  if (imported > 0) {
+    saveDatabase();
+    // 导入的联系人也可能早已来过信（先收信后导入档案）：当场挂链，别等重启跑迁移。
+    // 分块按唯一索引取回 id（原先逐邮箱 lower(email) 全表扫），再批量一次扫描收件箱回填
+    const importedEntries: Array<{ contactId: number; email: string }> = [];
+    for (let i = 0; i < importedEmails.length; i += 500) {
+      const chunk = importedEmails.slice(i, i + 500);
+      const rows = getDb().select({ id: contacts.id, email: contacts.email }).from(contacts)
+        .where(inArray(contacts.email, chunk)).all();
+      for (const r of rows) importedEntries.push({ contactId: r.id, email: r.email });
+    }
+    linkInboxForContacts(importedEntries);
+    nudgeSuggestions();
+  }
+  Log.info("contact.import", `导入 ${imported} 条，跳过 ${skipped} 条`);
+  return okResult({ imported, skipped });
+}

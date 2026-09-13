@@ -1,0 +1,368 @@
+import { ipcMain, BrowserWindow } from "electron";
+import * as nodemailer from "nodemailer";
+import { IPC } from "../contract";
+import * as SendService from "../services/send.service";
+import * as CampaignService from "../services/campaign.service";
+import { Log } from "../logger";
+import { failResult, okResult, type Result } from "../errors";
+import { getDb } from "../db";
+import { emailAccounts } from "../db/schema/accounts";
+import { contacts } from "../db/schema/contacts";
+import { companies } from "../db/schema/companies";
+import { eq } from "drizzle-orm";
+import { getDecryptedPassword } from "../services/account.service";
+import { loadConfig, saveConfig } from "../config";
+import { embedInlineImages } from "../services/inline-images";
+import { netFetch } from "../net-proxy";
+import * as fs from "fs";
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+}
+const isHtml = (s: string) => /<[a-z][\s\S]*>/i.test(s);
+
+/**
+ * 取图片字节：file:/// 与本地绝对路径读盘；http(s) 走 netFetch。读不到/超大一律 null——发信不因此失败
+ * （裂图风险有日志与签名保存期提示）。为什么必须转 cid：客户端会过滤 base64 内联图，
+ * 而 file:///、局域网 http、Word/Outlook 粘贴带来的悬空 cid 引用，收件人端更是必然看不到。
+ */
+const IMG_MAX_BYTES = 4 * 1024 * 1024;
+
+/** file:///C:/x.png、file:///C:\x、C:/x、/srv/x、\\nas\x → 可读的本地路径 */
+function localPathFromSrc(src: string): string | null {
+  let s = src.trim();
+  if (/^file:/i.test(s)) {
+    s = decodeURIComponent(s.replace(/^file:\/\/\/?/i, "").split("?")[0] ?? "");
+    if (/^[a-z]:[\\/]/i.test(s)) return s.replace(/\//g, "\\");      // Windows：C:/x → C:\x
+    return s;
+  }
+  if (/^[a-z]:[\\/]/i.test(s) || s.startsWith("/") || s.startsWith("\\\\")) {
+    return decodeURIComponent(s.split("?")[0] ?? "");
+  }
+  return null;
+}
+
+function extOf(name: string, mime?: string | null): string {
+  if (mime) {
+    if (mime.includes("png")) return "png";
+    if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+    if (mime.includes("gif")) return "gif";
+    if (mime.includes("webp")) return "webp";
+  }
+  const m = /\.(png|jpe?g|gif|webp|bmp)/i.exec(name);
+  const e = m?.[1]?.toLowerCase();
+  return !e ? "png" : e === "jpeg" ? "jpg" : e;
+}
+
+async function loadInlineImage(src: string): Promise<{ buffer: Buffer; ext: string } | null> {
+  const local = localPathFromSrc(src);
+  if (local) {
+    try {
+      const buf = await fs.promises.readFile(local);
+      if (!buf.length || buf.length > IMG_MAX_BYTES) return null;
+      return { buffer: buf, ext: extOf(local) };
+    } catch (err) {
+      Log.debug("send.image", `本地图片读不到：${local}（${err instanceof Error ? err.message : "?"}）`);
+      return null;
+    }
+  }
+  if (/^https?:\/\//i.test(src)) {
+    try {
+      const res = await netFetch(src, { headers: { Accept: "image/*" } });
+      if (!res.ok) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (!buf.length || buf.length > IMG_MAX_BYTES) return null;
+      return { buffer: buf, ext: extOf(src.split("?")[0] ?? "", res.headers.get("content-type")) };
+    } catch (err) {
+      Log.debug("send.image", `远程图片拉不到：${src.slice(0, 80)}（${err instanceof Error ? err.message : "?"}）`);
+      return null;
+    }
+  }
+  return null;
+}
+
+
+
+// ── SMTP 连接池（按账号缓存）─────────────────────────────────────
+// 旧实现每发一封都新建连接（TCP+TLS+AUTH 全套握手），大批次整批耗时被握手放大。
+// 改为 pooled transporter 按账号复用（maxConnections:1 与全局串行调度匹配）：
+// 缓存键含 host/port/密码指纹 → 账号改配置自动重建，不会拿旧凭据硬发；
+// 发送成功保留连接，发送失败立即剔除（下次重连新鲜连接，坏连接不会反复失败）。
+type PooledTransporter = {
+  sendMail: (opts: Record<string, unknown>) => Promise<{ messageId?: string }>;
+  close: () => void;
+};
+const transporterPool = new Map<number, { transporter: PooledTransporter; key: string }>();
+
+function passFingerprint(pass: string): string {
+  let h = 5381;
+  for (let i = 0; i < pass.length; i++) h = ((h << 5) + h + pass.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+function acquireTransporter(account: { id: number; email: string; smtpHost: string | null; smtpPort: number | null }, pass: string): PooledTransporter {
+  const port = account.smtpPort || 587;
+  const key = `${account.smtpHost}|${port}|${passFingerprint(pass)}`;
+  const hit = transporterPool.get(account.id);
+  if (hit && hit.key === key) return hit.transporter;
+  if (hit) {
+    try { hit.transporter.close(); } catch { /* 已断 */ }
+    transporterPool.delete(account.id);
+    Log.debug("send.pool", `账号 ${account.email} 配置变更，重建连接`);
+  }
+  const transporter = nodemailer.createTransport({
+    host: account.smtpHost || "",
+    port,
+    secure: port === 465,
+    requireTLS: true, // P0-3: 587/25 等端口强制 STARTTLS，拒绝明文发信（465 隐式 TLS 不受影响）
+    auth: { user: account.email, pass },
+    pool: true, maxConnections: 1, maxMessages: 100,
+    connectionTimeout: 15000, socketTimeout: 15000,
+  }) as unknown as PooledTransporter;
+  transporterPool.set(account.id, { transporter, key });
+  return transporter;
+}
+
+function evictTransporter(accountId: number, why: string): void {
+  const hit = transporterPool.get(accountId);
+  if (!hit) return;
+  try { hit.transporter.close(); } catch { /* 已断 */ }
+  transporterPool.delete(accountId);
+  Log.debug("send.pool", `剔除连接（${why}）`);
+}
+
+/** 池化连接被服务端闲置掐断的典型报错：不算真失败，换新连接重试一次 */
+function idleConnectionError(msg: string): boolean {
+  return /idle|connection|socket|ECONNRESET|EPIPE|timed?\s?out/i.test(msg);
+}
+
+/** 发送一封邮件（v6.1 发送方式可切换）：individual=单独一封，收件人走 To（像人工手发）；
+ *  缺省 bcc=收件人全走 BCC 互不可见。账号从 DB email_accounts 表读取（唯一数据源），密码解密后传给 nodemailer。 */
+async function sendBcc(item: SendService.SendItem & { body: string }): Promise<Result<{ messageId: string | null }>> {
+  const account = getDb().select().from(emailAccounts).where(eq(emailAccounts.id, item.accountId)).get();
+  if (!account) return failResult("账号未找到");
+
+  const passRes = getDecryptedPassword(account.id);
+  if (!passRes.success) return failResult("账号密码解密失败: " + passRes.error);
+
+  try {
+    const config = loadConfig();
+    const displayName = account.displayName || config.fromName || "";
+    const emails = item.recipients.map(r => r.email);
+    const signature = (account.signature || "").trim();
+    const body = item.body || "Hello, I hope this email finds you well.\n\nBest regards";
+
+    const from = displayName ? `"${displayName}" <${account.email}>` : account.email;
+    const subject = item.subject || "Regarding our logistics partnership";
+
+    // 抄送：抄送方放 CC（对客户可见，用于同事存档）
+    const ccList = (item.cc || "").split(/[,;]/).map(s => s.trim()).filter(Boolean);
+    const ccField = ccList.length > 0 ? { cc: ccList } : {};
+    // 单发收件人走 To；合并收件人走 BCC（互不可见）
+    const rcptField = item.sendMode === "individual" ? { to: emails } : { bcc: emails };
+
+    let mailOptions: Record<string, unknown>;
+    if (isHtml(body) || isHtml(signature)) {
+      const bodyHtml = isHtml(body) ? body : escapeHtml(body).replace(/\n/g, "<br>");
+      const sigHtml = isHtml(signature) ? signature : escapeHtml(signature).replace(/\n/g, "<br>");
+      const embedded = await embedInlineImages(bodyHtml + (sigHtml ? `<br><br>${sigHtml}` : ""), loadInlineImage);
+      const { html, attachments } = embedded;
+      if (embedded.unresolved.length) {
+        Log.warn("send.image", `${embedded.unresolved.length} 处图片引用发信端取不到（悬空 cid:/相对路径/读不到），`
+          + `收件人可能看到裂图——请把这些图片直接粘贴进签名（会自动转内嵌）：${embedded.unresolved.slice(0, 3).join(" | ")}`);
+      }
+      mailOptions = {
+        from, ...rcptField, ...ccField, subject,
+        text: stripHtml(body + (signature ? `\n\n${signature}` : "")),
+        html,
+        attachments,
+      };
+    } else {
+      mailOptions = {
+        from, ...rcptField, ...ccField, subject,
+        text: body + (signature ? `\n\n${signature}` : ""),
+      };
+    }
+
+    let info: { messageId?: string } | null = null;
+    try {
+      info = await acquireTransporter(account, passRes.data).sendMail(mailOptions);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      evictTransporter(account.id, msg.slice(0, 60));
+      // 池化连接闲置被掐：换新连接原参数重试一次，不计为发送失败（防误触连续失败/熔断）
+      if (idleConnectionError(msg)) {
+        Log.debug("send.pool", `闲置连接断开，重连重试：${msg.slice(0, 60)}`);
+        info = await acquireTransporter(account, passRes.data).sendMail(mailOptions);
+      } else {
+        return failResult(msg);
+      }
+    }
+    Log.debug("send.bcc", `${item.companyName}: ${emails.length} 人`);
+    return okResult({ messageId: info?.messageId || null });
+  } catch (err: unknown) {
+    return failResult(err instanceof Error ? err.message : "发送失败");
+  }
+}
+
+function createPushFn() {
+  return (c: string, d: unknown) => { try { BrowserWindow.getAllWindows()[0]?.webContents.send(c, d); } catch { /* */ } };
+}
+
+export function registerSendIPC() {
+  SendService.setSendBccFn(sendBcc);
+  SendService.setPushFn(createPushFn());
+  SendService.setSaveConfigFn((c) => { try { saveConfig(c); } catch { /* */ } });
+
+  ipcMain.handle(IPC.SEND.START, (_e, payload: { keys: string[]; templates?: SendService.SendTemplate[]; autoStart?: boolean; contactIds?: number[] }) => {
+    const hasTargets = (payload?.keys && payload.keys.length > 0) || (payload?.contactIds && payload.contactIds.length > 0);
+    if (!hasTargets) return failResult("请选择发送对象");
+    // autoStart 缺省为 true 保持旧行为；前端传 false = 只入队，等队列页手动开始。contactIds 直选（新选人表格）优先于分桶 keys
+    return SendService.startSend(payload.keys || [], payload.templates, payload.autoStart !== false, payload.contactIds);
+  });
+  ipcMain.handle(IPC.SEND.PAUSE, () => SendService.pauseSend());
+  ipcMain.handle(IPC.SEND.RESUME, () => SendService.resumeSend());
+  ipcMain.handle(IPC.SEND.CANCEL, () => SendService.cancelSend());
+  ipcMain.handle(IPC.SEND.STATUS, () => SendService.getSendStatus());
+  ipcMain.handle(IPC.SEND.GET_QUEUE, () => SendService.getQueueItems());
+  ipcMain.handle(IPC.SEND.RESUME_QUEUE, () => SendService.resumeQueue());
+  ipcMain.handle(IPC.SEND.GET_TIME_BUCKETS, () => SendService.getTimeBuckets());
+  ipcMain.handle(IPC.SEND.GET_STAGE_BUCKETS, () => SendService.getStageBuckets());
+  ipcMain.handle(IPC.SEND.GET_SEND_TIME_BUCKETS, () => SendService.getSendTimeBuckets());
+  ipcMain.handle(IPC.SEND.GET_PICKER_STATS, () => SendService.getPickerStats());
+  ipcMain.handle(IPC.SEND.GET_QUOTA, () => ({ success: true as const, data: SendService.getQuotaStatus() }));
+  ipcMain.handle(IPC.SEND.PREVIEW, (_e, payload) => {
+    // 句库预览：{ lang, clientType, stage }
+    if (typeof payload?.lang === "string") {
+      return SendService.previewSentence(payload.lang, payload.clientType, payload.stage);
+    }
+    // 收件人预览：{ keys, templates? } — 无模板时自适应组装
+    if (payload?.keys && Array.isArray(payload.keys)) {
+      if (payload.keys.length === 0) return failResult("请选择至少一个时间桶");
+      if (payload.templates && payload.templates.length > 0) {
+        return SendService.buildQueue(payload.keys, payload.templates);
+      }
+      return SendService.buildAdaptiveQueue(payload.keys);
+    }
+    // 单模板预览：{ subject, body }
+    if (!payload?.subject || !payload?.body) return failResult("模板不完整");
+    return SendService.previewTemplate(payload);
+  });
+
+  ipcMain.handle(IPC.SEND.DYNAMIC, async (_e, input: { contactIds: number[]; subject: string; body: string; autoStart?: boolean; cc?: string }) => {
+    if (!input?.contactIds || !Array.isArray(input.contactIds) || input.contactIds.length === 0) return failResult("请选择联系人");
+    if (!input?.subject?.trim()) return failResult("主题必填");
+    if (!input?.body?.trim()) return failResult("正文必填");
+    const cc = (input.cc || "").trim();
+    // 邮箱格式校验 — 地址写错会导致整批 SMTP 拒收
+    if (cc) {
+      const bad = cc.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+        .filter(e => !SendService.isValidEmail(e));
+      if (bad.length > 0) return failResult(`抄送邮箱格式错误: ${bad.join(", ")}`);
+    }
+    return SendService.startDynamicSend(input.contactIds, input.subject, input.body, input.autoStart !== false, cc || undefined);
+  });
+
+  // ── 发信任务（Campaign，docs/smart-send-spec.md）────────────────
+  ipcMain.handle(IPC.SEND.CAMPAIGNS, () => okResult(CampaignService.getCampaignOverview()));
+  ipcMain.handle(IPC.SEND.CAMPAIGN_DETAIL, (_e, id: string) => {
+    if (!id?.trim()) return failResult("缺少任务 id");
+    return CampaignService.getCampaignDetail(id.trim());
+  });
+  ipcMain.handle(IPC.SEND.CAMPAIGN_CONTROL, (_e, input: { campaignId?: string; action?: string }) => {
+    const action = (input?.action ?? "").trim().toLowerCase();
+    if (!["pause", "resume", "stop", "restart"].includes(action)) return failResult("action 仅支持 pause/resume/stop/restart");
+    if (!input?.campaignId?.trim()) return failResult("缺少任务 id");
+    // restart：done → 新周期（fixed 轮内容已清空时转回草稿待补，service 内有完整判定）
+    if (action === "restart") {
+      const r = CampaignService.restartCampaign(input.campaignId.trim());
+      if (r.success) void CampaignService.scanDueCampaigns();
+      return r;
+    }
+    const status = action === "pause" ? "paused" : action === "resume" ? "running" : "stopped";
+    const r = CampaignService.setCampaignStatus(input.campaignId.trim(), status);
+    // 启动（草稿/暂停 → 运行）后立刻扫一轮到期触点：用户点了启动就该马上有动静，不等 10 分钟调度周期
+    if (r.success && action === "resume") void CampaignService.scanDueCampaigns();
+    return r;
+  });
+  // 任务创建向导（UI 入口）：预览 / 创建 / 草稿编辑。入参结构由 service 层校验，transport 只做存在性检查
+  type CampaignInput = Parameters<typeof CampaignService.createCampaign>[0];
+  ipcMain.handle(IPC.SEND.CAMPAIGN_PREVIEW, (_e, contactIds: number[]) => {
+    if (!Array.isArray(contactIds)) return failResult("缺少名单");
+    return CampaignService.previewCampaign(contactIds);
+  });
+  ipcMain.handle(IPC.SEND.CAMPAIGN_CREATE, (_e, input: CampaignInput) => {
+    if (!input || typeof input !== "object") return failResult("缺少任务参数");
+    const r = CampaignService.createCampaign({ ...input, createdBy: "ui" });
+    // 创建即运行 → 立刻扫一轮到期触点，用户不用干等 10 分钟调度周期
+    if (r.success && input.startNow !== false) void CampaignService.scanDueCampaigns();
+    return r;
+  });
+  ipcMain.handle(IPC.SEND.CAMPAIGN_UPDATE_DRAFT, (_e, input: { campaignId?: string } & CampaignInput) => {
+    if (!input?.campaignId?.trim()) return failResult("缺少任务 id");
+    const { campaignId, ...rest } = input;
+    return CampaignService.updateCampaignDraft(campaignId!.trim(), { ...rest, createdBy: "ui" });
+  });
+  // 删除任务（触点账本一起删，发送历史保留）；running/paused 由 service 拒删
+  ipcMain.handle(IPC.SEND.CAMPAIGN_DELETE, (_e, id: string) => {
+    if (!id?.trim()) return failResult("缺少任务 id");
+    return CampaignService.deleteCampaign(id.trim());
+  });
+
+  ipcMain.handle(IPC.SEND.TEST, async (_e, input: {
+    to: string; accountId: number; subject?: string; body?: string; contactId?: number;
+  }) => {
+    if (!input?.to) return failResult("收件人必填");
+    if (!input?.accountId) return failResult("发件账号必填");
+
+    // 发信阻隔：带 contactId = CRM 快速发信，收件人是真实客户，必须挡。
+    // 设置页的「测试发信」不传 contactId，仍可发出去验证 SMTP 配置。
+    if (input.contactId && loadConfig().test.dryRun) {
+      Log.info("send.dryRun", `CRM 快速发信 → ${input.to}：测试模式，跳过真实发送`);
+      return okResult({ messageId: null });
+    }
+
+    // 渲染：有 contactId → 用真实联系人数据；否则用虚拟数据
+    let name = "Test User";
+    let company = "ACME Corp";
+    let companyId = 0;
+    let firstName = "Test";
+    let lastName = "User";
+    let contactId = 0;
+
+    if (input.contactId) {
+      const c = getDb().select().from(contacts).where(eq(contacts.id, input.contactId)).get();
+      if (c) {
+        firstName = c.firstName || "Test";
+        lastName = c.lastName || "User";
+        name = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email;
+        contactId = c.id;
+        if (c.companyId) {
+          const comp = getDb().select().from(companies).where(eq(companies.id, c.companyId)).get();
+          if (comp) { company = comp.name; companyId = comp.id; }
+        }
+      }
+    }
+
+    const subject = (input.subject || "Test")
+      .replace(/\{\{firstName\}\}/g, firstName)
+      .replace(/\{\{lastName\}\}/g, lastName)
+      .replace(/\{\{company\}\}/g, company)
+      .replace(/\{\{email\}\}/g, input.to);
+    const body = (input.body || "Test email from Prospector.")
+      .replace(/\{\{firstName\}\}/g, firstName)
+      .replace(/\{\{lastName\}\}/g, lastName)
+      .replace(/\{\{company\}\}/g, company)
+      .replace(/\{\{email\}\}/g, input.to);
+    return sendBcc({
+      id: "crm", companyName: company, companyId,
+      recipients: [{ contactId, email: input.to, name }],
+      accountId: input.accountId, subject, body, status: "sending",
+      tplBody: "", contactVars: { email: input.to },
+    });
+  });
+}

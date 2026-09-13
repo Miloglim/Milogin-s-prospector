@@ -1,0 +1,88 @@
+import { useRef, useEffect } from "react";
+import type { CSSProperties, ClipboardEvent } from "react";
+import { deadImageRefs } from "../lib/signature";
+import { sanitizeHtml } from "../lib/sanitize";
+
+/** contenteditable 富文本编辑器 — 粘贴保留 HTML 格式，图片转 base64 data URL。
+ *  兼容 antd Form.Item：接收 value/onChange 作为受控组件。 */
+export function RichTextEditor({ value, onChange, placeholder, style, className }: {
+  value?: string;
+  onChange?: (html: string) => void;
+  placeholder?: string;
+  style?: CSSProperties;
+  className?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // 外部 value 变化 → 同步（非聚焦时，避免打断输入）
+  useEffect(() => {
+    const el = ref.current;
+    if (el && document.activeElement !== el) {
+      const next = value || "";
+      if (el.innerHTML !== next) el.innerHTML = next;
+    }
+  }, [value]);
+
+  const emit = () => {
+    const el = ref.current;
+    if (!el || !onChange) return;
+    const html = el.innerHTML || "";
+    // 空内容归一为 ""，避免 "<br>" 被判为有值
+    onChange(el.textContent?.trim() ? html : "");
+  };
+
+  // 图片粘贴 → base64 data URL（否则剪贴板图片以 blob/file 引用插入，保存后失效）
+  const handlePaste = (e: ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const el = ref.current;
+          if (el) el.focus();
+          document.execCommand("insertHTML", false, `<img src="${reader.result}" style="max-width:100%;" />`);
+          emit();
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  const dead = deadImageRefs(value);
+  return (
+    <>
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        className={`rich-editor ${className || ""}`}
+        style={{ minHeight: 60, ...style }}
+        onInput={emit}
+        onBlur={emit}
+        onPaste={handlePaste}
+        data-placeholder={placeholder || ""}
+      />
+      {dead.length > 0 && (
+        <div className="text-[11px] text-amber-600 mt-1">
+          有 {dead.length} 处图片引用收件人会看不到（如「{dead[0]}」——从 Word/Outlook 复制的签名常留这种引用）。
+          请删掉它们，改用「直接粘贴图片」插入：粘贴的图片会自动内嵌进邮件，发出去不会裂。
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 渲染 HTML 或纯文本（模板/签名/邮件正文预览用），内容可选中。
+ *  外部来源 HTML（邮件正文、AI 草稿）一律先消毒再渲染，防 XSS 注入。 */
+export function HtmlText({ html, className }: { html: string; className?: string }) {
+  const isHtml = /<[a-z][\s\S]*>/i.test(html || "");
+  const cls = `selectable ${className || ""}`;
+  if (isHtml) {
+    return <div className={cls} dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />;
+  }
+  return <div className={`${cls} whitespace-pre-wrap`}>{html}</div>;
+}

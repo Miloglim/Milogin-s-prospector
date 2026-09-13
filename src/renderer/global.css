@@ -1,0 +1,478 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background: #f5f5f5;
+  color: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 内容区可选中（覆盖 body 的全局 user-select:none，用于正文/信息栏/预览） */
+.selectable { user-select: text; -webkit-user-select: text; }
+
+/* 富文本编辑器占位符 */
+.rich-editor { outline: none; }
+.rich-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #bbb;
+}
+
+/* 滚动条 — 全局唯一样式（纵向+横向、antd 表格/Markdown 表格/所有容器统一）：
+   命中区 10px、视觉 4px 细胶囊（border+clip 撑命中区）、淡灰常显、hover 加深 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #e2e2e2;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c4c4c4;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
+/* 会话消息列表：antd-x 自带方形滚动条（thumb 圆角 = borderRadiusSM），压成全局同款胶囊 */
+.ant-bubble-list::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+.ant-bubble-list::-webkit-scrollbar-thumb {
+  background: #e2e2e2;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+.ant-bubble-list::-webkit-scrollbar-thumb:hover {
+  background: #c4c4c4;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+/* 自定义标题栏 — 无边框窗口 */
+.titlebar-drag { -webkit-app-region: drag; z-index: 1100; position: relative; }
+.titlebar-nodrag { -webkit-app-region: no-drag; }
+
+/* 暗色侧边栏菜单覆盖 */
+.ant-menu-dark { background: #1a1a1a !important; }
+.ant-menu-dark .ant-menu-item-selected {
+  background: rgba(255,255,255,0.14) !important;
+  border-left: 3px solid #00bfa5 !important;
+}
+
+/* 页面标题 */
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: #1a1a1a;
+}
+
+/* 统计卡片 */
+.stat-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px 16px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.stat-value { font-size: 32px; font-weight: 700; color: #1a1a1a; }
+.stat-label { font-size: 12px; color: #6b6b6b; margin-top: 4px; }
+
+/* 过滤标签 */
+.filter-tab {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  background: #fff;
+  color: #6b6b6b;
+  cursor: pointer;
+}
+.filter-tab.active {
+  background: #1a1a1a;
+  color: #fff;
+  border-color: #1a1a1a;
+}
+
+/* 阶段徽标 */
+.stage-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* 状态点 */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ═══ 设置页动效 ═══ */
+
+@keyframes section-enter {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.settings-section {
+  position: relative;
+  animation: section-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.settings-section:nth-child(2) { animation-delay: 0.06s; }
+.settings-section:nth-child(3) { animation-delay: 0.12s; }
+.settings-section:nth-child(4) { animation-delay: 0.18s; }
+
+/* 导航定位到某分区时的一圈青色描边+轻填充（独立伪元素，不抢 section-enter 动画） */
+@keyframes sec-locate {
+  0%   { opacity: 0; box-shadow: 0 0 0 0 rgba(0,191,165,0); }
+  22%  { opacity: 1; }
+  40%  { opacity: 1; box-shadow: 0 0 0 2px rgba(0,191,165,.85), 0 0 22px 6px rgba(0,191,165,.16); }
+  100% { opacity: 0; box-shadow: 0 0 0 0 rgba(0,191,165,0); }
+}
+.settings-section.is-located::after {
+  content: "";
+  position: absolute;
+  inset: -6px -8px;
+  border-radius: 12px;
+  background: rgba(0,191,165,.05);
+  border: 1.5px solid rgba(0,191,165,.7);
+  pointer-events: none;
+  opacity: 0;
+  animation: sec-locate 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* 动态更新面板 — 顺滑展开 */
+@keyframes dynamic-enter {
+  from { opacity: 0; transform: translateY(-10px); max-height: 0; }
+  to { opacity: 1; transform: translateY(0); max-height: 1200px; }
+}
+.dynamic-enter { animation: dynamic-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1); overflow: hidden; }
+
+.setting-card {
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.25s ease;
+}
+.setting-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  border-color: #d4d4d4;
+}
+
+@keyframes save-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(0, 191, 165, 0.4); }
+  100% { box-shadow: 0 0 0 8px rgba(0, 191, 165, 0); }
+}
+.save-pulse { animation: save-pulse 0.8s ease-out; }
+
+/* 联系人详情 — 头部+Tab导航固定，仅内容滚动，隐藏滚动条 */
+.contact-detail-tabs { display: flex !important; flex-direction: column !important; flex: 1; min-height: 0; }
+.contact-detail-tabs .ant-tabs-nav { flex-shrink: 0; }
+.contact-detail-tabs .ant-tabs-content-holder { flex: 1; min-height: 0; overflow-y: auto; }
+.contact-detail-tabs .ant-tabs-content-holder::-webkit-scrollbar { width: 0; display: none; }
+.crm-detail-scroll::-webkit-scrollbar { width: 0; display: none; }
+
+/* 操作列按钮：无色→悬停显色 */
+.btn-hover-color:not(.ant-btn-disabled):hover { color: #1a1a1a !important; }
+.btn-hover-color:last-child:not(.ant-btn-disabled):hover { color: #e5484d !important; }
+/* 固定列（右侧功能栏等）行悬停底色：主题的 rowHoverBg 是半透明黑（rgba .015），
+   贴在 fixed 单元格上会让下层横向滚来的标签透出来、与按钮叠在一起。
+   压成「半透明黑叠白」后的同款实心浅灰：视觉不变，不再透下 */
+.ant-table-cell-fix-right.ant-table-cell-row-hover,
+.ant-table-cell-fix-left.ant-table-cell-row-hover {
+  background: #fbfbfb !important;
+}
+/* 选中行的固定列同理：默认 rowSelectedBg 也是半透明，一并压实心 */
+.ant-table-row-selected > .ant-table-cell-fix-right,
+.ant-table-row-selected > .ant-table-cell-fix-left {
+  background: #fafafa !important;
+}
+/* 禁用按钮不改变指针、不变色 */
+.ant-btn[disabled], .ant-btn-disabled { cursor: default !important; pointer-events: none !important; }
+
+.settings-rail {
+  position: fixed;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+}
+.settings-rail-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 30px;
+  cursor: pointer;
+  user-select: none;
+}
+.settings-rail-label {
+  position: absolute;
+  right: 22px;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #1a1a1a;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  padding: 3px 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  transform: translateX(6px);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.settings-rail-item:hover .settings-rail-label {
+  opacity: 1;
+  transform: translateX(0);
+}
+.settings-rail-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d4d4d4;
+  transition: background 0.3s ease, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
+}
+.settings-rail-item:hover .settings-rail-dot {
+  transform: scale(1.4);
+  background: #00bfa5;
+}
+.settings-rail-item.active .settings-rail-dot {
+  background: #00bfa5;
+  transform: scale(1.4);
+  box-shadow: 0 0 0 4px rgba(0, 191, 165, 0.18), 0 0 12px rgba(0, 191, 165, 0.35);
+}
+.settings-rail-item.active::before {
+  content: '';
+  position: absolute;
+  right: 12px;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #00bfa5;
+  animation: rail-line-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes rail-line-in {
+  from { height: 0; opacity: 0; }
+  to { height: 14px; opacity: 1; }
+}
+
+/* ── AI 回答 Markdown 表格样式（react-markdown 裸 table 补边框/斑马纹/滚动） ── */
+.md-body table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: auto;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+  margin: 10px 0;
+  font-size: 13px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+}
+.md-body th, .md-body td {
+  padding: 7px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  border-right: 1px solid #eee;
+  white-space: nowrap;
+}
+.md-body th:last-child, .md-body td:last-child { border-right: none; }
+.md-body thead th {
+  background: #fafafa;
+  font-weight: 600;
+  color: #555;
+  border-bottom: 1px solid #e5e5e5;
+}
+.md-body tbody tr:last-child td { border-bottom: none; }
+.md-body tbody tr:hover td { background: #f9f9f9; }
+
+/* ── 会话页禁横向滚动条（表格超宽只能表内滚）────────────────────────
+   flex 气泡默认 min-width:auto，宽表格会把气泡连着整页撑宽 → 消息流容器被顶出横向滚动。
+   放开收缩限制后，宽内容被约束在可见宽内，由最近的内部滚动容器（md 表格/数据表格卡）横滚。 */
+.ant-bubble, .ant-bubble-content { min-width: 0; }
+.md-body { overflow-wrap: break-word; }
+
+/* ── 助手数据表格卡（工具结果渲染的 antd Table）：白底灰线 + 外阴影成卡 ── */
+.chat-table-card {
+  /* 块级 + 贴内容宽：表格卡必须独占一行，永不与相邻的过程标识/文本同排
+     （曾用 inline-block，行内流里会跟前面的过程行挤在一排，表格位置异变） */
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  background: #fff;
+  border-radius: 8px;
+  /* 宽表格在卡内横滚（不许撑宽页面、也不许静默裁掉右边列）；纵向仍裁齐圆角 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 2px 6px 6px 2px;   /* 给阴影留展开位，防被消息区滚动容器裁边 */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), 0 8px 20px rgba(0, 0, 0, 0.16);
+}
+/* 表格行的悬停指针；选中/悬停底色统一由 App.tsx 的 antd 令牌（收件箱淡黑灰）提供，别在这儿再写一套色 */
+.row-select-table .ant-table-tbody > tr {
+  cursor: pointer;
+}
+
+.chat-table-card .ant-table { background: #fff; }
+.chat-table-card .ant-table-cell { border-color: #e5e5e5 !important; }
+/* antd 无固定列时的横向滚动两侧阴影（container::before/after）：曾改成实心灰背景，
+   表格一横滚两侧就各立一条灰竖块糊住边缘列——卡片表没有固定列，这阴影无价值，关掉 */
+.chat-table-card .ant-table-container::before,
+.chat-table-card .ant-table-container::after { display: none !important; }
+/* 表格卡内的滚动条再压薄一档（全局 10px 在矮表格里太占空间）：命中 8px、视觉 2px */
+.chat-table-card ::-webkit-scrollbar { width: 8px; height: 8px; }
+.chat-table-card ::-webkit-scrollbar-thumb {
+  background: #e6e6e6;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+.chat-table-card ::-webkit-scrollbar-thumb:hover {
+  background: #c8c8c8;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+/* ── Agent 过程时间线（ThoughtChain small 再压缩）──
+   组件默认按"内容卡"设计：节点圆 20px、行距 12px、内容带边框白卡——对日志流太重。
+   连接线几何由节点尺寸推导（根缩进 = 节点宽、header/content 反移 = -节点宽、
+   线 x = 节点宽/2 - 1、footer 线 x = -(节点宽/2) - 1），压节点必须同步改这组值防错位。 */
+.agent-chain .ant-thought-chain { gap: 4px; padding-inline-start: 14px; }
+.agent-chain .ant-thought-chain-item-header { margin-bottom: 2px; gap: 6px; }
+.agent-chain .ant-thought-chain-item-header,
+.agent-chain .ant-thought-chain-item-content { margin-inline-start: -14px; }
+.agent-chain .ant-thought-chain-item-header::before,
+.agent-chain .ant-thought-chain-item-content::before { inset-inline-start: 6px; }
+.agent-chain .ant-thought-chain-item-header::before { top: 14px; bottom: -6px; }
+.agent-chain .ant-thought-chain-item-footer::before { inset-inline-start: -8px; }
+.agent-chain .ant-thought-chain-item-icon { width: 14px; height: 14px; font-size: 10px; }
+.agent-chain .ant-thought-chain-item-title {
+  height: 16px; line-height: 16px; max-height: 16px; font-weight: 400;
+}
+.agent-chain .ant-thought-chain-item-content { padding: 0; }
+.agent-chain .ant-thought-chain-item-content-box {
+  padding: 0; border: none; background: transparent; border-radius: 0;
+  max-width: 100%;
+}
+.agent-chain .ant-thought-chain-item-footer { margin-top: 2px; }
+
+/* 转圈图标提升到合成层：主线程再忙（流式增量、重列表渲染）旋转也不掉帧。
+   覆盖输入框的加载/停止按钮与过程折叠里所有 LoadingOutlined。 */
+.anticon-spin { will-change: transform; }
+
+/* 思考逐字生长时跟一个光标，封口即随节点消失（纯 CSS，不加状态位） */
+.agent-caret {
+  display: inline-block; margin-left: 1px; color: #8c8c8c;
+  animation: agent-caret-blink 1s steps(2, start) infinite;
+}
+@keyframes agent-caret-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+/* 导航栏会话行：该会话有回合在跑时的呼吸点（18px 行高里只占 5px，不加高、不推字） */
+.conv-running-dot {
+  flex: 0 0 auto; width: 5px; height: 5px; border-radius: 50%;
+  margin-right: 5px; background: #00bfa5;
+  animation: conv-dot-pulse 1.4s ease-in-out infinite;
+}
+@keyframes conv-dot-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-caret, .conv-running-dot { animation: none; }
+  .conv-running-dot { opacity: .9; }
+}
+
+/* md 表格进了卡片：去掉表自身的边框/圆角/外边距，线由单元格出、角由卡片管 */
+.md-body .chat-table-card table { border: none; border-radius: 0; margin: 0; }
+
+/* ── 助手正文 Markdown 排版（对齐 ChatGPT）：Tailwind preflight 抹平了默认样式，这里逐条补齐 ── */
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body p { margin: 0 0 10px; line-height: 1.7; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 { margin: 16px 0 8px; font-weight: 600; line-height: 1.35; color: #111827; }
+.md-body h1 { font-size: 18px; }
+.md-body h2 { font-size: 16px; }
+.md-body h3 { font-size: 15px; }
+.md-body h4 { font-size: 13.5px; }
+.md-body ul, .md-body ol { margin: 0 0 10px; padding-left: 22px; }
+.md-body ul { list-style: disc; }
+.md-body ol { list-style: decimal; }
+.md-body li { margin: 3px 0; line-height: 1.65; }
+.md-body li > ul, .md-body li > ol { margin: 3px 0; }
+.md-body a { color: #0f766e; text-decoration: none; }
+.md-body a:hover { text-decoration: underline; }
+.md-body blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid #e5e7eb; color: #6b7280; background: #f9fafb; }
+.md-body hr { border: none; border-top: 1px solid #eee; margin: 14px 0; }
+.md-body strong { font-weight: 600; }
+.md-body :not(pre) > code { background: #f3f4f6; color: #b54708; padding: 1px 5px; border-radius: 5px; font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.md-body pre { background: #f6f8fa; border: 1px solid #eaecef; border-radius: 8px; padding: 12px 14px; margin: 10px 0; overflow-x: auto; font-size: 12.5px; line-height: 1.55; }
+.md-body pre code, .md-body pre code.hljs { background: transparent; padding: 0; display: block; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* 库按「状态-下一状态」复合类把图标容器涂成状态色（黑/绿/红实心块），叠在自带的小图标后面
+   就是"圆点很大"的观感；节点图标全部由组件自带字形负责 → 底色一律去掉。
+   库规则带 !important 且选择器为 3 类复合，这里用 [class*] 凑到同级 + !important 对拍。 */
+.agent-chain .ant-thought-chain-item-icon { background-color: transparent !important; }
+.agent-chain .ant-thought-chain-item[class*="-pending"] .ant-thought-chain-item-icon,
+.agent-chain .ant-thought-chain-item[class*="-success"] .ant-thought-chain-item-icon,
+.agent-chain .ant-thought-chain-item[class*="-error"] .ant-thought-chain-item-icon {
+  background-color: transparent !important;
+}
+/* 连接线：库宽 = lineWidth×2 = 4px，且状态切换涂黑→绿渐变线——统一 2px 纯灰（14px 节点下 x=6 正好居中） */
+.agent-chain .ant-thought-chain-item[class*="-pending"] > *::before,
+.agent-chain .ant-thought-chain-item[class*="-success"] > *::before,
+.agent-chain .ant-thought-chain-item[class*="-error"] > *::before {
+  width: 2px !important;
+  background-color: #d9d9d9 !important;
+  background-image: none !important;
+}
+
+/* ── 会话列表：行悬停纯 CSS 态（JS 改内联背景会因 leave 丢失而卡色，禁用）＋三点菜单 hover 显 ── */
+.conv-row { transition: background 0.12s; }
+.conv-row:hover { background: rgba(255, 255, 255, 0.06) !important; }
+.conv-row.active:hover { background: rgba(255, 255, 255, 0.16) !important; }
+.conv-row .conv-more { opacity: 0; transition: opacity 0.15s ease; }
+.conv-row:hover .conv-more,
+.conv-row:focus-within .conv-more { opacity: 1; }
+
+/* ── 新对话建议流：chip 入场（淡入+上移 4px，逐条错开 40ms 由内联 animationDelay 给）
+      与 urgent 状态条呼吸（docs/suggestion-feed-spec.md §7「活着」的状态感）── */
+@keyframes chip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.chip-in { animation: chip-in 0.18s ease-out both; }
+@keyframes bar-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.breathe { animation: bar-breathe 2s ease-in-out infinite; }
+
+/* ── 创建任务向导（docs/smart-send-spec.md §6）：步骤条即导航，hover 有反馈，替代「上一步」按钮 ── */
+.wizard-steps .ant-steps-item { cursor: pointer; }
+.wizard-steps .ant-steps-item-title { transition: color 0.15s ease; }
+.wizard-steps .ant-steps-item:hover .ant-steps-item-title { color: #0f766e; }
+.wizard-steps .ant-steps-item:not(.ant-steps-item-active) .ant-steps-item-icon { transition: box-shadow 0.15s ease; }
+.wizard-steps .ant-steps-item:hover .ant-steps-item-icon { box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12); }
+
+/* 选人表信息密度：表头变矮变窄、行高收紧（万行虚拟表里"看得多"比"看得舒"重要） */
+.picker-compact .ant-table-thead > tr > th {
+  padding: 4px 6px !important; font-size: 10px; line-height: 14px; white-space: nowrap;
+}
+.picker-compact .ant-table-tbody > tr > td { padding: 3px 6px !important; }
+
+/* 已在未完结任务里的联系人：整行压灰，一眼看出"这人已经有人在跟"（规范 §3，灰显不拦截勾选）。
+   只走 class 覆盖，不用 onRow.style——那会压掉 antd 的悬停/选中底色。 */
+.picker-compact .ant-table-tbody > tr.row-in-campaign > td { background: #fafafa !important; }
+.picker-compact .ant-table-tbody > tr.row-in-campaign:hover > td { background: #f2f3f5 !important; }
+.picker-compact .ant-table-tbody > tr.row-in-campaign > td span { color: #b2b6bd !important; }
+/* 「已在任务」标签保持紫色，别被上面的压灰吃掉 */
+.picker-compact .ant-table-tbody > tr.row-in-campaign .ant-tag-purple { color: #722ed1 !important; }
