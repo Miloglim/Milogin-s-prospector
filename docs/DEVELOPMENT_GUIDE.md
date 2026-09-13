@@ -84,3 +84,45 @@ export function MyPage() {
 - main/index.ts 中每 30 秒自动保存一次
 - 数据库文件在 `data/prospector.db`；每日备份在 `data/backups/`（保留 7 天）
 - 迁移在 `src/main/db/index.ts` 的 `runMigrations()`，命名迁移记入 `_migrations` 表，新增列一律走命名 step
+
+## 开发环境搭建
+
+```bash
+npm install        # 安装依赖（postinstall 自动按 Electron 版本重编 better-sqlite3）
+npm run dev        # 开发模式（界面热更新；主进程改动需重启）
+npm test           # 单元与集成测试（vitest）
+npm run typecheck  # tsc --noEmit
+npm run build      # 三段构建（main / preload / renderer）
+npm run pack       # 打 Windows 安装包 → ../dist-release
+npm run eval:agent # AI 能力回归评测（需真实端点与 API key）
+```
+
+配置放项目根目录 `.env`（已 gitignore，密钥不入库）：
+
+| 变量 | 用途 |
+|---|---|
+| `AGENT_API_BASE_URL` / `AGENT_API_KEY` / `AGENT_MODEL` | 对话与能力调用的生效端点（可由设置页写入） |
+| `AGENT_THINKING` | 是否输出推理过程（影响首字速度） |
+| `LIGHT_API_BASE_URL` / `LIGHT_KEY_ENV` / `LIGHT_MODEL` | 轻任务档（邮件总结、背调报告、会话压缩），不填则用主端点 |
+| `EXA_API_KEY` / `TAVILY_API_KEY` | 联网检索源：公司背调与航线行情调研共用（都不配则这两类能力会明确报「未配置」） |
+| `KB_BASE_URL` / `KB_TOKEN` / `KB_APPLICATION_ID` | 公司内网 KB 中转（可选） |
+| `GH_TOKEN` / `GITHUB_TOKEN` | 读取 releases 与自动更新检查用（私有仓库或限流时需要） |
+
+数据落在 `data/`、运行设置与端点档案在 `send/config.json`、`ai/providers.json`（均不入库）。
+
+网络注意：本机直连 GitHub 下载可能被 TLS 证书拦截，Electron 二进制与 electron-builder 工具下载需走国内镜像：
+
+```powershell
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+$env:ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder-binaries/"
+```
+
+## 发版流程
+
+1. `package.json` / `package-lock.json` 改版本（`npm version X.Y.Z --no-git-tag-version`）
+2. 提交 → 打 tag：`git tag vX.Y.Z && git push origin vX.Y.Z`
+3. `npm run pack`（产物在 `../dist-release`，含安装包 + `latest.yml`）
+4. 建 Release：`gh release create vX.Y.Z --title "vX.Y.Z" --notes-file release-notes.md --files ../dist-release/prospecting-email-setup-X.Y.Z.exe ../dist-release/prospecting-email-setup-X.Y.Z.exe.blockmap ../dist-release/latest.yml`
+5. **必须挂上 `latest.yml`**——缺它应用内自动更新不生效
+
+自动更新依赖仓库 Releases 的 `latest.yml`：`src/main/updater.ts` 的 `GITHUB_API` 与 `package.json` `build.publish` 指向 `Miloglim/Milogin-s-prospector`。
