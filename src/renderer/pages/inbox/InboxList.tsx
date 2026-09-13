@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Button, message, Modal, Tooltip, Progress, notification } from "antd";
+import { Button, message, Modal, Tooltip, Progress, notification, Dropdown, Select } from "antd";
 
 // (Button etc. used in sub-components)
 import {
@@ -9,6 +9,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { askAssistant } from "../../lib/ask-ai";
 import { DiamondLogo } from "../../components/DiamondLogo";
+import { STATUS_META, CRM_STAGES } from "../../components/ContactDetail";
 
 interface InboxItem {
   id: number; fromEmail: string; fromName: string | null;
@@ -163,6 +164,28 @@ export function InboxList() {
     },
   });
 
+  // 收件箱详情栏「状态/标签」点击覆盖：走 contacts:upsert（与联系人详情保存同链路）。
+  // 传库内原 email + id 定位，避免 upsert 误判成改邮箱；状态联动（改状态清标签、设标签推进管线）由后端统一处理
+  const overwriteMut = useMutation({
+    mutationFn: (p: { id: number; email: string; field: "status" | "tags"; value: string | null }) =>
+      window.api.invoke("contacts:upsert", {
+        id: p.id,
+        email: p.email,
+        ...(p.field === "status"
+          ? { status: p.value ?? "" }
+          : { tags: p.value ? JSON.stringify([p.value]) : null }),
+      }) as Promise<{ success: boolean; error?: string }>,
+    onSuccess: (r: unknown) => {
+      const rr = r as { success: boolean; error?: string };
+      if (rr?.success) message.success("已更新");
+      else message.error(rr?.error || "更新失败");
+      qc.invalidateQueries({ queryKey: ["inbox"] });
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["crm"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+
   // 被退联系人同源数据（规范 docs/bounce-multi-match-spec.md）：
   // 计数由后端全库现拉 —— 按钮显示多少、确认弹窗列谁、删的就是谁；单封列表供详情首栏
   const { data: bounceStatsData } = useQuery({
@@ -240,14 +263,14 @@ export function InboxList() {
   const { matchedContacts, unmatchedEmails, senderContact, matchReady } = useMemo(() => {
     const matched: { email: string; company: string; id: number }[] = [];
     const unmatched: string[] = [];
-    let sender: { company: string; id: number } | null = null;
+    let sender: { company: string; id: number; email: string } | null = null;
     const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     const ready = !!(body && contactsData?.success);
     if (ready) {
       const contacts = contactsData!.data || [];
-      const idx: Record<string, { company: string; id: number }> = {};
+      const idx: Record<string, { company: string; id: number; email: string }> = {};
       for (const c of contacts) {
-        if (c.email) idx[c.email.toLowerCase().trim()] = { company: c.companyName || "", id: c.id };
+        if (c.email) idx[c.email.toLowerCase().trim()] = { company: c.companyName || "", id: c.id, email: c.email };
       }
       // ① 发件人
       if (sel_) {
@@ -773,25 +796,61 @@ export function InboxList() {
                   </div>
                 )}
               </div>
-              {/* 状态 + 标签 一行两栏 */}
+              {/* 状态 + 标签 一行两栏 — 已匹配联系人时可点击下拉覆盖（写回联系人库） */}
               {sel_ && (() => {
                 const status = (sel_ as InboxItem & { _contactStatus?: string })._contactStatus || null;
                 const rawTags = (sel_ as InboxItem & { _contactTags?: string })._contactTags || "[]";
                 const tags: string[] = (() => { try { const t = JSON.parse(rawTags); return Array.isArray(t) ? t : []; } catch { return []; } })();
-                const statusDot: Record<string, string> = { replied: "#22a644", bounce: "#e5484d", autoreply: "#e6a817", reached: "#2563eb" };
-                const statusLabel: Record<string, string> = { replied: "已回复", bounce: "退信", autoreply: "自动回复", reached: "已触达" };
+                const statusMeta = STATUS_META as Record<string, { label: string; color: string }>;
+                const statusLabel = (s: string) => statusMeta[s]?.label || s;
+                const statusDot: Record<string, string> = {
+                  replied: "#22a644", bounced: "#e5484d", autoreply: "#e6a817", reached: "#2563eb",
+                };
+                const statusItems = [
+                  { key: "__clear__", label: <span style={{ color: "#999" }}>清除状态</span> },
+                  ...Object.entries(statusMeta).map(([k, m]) => ({ key: k, label: m.label })),
+                ];
+                const tagItems = [
+                  { key: "__clear__", label: <span style={{ color: "#999" }}>清除标签</span> },
+                  ...CRM_STAGES.map(s => ({ key: s.key, label: s.label })),
+                ];
+                const editable = !!senderContact;
+                const pick = (field: "status" | "tags", key: string) => {
+                  if (!senderContact) return;
+                  const value = key === "__clear__" ? null : key;
+                  if (field === "status" && (value ?? "") === (status || "")) return;
+                  if (field === "tags" && (value === null ? tags.length === 0 : tags[0] === value)) return;
+                  overwriteMut.mutate({ id: senderContact.id, email: senderContact.email, field, value });
+                };
                 return (
                   <div style={{ display: "flex", borderBottom: "1px solid #f5f5f5" }}>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
                       <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>状态</span>
-                      <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        {status && <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusDot[status] || "#ccc" }} />}
-                        <span style={{ fontSize: 11, color: status ? "#555" : "#ccc" }}>{status ? (statusLabel[status] || status) : "—"}</span>
-                      </span>
+                      {editable ? (
+                        <Dropdown menu={{ items: statusItems, onClick: ({ key }) => pick("status", key) }} trigger={["click"]} placement="bottomLeft">
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", borderBottom: "1px dashed #d0d5dd", padding: "0 2px", userSelect: "none" }} title="点击修改状态">
+                            {status && <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusDot[status] || "#ccc" }} />}
+                            <span style={{ fontSize: 11, color: status ? "#555" : "#ccc" }}>{status ? statusLabel(status) : "—"}</span>
+                          </span>
+                        </Dropdown>
+                      ) : (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          {status && <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusDot[status] || "#ccc" }} />}
+                          <span style={{ fontSize: 11, color: status ? "#555" : "#ccc" }}>{status ? statusLabel(status) : "—"}</span>
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
                       <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>标签</span>
-                      <span style={{ fontSize: 11, color: tags.length > 0 ? "#555" : "#ccc", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tags.length > 0 ? tags.join(", ") : "—"}</span>
+                      {editable ? (
+                        <Dropdown menu={{ items: tagItems, onClick: ({ key }) => pick("tags", key) }} trigger={["click"]} placement="bottomLeft">
+                          <span style={{ fontSize: 11, color: tags.length > 0 ? "#555" : "#ccc", cursor: "pointer", borderBottom: "1px dashed #d0d5dd", padding: "0 2px", userSelect: "none", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="点击修改标签">
+                            {tags.length > 0 ? tags.join(", ") : "—"}
+                          </span>
+                        </Dropdown>
+                      ) : (
+                        <span style={{ fontSize: 11, color: tags.length > 0 ? "#555" : "#ccc", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tags.length > 0 ? tags.join(", ") : "—"}</span>
+                      )}
                     </div>
                   </div>
                 );

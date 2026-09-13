@@ -24,11 +24,17 @@ vi.mock("../../src/main/logger", () => ({
 
 const { todayMailBrief } = await import("../../src/main/services/mail-brief.service");
 
+/** 固定基准"现在"：2026-09-10 18:00 北京时间（UTC 10:00）——远离北京时间零点日界，
+ *  且给 seed 的"今日稍晚"邮件留出安全余量（服务端 sentAfter 要求 at < now+60s）。
+ *  用真实 now 会让测试在北京时间 00:00–02:30 之间运行必挂（seed 的 +2.5h 偏移越过 now+60s 窗口）。 */
+const FIXED_NOW = new Date("2026-09-10T10:00:00Z");
+
 let SQLLIB: Awaited<ReturnType<typeof initSqlJs>>;
 
 /** 北京时间今日的起点（UTC 毫秒），与服务的日界算法同源 */
-function beijingStartUtc(now = new Date()): number {
-  return Date.parse(`${beijingDay(now.getTime())}T00:00:00Z`) - 8 * 3600_000;
+function beijingStartUtc(now: number | Date): number {
+  const t = typeof now === "number" ? now : now.getTime();
+  return Date.parse(`${beijingDay(t)}T00:00:00Z`) - 8 * 3600_000;
 }
 
 function freshDb(): void {
@@ -51,8 +57,8 @@ function freshDb(): void {
   return { db, add };
 }
 
-function seed(now = new Date()) {
-  const start = beijingStartUtc(now);
+function seed() {
+  const start = beijingStartUtc(FIXED_NOW);
   const { add } = freshDb();
   // 今日区间
   add({ from: "a@acme.com", fromName: "Ana", subject: "POD Santos 40HQ", at: new Date(start + 30_000).toISOString(), cls: "other", intent: "price_inquiry" });
@@ -73,7 +79,7 @@ beforeEach(() => { seed(); });
 
 describe("今日邮箱概览", () => {
   it("以北京时间自然日为界，昨天的不计入", () => {
-    const r = todayMailBrief();
+    const r = todayMailBrief(FIXED_NOW);
     expect(r.success).toBe(true);
     if (!r.success) return;
     expect(r.data.inbound).toBe(5);                                  // 不含昨天那封，也不含 sent
@@ -81,7 +87,7 @@ describe("今日邮箱概览", () => {
   });
 
   it("未读真源=DB isRead；分类与询价各算各的", () => {
-    const r = todayMailBrief();
+    const r = todayMailBrief(FIXED_NOW);
     if (!r.success) throw new Error("fail");
     expect(r.data.unread).toBe(4);                                   // autoreply 与 sent 副本已读
     expect(r.data.byClass).toEqual({ replied: 2, autoreply: 1, bounce: 1, other: 1 });
@@ -90,7 +96,7 @@ describe("今日邮箱概览", () => {
   });
 
   it("待你回复：今日客户回复里，之后再无发往该邮箱的才算；等得最久的排前", () => {
-    const r = todayMailBrief();
+    const r = todayMailBrief(FIXED_NOW);
     if (!r.success) throw new Error("fail");
     expect(r.data.awaiting.map(m => m.fromEmail)).toEqual(["juan@acme.com"]);   // late 之后有发出，已不算待回
     expect(r.data.awaiting[0]?.matchedContactId).toBe(7);
@@ -99,7 +105,7 @@ describe("今日邮箱概览", () => {
 
   it("零邮件的早晨也给出可看的结论，不报错", () => {
     freshDb();
-    const r = todayMailBrief();
+    const r = todayMailBrief(FIXED_NOW);
     expect(r.success).toBe(true);
     if (!r.success) return;
     expect(r.data.inbound).toBe(0);
@@ -108,7 +114,7 @@ describe("今日邮箱概览", () => {
 
   it("概览是只读快照：跑完不改任何行的 isRead", () => {
     const before = h.db.select({ id: inboxMessages.id, read: inboxMessages.isRead }).from(inboxMessages).all();
-    todayMailBrief();
+    todayMailBrief(FIXED_NOW);
     const after = h.db.select({ id: inboxMessages.id, read: inboxMessages.isRead }).from(inboxMessages).all();
     expect(after).toEqual(before);
   });

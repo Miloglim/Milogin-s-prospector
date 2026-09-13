@@ -179,7 +179,9 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
     r.mode === "fixed" ? !r.subject.trim() || !r.body.trim() : r.mode === "userTpl" && !r.templateId;
 
   const buildTouches = () => rounds.map(r => ({
-    stage: r.stage,
+    // fixed 内容完全用户自定，阶段不参与内容生成（后端 resolveTouchContent 在 fixed 分支直接取内容快照）——
+    // 向导里也不再让用户选阶段，这里兜底 cold 满足后端「stage 非空字符串」的入参校验
+    stage: r.mode === "fixed" ? "cold" : r.stage,
     delayDays: r.delayDays,
     mode: r.mode,
     ...(r.mode === "fixed" ? { content: { subject: r.subject, body: r.body, ...(r.cc?.trim() ? { cc: r.cc.trim() } : {}) } } : {}),
@@ -306,8 +308,13 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
                 style={{ boxShadow: "0 1px 4px rgba(15, 23, 42, 0.07)" }}>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] font-medium text-gray-500 w-12">第 {i + 1} 轮</span>
-                  <Select size="small" style={{ width: 120 }} value={r.stage}
-                    options={STAGE_OPTIONS} onChange={v => setRound(i, { stage: v })} />
+                  {/* fixed 模式内容自定，阶段与内容生成无关 → 不显示阶段选择（避免误导"选了阶段干什么用"） */}
+                  {mode === "fixed" ? (
+                    <Tag color="default" className="text-[10px] my-0 leading-none py-0.5">固定内容</Tag>
+                  ) : (
+                    <Select size="small" style={{ width: 120 }} value={r.stage}
+                      options={STAGE_OPTIONS} onChange={v => setRound(i, { stage: v })} />
+                  )}
                   {i === 0 ? (
                     <span className="text-[11px] text-gray-400">首信（立即）</span>
                   ) : (

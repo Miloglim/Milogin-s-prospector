@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { Drawer, Tabs, Tag, Select, message, Timeline, Input, Button, Tooltip } from "antd";
-import { EditOutlined, SearchOutlined, PartitionOutlined } from "@ant-design/icons";
+import { Drawer, Tabs, Tag, Select, message, Timeline, Input, Button, Tooltip, Modal } from "antd";
+import { EditOutlined, SearchOutlined, PartitionOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
-import { useUpsertContact, type Contact } from "../hooks/useContacts";
+import { useUpsertContact, useDeleteContact, type Contact } from "../hooks/useContacts";
 import { CompanyBackcheck } from "./CompanyBackcheck";
 import { DiamondLogo } from "./DiamondLogo";
 import { askAssistant } from "../lib/ask-ai";
@@ -304,7 +304,9 @@ export function ContactDetailDrawer({ contact, open, onClose, onUpdated }: {
   onUpdated: (c: Contact) => void;
 }) {
   const upsert = useUpsertContact();
+  const deleteContact = useDeleteContact();
   const [tab, setTab] = useState("info");
+  const [deleting, setDeleting] = useState(false);
 
   if (!contact) return <Drawer open={false} onClose={onClose} />;
 
@@ -313,6 +315,24 @@ export function ContactDetailDrawer({ contact, open, onClose, onUpdated }: {
     const r = await upsert.mutateAsync({ id: contact.id, email: contact.email, [field]: value });
     if (r?.success) onUpdated({ ...contact, [field]: value });
     else message.error(r?.error || "保存失败");
+  };
+
+  // 删除联系人：与列表行删除同链路（useDeleteContact 乐观缓存 + 级联清理 + 多域缓存失效）
+  const handleDelete = () => {
+    Modal.confirm({
+      title: `删除联系人 ${contact.email}？`,
+      content: "将同时清除其跟进/发送记录并解除邮件关联，空壳公司一并回收。此操作不可撤销。",
+      okText: "删除", okType: "danger", cancelText: "取消",
+      onOk: async () => {
+        setDeleting(true);
+        try {
+          const r = await deleteContact.mutateAsync(contact.id);
+          if (r?.success) { message.success("已删除"); onClose(); }
+          else message.error(r?.error || "删除失败");
+        } catch { message.error("删除失败"); }
+        finally { setDeleting(false); }
+      },
+    });
   };
 
   const clientMeta = contact.clientType ? CLIENT_TYPE[contact.clientType] : null;
@@ -358,6 +378,14 @@ export function ContactDetailDrawer({ contact, open, onClose, onUpdated }: {
                   ctx: `contact:${contact.id}`,
                   question: `${fullName} 最近的情况怎么样？今天该不该跟进，建议怎么跟？`,
                 })}
+              />
+            </Tooltip>
+            {/* 删除联系人 — 样式与列表行删除按钮一致 */}
+            <Tooltip title="删除联系人">
+              <Button type="text" size="small" icon={<DeleteOutlined />}
+                loading={deleting}
+                className="btn-hover-color" style={{ color: "#bbb", padding: 0, minWidth: 20, height: 20 }}
+                onClick={handleDelete}
               />
             </Tooltip>
           </div>

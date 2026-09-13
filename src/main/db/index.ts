@@ -307,5 +307,21 @@ export function runMigrations(): void {
     if (seeded > 0) Log.info("db.migrate", `被退联系人关联表种子 ${seeded} 条`);
   });
 
+  // 事件表去重（实测 bug 修复）：fetchInbox 曾对同一封退信/回复每轮抓取直插一条
+  // interactions（收件箱行有 messageId 去重，事件表没有）——同一封退信被写成几十条。
+  // 同 contact_id+message_id+type 只保留最早一条（id 最小），幂等，只跑一次。
+  step("v5.x-dedup-interactions-events", () => {
+    const dupN = raw.prepare(`
+      DELETE FROM interactions
+      WHERE message_id IS NOT NULL AND message_id != ''
+        AND id NOT IN (
+          SELECT MIN(id) FROM interactions
+          WHERE message_id IS NOT NULL AND message_id != ''
+          GROUP BY contact_id, message_id, type
+        )
+    `).run().changes;
+    if (dupN > 0) Log.info("db.migrate", `interactions 重复事件去重 ${dupN} 条`);
+  });
+
   Log.info("db.migrations", `${statements.length} 条建表语句已执行`);
 }

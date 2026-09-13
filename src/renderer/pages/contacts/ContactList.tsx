@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode, type ComponentRef } from "react";
 import { Table, Button, Input, Space, Drawer, Tag, message, Form, Select, Popover, Checkbox, Modal, Dropdown } from "antd";
 import { PlusOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, ImportOutlined, PartitionOutlined, MailOutlined, ExportOutlined } from "@ant-design/icons";
 import type { TableColumnsType } from "antd";
@@ -92,6 +92,10 @@ export function ContactList() {
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  // 从收件箱跳转（#/customers?detail=id）的目标联系人：数据到达后滚动定位 + 高亮 + 展开
+  const [pendingDetailId, setPendingDetailId] = useState<number | null>(null);
+  // antd 5 顶层未导出 TableRef 类型：用 ComponentRef<typeof Table>（含 ref.scrollTo）并显式调用
+  const tableRef = useRef<ComponentRef<typeof Table>>(null);
   const [visibleCols, setVisibleCols] = useState<string[]>(() => {
     try {
       const s = localStorage.getItem(COLS_KEY);
@@ -110,6 +114,21 @@ export function ContactList() {
   const upsertContact = useUpsertContact();
   const deleteContact = useDeleteContact();
   const qc = useQueryClient();
+
+  const contacts = data?.success ? (data.data?.items || []) : [];
+  const total = data?.success ? (data.data?.total || 0) : 0;
+
+  // 跳转定位：目标联系人出现在当前列表数据后 → 高亮该行 + 滚动到可视区 + 详情已由上方打开
+  useEffect(() => {
+    if (pendingDetailId == null) return;
+    const idx = contacts.findIndex(c => c.id === pendingDetailId);
+    if (idx < 0) return; // 数据未加载到（翻页/清筛选后重新拉取中），等下一次数据变更
+    setSelectedRowKeys([pendingDetailId]);
+    requestAnimationFrame(() => {
+      try { tableRef.current?.scrollTo?.({ index: idx }); } catch { /* 老版本无 scrollTo 时忽略 */ }
+    });
+    setPendingDetailId(null);
+  }, [contacts, pendingDetailId]);
 
   // 跨页全选：拉取当前 search/筛选下的全部 id（服务端分页时表头全选只能选当前页 50 条）
   const selectAllMatched = async () => {
@@ -140,9 +159,6 @@ export function ContactList() {
       },
     });
   };
-
-  const contacts = data?.success ? (data.data?.items || []) : [];
-  const total = data?.success ? (data.data?.total || 0) : 0;
 
   // ── 导出（原独立导出页功能并入：联系人 CSV / 跟进记录 CSV）──
   const [exporting, setExporting] = useState(false);
@@ -188,6 +204,20 @@ export function ContactList() {
         window.api.invoke("contacts:getById", id).then((res) => {
           const r = res as { success: boolean; data?: Contact };
           if (r?.success && r.data) setDetailContact(r.data);
+        });
+        // 跳转定位：清掉搜索/筛选（保证目标行一定在结果集里），再用 listIds（与列表同排序）
+        // 算出目标所在页码，数据到位后由下方 effect 滚动定位 + 高亮 + 保持详情展开
+        setSearch("");
+        setDebouncedSearch("");
+        setFilters({});
+        setPage(1);
+        window.api.invoke("contacts:listIds", {}).then((res) => {
+          const r = res as { success: boolean; data?: { ids: number[] } };
+          if (r?.success && r.data) {
+            const idx = r.data.ids.indexOf(id);
+            if (idx >= 50) setPage(Math.floor(idx / 50) + 1);
+          }
+          setPendingDetailId(id);
         });
       }
       window.location.hash = rawHash.split("?")[0]!;
@@ -370,6 +400,7 @@ export function ContactList() {
 
       {/* 表格 — 高密度 */}
       <Table
+        ref={tableRef}
         dataSource={contacts}
         columns={columns}
         rowKey="id"

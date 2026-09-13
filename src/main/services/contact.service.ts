@@ -201,9 +201,10 @@ export function listContactIds(params?: {
   stage?: string; status?: string; tags?: string; clientType?: string; country?: string;
 }): Result<{ ids: number[]; total: number }> {
   const where = buildContactWhere(params);
+  // 与 listContacts 同排序（updatedAt DESC）——跳转定位靠 listIds 的 index 算页码，顺序不一致会错位
   const rows = getDb().select({ id: contacts.id })
     .from(contacts).leftJoin(companies, eq(contacts.companyId, companies.id))
-    .where(where).all();
+    .where(where).orderBy(dsql`${contacts.updatedAt} DESC`).all();
   const ids = rows.map(r => r.id);
   return okResult({ ids, total: ids.length });
 }

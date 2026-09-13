@@ -403,19 +403,32 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
           const cid = m.matchedContactId ?? (matchContact(m.fromEmail)?.id || null);
           if (cid) {
             const typeMap: Record<string, string> = { bounce: "bounced", replied: "replied", autoreply: "autoreply" };
-            getDb().insert(interactions).values({
-              contactId: cid,
-              type: typeMap[m.classification] || m.classification,
-              direction: "inbound",
-              subject: m.subject,
-              bodyPreview: m.bodyPreview,
-              messageId: m.messageId,
-              accountId: m.accountId,
-              createdAt: m.receivedAt,
+            const type = typeMap[m.classification] || m.classification;
+            // 防重修复（实测 bug）：同 contact_id+message_id+type 的事件只写一次。
+            // 原实现每次抓取到同一封退信/回复都直插一条 interactions —— 收件箱行靠 messageId 去重
+            // 只有一行，但事件表重复膨胀（如 Daniela 同一封退信被写了 27 条一模一样的「已退信」）。
+            const dup = m.messageId
+              ? getDb().select({ id: interactions.id }).from(interactions).where(and(
+                  eq(interactions.contactId, cid),
+                  eq(interactions.messageId, m.messageId),
+                  eq(interactions.type, type),
+                )).get()
+              : undefined;
+            if (!dup) {
+              getDb().insert(interactions).values({
+                contactId: cid,
+                type,
+                direction: "inbound",
+                subject: m.subject,
+                bodyPreview: m.bodyPreview,
+                messageId: m.messageId,
+                accountId: m.accountId,
+                createdAt: m.receivedAt,
               }).run();
-              // 更新联系人状态
-              if (m.classification === "bounce") markAsBounced(cid);
-              else updateContactStatus(cid, m.classification);
+            }
+            // 更新联系人状态
+            if (m.classification === "bounce") markAsBounced(cid);
+            else updateContactStatus(cid, m.classification);
               // 发信任务止损联动（docs/smart-send-spec.md §3.3）：回复/退订/bounce 止损，OOO 顺延。
               // 惰性 import 防循环依赖；失败绝不影响收信主流程。
               try {
@@ -830,15 +843,27 @@ export function markReplied(id: number): Result<void> {
     .where(eq(inboxMessages.id, id)).run();
 
   if (existing.matchedContactId) {
-    getDb().insert(interactions).values({
-      contactId: existing.matchedContactId,
-      type: "sent",
-      direction: "outbound",
-      subject: `Re: ${existing.subject || ""}`,
-      bodyPreview: `已通过外部客户端回复: ${existing.fromEmail}`,
-      messageId: existing.messageId,
-      accountId: existing.accountId,
-    }).run();
+    // 修复：手动标回复写的是 replied/inbound 而非 sent/outbound（原 bug 使「已回复」漏计、
+    // 「已发送」虚增）。并加防重：与 fetchInbox/退信事件同口径（contact_id+message_id+type），
+    // 避免同一封邮件既被抓取写事件又被手动标记再写一条。
+    const dup = existing.messageId
+      ? getDb().select({ id: interactions.id }).from(interactions).where(and(
+          eq(interactions.contactId, existing.matchedContactId),
+          eq(interactions.messageId, existing.messageId),
+          eq(interactions.type, "replied"),
+        )).get()
+      : undefined;
+    if (!dup) {
+      getDb().insert(interactions).values({
+        contactId: existing.matchedContactId,
+        type: "replied",
+        direction: "inbound",
+        subject: `Re: ${existing.subject || ""}`,
+        bodyPreview: `已通过外部客户端回复: ${existing.fromEmail}`,
+        messageId: existing.messageId,
+        accountId: existing.accountId,
+      }).run();
+    }
     updateContactStatus(existing.matchedContactId, "replied");
   }
   saveDatabase();

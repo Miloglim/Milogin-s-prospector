@@ -1,5 +1,6 @@
 import { getDb } from "../db";
 import { contacts } from "../db/schema/contacts";
+import { inboxMessages } from "../db/schema/inbox";
 import { interactions } from "../db/schema/interactions";
 import { sql } from "drizzle-orm";
 import { okResult, type Result } from "../errors";
@@ -22,12 +23,15 @@ export function getStats(): Result<DashboardStats> {
   const db = getDb();
 
   const totalContacts = db.select({ count: sql<number>`count(*)` }).from(contacts).get()?.count || 0;
-  const totalSent = db.select({ count: sql<number>`count(*)` })
-    .from(interactions).where(sql`type = 'sent'`).get()?.count || 0;
-  const totalReplied = db.select({ count: sql<number>`count(*)` })
-    .from(interactions).where(sql`type = 'replied'`).get()?.count || 0;
-  const bounceCount = db.select({ count: sql<number>`count(*)` })
-    .from(interactions).where(sql`type = 'bounced'`).get()?.count || 0;
+  // 口径修复：三个数字直查 inbox_messages 按 classification 计数，与收件箱界面的统计同源。
+  // 原实现数 interactions.type（sent/replied/bounced），该表只覆盖「匹配到联系人的邮件事件」，
+  // 且 markReplied 曾误写 sent 造成虚增 —— 两表天然不一致且随时间漂移。
+  const countByClass = (cls: string) =>
+    db.select({ count: sql<number>`count(*)` }).from(inboxMessages)
+      .where(sql`classification = ${cls}`).get()?.count || 0;
+  const totalSent = countByClass("sent");
+  const totalReplied = countByClass("replied");
+  const bounceCount = countByClass("bounce");
 
   // 阶段统计 — 从 contacts.tags（CRM 管线标签）读取，crm_stages 已废弃
   const STAGE_KEYS = ["reaching", "quoting", "trial", "cooperating", "lost", "other"];

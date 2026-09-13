@@ -201,6 +201,22 @@ export function CrmPipeline() {
     },
   });
 
+  // 删除联系人（详情卡头部垃圾桶）：级联清理后关详情并失效多域缓存
+  const deleteContactMut = useMutation({
+    mutationFn: (contactId: number) => window.api.invoke("contacts:delete", contactId),
+    onSuccess: (result) => {
+      const r = result as { success: boolean; error?: string };
+      r?.success ? message.success("已删除") : message.error(r?.error || "删除失败");
+      if (r?.success) {
+        setDetailId(null);
+        qc.invalidateQueries({ queryKey: ["crm"] });
+        qc.invalidateQueries({ queryKey: ["contacts"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+        qc.invalidateQueries({ queryKey: ["send"] });
+      }
+    },
+  });
+
   // 模板 + 账号（快速发送用）
   const { data: templatesData } = useQuery({
     queryKey: ["templates"],
@@ -546,6 +562,20 @@ export function CrmPipeline() {
                 <CopyOutlined
                   className="text-[11px] text-gray-400 hover:text-blue-500 cursor-pointer transition-colors"
                   onClick={copyContactInfo}
+                />
+              </Tooltip>
+              <Tooltip title="删除联系人">
+                <DeleteOutlined
+                  className="text-[11px] text-gray-400 hover:text-red-500 cursor-pointer transition-colors"
+                  onClick={() => {
+                    if (!contact?.id) return;
+                    Modal.confirm({
+                      title: `删除联系人 ${contact.email}？`,
+                      content: "将同时清除其跟进/发送记录并解除邮件关联，此操作不可撤销。",
+                      okText: "删除", okType: "danger", cancelText: "取消",
+                      onOk: async () => { await deleteContactMut.mutateAsync(contact.id); },
+                    });
+                  }}
                 />
               </Tooltip>
             </div>
