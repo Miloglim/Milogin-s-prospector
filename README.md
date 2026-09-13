@@ -66,6 +66,3 @@ npm run pack         # 打 Windows 安装包 → ../dist-release
 
 设置里有**测试模式（dryRun）**：开启后真实外发被拦截并记为模拟发送，收件与库内操作照常。首次上生产建议按「全量 dryRun → 只发自己邮箱两三封 → 小配额」三步放量。发信账号在设置页可做真实 SMTP / IMAP 连通性校验（会区分密钥无效、超时、无法连接、握手失败）。
 
-## 发版
-
-`package.json` 改版本 → 提交 → 打 tag `vX.Y.Z` → 推代码与 tag → `npm run pack` → 建 Release，**必须挂上 `latest.yml`**（缺它自动更新不生效）。
