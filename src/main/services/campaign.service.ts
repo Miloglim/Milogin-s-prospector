@@ -60,7 +60,7 @@ export interface CreateCampaignInput {
 /** 已触达/已回复状态集合：不再拦截入队，仅用于界面计数提示（用户拍板：发不发由圈名单决定） */
 const REACHED_REPLIED = new Set(["replied", "reached"]);
 
-type EnqueueFn = (items: SendItem[], autoStart: boolean, opts?: { accountIds?: number[] }) => Promise<Result<{ batchId: string; deferredContactIds?: number[] }>>;
+type EnqueueFn = (items: SendItem[], autoStart: boolean, opts?: { accountIds?: number[]; append?: boolean }) => Promise<Result<{ batchId: string; deferredContactIds?: number[] }>>;
 let enqueueFn: EnqueueFn | null = null;
 /** 由发送 transport 注入真实队列入口（startQueue）；未注入时扫描器只记日志不动 */
 export function setCampaignQueueFn(fn: EnqueueFn): void { enqueueFn = fn; }
@@ -417,7 +417,7 @@ export async function scanDueCampaigns(): Promise<void> {
       }
       // 先标记 queued 再入队（并发扫描不会双入队）；入队失败回退 pending 顺延
       for (const et of enqueuedTargets) markTarget(et.id, "queued", null);
-      const q = await enqueueFn(items, c.autoSend === 1, fixedIds ? { accountIds: fixedIds } : undefined);
+      const q = await enqueueFn(items, c.autoSend === 1, { ...(fixedIds ? { accountIds: fixedIds } : {}), append: true });
       if (!q.success) {
         // 引擎刚被别的批次占用 → 10 分钟后重试（别把触点一脚踹到明天）；其他失败照旧顺延 1 天
         const busy = q.error.includes("运行中");

@@ -91,7 +91,7 @@ CREATE TABLE send_queue (
   account_id integer NOT NULL, account_email text,
   subject text, tpl_body text, contact_vars text,
   send_mode text DEFAULT 'bcc' NOT NULL,
-  status text DEFAULT 'pending' NOT NULL, error text, sent_at text,
+  status text DEFAULT 'pending' NOT NULL, error text, error_kind text, sent_at text,
   tpl_name text, country text, language text, cc text,
   created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
@@ -341,6 +341,97 @@ describe("发信管线沙箱演练（生产前逐环节验证）", () => {
       else expect(q.status).toBe("sent");
     }
   }, 15000);
+
+  it("S7 熔断摘除（n≥3）：剩余 pending 组标 blocked 而非真失败，失败统计不含未发送组", async () => {
+    const db = await newSandbox();
+    const ids: number[] = [];
+    for (const [n, comp] of [["a","CA"],["b","CB"],["c","CC"],["d","CD"],["e","CE"],["f","CF"],["g","CG"]] as const) {
+      const cid = companyId(db, (seedCompany(db, comp), comp));
+      addContact(db, `${n}@${comp.toLowerCase()}.com`, n.toUpperCase(), cid);
+      ids.push(db.select().from(schema.contacts).where(eq(schema.contacts.email, `${n}@${comp.toLowerCase()}.com`)).get()!.id);
+    }
+    seedAccounts(db, 2);
+    const acctA = db.select().from(schema.emailAccounts).where(eq(schema.emailAccounts.email, "sender1@sb.com")).get()!;
+
+    // A 账号组全部 535 永久失败（7 组轮换 2 账号 → A 拿 0,2,4,6 共 4 组；第 4 组是熔断摘除目标）
+    SendService.setSendBccFn(async (item) => {
+      sendCalls.push(item);
+      if (item.accountId === acctA.id) return failResult("535 Invalid username or password");
+      return okResult({ messageId: "<ok>" });
+    });
+
+    const r = await SendService.startSend([], [TPL], true, ids);
+    expect(r.success).toBe(true);
+    await waitForDone();
+
+    const st = SendService.getSendStatus().data!;
+    // A 真失败 3 组计入失败；被摘除的第 4 组（未发送）不计入
+    expect(st.failedCount).toBe(3);
+    expect(st.sentCount).toBe(3);               // B 账号 3 组成功
+    expect(sendCalls.length).toBe(6);           // A 的第 4 组从未触达传输
+
+    const qA = db.select().from(schema.sendQueue).all().filter(q => q.accountId === acctA.id);
+    expect(qA.length).toBe(4);
+    expect(qA.filter(q => q.status === "failed" && q.errorKind === "smtp_fail").length).toBe(3);
+    expect(qA.filter(q => q.status === "failed" && q.errorKind === "blocked" && (q.error || "").includes("熔断")).length).toBe(1);
+
+    // 账号熔断持久化
+    const aRow = db.select().from(schema.emailAccounts).where(eq(schema.emailAccounts.id, acctA.id)).get()!;
+    expect(aRow.consecutiveFails).toBe(3);
+    expect(aRow.circuitOpenAt).not.toBeNull();
+    // B 账号不受影响
+    const bRow = db.select().from(schema.emailAccounts).where(eq(schema.emailAccounts.email, "sender2@sb.com")).get()!;
+    expect(bRow.consecutiveFails).toBe(0);
+  }, 15000);
+
+  it("S8 多任务同批次并行（append）：运行中追加的任务组即时并入，各自开流并行（账号并发闸 ≤10）", async () => {
+    const db = await newSandbox();
+    seedAccounts(db, 2);
+    const ids: number[] = [];
+    for (const [n, comp] of [["a","CA"],["b","CB"],["c","CC"],["d","CD"],["e","CE"],["f","CF"],["g","CG"],["h","CH"]] as const) {
+      const cid = companyId(db, (seedCompany(db, comp), comp));
+      addContact(db, `${n}@${comp.toLowerCase()}.com`, n.toUpperCase(), cid);
+      ids.push(db.select().from(schema.contacts).where(eq(schema.contacts.email, `${n}@${comp.toLowerCase()}.com`)).get()!.id);
+    }
+    const idsA = ids.slice(0, 4);
+    const idsB = ids.slice(4, 8);
+    const mk = (tag: string, ids: number[]) => ids.map((cid, i) => ({
+      id: `s8-${tag}-${i}`, companyName: tag.toUpperCase() + i, companyId: 0,
+      recipients: [{ contactId: cid, email: `${tag}${i}@t.com`, name: tag.toUpperCase() + i }],
+      accountId: 0, subject: TPL.subject, tplBody: TPL.body, contactVars: {},
+      status: "pending" as const,
+      campaignId: `cam-${tag}`,
+    }) as SendService.SendItem);
+
+    let appended = false;
+    SendService.setSendBccFn(async (item) => {
+      sendCalls.push(item);
+      if (!appended) {
+        // 引擎运行中（A 第一组发送时）追加任务 B → 应即时并入当前批次并行跑
+        const qb = await SendService.startQueue(mk("b", idsB), true, { append: true });
+        expect(qb.success).toBe(true);
+        expect(qb.data!.batchId).toBe(SendService.getSendStatus().data!.batchId); // 同批次
+        appended = true;
+      }
+      await new Promise(r => setTimeout(r, 20)); // 拉长发送窗口，让追加落在运行中
+      return okResult({ messageId: `<s8-${sendCalls.length}>` });
+    });
+
+    const r = await SendService.startQueue(mk("a", idsA), true);
+    expect(r.success).toBe(true);
+    await waitForDone(15000);
+
+    expect(appended).toBe(true);                 // 追加确实发生在运行中
+    expect(sendCalls.length).toBe(8);            // A 4 + B 4 全发（并行流都收敛）
+    const st = SendService.getSendStatus().data!;
+    expect(st.totalItems).toBe(8);
+    expect(st.sentCount).toBe(8);
+    expect(st.failedCount).toBe(0);
+    const rows = db.select().from(schema.sendQueue).all();
+    expect(rows.length).toBe(8);
+    expect(rows.every(x => x.status === "sent")).toBe(true);
+    expect(new Set(rows.map(x => x.batchId)).size).toBe(1); // 追加不产生新批次
+  }, 25000);
 
   it("S5 动态发信：自定义正文渲染 + CC 落库", async () => {
     const db = await newSandbox();

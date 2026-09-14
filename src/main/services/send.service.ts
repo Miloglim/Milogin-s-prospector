@@ -36,6 +36,7 @@ export interface SendItem {
   language?: string; // 语言（卡片标签；取首联系人 language，与开发信语言一致）
   status: "pending" | "sending" | "sent" | "failed";
   error?: string; sentAt?: string;
+  errorKind?: "smtp_fail" | "blocked"; // failed 子类：smtp_fail=发出被拒·真失败；blocked=熔断/中断·未发送（可重排，不计失败统计）
   seq?: number;  // 原始队列顺序（跨账号排序用）
   cc?: string;   // 抄送地址，逗号分隔。收件人仍走 BCC 互不可见，抄送方在 CC 里对客户可见
   sendMode?: "individual" | "bcc";  // individual=单独一封（收件人走 To，像人工手发）；缺省 bcc（互不可见）
@@ -891,14 +892,47 @@ export function nextStage(stage: string | null | undefined): string {
 let queues: Map<number, SendItem[]> = new Map();
 let abortFlag = false; // 串行模型：单一批次中断标志（旧 per-account abortFlags map 已废弃）
 
+// ── 并发协调（多流引擎，见 docs 引擎改造）────────────────────────────
+// 单线程 async 交错：Map 读写天然原子，无真并发竞态；要协调的是「跨流共享约束」：
+// ① 账号并发上限：同一时刻一个账号最多被 MAX_ACTIVE_TASKS_PER_ACCOUNT 条任务流排发。
+//    （粒度取「组」而非「任务」：一个任务流连续发 N 组也只算 1 个在发单元更宽松；
+//     组粒度更严更安全，且与「第 11 个任务的这一组顺延/等号」语义一致。）
+// ② 运行中追加（append）：多任务同批次并行 —— campaign 扫描器在引擎忙时不再整批拒绝，
+//    而是把新任务的组合进当前批次，分桶后各自一条流并行跑。
+const MAX_ACTIVE_TASKS_PER_ACCOUNT = 10;
+const accountLoad = new Map<number, number>();          // accountId → 当前排发中的组数
+const pendingAppends: SendItem[] = [];                  // 运行中追加的组（下轮合并进 plan）
+
+/** 账号并发闸：任务驱动的组先等号（该账号排发已满不硬塞）；非任务驱动（手动直发）不参与上限。 */
+async function acquireAccount(accountId: number, campaignId?: string): Promise<void> {
+  if (!campaignId) return;
+  while (state.isRunning && !abortFlag) {
+    const cur = accountLoad.get(accountId) ?? 0;
+    if (cur < MAX_ACTIVE_TASKS_PER_ACCOUNT) {
+      accountLoad.set(accountId, cur + 1);
+      return;
+    }
+    await sleep(500); // 等号：该账号排发单元已满
+  }
+}
+function releaseAccount(accountId: number): void {
+  const cur = (accountLoad.get(accountId) ?? 1) - 1;
+  if (cur <= 0) accountLoad.delete(accountId);
+  else accountLoad.set(accountId, cur);
+}
+/** 运行中追加：把新任务组并入当前批次（不清旧队、复用 batchId），下轮合并进 plan。 */
+function appendToBatch(items: SendItem[]): void {
+  for (const it of items) pendingAppends.push(it);
+}
+
 /** 公共发送入口：配额守卫 → 账号分配 → 限额裁剪 → 持久化 → 启动发送循环。
  *  autoStart=false 时只入队落库、不发一封（对齐旧 PE 两步式：加入队列 → 队列页手动开始）。
  *  opts.accountIds：限定轮换池只在这批账号内（发信任务的「指定账号」策略）——只缩小，不越过熔断闸。
  *  账号分配（不换人发，用户拍板 v6.0）：历史发信账号可用的组沿用原账号；熔断中的组缓发
  *  （不入本批、deferredContactIds 回传调用方顺延）；只有无历史的新组才进轮换池。
  *  返回 { batchId, queued(组), queuedCount(封), dropped(组), deferredContactIds(缓发联系人) }。 */
-export async function startQueue(items: SendItem[], autoStart = true, opts?: { accountIds?: number[] }): Promise<Result<{ batchId: string; queued: number; queuedCount: number; dropped: number; deferredContactIds: number[] }>> {
-  if (state.isRunning) return failResult("已有发送任务运行中");
+export async function startQueue(items: SendItem[], autoStart = true, opts?: { accountIds?: number[]; append?: boolean }): Promise<Result<{ batchId: string; queued: number; queuedCount: number; dropped: number; deferredContactIds: number[] }>> {
+  if (state.isRunning && !opts?.append) return failResult("已有发送任务运行中");
   if (items.length === 0) return failResult("没有待发送项");
 
   const accounts = opts?.accountIds?.length
@@ -914,6 +948,69 @@ export async function startQueue(items: SendItem[], autoStart = true, opts?: { a
   // ① 配额守卫放最前 — 失败时什么都不动（后置会把 state 污染成永远 isRunning 的幽灵批次）
   const qCheck = checkQuota();
   if (!qCheck.ok) return failResult(qCheck.reason || "已达全局发信限额");
+
+  // ── 运行中追加（多任务同批次并行）：引擎忙时不再整批拒绝，新任务组合进当前批次 ──
+  // 亲和分配/轮换照常（不换人发纪律不变）；DB 追加行（不清旧队）；主调度每轮合并 pendingAppends 并开新流。
+  if (state.isRunning && opts?.append) {
+    const affinity = lastSentAccountMap(items.flatMap(it => it.recipients.map(r => r.contactId)));
+    const activeIds = new Set(accounts.map(a => a.id));
+    const circuitIds = circuitAccountIds();
+    const fixedPool = (opts?.accountIds?.length ?? 0) > 0;
+    const runItems: SendItem[] = [];
+    for (const it of items) {
+      const p = pickAffinityAccount(it.recipients, affinity, activeIds, circuitIds, fixedPool);
+      if (p.deferred) continue; // 亲和缓发：不追加（任务侧触点回退会处理）
+      runItems.push(p.accountId ? { ...it, accountId: p.accountId } : { ...it, accountId: 0 });
+    }
+    if (runItems.length === 0) return okResult({ batchId: state.batchId ?? "", queued: 0, queuedCount: 0, dropped: 0, deferredContactIds: [] });
+    const rotIds = [...activeIds];
+    const ordered: Array<SendItem & { seq: number }> = [];
+    let rot = 0;
+    for (const it of interleaveCompanies(runItems)) {
+      const aid = it.accountId > 0 ? it.accountId : (rotIds.length > 0 ? rotateAccountId(rot++, rotIds) : 0);
+      ordered.push({ ...it, accountId: aid, seq: 0 }); // seq 由主调度合并时重排
+    }
+    for (const it of ordered) {
+      if (!queues.has(it.accountId)) queues.set(it.accountId, []);
+      queues.get(it.accountId)!.push(it);
+      pendingAppends.push(it);
+    }
+    try {
+      const now = new Date().toISOString();
+      const rows: any[] = [];
+      for (const it of ordered) {
+        const acctEmail = accounts.find(a => a.id === it.accountId)?.email || "";
+        rows.push({
+          id: it.id, batchId: state.batchId, campaignId: it.campaignId ?? null,
+          companyName: it.companyName, companyId: it.companyId,
+          recipients: JSON.stringify(it.recipients),
+          accountId: it.accountId, accountEmail: acctEmail,
+          subject: it.subject, tplBody: it.tplBody, contactVars: JSON.stringify(it.contactVars),
+          tplName: it.tplName || null,
+          country: it.country || null, language: it.language || null,
+          cc: it.cc || null,
+          sendMode: it.sendMode || "bcc",
+          status: "pending", createdAt: now,
+        });
+      }
+      getDb().insert(sendQueue).values(rows).run();
+      saveDatabase();
+    } catch (err) {
+      Log.warn("send.queuePersist", `追加队列表失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // 统计补全：新增账号补 accountStats；totalItems 含追加组（进度条分母一致）
+    for (const it of ordered) {
+      let st = state.accountStats.find(x => x.accountId === it.accountId);
+      if (!st) {
+        st = { accountId: it.accountId, email: accounts.find(a => a.id === it.accountId)?.email || "", sent: 0, failed: 0, total: 0, isCircuitOpen: false };
+        state.accountStats.push(st);
+      }
+      st.total++;
+    }
+    state.totalItems += ordered.length;
+    Log.info("send.append", `追加 ${ordered.length} 组到运行中批次 ${state.batchId}`);
+    return okResult({ batchId: state.batchId ?? "", queued: ordered.length, queuedCount: ordered.reduce((s, it) => s + it.recipients.length, 0), dropped: 0, deferredContactIds: [] });
+  }
 
   const batchId = nanoid();
 
@@ -1165,44 +1262,90 @@ function randBetween(min: number, max: number): number {
   return (Math.floor(Math.random() * (max - min + 1)) + min) * 1000;
 }
 
-// ── 全局串行发送循环 ──
-// 单调度器按 seq 顺序逐组发送：发 1 组 → 组间暂停 → 下一组。
-// 旧实现是每账号一个并行循环：多账号同秒发首组（组间暂停只在各账号内部生效，同公司拆组被连发），
-// 且 currentItem/delayUntil/sleep 定时器都是全局单值，被并行循环互相覆写 —— 倒计时乱跳、暂停只作用于最后一次 sleep。
-// 串行模型下这些竞态天然消失，组间暂停恢复"任意相邻两组之间"的真实语义。
+// ── 多流发送引擎（并发改造）──────────────────────────────────────
+// 单调度器按 seq 顺序逐组发送 → 改为「按任务(campaign)分桶，桶间并行」：
+//  - 桶内仍串行（组间暂停、同公司错开、同账号连发顺序照旧）；
+//  - 桶间并行（每个任务一条自己的执行流，互不阻塞对方的组间暂停/倒计时）；
+//  - 账号并发闸：同一时刻一个账号最多被 MAX_ACTIVE_TASKS_PER_ACCOUNT 条流排发，超出等号不硬塞；
+//  - 运行中追加：campaign 扫描器引擎忙时不再整批拒绝，新任务组合进当前批次。
+// 竞态说明：Node 单线程 + async 交错，Map/布尔共享状态读写天然原子；
+// 真正的协调点是「跨流共享约束」（账号上限/熔断/时段/限额），统一走模块级协调器。
 let loopGen = 0; // 循环代数：每次 runBatchLoop 占用新一代，旧循环在下一个 await 点感知后代别不符 → 静默退出（不碰 state）
+let activePlan: Array<SendItem & { seq: number }> = []; // 当前批次全部组（含运行中追加）
+let activeStreams = new Set<Promise<void>>();           // 活跃执行流
+const spawnedIds = new Set<string>();                   // 已开流的组 id（防重复分桶）
+const failsByAccount = new Map<number, number>();       // 多流共享：账号连败计数（单线程原子）
+const sendAttempts = new Map<string, number>();         // 多流共享：每组瞬态重试次数
+
+/** 按任务(campaign)分桶；手动直发（无 campaignId）归单桶 "__manual__"。 */
+function groupByCampaign(items: Array<SendItem & { seq: number }>): Map<string, Array<SendItem & { seq: number }>> {
+  const buckets = new Map<string, Array<SendItem & { seq: number }>>();
+  for (const it of items) {
+    const key = it.campaignId ?? "__manual__";
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(it);
+  }
+  return buckets;
+}
 
 async function runBatchLoop(): Promise<void> {
   const myGen = ++loopGen; // 覆盖「取消→立刻恢复」竞态：旧循环可能还在 SMTP 发送中/睡眠中，唤醒后让位
   try {
+  // 新批次：清空模块级批次态（连败计数/瞬态重试/防重复分桶标记跨批次残留会污染判定）
+  failsByAccount.clear();
+  sendAttempts.clear();
+  spawnedIds.clear();
   const sched = loadConfig().schedule || DEFAULT_SCHEDULE;
-  const plan = [...queues.values()].flat().sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
   const acctEmails = new Map(getDb().select().from(emailAccounts).all().map(a => [a.id, a.email]));
-  const failsByAccount = new Map<number, number>();
-  const sendAttempts = new Map<string, number>(); // P1-2: 每组瞬态重试次数（组 id → 已重试数）
 
-  /** 账号熔断：把该账号剩余 pending 组标 failed（其他账号继续发 — 串行模型无需中断整批） */
-  const tripAccount = (aid: number, fromIdx: number) => {
+  /**
+   * 账号熔断：把该账号剩余 pending 组摘除（其他账号继续发 — 多流模型无需中断整批）。
+   * 摘除的组标 failed + errorKind='blocked'（熔断·未发送），与真·发出去被拒（smtp_fail）区分：
+   *  - 不推进 stage、不标退信、不止损（它们根本没发出去）；
+   *  - 不计入 failedCount（避免「失败数」虚增，口径与「未发送」语义一致）；
+   *  - 触点侧当场回 pending（复用 onCampaignSendFailed），不等 24h 僵尸对账，下一轮扫描自动重排。
+   *  不换人发（用户拍板 v6.0 纪律）：熔断账号的组不静默改派其他账号，等账号恢复由任务重建；
+   *  仅当无任何健康账号时，剩余组整批标 blocked 等人处理。
+   *  跨流摘除：遍历 activePlan 全部组（发送中组 status 已置 'sending'，不会误伤）。
+   */
+  const tripAccount = (aid: number) => {
     const s = state.accountStats.find(x => x.accountId === aid);
     if (s) s.isCircuitOpen = true;
     Log.warn("send.circuit", `账号 ${aid} 熔断`);
-    for (let j = fromIdx; j < plan.length; j++) {
-      const it = plan[j]!;
+    const touched = new Set<number>(); // 受影响联系人（触点回 pending）
+    for (const it of activePlan) {
       if (it.accountId !== aid || it.status !== "pending") continue;
-      it.status = "failed"; it.error = `账号 ${acctEmails.get(aid) || aid} 熔断，本组未发送`;
-      state.failedCount++;
-      if (s) s.failed++;
-      try { getDb().update(sendQueue).set({ status: "failed", error: it.error }).where(eq(sendQueue.id, it.id)).run(); } catch { /* */ }
+      it.status = "failed"; it.errorKind = "blocked";
+      it.error = `账号 ${acctEmails.get(aid) || aid} 熔断，本组未发送（账号恢复后由任务扫描自动重排）`;
+      for (const rc of it.recipients) touched.add(rc.contactId);
+      try { getDb().update(sendQueue).set({ status: "failed", error: it.error, errorKind: "blocked" }).where(eq(sendQueue.id, it.id)).run(); } catch { /* */ }
+    }
+    // 无任何健康账号（全熔断/停用）：剩余组不再硬跑逐个判死，整批标 blocked 等人处理
+    if (selectableAccounts().length === 0) {
+      for (const it of activePlan) {
+        if (it.status !== "pending") continue;
+        it.status = "failed"; it.errorKind = "blocked";
+        it.error = "无可用发信账号（全部熔断/停用），本组未发送";
+        for (const rc of it.recipients) touched.add(rc.contactId);
+        try { getDb().update(sendQueue).set({ status: "failed", error: it.error, errorKind: "blocked" }).where(eq(sendQueue.id, it.id)).run(); } catch { /* */ }
+      }
+    }
+    // 触点当场回 pending（不等 24h 僵尸对账）：熔断路径此前不调 onCampaignSendFailed，
+    // 触点卡 queued 要等 24h 才对账回来——这是「熔断误伤」的第二个缺口。
+    if (touched.size > 0) {
+      try { void import("./campaign.service").then(cm => { for (const cid of touched) cm.onCampaignSendFailed(cid); }); } catch { /* 回退失败不阻塞发送主流程 */ }
     }
     push(EVENTS.CIRCUIT_CHANGED, { accountId: aid, email: acctEmails.get(aid), batchId: state.batchId });
   };
 
-  for (let i = 0; i < plan.length; i++) {
+  /** 一条任务流：桶内串行（组间暂停/同公司错开/连败计数照旧），桶间并行。 */
+  const runStream = async (items: Array<SendItem & { seq: number }>): Promise<void> => {
+  for (let i = 0; i < items.length; i++) {
     while (state.isPaused && state.isRunning) await sleep(1000);
     if (loopGen !== myGen) return; // 已被新批次接管，静默让位
-    if (!state.isRunning || abortFlag) break;
+    if (!state.isRunning || abortFlag) return;
 
-    const item = plan[i]!;
+    const item = items[i]!;
     if (item.status !== "pending") continue; // 已被熔断标记的组直接跳过
     const accountId = item.accountId;
 
@@ -1215,7 +1358,7 @@ async function runBatchLoop(): Promise<void> {
       push(EVENTS.SEND_PROGRESS, state);
       await sleep(waitMs);
       if (loopGen !== myGen) return; // 已被新批次接管
-      if (!state.isRunning) break;
+      if (!state.isRunning) return;
       state.delaySeconds = 0;
       state.delayUntil = null;
       state.delayReason = null;
@@ -1223,149 +1366,202 @@ async function runBatchLoop(): Promise<void> {
       continue;
     }
 
-    state.currentItem = { ...item, status: "sending" };
-    push(EVENTS.SEND_PROGRESS, state);
+    // 账号并发闸：该账号排发单元已满（≥MAX_ACTIVE_TASKS_PER_ACCOUNT）则等号，不硬塞。
+    // 非任务驱动（手动直发，无 campaignId）不参与上限 —— 同步放行，不经过 await，
+    // 否则 dryRun 无 await 场景被微任务挂起，同步调用方（resumeQueue）拿不到最终态。
+    if (item.campaignId) {
+      await acquireAccount(accountId, item.campaignId);
+      if (loopGen !== myGen || !state.isRunning || abortFlag) { releaseAccount(accountId); return; }
+    }
 
-    if (loadConfig().test.dryRun) {
-      // 发信阻隔：流程完整但不实际发送（测试模式）
-      item.status = "sent"; item.sentAt = new Date().toISOString(); state.sentCount++; failsByAccount.set(accountId, 0);
-      try { getDb().update(sendQueue).set({ status: "sent", sentAt: item.sentAt }).where(eq(sendQueue.id, item.id)).run(); } catch { /* */ }
-      const s = state.accountStats.find(x => x.accountId === accountId);
-      if (s) s.sent++;
-      Log.info("send.dryRun", `${item.companyName}: 测试模式，跳过真实发送`);
-    } else if (sendBccFn) {
-      // 发送前按模板现场组装正文（随机词每组重新随机）
-      const body = renderTemplate(item.tplBody, item.contactVars);
-      const sendItem = { ...item, body };
-      const r = await sendBccFn(sendItem);
-      if (r.success) {
-        const messageId = r.data?.messageId || null;
+    try {
+      item.status = "sending"; // 内存标记：tripAccount 只摘 pending，发送中组不被跨流误伤
+      state.currentItem = { ...item, status: "sending" };
+      push(EVENTS.SEND_PROGRESS, state);
+
+      if (loadConfig().test.dryRun) {
+        // 发信阻隔：流程完整但不实际发送（测试模式）
         item.status = "sent"; item.sentAt = new Date().toISOString(); state.sentCount++; failsByAccount.set(accountId, 0);
-        // P1-2: 成功即清零持久化熔断计数。sender_block 熔断不由 SMTP 成功解（只有一键解除/24h 过期），
-        // 连原因与过期时刻一起清的是 smtp_fail 那条账
-        try {
-          const cur = getDb().select({ circuitReason: emailAccounts.circuitReason })
-            .from(emailAccounts).where(eq(emailAccounts.id, accountId)).get();
-          getDb().update(emailAccounts)
-            .set({
-              consecutiveFails: 0,
-              ...(cur?.circuitReason === "sender_block"
-                ? {} : { circuitOpenAt: null, circuitResetAfter: null, circuitReason: null }),
-            })
-            .where(eq(emailAccounts.id, accountId)).run();
-        } catch { /* */ }
-        recordQuotaSend(item.recipients.length);
-        let stageAdvanced = 0; // 本组阶段推进人数（日志可观测）
         try { getDb().update(sendQueue).set({ status: "sent", sentAt: item.sentAt }).where(eq(sendQueue.id, item.id)).run(); } catch { /* */ }
-        const now = new Date().toISOString();
-        for (const rc of item.recipients) {
-          try {
-            getDb().insert(interactions).values({ contactId: rc.contactId, type: "sent", direction: "outbound", channel: "email", subject: item.subject, bodyPreview: body.slice(0, 200), accountId, createdAt: now }).run();
-            // 收件箱「已发送」:SMTP 发信不进 IMAP Sent 文件夹,直接落 inbox_messages 让前端可见并关联联系人
-            getDb().insert(inboxMessages).values({
-              accountId, messageId,
-              fromEmail: rc.email, fromName: rc.name,
-              subject: item.subject, bodyPreview: body.slice(0, 500),
-              classification: "sent", matchedContactId: rc.contactId,
-              isRead: 1, receivedAt: now,
-            }).run();
-            await writeBodyForLastInsert(body); // 正文落盘文件
-            // v4.4: 发送阶段推进 — SMTP 确认成功后才推进（cold→f1→…→f4 封顶），失败/阻隔不动 stage
-            try {
-              const cRow = getDb().select({ stage: contacts.stage }).from(contacts).where(eq(contacts.id, rc.contactId)).get();
-              if (cRow) {
-                const ns = nextStage(cRow.stage);
-                if (ns !== (cRow.stage || "cold")) {
-                  getDb().update(contacts).set({ stage: ns, updatedAt: now }).where(eq(contacts.id, rc.contactId)).run();
-                  stageAdvanced++;
-                }
-              }
-            } catch { /* 推进失败不影响发送记录 */ }
-            // 智能发信任务推进（docs/smart-send-spec.md §3.1）：真实发出 → 任务触点记一轮、排下一轮。
-            // 惰性 import 防循环依赖（campaign.service 引本服务的 buildDynamicQueue/类型）。
-            try { void import("./campaign.service").then(cm => cm.onCampaignSendSent(rc.contactId)); } catch { /* 任务推进失败不影响发送记录 */ }
-            // v4.0: 发信不再自动标已触达 — reached 只能用户手动设置/改标签触发
-          } catch (err) {
-            Log.error("send.record", rc.email, err instanceof Error ? err.stack : undefined);
-          }
-        }
-        // P0-2: 每组即时落盘 —— 30s 窗口内崩溃会重发已触达客户，74ms/组的写盘成本可接受
-        saveDatabase();
-        if (stageAdvanced > 0) Log.info("send.stage", `${item.companyName}: ${stageAdvanced}/${item.recipients.length} 人阶段已推进`);
         const s = state.accountStats.find(x => x.accountId === accountId);
         if (s) s.sent++;
-      } else {
-        // P1-2: 瞬态错误有界重试（≤2 次，间隔 5s）——重试期间不计熔断、不落 failed
-        const attempt = (sendAttempts.get(item.id) ?? 0) + 1;
-        sendAttempts.set(item.id, attempt);
-        if (classifySmtpError(r.error || "") === "transient" && attempt <= 2) {
-          Log.warn("send.retry", `${item.companyName}: 瞬态错误，第 ${attempt}/2 次重试（${(r.error || "").slice(0, 120)}）`);
-          state.currentItem = null;
-          state.delaySeconds = 5;
-          state.delayUntil = new Date(Date.now() + 5000).toISOString();
-          state.delayReason = "group";
-          push(EVENTS.SEND_PROGRESS, state);
-          const ok = await sleep(5000);
-          if (loopGen !== myGen) return; // 已被新批次接管
-          state.delaySeconds = 0; state.delayUntil = null; state.delayReason = null;
-          if (!ok) break;
-          i--; // 同组重试
-          continue;
-        }
-        item.status = "failed"; item.error = r.error; state.failedCount++;
-        try { getDb().update(sendQueue).set({ status: "failed", error: r.error }).where(eq(sendQueue.id, item.id)).run(); } catch { /* */ }
-        // 智能发信任务失败回退（docs/smart-send-spec.md §3.2）：重试耗尽的目标回 pending 明天再试，不无声丢触点
-        try { for (const rc of item.recipients) void import("./campaign.service").then(cm => cm.onCampaignSendFailed(rc.contactId)); } catch { /* */ }
-        saveDatabase(); // P0-2: 失败态同样即时落盘，崩溃恢复不会重发已判定失败的组
-        const s = state.accountStats.find(x => x.accountId === accountId);
-        if (s) s.failed++;
-        const n = (failsByAccount.get(accountId) ?? 0) + 1;
-        failsByAccount.set(accountId, n);
-        // P1-2: 熔断计数持久化（重启后熔断状态可见）。
-        // 单次 SMTP 失败不许顺手清掉 sender_block 熔断——那是服务商拦截驱动的另一条账，
-        // 只有「一键解除」或 24h 过期能解（规范 §4/§6）。
-        try {
-          const cur = getDb().select({ circuitReason: emailAccounts.circuitReason })
-            .from(emailAccounts).where(eq(emailAccounts.id, accountId)).get();
-          const opened = new Date();
-          const patch = n >= 3
-            ? {
-              consecutiveFails: n, circuitOpenAt: opened.toISOString(),
-              circuitResetAfter: new Date(opened.getTime() + CIRCUIT_TTL_MS).toISOString(), circuitReason: "smtp_fail",
+        Log.info("send.dryRun", `${item.companyName}: 测试模式，跳过真实发送`);
+      } else if (sendBccFn) {
+        // 发送前按模板现场组装正文（随机词每组重新随机）
+        const body = renderTemplate(item.tplBody, item.contactVars);
+        const sendItem = { ...item, body };
+        const r = await sendBccFn(sendItem);
+        if (r.success) {
+          const messageId = r.data?.messageId || null;
+          item.status = "sent"; item.sentAt = new Date().toISOString(); state.sentCount++; failsByAccount.set(accountId, 0);
+          // P1-2: 成功即清零持久化熔断计数。sender_block 熔断不由 SMTP 成功解（只有一键解除/24h 过期），
+          // 连原因与过期时刻一起清的是 smtp_fail 那条账
+          try {
+            const cur = getDb().select({ circuitReason: emailAccounts.circuitReason })
+              .from(emailAccounts).where(eq(emailAccounts.id, accountId)).get();
+            getDb().update(emailAccounts)
+              .set({
+                consecutiveFails: 0,
+                ...(cur?.circuitReason === "sender_block"
+                  ? {} : { circuitOpenAt: null, circuitResetAfter: null, circuitReason: null }),
+              })
+              .where(eq(emailAccounts.id, accountId)).run();
+          } catch { /* */ }
+          recordQuotaSend(item.recipients.length);
+          let stageAdvanced = 0; // 本组阶段推进人数（日志可观测）
+          try { getDb().update(sendQueue).set({ status: "sent", sentAt: item.sentAt }).where(eq(sendQueue.id, item.id)).run(); } catch { /* */ }
+          const now = new Date().toISOString();
+          for (const rc of item.recipients) {
+            try {
+              getDb().insert(interactions).values({ contactId: rc.contactId, type: "sent", direction: "outbound", channel: "email", subject: item.subject, bodyPreview: body.slice(0, 200), accountId, createdAt: now }).run();
+              // 收件箱「已发送」:SMTP 发信不进 IMAP Sent 文件夹,直接落 inbox_messages 让前端可见并关联联系人
+              getDb().insert(inboxMessages).values({
+                accountId, messageId,
+                fromEmail: rc.email, fromName: rc.name,
+                subject: item.subject, bodyPreview: body.slice(0, 500),
+                classification: "sent", matchedContactId: rc.contactId,
+                isRead: 1, receivedAt: now,
+              }).run();
+              await writeBodyForLastInsert(body); // 正文落盘文件
+              // v4.4: 发送阶段推进 — SMTP 确认成功后才推进（cold→f1→…→f4 封顶），失败/阻隔不动 stage
+              try {
+                const cRow = getDb().select({ stage: contacts.stage }).from(contacts).where(eq(contacts.id, rc.contactId)).get();
+                if (cRow) {
+                  const ns = nextStage(cRow.stage);
+                  if (ns !== (cRow.stage || "cold")) {
+                    getDb().update(contacts).set({ stage: ns, updatedAt: now }).where(eq(contacts.id, rc.contactId)).run();
+                    stageAdvanced++;
+                  }
+                }
+              } catch { /* 推进失败不影响发送记录 */ }
+              // 智能发信任务推进（docs/smart-send-spec.md §3.1）：真实发出 → 任务触点记一轮、排下一轮。
+              // 惰性 import 防循环依赖（campaign.service 引本服务的 buildDynamicQueue/类型）。
+              try { void import("./campaign.service").then(cm => cm.onCampaignSendSent(rc.contactId)); } catch { /* 任务推进失败不影响发送记录 */ }
+              // v4.0: 发信不再自动标已触达 — reached 只能用户手动设置/改标签触发
+            } catch (err) {
+              Log.error("send.record", rc.email, err instanceof Error ? err.stack : undefined);
             }
-            : { consecutiveFails: n, ...(cur?.circuitReason === "sender_block" ? {} : { circuitOpenAt: null, circuitResetAfter: null, circuitReason: null }) };
-          getDb().update(emailAccounts).set(patch).where(eq(emailAccounts.id, accountId)).run();
-        } catch { /* 统计失败不影响发送 */ }
-        if (n >= 3) tripAccount(accountId, i + 1); // 连续失败阈值：只摘除该账号剩余组，批次继续
+          }
+          // P0-2: 每组即时落盘 —— 30s 窗口内崩溃会重发已触达客户，74ms/组的写盘成本可接受
+          saveDatabase();
+          if (stageAdvanced > 0) Log.info("send.stage", `${item.companyName}: ${stageAdvanced}/${item.recipients.length} 人阶段已推进`);
+          const s = state.accountStats.find(x => x.accountId === accountId);
+          if (s) s.sent++;
+        } else {
+          // P1-2: 瞬态错误有界重试（≤2 次，间隔 5s）——重试期间不计熔断、不落 failed
+          const attempt = (sendAttempts.get(item.id) ?? 0) + 1;
+          sendAttempts.set(item.id, attempt);
+          if (classifySmtpError(r.error || "") === "transient" && attempt <= 2) {
+            Log.warn("send.retry", `${item.companyName}: 瞬态错误，第 ${attempt}/2 次重试（${(r.error || "").slice(0, 120)}）`);
+            state.currentItem = null;
+            state.delaySeconds = 5;
+            state.delayUntil = new Date(Date.now() + 5000).toISOString();
+            state.delayReason = "group";
+            push(EVENTS.SEND_PROGRESS, state);
+            const ok = await sleep(5000);
+            if (loopGen !== myGen) return; // 已被新批次接管
+            state.delaySeconds = 0; state.delayUntil = null; state.delayReason = null;
+            if (!ok) return;
+            item.status = "pending"; // 重试轮重新可发（发送前置了 'sending'，不恢复会被 status!=='pending' 跳过）
+            i--; // 同组重试
+            continue;
+          }
+          item.status = "failed"; item.errorKind = "smtp_fail"; item.error = r.error; state.failedCount++;
+          try { getDb().update(sendQueue).set({ status: "failed", error: r.error, errorKind: "smtp_fail" }).where(eq(sendQueue.id, item.id)).run(); } catch { /* */ }
+          // 智能发信任务失败回退（docs/smart-send-spec.md §3.2）：重试耗尽的目标回 pending 明天再试，不无声丢触点
+          try { for (const rc of item.recipients) void import("./campaign.service").then(cm => cm.onCampaignSendFailed(rc.contactId)); } catch { /* */ }
+          saveDatabase(); // P0-2: 失败态同样即时落盘，崩溃恢复不会重发已判定失败的组
+          const s = state.accountStats.find(x => x.accountId === accountId);
+          if (s) s.failed++;
+          const n = (failsByAccount.get(accountId) ?? 0) + 1;
+          failsByAccount.set(accountId, n);
+          // P1-2: 熔断计数持久化（重启后熔断状态可见）。
+          // 单次 SMTP 失败不许顺手清掉 sender_block 熔断——那是服务商拦截驱动的另一条账，
+          // 只有「一键解除」或 24h 过期能解（规范 §4/§6）。
+          try {
+            const cur = getDb().select({ circuitReason: emailAccounts.circuitReason })
+              .from(emailAccounts).where(eq(emailAccounts.id, accountId)).get();
+            const opened = new Date();
+            const patch = n >= 3
+              ? {
+                consecutiveFails: n, circuitOpenAt: opened.toISOString(),
+                circuitResetAfter: new Date(opened.getTime() + CIRCUIT_TTL_MS).toISOString(), circuitReason: "smtp_fail",
+              }
+              : { consecutiveFails: n, ...(cur?.circuitReason === "sender_block" ? {} : { circuitOpenAt: null, circuitResetAfter: null, circuitReason: null }) };
+            getDb().update(emailAccounts).set(patch).where(eq(emailAccounts.id, accountId)).run();
+          } catch { /* 统计失败不影响发送 */ }
+          if (n >= 3) tripAccount(accountId); // 连续失败阈值：跨流摘除该账号剩余 pending 组
+        }
+      } else {
+        item.status = "failed"; item.errorKind = "blocked"; item.error = "发送器未配置";
       }
-    } else {
-      item.status = "failed"; item.error = "发送器未配置";
-    }
 
-    state.currentItem = null;
-    push(EVENTS.SEND_PROGRESS, state);
-
-    if (i < plan.length - 1 && state.isRunning && !state.isPaused) {
-      // 组间暂停 — 全局生效于任意相邻两组之间
-      const ms = randBetween(sched.groupDelayMinSeconds, sched.groupDelayMaxSeconds);
-      state.delaySeconds = Math.floor(ms / 1000);
-      state.delayUntil = new Date(Date.now() + ms).toISOString();
-      state.delayReason = "group";
+      state.currentItem = null;
       push(EVENTS.SEND_PROGRESS, state);
-      const ok = await sleep(ms);
-      if (loopGen !== myGen) return; // 已被新批次接管：delayUntil 归新循环，别去清它
-      state.delaySeconds = 0;
-      state.delayUntil = null;
-      state.delayReason = null;
-      if (!ok) break;
+
+      if (i < items.length - 1 && state.isRunning && !state.isPaused) {
+        // 组间暂停 — 桶内生效（任务流内部串行；其他任务流不受本流暂停影响）
+        const ms = randBetween(sched.groupDelayMinSeconds, sched.groupDelayMaxSeconds);
+        state.delaySeconds = Math.floor(ms / 1000);
+        state.delayUntil = new Date(Date.now() + ms).toISOString();
+        state.delayReason = "group";
+        push(EVENTS.SEND_PROGRESS, state);
+        const ok = await sleep(ms);
+        if (loopGen !== myGen) return; // 已被新批次接管：delayUntil 归新循环，别去清它
+        state.delaySeconds = 0;
+        state.delayUntil = null;
+        state.delayReason = null;
+        if (!ok) return;
+      }
+    } finally {
+      releaseAccount(accountId); // 账号并发闸释放（组级）
     }
   }
+  }; // runStream 结束
 
+  /** 为新组开一条执行流（失败由流内自兜，不冒泡）。 */
+  const spawnStream = (items: Array<SendItem & { seq: number }>): void => {
+    const p = runStream(items).finally(() => { activeStreams.delete(p); });
+    activeStreams.add(p);
+    void p;
+  };
+
+  // 启动快照：queues 全部组 + 运行中追加。保持原引用（流内 status 更新必须对 queues/getQueueItems 可见），
+  // 按 seq 排序（跨账号交错序，原单流语义）。
+  activePlan = ([...queues.values()].flat() as Array<SendItem & { seq: number }>)
+    .concat(pendingAppends.splice(0) as Array<SendItem & { seq: number }>)
+    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  pendingAppends.length = 0;
+  const fresh = activePlan.filter(it => !spawnedIds.has(it.id));
+  for (const it of fresh) spawnedIds.add(it.id);
+  for (const bucket of groupByCampaign(fresh).values()) spawnStream(bucket);
+
+  // 主调度：等待活跃流收敛；每轮先合并运行中追加（appendToBatch 开新流）再检查流是否清空。
+  // 完成判定用「组状态同步更新」（流内同步置 sent/failed，不依赖微任务清理 activeStreams）：
+  // dryRun 无 await 场景下流主体同步跑完，主调度首轮即收敛 → 同步调用方（resumeQueue 等）拿得到最终态。
+  while (loopGen === myGen && state.isRunning && !abortFlag) {
+    if (pendingAppends.length > 0) {
+      const appends = pendingAppends.splice(0) as Array<SendItem & { seq: number }>;
+      appends.forEach((it, idx) => { it.seq = activePlan.length + idx; });
+      activePlan.push(...appends);
+      const fr = appends.filter(it => !spawnedIds.has(it.id));
+      for (const it of fr) spawnedIds.add(it.id);
+      for (const bucket of groupByCampaign(fr).values()) spawnStream(bucket);
+      if (fr.length > 0) continue; // 新流刚开，立即进入等待（避免空转一轮）
+    }
+    if (activePlan.every(x => x.status === "sent" || x.status === "failed")) break;
+    if (activeStreams.size === 0) break; // 防御：无活跃流但有未完成组（理论不可达）
+    await Promise.race([...activeStreams].map(p => p.then(() => undefined)));
+  }
+
+  // 收尾：所有流收敛后判定批次完成
   if (loopGen !== myGen) return; // 已被新批次接管，本轮收尾作废
-  const allDone = plan.every(x => x.status !== "pending");
+  const allDone = activePlan.every(x => x.status !== "pending");
   if (allDone) {
     state.isRunning = false;
     saveRunningBatch(null);   // 批次跑完：清运行中标志，重启不再触发自动续跑
+    spawnedIds.clear();       // 多流批次收敛：清防重复分桶标记，下一批次重新计算
+    activePlan = [];
     Log.info("send.done", `${state.sentCount}/${state.totalItems}`);
     push(EVENTS.SEND_PROGRESS, state);
   }
@@ -1379,6 +1575,7 @@ async function runBatchLoop(): Promise<void> {
     }
   }
 }
+
 
 /** 暂停发送。reason=user（默认，用户手动点暂停）| sender_block（服务商拦截退信触发，队列页据此出横幅）。 */
 export function pauseSend(reason: "user" | "sender_block" = "user"): Result<void> {

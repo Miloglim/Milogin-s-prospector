@@ -323,5 +323,15 @@ export function runMigrations(): void {
     if (dupN > 0) Log.info("db.migrate", `interactions 重复事件去重 ${dupN} 条`);
   });
 
+  // failed 状态子类区分：熔断/中断导致的「未发送」与真·发出去被拒分开。
+  // tripAccount 熔断判死走 error_kind='blocked'（可重排、不计失败统计），真失败走 'smtp_fail'。
+  // 存量 failed 行无法回溯成因，保持 NULL 不动。
+  step("v5.x-send-queue-error-kind", () => {
+    if (!tableCols("send_queue").includes("error_kind")) {
+      raw.exec("ALTER TABLE send_queue ADD COLUMN error_kind text;");
+      Log.info("db.migrate", "send_queue 补 error_kind 列（failed 子类区分）");
+    }
+  });
+
   Log.info("db.migrations", `${statements.length} 条建表语句已执行`);
 }

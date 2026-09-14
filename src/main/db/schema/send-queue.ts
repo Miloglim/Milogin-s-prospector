@@ -19,6 +19,7 @@ export const sendQueue = sqliteTable("send_queue", {
   sendMode: text("send_mode").notNull().default("bcc"), // individual=单独一封（收件人走 To）/ bcc=合并一封（BCC）；旧队列行保持 bcc 语义
   status: text("status").default("pending").notNull(), // pending | sending | sent | failed
   error: text("error"),
+  errorKind: text("error_kind"), // failed 子类：smtp_fail=发出去被拒·真失败；blocked=熔断/中断·未发送（可重排，不算失败统计）
   sentAt: text("sent_at"),
   createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
 });

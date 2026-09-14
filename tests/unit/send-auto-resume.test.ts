@@ -57,7 +57,7 @@ CREATE TABLE send_queue (
   account_id integer NOT NULL, account_email text,
   subject text, tpl_body text, contact_vars text,
   send_mode text DEFAULT 'bcc' NOT NULL,
-  status text DEFAULT 'pending' NOT NULL, error text, sent_at text,
+  status text DEFAULT 'pending' NOT NULL, error text, error_kind text, sent_at text,
   tpl_name text, country text, language text, cc text,
   created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
