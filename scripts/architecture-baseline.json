@@ -1,30 +1,6 @@
 {
   "exceptions": [
     {
-      "file": "src/main/transport/ai.ipc.ts",
-      "rule": "transport-db",
-      "specifier": "../db",
-      "ticket": "ARCH-002",
-      "expires": "2026-10-31",
-      "reason": "Move AI backcheck persistence behind an application service."
-    },
-    {
-      "file": "src/main/transport/ai.ipc.ts",
-      "rule": "transport-db",
-      "specifier": "../db/schema/companies",
-      "ticket": "ARCH-002",
-      "expires": "2026-10-31",
-      "reason": "Move AI backcheck persistence behind an application service."
-    },
-    {
-      "file": "src/main/transport/ai.ipc.ts",
-      "rule": "transport-db",
-      "specifier": "../db/schema/contacts",
-      "ticket": "ARCH-002",
-      "expires": "2026-10-31",
-      "reason": "Move AI backcheck persistence behind an application service."
-    },
-    {
       "file": "src/main/transport/inbox.ipc.ts",
       "rule": "transport-db",
       "specifier": "../db",
