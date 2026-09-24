@@ -38,6 +38,8 @@ vi.mock("../../src/main/services/send.service", () => {
     startSend: vi.fn(async () => ok({})), pauseSend: vi.fn(() => ok({})),
     resumeSend: vi.fn(() => ok({})), cancelSend: vi.fn(() => ok({})),
     getQueueItems: vi.fn(() => ok([])), resumeQueue: vi.fn(async () => ok({ batchId: "b" })),
+    getInterruptedBatchStatus: vi.fn(() => ok({ batchId: "b", startedAt: "2026-09-24T00:00:00.000Z", pendingGroups: 2, pendingRecipients: 5 })),
+    resumeInterruptedBatch: vi.fn(() => ok({ batchId: "b", queued: 2, queuedCount: 5, dropped: 0 })),
     getTimeBuckets: vi.fn(() => ok([])), getStageBuckets: vi.fn(() => ok([])),
     getSendTimeBuckets: vi.fn(() => ok([])), getPickerStats: vi.fn(() => ok({})),
     previewSentence: vi.fn(() => ok({})), buildQueue: vi.fn(async () => ok({})),
@@ -113,6 +115,13 @@ describe("campaign IPC 端到端（向导 payload → transport → 落库）", 
       IPC.SEND.CAMPAIGNS, IPC.SEND.CAMPAIGN_DELETE]) {
       expect(handlers.has(ch), ch).toBe(true);
     }
+  });
+
+  it("中断批次只读摘要与专用恢复通道都返回 Result 包络", () => {
+    const status = invoke<{ batchId: string; pendingGroups: number; pendingRecipients: number }>(IPC.SEND.GET_INTERRUPTED_BATCH);
+    const resumed = invoke<{ batchId: string; queued: number; queuedCount: number }>(IPC.SEND.RESUME_INTERRUPTED_BATCH);
+    expect(status).toMatchObject({ success: true, data: { batchId: "b", pendingGroups: 2, pendingRecipients: 5 } });
+    expect(resumed).toMatchObject({ success: true, data: { batchId: "b", queued: 2, queuedCount: 5 } });
   });
 
   it("卡片「删除」(campaignDelete)：草稿经通道删净；空 id 走 Result 包络报错", () => {

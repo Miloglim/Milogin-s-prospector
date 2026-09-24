@@ -112,6 +112,7 @@ describe("中断批次启动确认", () => {
     expect(interrupted?.batchId).toBe("batch-ab12cd34");
     expect(st.data!.isRunning).toBe(false);
     expect(h.cfg.runningBatch).toBeNull();
+    expect((h.cfg.interruptedBatch as { batchId: string }).batchId).toBe("batch-ab12cd34");
     expect(S.getQueueItems().data!.find(i => i.id === "g2")!.status).toBe("pending");
   });
 
@@ -125,13 +126,16 @@ describe("中断批次启动确认", () => {
       accountId: 1, status: "pending", createdAt: new Date().toISOString(),
     }).run();
 
-    const interrupted = S.claimInterruptedBatch();
-    const restored = S.resumeQueue(interrupted!.batchId);
+    S.claimInterruptedBatch();
+    const summary = S.getInterruptedBatchStatus();
+    const restored = S.resumeInterruptedBatch();
 
+    expect(summary.data).toMatchObject({ batchId: "batch-ab12cd34", pendingGroups: 1, pendingRecipients: 1 });
     expect(restored.success).toBe(true);
     const queue = S.getQueueItems().data!;
     expect(queue.find(i => i.id === "g1")!.status).toBe("sent");
     expect(h.db.select().from(schema.sendQueue).all().find(i => i.id === "other")!.status).toBe("pending");
+    expect(h.cfg.interruptedBatch).toBeNull();
   });
 
   it("两步式手动入队（无标志）：重启不误自动启动，pending 原样保留", async () => {
