@@ -15,22 +15,6 @@
       "ticket": "ARCH-004",
       "expires": "2026-10-31",
       "reason": "Extract the SMTP adapter and account lookup from the IPC module."
-    },
-    {
-      "file": "src/main/transport/send.ipc.ts",
-      "rule": "transport-db",
-      "specifier": "../db/schema/contacts",
-      "ticket": "ARCH-004",
-      "expires": "2026-10-31",
-      "reason": "Extract the SMTP adapter and account lookup from the IPC module."
-    },
-    {
-      "file": "src/main/transport/send.ipc.ts",
-      "rule": "transport-db",
-      "specifier": "../db/schema/companies",
-      "ticket": "ARCH-004",
-      "expires": "2026-10-31",
-      "reason": "Extract the SMTP adapter and account lookup from the IPC module."
     }
   ]
 }

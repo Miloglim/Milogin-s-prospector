@@ -268,6 +268,49 @@ function push(c: string, d: unknown) { try { pushFn?.(c, d); } catch { /* */ } i
 let sendBccFn: ((item: SendItem & { body: string }) => Promise<Result<{ messageId: string | null }>>) | null = null;
 export function setSendBccFn(fn: (item: SendItem & { body: string }) => Promise<Result<{ messageId: string | null }>>) { sendBccFn = fn; }
 
+export interface SendTestInput {
+  to: string;
+  accountId: number;
+  subject?: string;
+  body?: string;
+  contactId?: number;
+}
+
+function renderTestText(template: string, values: Record<string, string>): string {
+  return template.replace(/\{\{(firstName|lastName|company|email)\}\}/g, (_match, key: string) => values[key] ?? "");
+}
+
+/** 测试或 CRM 快速发信：联系人查询和变量渲染属于发送用例，不能留在 IPC 层。 */
+export async function sendTestMessage(input: SendTestInput): Promise<Result<{ messageId: string | null }>> {
+  if (!input.to.trim()) return failResult("收件人必填");
+  if (!Number.isInteger(input.accountId) || input.accountId <= 0) return failResult("发件账号必填");
+  if (!sendBccFn) return failResult("发送适配器未配置");
+  if (input.contactId && loadConfig().test.dryRun) {
+    Log.info("send.dryRun", `CRM 快速发信 → ${input.to}：测试模式，跳过真实发送`);
+    return okResult({ messageId: null });
+  }
+
+  let firstName = "Test", lastName = "User", name = "Test User", company = "ACME Corp", companyId = 0, contactId = 0;
+  if (input.contactId) {
+    const contact = getDb().select().from(contacts).where(eq(contacts.id, input.contactId)).get();
+    if (contact) {
+      firstName = contact.firstName || firstName; lastName = contact.lastName || lastName;
+      name = [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.email;
+      contactId = contact.id;
+      if (contact.companyId) {
+        const found = getDb().select().from(companies).where(eq(companies.id, contact.companyId)).get();
+        if (found) { company = found.name; companyId = found.id; }
+      }
+    }
+  }
+  const values = { firstName, lastName, company, email: input.to };
+  return sendBccFn({
+    id: "crm", companyName: company, companyId, recipients: [{ contactId, email: input.to, name }],
+    accountId: input.accountId, subject: renderTestText(input.subject || "Test", values),
+    body: renderTestText(input.body || "Test email from Prospector.", values), status: "sending", tplBody: "", contactVars: { email: input.to },
+  });
+}
+
 // ── 可中断延迟 ──
 
 let delayTimer: ReturnType<typeof setTimeout> | null = null;

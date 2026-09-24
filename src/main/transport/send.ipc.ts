@@ -7,8 +7,6 @@ import { Log } from "../logger";
 import { failResult, okResult, type Result } from "../errors";
 import { getDb } from "../db";
 import { emailAccounts } from "../db/schema/accounts";
-import { contacts } from "../db/schema/contacts";
-import { companies } from "../db/schema/companies";
 import { eq } from "drizzle-orm";
 import { getDecryptedPassword } from "../services/account.service";
 import { loadConfig, saveConfig } from "../config";
@@ -294,50 +292,6 @@ export function registerSendIPC() {
     if (!input?.to) return failResult("收件人必填");
     if (!input?.accountId) return failResult("发件账号必填");
 
-    // 发信阻隔：带 contactId = CRM 快速发信，收件人是真实客户，必须挡。
-    // 设置页的「测试发信」不传 contactId，仍可发出去验证 SMTP 配置。
-    if (input.contactId && loadConfig().test.dryRun) {
-      Log.info("send.dryRun", `CRM 快速发信 → ${input.to}：测试模式，跳过真实发送`);
-      return okResult({ messageId: null });
-    }
-
-    // 渲染：有 contactId → 用真实联系人数据；否则用虚拟数据
-    let name = "Test User";
-    let company = "ACME Corp";
-    let companyId = 0;
-    let firstName = "Test";
-    let lastName = "User";
-    let contactId = 0;
-
-    if (input.contactId) {
-      const c = getDb().select().from(contacts).where(eq(contacts.id, input.contactId)).get();
-      if (c) {
-        firstName = c.firstName || "Test";
-        lastName = c.lastName || "User";
-        name = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email;
-        contactId = c.id;
-        if (c.companyId) {
-          const comp = getDb().select().from(companies).where(eq(companies.id, c.companyId)).get();
-          if (comp) { company = comp.name; companyId = comp.id; }
-        }
-      }
-    }
-
-    const subject = (input.subject || "Test")
-      .replace(/\{\{firstName\}\}/g, firstName)
-      .replace(/\{\{lastName\}\}/g, lastName)
-      .replace(/\{\{company\}\}/g, company)
-      .replace(/\{\{email\}\}/g, input.to);
-    const body = (input.body || "Test email from Prospector.")
-      .replace(/\{\{firstName\}\}/g, firstName)
-      .replace(/\{\{lastName\}\}/g, lastName)
-      .replace(/\{\{company\}\}/g, company)
-      .replace(/\{\{email\}\}/g, input.to);
-    return sendBcc({
-      id: "crm", companyName: company, companyId,
-      recipients: [{ contactId, email: input.to, name }],
-      accountId: input.accountId, subject, body, status: "sending",
-      tplBody: "", contactVars: { email: input.to },
-    });
+    return SendService.sendTestMessage(input);
   });
 }
