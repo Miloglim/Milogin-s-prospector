@@ -66,6 +66,8 @@ export interface RuntimeConfig {
    *  退出/崩溃后残留 → 启动时提示用户确认恢复，绝不自动外发。
    *  两步式手动入队（autoStart=false）不写此标志，重启后不会被误提示。 */
   runningBatch?: { batchId: string; startedAt: string } | null;
+  /** 异常退出时由启动阶段转存的批次；保留到用户明确恢复成功，供发送中心持续提示。 */
+  interruptedBatch?: { batchId: string; startedAt: string } | null;
   /** 全局默认发件人名称（账号 displayName 优先；亦为助手自称与落款） */
   fromName: string;
   schedule: SendSchedule;

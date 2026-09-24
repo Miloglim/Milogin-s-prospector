@@ -42,6 +42,13 @@ export interface SendItem {
   sendMode?: "individual" | "bcc";  // individual=单独一封（收件人走 To，像人工手发）；缺省 bcc（互不可见）
 }
 
+export interface InterruptedBatchStatus {
+  batchId: string;
+  startedAt: string;
+  pendingGroups: number;
+  pendingRecipients: number;
+}
+
 export interface SendTemplate {
   name?: string;  // 模板名（卡片展示用；即时撰写等场景可传来源标签）
   subject: string;  // 含 {{firstName}} {{company}} 变量
@@ -171,9 +178,45 @@ function saveRunningBatch(batchId: string | null): void {
 export function claimInterruptedBatch(): { batchId: string; startedAt: string } | null {
   const flag = loadConfig().runningBatch;
   if (!flag?.batchId) return null;
-  saveRunningBatch(null);
+  try {
+    const cfg = loadConfig();
+    saveConfigFn({ ...cfg, runningBatch: null, interruptedBatch: flag });
+  } catch { /* 下次启动仍会提示，不自动外发 */ }
   Log.info("send.interrupted", `检测到中断批次，等待用户确认恢复: ${flag.batchId.slice(0, 8)}`);
   return flag;
+}
+
+export function getInterruptedBatchStatus(): Result<InterruptedBatchStatus | null> {
+  const interrupted = loadConfig().interruptedBatch;
+  if (!interrupted?.batchId) return okResult(null);
+  try {
+    const rows = getDb().select({ recipients: sendQueue.recipients }).from(sendQueue)
+      .where(and(eq(sendQueue.batchId, interrupted.batchId), eq(sendQueue.status, "pending"))).all();
+    const pendingRecipients = rows.reduce((total, row) => {
+      try {
+        const recipients = JSON.parse(row.recipients) as unknown[];
+        return total + recipients.length;
+      } catch { return total; }
+    }, 0);
+    return okResult({ ...interrupted, pendingGroups: rows.length, pendingRecipients });
+  } catch (err) {
+    Log.warn("send.interrupted", `读取中断批次失败: ${err instanceof Error ? err.message : String(err)}`);
+    return failResult("读取中断批次失败");
+  }
+}
+
+export function resumeInterruptedBatch(): Result<{ batchId: string; queued: number; queuedCount: number; dropped: number }> {
+  const interrupted = loadConfig().interruptedBatch;
+  if (!interrupted?.batchId) return failResult("没有等待恢复的中断批次");
+  const result = resumeQueue(interrupted.batchId);
+  if (!result.success) return result;
+  try {
+    const cfg = loadConfig();
+    saveConfigFn({ ...cfg, interruptedBatch: null });
+  } catch (err) {
+    Log.warn("send.interrupted", `恢复后清理中断标记失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return result;
 }
 
 /** 检查全局日限额，24h 自动重置 */

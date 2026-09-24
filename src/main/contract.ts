@@ -53,6 +53,10 @@ export const IPC = {
     STATUS:           chan(PREFIX.SEND, "status"),
     GET_QUEUE:        chan(PREFIX.SEND, "getQueue"),
     RESUME_QUEUE:     chan(PREFIX.SEND, "resumeQueue"),
+    /** 上次异常退出遗留的批次摘要；只读，不触发发送 */
+    GET_INTERRUPTED_BATCH: chan(PREFIX.SEND, "getInterruptedBatch"),
+    /** 仅恢复已保存的中断批次，不能由渲染端指定或扩大范围 */
+    RESUME_INTERRUPTED_BATCH: chan(PREFIX.SEND, "resumeInterruptedBatch"),
     TEST:             chan(PREFIX.SEND, "test"),
     GET_TIME_BUCKETS: chan(PREFIX.SEND, "getTimeBuckets"),
     GET_STAGE_BUCKETS: chan(PREFIX.SEND, "getStageBuckets"),

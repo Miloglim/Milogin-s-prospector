@@ -7,7 +7,7 @@ import { Log } from "./logger";
 import { registerContactIPC } from "./transport/contact.ipc";
 import { registerCompanyIPC } from "./transport/company.ipc";
 import { registerSendIPC } from "./transport/send.ipc";
-import { claimInterruptedBatch, resumeQueue } from "./services/send.service";
+import { claimInterruptedBatch, resumeInterruptedBatch } from "./services/send.service";
 import { registerInboxIPC } from "./transport/inbox.ipc";
 import { registerCrmIPC } from "./transport/crm.ipc";
 import { registerTemplateIPC } from "./transport/template.ipc";
@@ -177,7 +177,7 @@ async function confirmInterruptedBatch(batchId: string): Promise<void> {
     Log.info("send.interrupted", "用户选择暂不恢复中断批次");
     return;
   }
-  const result = resumeQueue(batchId);
+  const result = resumeInterruptedBatch();
   if (result.success) Log.info("send.interrupted", `用户确认恢复中断批次: ${result.data.queued} 组待发`);
   else Log.warn("send.interrupted", `用户确认恢复失败: ${result.error}`);
 }

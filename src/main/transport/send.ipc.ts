@@ -203,6 +203,8 @@ export function registerSendIPC() {
   ipcMain.handle(IPC.SEND.STATUS, () => SendService.getSendStatus());
   ipcMain.handle(IPC.SEND.GET_QUEUE, () => SendService.getQueueItems());
   ipcMain.handle(IPC.SEND.RESUME_QUEUE, () => SendService.resumeQueue());
+  ipcMain.handle(IPC.SEND.GET_INTERRUPTED_BATCH, () => SendService.getInterruptedBatchStatus());
+  ipcMain.handle(IPC.SEND.RESUME_INTERRUPTED_BATCH, () => SendService.resumeInterruptedBatch());
   ipcMain.handle(IPC.SEND.GET_TIME_BUCKETS, () => SendService.getTimeBuckets());
   ipcMain.handle(IPC.SEND.GET_STAGE_BUCKETS, () => SendService.getStageBuckets());
   ipcMain.handle(IPC.SEND.GET_SEND_TIME_BUCKETS, () => SendService.getSendTimeBuckets());
