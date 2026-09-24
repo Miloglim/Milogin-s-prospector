@@ -1,22 +1,6 @@
 {
   "exceptions": [
     {
-      "file": "src/main/transport/inbox.ipc.ts",
-      "rule": "transport-db",
-      "specifier": "../db",
-      "ticket": "ARCH-003",
-      "expires": "2026-10-31",
-      "reason": "Move inbox fetch orchestration behind an application service."
-    },
-    {
-      "file": "src/main/transport/inbox.ipc.ts",
-      "rule": "transport-db",
-      "specifier": "../db/schema/accounts",
-      "ticket": "ARCH-003",
-      "expires": "2026-10-31",
-      "reason": "Move inbox fetch orchestration behind an application service."
-    },
-    {
       "file": "src/main/transport/send.ipc.ts",
       "rule": "transport-db",
       "specifier": "../db",

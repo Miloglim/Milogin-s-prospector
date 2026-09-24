@@ -4,12 +4,7 @@ import * as InboxService from "../services/inbox.service";
 import { todayMailBrief } from "../services/mail-brief.service";
 import * as SendService from "../services/send.service";
 import * as CampaignService from "../services/campaign.service";
-import { nudge as nudgeSuggestions } from "../services/suggestion-bus";
-import { Log } from "../logger";
 import { failResult } from "../errors";
-import { getDb } from "../db";
-import { emailAccounts } from "../db/schema/accounts";
-import { eq } from "drizzle-orm";
 import {
   isPop3Port,
   doFetch,
@@ -20,8 +15,7 @@ import {
 } from "../services/inbox-net.service";
 
 // ── 收件箱 IPC 注册层 ──
-// 只做通道注册与参数转接；抓取/协议/查询业务在 services/inbox-net.service.ts 与 inbox.service.ts
-// （transport 不 import db 的规范约束：仅 FETCH 聚合里读账号列表，属注册层编排，逻辑保持最小）
+// 只做通道注册与参数转接；抓取/协议/查询业务在 services/inbox-net.service.ts 与 inbox.service.ts。
 
 function createRendererPush() {
   return (channel: string, data: unknown) => {
@@ -34,6 +28,7 @@ export function registerInboxIPC() {
   InboxService.setImapFetchFn(doFetch);
   InboxService.setImapFetchBodyFn(fetchBody);
   InboxService.setInboxPushFn(pushToRenderer);
+  InboxService.setPostFetchAdapters({ isPop3Port, backfillBounceDeep, detectSent });
   setNetPushFn(pushToRenderer);
   InboxService.startAutoFetch();
   // 智能发信任务（docs/smart-send-spec.md）：注入队列入口 + 启动到期触点调度器
@@ -44,37 +39,7 @@ export function registerInboxIPC() {
     return InboxService.listInbox();
   });
   ipcMain.handle(IPC.INBOX.FETCH, async (_e, accountId?: number) => {
-    await InboxService.fetchInbox(accountId);
-    InboxService.cleanupInbox();
-    // 后台预加载前 20 封正文（不阻塞返回，读条结束后前端即可秒开前 20 封）
-    void InboxService.prefetchRecentBodies(20);
-    // 后台补匹配退信联系人：先扫本地正文（免费），再对更早的存量走 IMAP 深度补拉。
-    // 串行执行，避免和 prefetch/detectSent 叠加过多 IMAP 连接。
-    void (async () => {
-      let n = await InboxService.backfillBounceMatches();
-      const targets = accountId
-        ? [accountId]
-        : getDb().select({ id: emailAccounts.id }).from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all().map(a => a.id);
-      for (const aid of targets) n += await backfillBounceDeep(aid);
-      if (n > 0) { BrowserWindow.getAllWindows()[0]?.webContents.send("inbox:newMail", { count: 0 }); nudgeSuggestions(); }
-    })().catch(err => Log.error("inbox.backfill", "退信补匹配失败", err instanceof Error ? err.stack : undefined));
-    // 后台检测 Sent 文件夹（不阻塞返回，完成后推送通知刷新前端）
-    const accounts = getDb().select().from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all();
-    const sentTargets = accounts.filter(a => !isPop3Port(a.imapPort || 993));
-    Log.debug("inbox.sent", `将检测 ${sentTargets.length}/${accounts.length} 个账号`);
-    Promise.allSettled(sentTargets.map(a => detectSent(a.id))).then((results) => {
-      const totalNew = results.reduce((sum, r) => {
-        return sum + (r.status === "fulfilled" ? (r.value || 0) : 0);
-      }, 0);
-      if (totalNew > 0) {
-        try {
-          InboxService.cleanupInbox();
-          BrowserWindow.getAllWindows()[0]?.webContents.send("inbox:newMail", { count: totalNew });
-          nudgeSuggestions();
-        } catch { /* */ }
-      }
-    });
-    return InboxService.listInbox();
+    return InboxService.refreshInbox(accountId);
   });
   ipcMain.handle(IPC.INBOX.CLASSIFY, async (_e, payload: { id: number; classification: string }) => {
     if (!payload?.id || !payload?.classification) return failResult("参数错误");
