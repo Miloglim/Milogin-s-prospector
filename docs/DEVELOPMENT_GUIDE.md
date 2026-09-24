@@ -1,6 +1,6 @@
 # Prospecting Email Next — 开发规范
 
-> 本文档是项目唯一的开发规范。改动代码前先读一遍，尤其注意「禁止模式」与「交付前检查」。
+> 本文档是工程开发规范。改动代码前先读一遍，尤其注意「禁止模式」与「交付前检查」。功能域的行为契约以对应 `docs/*-spec.md` 为准；运行时与数据结构以源码为准。
 > （历史说明：本文件由原项目根目录的编码规范文档迁移而来，内容已中性化并修正过时技术栈。）
 
 ## 技术栈
@@ -81,7 +81,7 @@ export function MyPage() {
 
 ## 注意事项
 - better-sqlite3 采用 WAL 模式，写操作后需 `saveDatabase()` 触发 checkpoint（逐事务已落盘）
-- main/index.ts 中每 30 秒自动保存一次
+- better-sqlite3 的每次写操作已落盘；`saveDatabase()` 只做 WAL checkpoint，主要在正常退出和批处理收尾时调用
 - 数据库文件在 `data/prospector.db`；每日备份在 `data/backups/`（保留 7 天）
 - 迁移在 `src/main/db/index.ts` 的 `runMigrations()`，命名迁移记入 `_migrations` 表，新增列一律走命名 step
 
@@ -102,7 +102,6 @@ npm run eval:agent # AI 能力回归评测（需真实端点与 API key）
 | 变量 | 用途 |
 |---|---|
 | `AGENT_API_BASE_URL` / `AGENT_API_KEY` / `AGENT_MODEL` | 对话与能力调用的生效端点（可由设置页写入） |
-| `AGENT_THINKING` | 是否输出推理过程（影响首字速度） |
 | `LIGHT_API_BASE_URL` / `LIGHT_KEY_ENV` / `LIGHT_MODEL` | 轻任务档（邮件总结、背调报告、会话压缩），不填则用主端点 |
 | `EXA_API_KEY` / `TAVILY_API_KEY` | 联网检索源：公司背调与航线行情调研共用（都不配则这两类能力会明确报「未配置」） |
 | `KB_BASE_URL` / `KB_TOKEN` / `KB_APPLICATION_ID` | 公司内网 KB 中转（可选） |

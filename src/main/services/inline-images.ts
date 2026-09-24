@@ -2,8 +2,8 @@
 // 问题：邮件客户端（Gmail/Outlook 等）会过滤 data: 内联图，且签名里的
 //   file:///、局域网 http://、Word/Outlook 粘贴带来的 cid: 引用、相对路径，
 //   收件人端全都读不到 —— 这就是「签名图片失效」的根因。
-// 做法：发信前把**能取到内容**的图片（data / file / http）统一转成 CID 内嵌附件；
-//   取不到内容的（cid: 悬空引用、无 base 的相对路径）如实上报，由界面提示用户重新粘贴图片。
+// 做法：发信前把本次编辑明确带入的 data 图片和远程 http(s) 图片转成 CID 内嵌附件。
+// file: 与本地绝对路径从不读取，并会从出站 HTML 清空，防止任意文件读取和路径泄露。
 // 纯函数 + 注入 loader：不碰 fs/net，便于单测；真实 loader 在 send.ipc 里给。
 export type ImageLoader = (src: string) => Promise<{ buffer: Buffer; ext: string } | null>;
 
@@ -29,13 +29,13 @@ const ATTR_RE = /\b(src|background)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 /** style="background:url(...)" / url('...') */
 const CSS_URL_RE = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'")\s]+))\s*\)/gi;
 const DATA_RE = /^data:image\/([a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/;
-/** 引用分类：data（本函数解码）/ fetch（loader 取：file、http、绝对路径）/ dead（救不回来） */
-type RefKind = "data" | "fetch" | "dead";
+/** 引用分类：data（本函数解码）/ fetch（loader 取远程图）/ blocked（本地路径）/ dead（救不回来） */
+type RefKind = "data" | "fetch" | "blocked" | "dead";
 function classify(src: string): RefKind {
   const s = src.trim();
   if (/^data:image\//i.test(s)) return "data";
-  if (/^https?:\/\//i.test(s) || /^file:/i.test(s)) return "fetch";
-  if (/^[a-z]:[\\/]/i.test(s) || s.startsWith("/") || s.startsWith("\\\\")) return "fetch";   // 本地绝对路径（签名里常见）
+  if (/^https?:\/\//i.test(s)) return "fetch";
+  if (/^file:/i.test(s) || /^[a-z]:[\\/]/i.test(s) || s.startsWith("/") || s.startsWith("\\\\")) return "blocked";
   return "dead";                                  // cid: 悬空引用、相对路径、//host 等：发信端无从恢复
 }
 
@@ -74,7 +74,7 @@ function collectRefs(html: string): string[] {
 
 /**
  * 把可取到内容的图片转成 CID 内嵌附件，并改写 HTML 引用。
- * loader 决定 file/http 能否取到；data: 在本函数内解码。同一个 src 多处引用共用一个附件。
+ * loader 只获取远程 http(s) 图片；data: 在本函数内解码。同一个 src 多处引用共用一个附件。
  */
 export async function embedInlineImages(
   html: string, load: ImageLoader, opts: EmbedOptions = {},
@@ -88,6 +88,11 @@ export async function embedInlineImages(
 
   for (const src of refs) {
     const kind = classify(src);
+    if (kind === "blocked") {
+      unresolved.push(src);
+      map.set(src, "");
+      continue;
+    }
     if (kind === "dead") { unresolved.push(src); continue; }            // 悬空 cid:/相对路径：只上报，不猜
     if (attachments.length >= o.maxImages) { unresolved.push(src); continue; }
     const got = kind === "data" ? decodeDataUrl(src) : await load(src);
@@ -112,8 +117,8 @@ function escapeReg(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** 签名/正文里收件人必然看不到、发信端也救不回来的引用（保存时提示用户重新粘贴图片） */
+/** 签名/正文里收件人必然看不到、发信端也不会读取的引用（保存时提示用户重新粘贴图片） */
 export function deadImageRefs(html: string): string[] {
-  return collectRefs(html).filter(s => /^(cid:|blob:|about:)/i.test(s)
-    || (/^(https?:|data:|file:|\/)/i.test(s) === false && /\.[a-z]{2,6}$/i.test(s.split(/[?#]/)[0] ?? "")));
+  return collectRefs(html).filter(s => classify(s) === "blocked" || /^(cid:|blob:|about:)/i.test(s)
+    || (/^(https?:|data:)/i.test(s) === false && /\.[a-z]{2,6}$/i.test(s.split(/[?#]/)[0] ?? "")));
 }

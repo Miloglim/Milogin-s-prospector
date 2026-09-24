@@ -157,8 +157,8 @@ export function setSaveConfigFn(fn: (c: RuntimeConfig) => void) { saveConfigFn =
 export function getQuotaStatus(): ReturnType<typeof checkQuota> { return checkQuota(); }
 
 // ── 批次运行中标志（持久化到 config）──
-// 批次真实启动时写入、结束/取消时清除；退出/崩溃后残留 → 下次启动 autoResumeInterruptedBatch
-// 自动续跑。没有这个标志，重启后引擎不知道批次在跑，用户得回队列页手动点「开始发送」。
+// 批次真实启动时写入、结束/取消时清除。退出/崩溃后残留时，启动阶段只提示用户恢复，
+// 绝不自动外发。
 
 function saveRunningBatch(batchId: string | null): void {
   try {
@@ -167,16 +167,13 @@ function saveRunningBatch(batchId: string | null): void {
   } catch { /* 标志写失败退化为现状：重启后队列页手动开始 */ }
 }
 
-/** 启动自动续跑：上次退出/崩溃时批次在跑（config.runningBatch 残留且队列还有 pending 行）→
- *  从 DB 恢复续发，语义与队列页手动「开始发送」完全一致（配额守卫/时段等待都在链路里）。
- *  在 registerAllIPC 之后调用（saveConfigFn 已注入）。 */
-export function autoResumeInterruptedBatch(): void {
+/** 认领上次中断的批次，清除一次性启动标记。调用方必须取得明确用户确认后才可恢复发送。 */
+export function claimInterruptedBatch(): { batchId: string; startedAt: string } | null {
   const flag = loadConfig().runningBatch;
-  if (!flag?.batchId) return;
-  saveRunningBatch(null); // 无论续跑成败先清标志，不残留（resumeQueue 真启动会重新写入）
-  const r = resumeQueue();
-  if (r.success) Log.info("send.autoResume", `检测到中断批次，已自动续跑: ${r.data.queued} 组待发`);
-  else Log.warn("send.autoResume", `中断批次未自动续跑（${r.error}），可在发送队列手动开始`);
+  if (!flag?.batchId) return null;
+  saveRunningBatch(null);
+  Log.info("send.interrupted", `检测到中断批次，等待用户确认恢复: ${flag.batchId.slice(0, 8)}`);
+  return flag;
 }
 
 /** 检查全局日限额，24h 自动重置 */
@@ -1676,12 +1673,14 @@ export function getQueueItems(): Result<Array<Omit<SendItem, "tplBody" | "contac
 }
 
 /** 恢复中断的批次 — 从 DB 加载 pending 项，重建内存队列（与 startQueue 共享配额纪律） */
-export function resumeQueue(): Result<{ batchId: string; queued: number; queuedCount: number; dropped: number }> {
+export function resumeQueue(batchId?: string): Result<{ batchId: string; queued: number; queuedCount: number; dropped: number }> {
   if (state.isRunning) return failResult("已有发送任务运行中");
 
   try {
     const rows = getDb().select().from(sendQueue)
-      .where(eq(sendQueue.status, "pending"))
+      .where(batchId
+        ? and(eq(sendQueue.status, "pending"), eq(sendQueue.batchId, batchId))
+        : eq(sendQueue.status, "pending"))
       .orderBy(dsql`${sendQueue.createdAt} ASC`)
       .all();
 

@@ -1,4 +1,6 @@
-# Agent 现场存活 + 实时思考可视化（设计规范）
+# Agent 现场存活 + 实时思考可视化（历史设计记录）
+
+> 状态：实时转录与会话现场保留已实施。本文第 6 节描述的“每日 AI 建议批次”已被 `docs/suggestion-feed-spec.md` 的本地实时建议流取代，不再是当前行为。当前实现以 `src/renderer/hooks/useAgentTranscript.ts`、`src/main/services/agent/harness.ts`、`src/main/services/suggestion.service.ts` 和对应测试为准。
 
 > 本文件是这轮改造的契约。代码实现必须与本文一致；改实现前先改这里。
 > 起因：切到别的页面再切回来，正在流式生成的聊天气泡整个不见了；用户看不到 agent 此刻在干什么。
@@ -78,7 +80,7 @@ interface ConvState {
   复用既有通道，不动 `events.ts` 与 preload 白名单。
 - 既有的 `status:"reasoning"`（整块，来自 `reasoning_item_created`）保留，用作「封口」：把该思考卡定稿、`liveReasoning` 归零。
 - **实测（生效端点 `api.agnes-ai.cn/v1` · `agnes-2.5-flash`，`enable_thinking:true`）**：推理确实逐字回，`delta.reasoning_content` 151 片 / 234 字，首片 +2.7s，正文首片 +3.8s → 上面的增量通道在这台端点上是真能动的，不是纸面设计。
-- 但「看不到思考」的真正原因在配置层：`AGENT_THINKING` 未开 → 请求带 `enable_thinking:false` → 端点一个字都不回。而 `thinking` 此前在界面上**没有入口**（`ai:profileThinking` 这条 IPC 通了却没人调），且 `providers.json` 没有 active 指针时改档案的 thinking 不落 `.env`。本轮补两处：设置 → 模型与端点 的表里加「思考」开关；`setProfileThinking` 在档案逐字等于生效端点（无 active 指针的收编那份）时同样落地。
+- 本段的 `AGENT_THINKING` 环境变量方案已经废弃。当前思考开关由端点档案配置管理；不能把本文这段历史诊断当作当前配置说明。
 - google 族端点走非流式分支（为保 `thought_signature`），拿不到逐字推理，也不伪造思考 —— 这是端点方言限制，规范内承认现状。
 
 ### 3.2 渲染层

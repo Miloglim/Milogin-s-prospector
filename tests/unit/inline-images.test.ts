@@ -3,7 +3,7 @@ import { embedInlineImages, deadImageRefs } from "../../src/main/services/inline
 import { deadImageRefs as editorDeadRefs } from "../../src/renderer/lib/signature";
 
 // ═══════════════════════════════════════════════════════════════════
-// 发信内联图片归一（签名图片失效的根治）：能取到内容的图片（data/file/http）一律转 CID 附件，
+// 发信内联图片归一：data 图片和远程 http(s) 图片转 CID 附件；本地路径一律拒绝，
 // 取不到的（悬空 cid:、相对路径）如实上报。这里用注入 loader 的纯函数路径，不碰 fs/net。
 // 样本 1x1 PNG 的 base64。
 // ═══════════════════════════════════════════════════════════════════
@@ -13,7 +13,7 @@ const DATA = `data:image/png;base64,${PNG_B64}`;
 const loader = async (src: string) =>
   src.includes("missing") ? null : { buffer: Buffer.from(PNG_B64, "base64"), ext: "png" };
 
-describe("data / file / http 图片转 CID 内嵌附件", () => {
+describe("data / http 图片转 CID 内嵌附件", () => {
   it("双引号 data URI：转附件并改写 src，附件内容与类型正确", async () => {
     const r = await embedInlineImages(`<p><img src="${DATA}" style="max-width:100%"></p>`, loader);
     expect(r.converted).toBe(1);
@@ -29,14 +29,18 @@ describe("data / file / http 图片转 CID 内嵌附件", () => {
     expect(r.html).toContain("cid:");
   });
 
-  it("file:/// 与本地绝对路径、http(s) 交给 loader 取字节后内嵌", async () => {
+  it("file:/// 与本地绝对路径不读取且从出站 HTML 清空，http(s) 仍可内嵌", async () => {
+    const loaded: string[] = [];
     const r = await embedInlineImages(
       `<img src="file:///C:/Users/me/sign.png"><img src="C:\\\\signs\\\\logo.jpg"><img src="http://192.168.1.9:8788/images/x.png">`,
-      loader,
+      async (src) => { loaded.push(src); return loader(src); },
     );
-    expect(r.converted).toBe(3);
-    expect(r.unresolved).toEqual([]);
-    expect(r.html.match(/cid:img/g)).toHaveLength(3);
+    expect(r.converted).toBe(1);
+    expect(r.unresolved).toHaveLength(2);
+    expect(r.html.match(/cid:img/g)).toHaveLength(1);
+    expect(r.html).not.toContain("file:///C:/Users/me/sign.png");
+    expect(r.html).not.toContain("C:\\\\signs\\\\logo.jpg");
+    expect(loaded).toEqual(["http://192.168.1.9:8788/images/x.png"]);
   });
 
   it("取不到内容的图片不阻断发信：保留原样并上报", async () => {
@@ -92,8 +96,8 @@ describe("救不回来的引用判据：main 与编辑器侧必须同一套口�
     });
   }
 
-  it("能救的引用两边都不报警（file/http/data/绝对路径）", async () => {
-    const ok = `<img src="${DATA}"><img src="http://192.168.1.9/a.png"><img src="C:\\a.png"><img src="/srv/a.png">`;
+  it("能救的引用两边都不报警（http/data）", async () => {
+    const ok = `<img src="${DATA}"><img src="http://192.168.1.9/a.png">`;
     expect(editorDeadRefs(ok)).toEqual([]);
     const r = await embedInlineImages(ok, loader);
     expect(r.unresolved).toEqual([]);

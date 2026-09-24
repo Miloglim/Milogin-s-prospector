@@ -5,10 +5,10 @@ import * as path from "path";
 import * as schema from "../../src/main/db/schema";
 
 // ═══════════════════════════════════════════════════════════════
-// 中断批次启动自动续跑（2026-09-08「退出后又要重新加入队列」回归）：
+// 中断批次启动确认（P0-01）：
 //   · 批次真实启动时写 config.runningBatch、结束/取消时清除；
-//   · 退出/崩溃后标志残留 → 启动 autoResumeInterruptedBatch 自动续跑，
-//     语义与队列页手动「开始发送」一致（配额守卫/时段等待都在链路里）；
+//   · 退出/崩溃后标志残留 → 启动只认领标记，绝不自动外发；
+//   · 用户确认后才由主进程调用 resumeQueue(batchId) 恢复原批次；
 //   · 两步式手动入队（autoStart=false）不写标志 → 重启不被误自动启动。
 //   dryRun 配置下 runBatchLoop 首轮无 await，同步跑完 —— 断言确定性有保障。
 // ═══════════════════════════════════════════════════════════════
@@ -100,28 +100,43 @@ beforeAll(async () => {
   if (!SQLLIB) SQLLIB = await initSqlJs({ locateFile: f => path.resolve(process.cwd(), "node_modules/sql.js/dist", f) });
 });
 
-describe("中断批次启动自动续跑", () => {
-  it("退出时批次在跑：启动后自动续跑（dryRun 发完、标志清掉、不再卡 running）", async () => {
+describe("中断批次启动确认", () => {
+  it("退出时批次在跑：启动只认领标记，不自动发送", async () => {
     await restartWith({
       rows: [{ id: "g1", status: "sent" }, { id: "g2", status: "pending" }],
       runningBatch: { batchId: "batch-ab12cd34", startedAt: new Date().toISOString() },
     });
-    S.autoResumeInterruptedBatch();
+    const interrupted = S.claimInterruptedBatch();
 
     const st = S.getSendStatus();
-    expect(st.data!.batchId).toBe("batch-ab12cd34");
-    // resumeQueue 先按 DB 派生 sentCount=1（g1），循环又把 g2 发出 → 最终 2/2
-    expect(st.data!.totalItems).toBe(2);
-    expect(st.data!.sentCount).toBe(2);
-    expect(st.data!.isRunning).toBe(false);           // dryRun 同步跑完
-    expect(h.cfg.runningBatch).toBeNull();            // 结束即清标志，重启不再触发
-    const q = S.getQueueItems();
-    expect(q.data!.find(i => i.id === "g2")!.status).toBe("sent"); // pending 行确实被续跑发出
+    expect(interrupted?.batchId).toBe("batch-ab12cd34");
+    expect(st.data!.isRunning).toBe(false);
+    expect(h.cfg.runningBatch).toBeNull();
+    expect(S.getQueueItems().data!.find(i => i.id === "g2")!.status).toBe("pending");
+  });
+
+  it("确认恢复时只发送被认领批次，不带上其他待发送队列", async () => {
+    await restartWith({
+      rows: [{ id: "g1", status: "pending" }],
+      runningBatch: { batchId: "batch-ab12cd34", startedAt: new Date().toISOString() },
+    });
+    h.db.insert(schema.sendQueue).values({
+      id: "other", batchId: "other-batch", recipients: JSON.stringify([{ contactId: 2, email: "b@b.c", name: "B" }]),
+      accountId: 1, status: "pending", createdAt: new Date().toISOString(),
+    }).run();
+
+    const interrupted = S.claimInterruptedBatch();
+    const restored = S.resumeQueue(interrupted!.batchId);
+
+    expect(restored.success).toBe(true);
+    const queue = S.getQueueItems().data!;
+    expect(queue.find(i => i.id === "g1")!.status).toBe("sent");
+    expect(h.db.select().from(schema.sendQueue).all().find(i => i.id === "other")!.status).toBe("pending");
   });
 
   it("两步式手动入队（无标志）：重启不误自动启动，pending 原样保留", async () => {
     await restartWith({ rows: [{ id: "g1", status: "pending" }], runningBatch: null });
-    S.autoResumeInterruptedBatch();
+    expect(S.claimInterruptedBatch()).toBeNull();
 
     expect(S.getSendStatus().data!.isRunning).toBe(false);
     expect(h.cfg.runningBatch).toBeNull();
@@ -133,7 +148,7 @@ describe("中断批次启动自动续跑", () => {
       rows: [{ id: "g1", status: "sent" }],
       runningBatch: { batchId: "batch-ab12cd34", startedAt: new Date().toISOString() },
     });
-    S.autoResumeInterruptedBatch();
+    expect(S.claimInterruptedBatch()?.batchId).toBe("batch-ab12cd34");
 
     expect(S.getSendStatus().data!.isRunning).toBe(false);
     expect(h.cfg.runningBatch).toBeNull();

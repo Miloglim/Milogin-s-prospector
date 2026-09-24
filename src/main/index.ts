@@ -7,7 +7,7 @@ import { Log } from "./logger";
 import { registerContactIPC } from "./transport/contact.ipc";
 import { registerCompanyIPC } from "./transport/company.ipc";
 import { registerSendIPC } from "./transport/send.ipc";
-import { autoResumeInterruptedBatch } from "./services/send.service";
+import { claimInterruptedBatch, resumeQueue } from "./services/send.service";
 import { registerInboxIPC } from "./transport/inbox.ipc";
 import { registerCrmIPC } from "./transport/crm.ipc";
 import { registerTemplateIPC } from "./transport/template.ipc";
@@ -161,6 +161,27 @@ function createTray() {
   tray.on("double-click", () => { mainWindow?.show(); mainWindow?.focus(); });
 }
 
+async function confirmInterruptedBatch(batchId: string): Promise<void> {
+  const win = mainWindow;
+  if (!win) return;
+  const answer = await dialog.showMessageBox(win, {
+    type: "warning",
+    title: "恢复中断的发送批次",
+    message: "检测到上次退出时未完成的发送批次。",
+    detail: `批次 ${batchId.slice(0, 8)} 尚未自动发送。是否恢复该批次中仍待发送的邮件？`,
+    buttons: ["恢复发送", "暂不恢复"],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (answer.response !== 0) {
+    Log.info("send.interrupted", "用户选择暂不恢复中断批次");
+    return;
+  }
+  const result = resumeQueue(batchId);
+  if (result.success) Log.info("send.interrupted", `用户确认恢复中断批次: ${result.data.queued} 组待发`);
+  else Log.warn("send.interrupted", `用户确认恢复失败: ${result.error}`);
+}
+
 function registerAllIPC() {
   registerContactIPC();
   registerCompanyIPC();
@@ -215,10 +236,11 @@ app.whenReady().then(async () => {
   await migrateBodiesOut(); // 存量正文出库迁移（幂等，首次启动把库从正文撑大的状态缩回几 MB）
   migrateAccountPasswords(); // P0-1: 旧密钥密文一次性重封装为 safeStorage 主密钥（幂等）
   registerAllIPC();
-  // 上次退出/崩溃时批次在跑（config.runningBatch 残留）→ 自动续跑中断批次。
+  // 上次退出/崩溃时批次在跑：只认领标记，等待用户确认，绝不自动外发。
   // 必须在 registerAllIPC 之后：saveConfigFn/sendBccFn 等引擎注入在此之前完成。
-  autoResumeInterruptedBatch();
+  const interruptedBatch = claimInterruptedBatch();
   createWindow();
+  if (interruptedBatch) void confirmInterruptedBatch(interruptedBatch.batchId);
   createTray();
   initUpdater(mainWindow!);
 

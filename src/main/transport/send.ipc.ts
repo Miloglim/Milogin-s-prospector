@@ -14,7 +14,6 @@ import { getDecryptedPassword } from "../services/account.service";
 import { loadConfig, saveConfig } from "../config";
 import { embedInlineImages } from "../services/inline-images";
 import { netFetch } from "../net-proxy";
-import * as fs from "fs";
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -26,25 +25,10 @@ function stripHtml(s: string): string {
 const isHtml = (s: string) => /<[a-z][\s\S]*>/i.test(s);
 
 /**
- * 取图片字节：file:/// 与本地绝对路径读盘；http(s) 走 netFetch。读不到/超大一律 null——发信不因此失败
- * （裂图风险有日志与签名保存期提示）。为什么必须转 cid：客户端会过滤 base64 内联图，
- * 而 file:///、局域网 http、Word/Outlook 粘贴带来的悬空 cid 引用，收件人端更是必然看不到。
+ * 取远程图片字节；本地路径由 inline-images 在读取前拒绝。为什么必须转 cid：客户端会过滤 base64 内联图，
+ * 而远程图片、Word/Outlook 粘贴带来的悬空 cid 引用，收件人端不一定能访问。
  */
 const IMG_MAX_BYTES = 4 * 1024 * 1024;
-
-/** file:///C:/x.png、file:///C:\x、C:/x、/srv/x、\\nas\x → 可读的本地路径 */
-function localPathFromSrc(src: string): string | null {
-  let s = src.trim();
-  if (/^file:/i.test(s)) {
-    s = decodeURIComponent(s.replace(/^file:\/\/\/?/i, "").split("?")[0] ?? "");
-    if (/^[a-z]:[\\/]/i.test(s)) return s.replace(/\//g, "\\");      // Windows：C:/x → C:\x
-    return s;
-  }
-  if (/^[a-z]:[\\/]/i.test(s) || s.startsWith("/") || s.startsWith("\\\\")) {
-    return decodeURIComponent(s.split("?")[0] ?? "");
-  }
-  return null;
-}
 
 function extOf(name: string, mime?: string | null): string {
   if (mime) {
@@ -59,17 +43,6 @@ function extOf(name: string, mime?: string | null): string {
 }
 
 async function loadInlineImage(src: string): Promise<{ buffer: Buffer; ext: string } | null> {
-  const local = localPathFromSrc(src);
-  if (local) {
-    try {
-      const buf = await fs.promises.readFile(local);
-      if (!buf.length || buf.length > IMG_MAX_BYTES) return null;
-      return { buffer: buf, ext: extOf(local) };
-    } catch (err) {
-      Log.debug("send.image", `本地图片读不到：${local}（${err instanceof Error ? err.message : "?"}）`);
-      return null;
-    }
-  }
   if (/^https?:\/\//i.test(src)) {
     try {
       const res = await netFetch(src, { headers: { Accept: "image/*" } });
