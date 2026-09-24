@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { maskSecrets, tailByBytes } from "../../src/main/services/diagnostics.service";
+import { diagnosticsLogFile, maskSecrets, tailByBytes } from "../../src/main/services/diagnostics.service";
+
+describe("诊断日志路径", () => {
+  it("只依赖已解析的数据根目录，不在服务层加载 Electron", () => {
+    expect(diagnosticsLogFile("C:/app-data")).toBe("C:/app-data/logs/app.log");
+  });
+});
 
 describe("诊断包配置掩码 maskSecrets", () => {
   it("命中密钥语义的字段值整体打码", () => {

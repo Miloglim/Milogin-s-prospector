@@ -20,16 +20,9 @@ import { okResult, failResult, type Result } from "../errors";
 import { writeArtifact, type ArtifactMeta } from "./artifact.service";
 import { readActiveEndpoint } from "./endpoint.service";
 
-/** 日志文件路径解析与 logger 同规则（打包 userData / 开发项目根）；electron 不可用时返回 null */
-function logFile(): string | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { app } = require("electron");
-    const root = app.isPackaged ? app.getPath("userData") : APP_ROOT;
-    return path.join(root, "logs", "app.log");
-  } catch {
-    return path.join(APP_ROOT, "logs", "app.log");
-  }
+/** 日志与配置共用 APP_ROOT：打包版是 userData，开发版是项目根，不需要服务层加载 Electron。 */
+export function diagnosticsLogFile(root = APP_ROOT): string {
+  return path.join(root, "logs", "app.log");
 }
 
 const SECRET_KEY_RE = /(key|token|secret|password|passwd|auth|credential)/i;
@@ -72,7 +65,7 @@ function safeCount(name: string, fn: () => number | undefined): string {
 export function exportDiagnostics(): Result<ArtifactMeta> {
   const now = new Date();
   const lines: string[] = [];
-  const logPath = logFile();
+  const logPath = diagnosticsLogFile();
 
   // ── 环境 ──
   lines.push(`# Prospector 诊断包`, ``);
@@ -92,7 +85,7 @@ export function exportDiagnostics(): Result<ArtifactMeta> {
       lines.push(`- ${rot} · ${(rs.size / 1024).toFixed(0)} KB（轮转备份，未含入，需要时直接拷走）`);
     }
   } else {
-    lines.push(`- 未找到日志文件（${logPath ?? "非 Electron 环境"}）`);
+    lines.push(`- 未找到日志文件（${logPath}）`);
   }
 
   // ── 模型端点（永不含密钥） ──

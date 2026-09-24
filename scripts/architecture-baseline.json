@@ -71,14 +71,6 @@
       "ticket": "ARCH-004",
       "expires": "2026-10-31",
       "reason": "Extract the SMTP adapter and account lookup from the IPC module."
-    },
-    {
-      "file": "src/main/services/diagnostics.service.ts",
-      "rule": "service-electron",
-      "specifier": "electron",
-      "ticket": "ARCH-005",
-      "expires": "2026-10-31",
-      "reason": "Inject the packaged/runtime path instead of loading Electron in a service."
     }
   ]
 }
