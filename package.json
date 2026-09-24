@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval:agent": "set AGENT_EVAL=live&& vitest run tests/eval",
-    "check": "npx tsx scripts/check.ts",
+    "check": "node scripts/check.mjs",
+    "test:architecture": "node --test scripts/check.test.mjs",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {

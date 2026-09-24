@@ -1,0 +1,84 @@
+{
+  "exceptions": [
+    {
+      "file": "src/main/transport/ai.ipc.ts",
+      "rule": "transport-db",
+      "specifier": "../db",
+      "ticket": "ARCH-002",
+      "expires": "2026-10-31",
+      "reason": "Move AI backcheck persistence behind an application service."
+    },
+    {
+      "file": "src/main/transport/ai.ipc.ts",
+      "rule": "transport-db",
+      "specifier": "../db/schema/companies",
+      "ticket": "ARCH-002",
+      "expires": "2026-10-31",
+      "reason": "Move AI backcheck persistence behind an application service."
+    },
+    {
+      "file": "src/main/transport/ai.ipc.ts",
+      "rule": "transport-db",
+      "specifier": "../db/schema/contacts",
+      "ticket": "ARCH-002",
+      "expires": "2026-10-31",
+      "reason": "Move AI backcheck persistence behind an application service."
+    },
+    {
+      "file": "src/main/transport/inbox.ipc.ts",
+      "rule": "transport-db",
+      "specifier": "../db",
+      "ticket": "ARCH-003",
+      "expires": "2026-10-31",
+      "reason": "Move inbox fetch orchestration behind an application service."
+    },
+    {
+      "file": "src/main/transport/inbox.ipc.ts",
+      "rule": "transport-db",
+      "specifier": "../db/schema/accounts",
+      "ticket": "ARCH-003",
+      "expires": "2026-10-31",
+      "reason": "Move inbox fetch orchestration behind an application service."
+    },
+    {
+      "file": "src/main/transport/send.ipc.ts",
+      "rule": "transport-db",
+      "specifier": "../db",
+      "ticket": "ARCH-004",
+      "expires": "2026-10-31",
+      "reason": "Extract the SMTP adapter and account lookup from the IPC module."
+    },
+    {
+      "file": "src/main/transport/send.ipc.ts",
+      "rule": "transport-db",
+      "specifier": "../db/schema/accounts",
+      "ticket": "ARCH-004",
+      "expires": "2026-10-31",
+      "reason": "Extract the SMTP adapter and account lookup from the IPC module."
+    },
+    {
+      "file": "src/main/transport/send.ipc.ts",
+      "rule": "transport-db",
+      "specifier": "../db/schema/contacts",
+      "ticket": "ARCH-004",
+      "expires": "2026-10-31",
+      "reason": "Extract the SMTP adapter and account lookup from the IPC module."
+    },
+    {
+      "file": "src/main/transport/send.ipc.ts",
+      "rule": "transport-db",
+      "specifier": "../db/schema/companies",
+      "ticket": "ARCH-004",
+      "expires": "2026-10-31",
+      "reason": "Extract the SMTP adapter and account lookup from the IPC module."
+    },
+    {
+      "file": "src/main/services/diagnostics.service.ts",
+      "rule": "service-electron",
+      "specifier": "electron",
+      "ticket": "ARCH-005",
+      "expires": "2026-10-31",
+      "reason": "Inject the packaged/runtime path instead of loading Electron in a service."
+    }
+  ]
+}
