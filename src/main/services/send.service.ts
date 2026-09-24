@@ -1716,13 +1716,13 @@ export function getQueueItems(): Result<Array<Omit<SendItem, "tplBody" | "contac
 }
 
 /** 恢复中断的批次 — 从 DB 加载 pending 项，重建内存队列（与 startQueue 共享配额纪律） */
-export function resumeQueue(batchId?: string): Result<{ batchId: string; queued: number; queuedCount: number; dropped: number }> {
+export function resumeQueue(requestedBatchId?: string): Result<{ batchId: string; queued: number; queuedCount: number; dropped: number }> {
   if (state.isRunning) return failResult("已有发送任务运行中");
 
   try {
     const rows = getDb().select().from(sendQueue)
-      .where(batchId
-        ? and(eq(sendQueue.status, "pending"), eq(sendQueue.batchId, batchId))
+      .where(requestedBatchId
+        ? and(eq(sendQueue.status, "pending"), eq(sendQueue.batchId, requestedBatchId))
         : eq(sendQueue.status, "pending"))
       .orderBy(dsql`${sendQueue.createdAt} ASC`)
       .all();
@@ -1738,7 +1738,7 @@ export function resumeQueue(batchId?: string): Result<{ batchId: string; queued:
     const qCheck = checkQuota();
     if (!qCheck.ok) return failResult(qCheck.reason || "已达全局发信限额");
 
-    const batchId = rows[0]!.batchId || nanoid();
+    const resumedBatchId = rows[0]!.batchId || nanoid();
 
     const items: SendItem[] = [];
     for (const r of rows) {
@@ -1804,7 +1804,7 @@ export function resumeQueue(batchId?: string): Result<{ batchId: string; queued:
 
     stateHydrated = true;   // 恢复的批次接管状态后，重启水合不得再回头覆盖
     state = {
-      batchId, totalItems: totalItems + sentCount + failedCount,
+      batchId: resumedBatchId, totalItems: totalItems + sentCount + failedCount,
       sentCount, failedCount,
       isPaused: false, isRunning: true, currentItem: null, delaySeconds: 0, delayUntil: null, delayReason: null,
       pausedReason: null,
@@ -1814,10 +1814,10 @@ export function resumeQueue(batchId?: string): Result<{ batchId: string; queued:
       }),
     };
 
-    Log.info("send.resume", `恢复批次 ${batchId}: ${kept.length} 待发送, ${sentCount} 已完成`);
-    saveRunningBatch(batchId);   // 恢复续跑同样视为"运行中"：再次退出/崩溃后仍可自动续跑
+    Log.info("send.resume", `恢复批次 ${resumedBatchId}: ${kept.length} 待发送, ${sentCount} 已完成`);
+    saveRunningBatch(resumedBatchId);   // 恢复续跑同样视为"运行中"：再次退出/崩溃后仍可自动续跑
     void runBatchLoop();
-    return okResult({ batchId, queued: kept.length, queuedCount: keptCount, dropped });
+    return okResult({ batchId: resumedBatchId, queued: kept.length, queuedCount: keptCount, dropped });
   } catch (err) {
     Log.error("send.resumeQueue", err instanceof Error ? err.message : String(err));
     return failResult("恢复队列失败: " + (err instanceof Error ? err.message : String(err)));
