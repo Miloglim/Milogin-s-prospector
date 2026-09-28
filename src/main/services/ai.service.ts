@@ -3,7 +3,7 @@ import { APP_ROOT } from "../config";
 import { Log } from "../logger";
 import { okResult, failResult, type Result } from "../errors";
 import { upsertEnv } from "../env-store";
-import { readActiveEndpoint, readLightEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn, isOpenAiLuna } from "./endpoint.service";
+import { readActiveEndpoint, readLightEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR } from "./endpoint.service";
 import { readIdentity } from "./agent/identity";
 import { netFetch } from "../net-proxy";
 
@@ -117,6 +117,10 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
       return failResult(`模型调用失败 (${res.status})`);
     }
 
+    if (isHtmlEndpointResponse(res)) {
+      Log.error("ai.chat", HTML_ENDPOINT_ERROR);
+      return failResult(HTML_ENDPOINT_ERROR);
+    }
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const content = json.choices?.[0]?.message?.content?.trim();
     if (!content) return failResult("模型返回为空");

@@ -289,10 +289,11 @@ export async function chat(push: PushFn, input: ChatInput): Promise<Result<{ con
         push(EVENTS.AGENT_DONE, { conversationId, messageId, stopped: true });
       } else if ((err as { name?: string })?.name === "MaxTurnsExceededError"
         || /max\s*turns/i.test(err instanceof Error ? err.message : "")) {
-        // 回合步数用尽 = 程序内部刹车，不该是报错脸：续一句自然收尾，按完成处理
-        Log.warn("agent.chat", `conv=${conversationId.slice(0, 8)} 达 maxTurns，优雅收尾`);
-        push(EVENTS.AGENT_CHUNK, { conversationId, delta: "\n\n这轮先说到这里 — 要接着做的话，回一句「继续」即可。" });
-        push(EVENTS.AGENT_DONE, { conversationId, messageId, stopped: false });
+        // 无正文时到达步数上限是失败；流式有正文的情况由 harness 返回 capped 结果。
+        const shown = "模型回合步数已用尽，尚未生成正文。请先检查模型端点连接与接口类型。";
+        Log.warn("agent.chat", `conv=${conversationId.slice(0, 8)} 达 maxTurns 且无正文`);
+        appendMessage(conversationId, "error", shown);
+        push(EVENTS.AGENT_ERROR, { conversationId, message: shown });
       } else {
         const msg = err instanceof Error ? err.message : String(err);
         Log.error("agent.chat", "模型调用失败", err instanceof Error ? (err.stack ?? msg) : msg);

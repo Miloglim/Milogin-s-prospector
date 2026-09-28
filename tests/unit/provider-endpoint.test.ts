@@ -30,6 +30,7 @@ const { upsertEnv, readEnvFile } = await import("../../src/main/env-store");
 const Prov = await import("../../src/main/services/provider.service");
 const Ai = await import("../../src/main/services/ai.service");
 const Once = await import("../../src/main/services/agent/oneshot");
+const Harness = await import("../../src/main/services/agent/harness");
 
 beforeAll(() => {
   fs.writeFileSync(ENV_FILE, "", "utf-8");
@@ -164,6 +165,18 @@ describe("provider.service 端点管理", () => {
     } finally { request.mockRestore(); }
   });
 
+  it("网页误响应不能通过连接测试，要提示 API 路径或接口类型", async () => {
+    const p = Prov.upsertProfile({ name: "网页根地址", baseUrl: "https://gateway.example", model: "gpt-5.6-luna" });
+    if (!p.success) throw new Error("upsert 失败");
+    Prov.setProfileKey(p.data.id, "test-only-key");
+    const request = vi.spyOn(NetProxy, "netFetch").mockResolvedValue(new Response("<!doctype html><html></html>", { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }));
+    try {
+      const result = await Prov.testProfile(p.data.id);
+      expect(result.success && result.data).toMatchObject({ ok: false, kind: "badrequest" });
+      if (result.success) expect(result.data.error).toContain("Chat Completions");
+    } finally { request.mockRestore(); }
+  });
+
   it("测试未填模型名的端点：直接给人话提示，不发请求", async () => {
     const p = Prov.upsertProfile({ name: "无模型", baseUrl: "https://e.example/v1", model: "" });
     if (!p.success) throw new Error("upsert 失败");
@@ -196,6 +209,27 @@ describe("Luna 实际调用参数", () => {
       expect(body).not.toHaveProperty("temperature");
       expect((await Ai.chat("system", "user", { thinking: true })).success).toBe(true);
       expect(JSON.parse(String(request.mock.calls[1]![1]?.body)).reasoning_effort).toBe("low");
+    } finally { request.mockRestore(); }
+  });
+
+  it("轻任务收到网页时明确提示配置错误", async () => {
+    configure();
+    const request = vi.spyOn(NetProxy, "netFetch").mockResolvedValue(new Response("<!doctype html>", { status: 200, headers: { "Content-Type": "text/html" } }));
+    try {
+      const result = await Ai.chat("system", "user");
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toContain("不是模型 API");
+    } finally { request.mockRestore(); }
+  });
+
+  it("Agent 收到网页时立即失败，不消耗完整回合步数", async () => {
+    const request = vi.spyOn(NetProxy, "netFetch").mockImplementation(async () => new Response("<!doctype html>", { status: 200, headers: { "Content-Type": "text/html" } }));
+    try {
+      await expect(Harness.runHarnessTurn(
+        { name: "test", maxTurns: 2, toolNames: [], buildInstructions: () => "Reply to the user" },
+        { baseUrl: "https://gateway.example", apiKey: "test-only-key", model: "gpt-5.6-luna", history: [{ role: "user", content: "test" }], conversationId: "test", push: () => {}, signal: new AbortController().signal },
+      )).rejects.toThrow("不是模型 API");
+      expect(request.mock.calls.length).toBeLessThan(16);
     } finally { request.mockRestore(); }
   });
 

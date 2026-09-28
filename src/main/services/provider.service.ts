@@ -10,7 +10,7 @@ import { APP_ROOT } from "../config";
 import { Log } from "../logger";
 import { okResult, failResult, type Result } from "../errors";
 import { upsertEnv, readEnvFile } from "../env-store";
-import { readActiveEndpoint, endpointView, endpointFamily, thinkingExtras, isOpenAiLuna } from "./endpoint.service";
+import { readActiveEndpoint, endpointView, endpointFamily, thinkingExtras, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR } from "./endpoint.service";
 import { netFetch } from "../net-proxy";
 
 export interface ProviderProfile {
@@ -252,6 +252,7 @@ export async function testProfile(id: string): Promise<Result<EndpointTestResult
       const text = await res.text().catch(() => "");
       return okResult({ ok: false, latencyMs, model: p.model, ...classifyHttp(res.status, text) });
     }
+    if (isHtmlEndpointResponse(res)) return okResult({ ok: false, latencyMs, model: p.model, kind: "badrequest", error: HTML_ENDPOINT_ERROR });
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const content = json.choices?.[0]?.message?.content?.trim();
     if (!content) return okResult({ ok: false, latencyMs, model: p.model, kind: "empty", error: "端点返回空内容（模型名可用但没出字，试试关掉思考或换模型）" });

@@ -12,7 +12,7 @@ import {
 } from "@openai/agents";
 import { Log } from "../../logger";
 import { EVENTS } from "../../events";
-import { endpointFamily, thinkingExtras, isOpenAiLuna } from "../endpoint.service";
+import { endpointFamily, thinkingExtras, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR } from "../endpoint.service";
 import { netFetch } from "../../net-proxy";
 import { buildHarnessTools, auditRejected, normalizePlan, noteToolOutcome, isToolRuntimeError, isEnvelopeFailure, type ToolCtx, type PlanItem } from "./tools";
 import { toolRoutesBlock, pickTools } from "./manifest";
@@ -306,6 +306,11 @@ function makeClient(baseUrl: string, apiKey: string): OpenAI {
     }
     // 走 netFetch：设置里配了代理就经它出去（海外端点在这类网络下必须经代理）
     const res = await netFetch(url as string, init as RequestInit);
+    // SDK 会把 fetch 抛错改写为笼统的 Connection error；合成非重试的 400 以保留明确提示。
+    if (res.ok && isHtmlEndpointResponse(res)) return new Response(
+      JSON.stringify({ error: { message: HTML_ENDPOINT_ERROR, type: "invalid_endpoint" } }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
     // 流式响应：解包 SSE 嗅探 usage（非流式的 usage 由 SDK 的 Usage 对象读取）
     let isSSE = false;
     try { isSSE = JSON.parse(String(init?.body ?? "{}")).stream === true; } catch { /* 非串行 body */ }

@@ -56,6 +56,12 @@ export function endpointFamily(baseUrl: string): EndpointFamily {
   return "compat";   // agnes / vLLM / 自建 OpenAI 兼容网关
 }
 
+export const HTML_ENDPOINT_ERROR = "端点返回的是网页，不是模型 API。请检查 Base URL 和接口类型；本程序当前使用 Chat Completions。";
+
+export function isHtmlEndpointResponse(res: Response): boolean {
+  return /text\/html/i.test(res.headers.get("content-type") ?? "");
+}
+
 /** 官方 OpenAI Luna 使用 Chat Completions 的推理模型参数，不能混用兼容网关的 temperature/max_tokens。 */
 export function isOpenAiLuna(baseUrl: string, model: string): boolean {
   try { return new URL(baseUrl).hostname === "api.openai.com" && model === "gpt-5.6-luna"; }

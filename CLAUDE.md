@@ -1,5 +1,7 @@
 # 已知陷阱
 
+- 供应商给 Codex 的 `wire_api = "responses"` 配置不能直接当作本程序的 Chat Completions Base URL。网关根路径可能对 `/chat/completions` 返回 HTTP 200 的 HTML 首页；必须检查响应类型，不能把无正文的 maxTurns 当成成功并反复提示「继续」。
+
 - 官方 OpenAI GPT-5.6 Luna 的 Chat Completions 请求不要带 `temperature` 或 `max_tokens`；使用 `max_completion_tokens`，并按任务设置 `reasoning_effort`。连接测试、轻任务、一次性解析和 Agent 会话都要同步更新，不能只改设置页的模型模板。
 
 - 邮件 HTML 中的 `file:`、Windows/Unix/UNC 本地绝对路径不得作为图片读取来源。富文本编辑器会将用户直接粘贴的图片转换为 `data:` URL；发送时再转为 CID 附件。遇到旧签名或 Word/Outlook 带入的本地路径，应提示重新粘贴图片，不能恢复“读取本机文件”的兼容逻辑。
