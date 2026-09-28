@@ -28,6 +28,8 @@ const NetProxy = await import("../../src/main/net-proxy");
 const { parseProxyServer } = NetProxy;
 const { upsertEnv, readEnvFile } = await import("../../src/main/env-store");
 const Prov = await import("../../src/main/services/provider.service");
+const Ai = await import("../../src/main/services/ai.service");
+const Once = await import("../../src/main/services/agent/oneshot");
 
 beforeAll(() => {
   fs.writeFileSync(ENV_FILE, "", "utf-8");
@@ -172,6 +174,43 @@ describe("provider.service 端点管理", () => {
       expect(r.data.ok).toBe(false);
       expect(r.data.kind).toBe("model");
     }
+  });
+});
+
+describe("Luna 实际调用参数", () => {
+  const configure = () => {
+    process.env.AGENT_API_BASE_URL = "https://api.openai.com/v1";
+    process.env.AGENT_MODEL = "gpt-5.6-luna";
+    process.env.AGENT_API_KEY = "test-only-key";
+  };
+
+  it("轻任务使用指定思考级别，默认不发送 temperature", async () => {
+    configure();
+    const request = vi.spyOn(NetProxy, "netFetch").mockImplementation(async () => new Response(
+      JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 },
+    ));
+    try {
+      expect((await Ai.chat("system", "user")).success).toBe(true);
+      const body = JSON.parse(String(request.mock.calls[0]![1]?.body));
+      expect(body).toMatchObject({ model: "gpt-5.6-luna", reasoning_effort: "none" });
+      expect(body).not.toHaveProperty("temperature");
+      expect((await Ai.chat("system", "user", { thinking: true })).success).toBe(true);
+      expect(JSON.parse(String(request.mock.calls[1]![1]?.body)).reasoning_effort).toBe("low");
+    } finally { request.mockRestore(); }
+  });
+
+  it("一次性 JSON 解析使用 max_completion_tokens", async () => {
+    configure();
+    const request = vi.spyOn(NetProxy, "netFetch").mockImplementation(async () => new Response(
+      JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    try {
+      expect(await Once.askJsonOnce<{ ok: boolean }>("Reply in JSON", "user")).toEqual({ ok: true });
+      const body = JSON.parse(String(request.mock.calls[0]![1]?.body));
+      expect(body).toMatchObject({ model: "gpt-5.6-luna", reasoning_effort: "none", max_completion_tokens: 400 });
+      expect(body).not.toHaveProperty("max_tokens");
+      expect(body).not.toHaveProperty("temperature");
+    } finally { request.mockRestore(); }
   });
 });
 
