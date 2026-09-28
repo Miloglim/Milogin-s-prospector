@@ -3,7 +3,7 @@ import { APP_ROOT } from "../config";
 import { Log } from "../logger";
 import { okResult, failResult, type Result } from "../errors";
 import { upsertEnv } from "../env-store";
-import { readActiveEndpoint, readLightEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR } from "./endpoint.service";
+import { readActiveEndpoint, readLightEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR, extractResponsesText, modelApiUrl, type WireApi } from "./endpoint.service";
 import { readIdentity } from "./agent/identity";
 import { netFetch } from "../net-proxy";
 
@@ -62,15 +62,14 @@ interface ChatMessage {
 }
 
 /** 能力调用的端点解析：与 agent 会话同源（读同一份生效端点），未配置时回落 DeepSeek */
-function resolveLlmEndpoint(): { url: string; model: string; key: string; label: string } | null {
+function resolveLlmEndpoint(): { url: string; model: string; key: string; label: string; wireApi: WireApi } | null {
   const e = readActiveEndpoint();
   // 模型名必须显式配置：猜一个默认名只会在异族网关上换来一句看不懂的 400/404
   if (e.baseUrl && e.apiKey && e.model) {
-    const url = e.baseUrl.endsWith("/chat/completions") ? e.baseUrl : `${e.baseUrl.replace(/\/$/, "")}/chat/completions`;
-    return { url, model: e.model, key: e.apiKey, label: "agent" };
+    return { url: modelApiUrl(e.baseUrl, e.wireApi), model: e.model, key: e.apiKey, label: "agent", wireApi: e.wireApi };
   }
   const deepKey = process.env.DEEPSEEK_API_KEY?.trim();
-  if (deepKey) return { url: DEEPSEEK_ENDPOINT, model: DEEPSEEK_MODEL, key: deepKey, label: "deepseek" };
+  if (deepKey) return { url: DEEPSEEK_ENDPOINT, model: DEEPSEEK_MODEL, key: deepKey, label: "deepseek", wireApi: "chat_completions" };
   return null;
 }
 
@@ -79,7 +78,7 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
   // 大小模型路由：能力调用（总结/背调/开发信/压缩摘要）优先走轻任务档 LIGHT_*，未配置回落主端点
   const light = readLightEndpoint();
   const ep = light.source === "light"
-    ? { url: light.baseUrl.endsWith("/chat/completions") ? light.baseUrl : light.baseUrl.replace(/\/$/, "") + "/chat/completions", model: light.model, key: light.apiKey, label: "light" }
+    ? { url: modelApiUrl(light.baseUrl, light.wireApi), model: light.model, key: light.apiKey, label: "light", wireApi: light.wireApi }
     : resolveLlmEndpoint();
   if (!ep) return failResult("模型端点未配置：请到「设置 → 模型与端点」填好 Base URL / 密钥 / 模型名并启用（或在 .env 配 DEEPSEEK_API_KEY 作回落）");
 
@@ -92,18 +91,19 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
     // 默认关思考（总结/压缩这类一次性出全文，推理只会拖慢）；起草/背调等高价值合成
     // 由调用方传 {thinking:true} 走开思考方言 —— 单发无 assistant 历史，RC 回传约束不存在。
     // 注入必须走方言（给 Gemini 塞 chat_template_kwargs 有 400 风险）
-    const payload = {
-      model: ep.model,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      ...(isOpenAiLuna(ep.url, ep.model)
-        ? { reasoning_effort: opts?.thinking ? "low" : "none" }
-        : { temperature: 0.7, ...(opts?.thinking
-          ? thinkingExtrasOn(endpointFamily(ep.url))
-          : thinkingExtras(endpointFamily(ep.url))) }),
-    };
+    const payload = ep.wireApi === "responses"
+      ? { model: ep.model, instructions: system, input: user,
+        reasoning: { effort: opts?.thinking ? "low" : "none" }, store: false }
+      : { model: ep.model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        ...(isOpenAiLuna(ep.url, ep.model)
+          ? { reasoning_effort: opts?.thinking ? "low" : "none" }
+          : { temperature: 0.7, ...(opts?.thinking
+            ? thinkingExtrasOn(endpointFamily(ep.url))
+            : thinkingExtras(endpointFamily(ep.url))) }) };
     const res = await netFetch(ep.url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${ep.key}` },
@@ -122,7 +122,7 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
       return failResult(HTML_ENDPOINT_ERROR);
     }
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = json.choices?.[0]?.message?.content?.trim();
+    const content = ep.wireApi === "responses" ? extractResponsesText(json) : json.choices?.[0]?.message?.content?.trim();
     if (!content) return failResult("模型返回为空");
     return okResult(content);
   } catch (err: unknown) {

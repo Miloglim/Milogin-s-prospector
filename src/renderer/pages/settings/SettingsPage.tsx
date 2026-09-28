@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card, Input, InputNumber, Button, message, notification, Table, Modal, Form, Tag, Space,
-  Switch, TimePicker, Tooltip, Badge, Popconfirm, Segmented,
+  Switch, TimePicker, Tooltip, Badge, Popconfirm, Segmented, Select,
 } from "antd";
 import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined, DownloadOutlined, SyncOutlined, FolderOpenOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import { RichTextEditor } from "../../components/RichTextEditor";
@@ -866,24 +866,24 @@ function AgentAuditCard() {
 // 密钥只写 .env（后端 provider.service 负责），界面永不回显密钥值。
 // 激活即写生效参数并同步 process.env —— 切换后不用重启应用。
 interface ProfileDto {
-  id: string; name: string; baseUrl: string; model: string; keyEnv: string;
+  id: string; name: string; baseUrl: string; model: string; wireApi: "chat_completions" | "responses"; keyEnv: string;
   hasKey: boolean; active: boolean;
 }
 interface EndpointStatus {
   profiles: ProfileDto[];
   activeId: string | null;
-  endpoint: { hasBaseUrl: boolean; hasKey: boolean; baseUrl: string; model: string; source: string; keyEnv: string };
+  endpoint: { hasBaseUrl: boolean; hasKey: boolean; baseUrl: string; model: string; wireApi: "chat_completions" | "responses"; source: string; keyEnv: string };
   configured: boolean;
 }
 type TestState = { running?: boolean; ok?: boolean; text?: string };
 
 const ENDPOINT_PRESETS = [
-  { label: "Gemini Flash（推荐）", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.7-flash" },
-  { label: "OpenAI GPT-5.6 Luna", baseUrl: "https://api.openai.com/v1", model: "gpt-5.6-luna" },
-  { label: "Agnes（云端 OpenAI 兼容）", baseUrl: "https://apihub.agnes-ai.com/v1", model: "agnes-2.5-pro-beta" },
-  { label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-v4-flash" },
-  { label: "本地 Ollama", baseUrl: "http://localhost:11434/v1", model: "qwen3:8b" },
-  { label: "公司内部中转", baseUrl: "", model: "" },
+  { label: "Gemini Flash（推荐）", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.7-flash", wireApi: "chat_completions" as const },
+  { label: "OpenAI GPT-5.6 Luna", baseUrl: "https://api.openai.com/v1", model: "gpt-5.6-luna", wireApi: "responses" as const },
+  { label: "Agnes（云端 OpenAI 兼容）", baseUrl: "https://apihub.agnes-ai.com/v1", model: "agnes-2.5-pro-beta", wireApi: "chat_completions" as const },
+  { label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-v4-flash", wireApi: "chat_completions" as const },
+  { label: "本地 Ollama", baseUrl: "http://localhost:11434/v1", model: "qwen3:8b", wireApi: "chat_completions" as const },
+  { label: "公司内部中转", baseUrl: "", model: "", wireApi: "chat_completions" as const },
 ];
 
 function ProviderCard() {
@@ -927,17 +927,17 @@ function ProviderCard() {
   };
 
   const openForm = (p: ProfileDto | null) => {
-    const preset = ENDPOINT_PRESETS[0] ?? { label: "", baseUrl: "", model: "" };
+    const preset = ENDPOINT_PRESETS[0]!;
     setEditing(p);
     form.setFieldsValue(p
-      ? { name: p.name, baseUrl: p.baseUrl, model: p.model, apiKey: "" }
-      : { name: "", baseUrl: preset.baseUrl, model: preset.model, apiKey: "" });
+      ? { name: p.name, baseUrl: p.baseUrl, model: p.model, wireApi: p.wireApi ?? "chat_completions", apiKey: "" }
+      : { name: "", baseUrl: preset.baseUrl, model: preset.model, wireApi: preset.wireApi, apiKey: "" });
     setFormOpen(true);
   };
 
   const submitForm = async () => {
     const v = await form.validateFields();
-    const { apiKey, ...cfg } = v as { apiKey?: string; name: string; baseUrl: string; model: string };
+    const { apiKey, ...cfg } = v as { apiKey?: string; name: string; baseUrl: string; model: string; wireApi: "chat_completions" | "responses" };
     const r = await window.api.invoke("ai:profileUpsert", { ...(editing ? { id: editing.id } : {}), ...cfg }) as
       { success: boolean; error?: string; data?: { id?: string } };
     if (!r?.success) { message.error(r?.error || "保存失败"); return; }
@@ -954,7 +954,7 @@ function ProviderCard() {
     <SettingCard icon="" title="模型与端点">
       <div className="text-[11px] text-gray-500 mb-2 leading-relaxed">
         {st?.activeId
-          ? <>当前生效：<b>{profiles.find(p => p.id === st.activeId)?.name ?? st.activeId}</b> · {st.endpoint.baseUrl} · 模型 {st.endpoint.model || "未填"}</>
+          ? <>当前生效：<b>{profiles.find(p => p.id === st.activeId)?.name ?? st.activeId}</b> · {st.endpoint.baseUrl} · 模型 {st.endpoint.model || "未填"} · {st.endpoint.wireApi === "responses" ? "Responses" : "Chat Completions"}</>
           : <>尚未激活任何端点。{st?.endpoint.hasBaseUrl && st.endpoint.hasKey
             ? <>正在使用 .env 手写配置（{st.endpoint.baseUrl}），建议「添加服务商」后启用，便于随时切换。</>
             : <>对话与背调/开发信/邮件总结都会走这一份配置。</>}</>}
@@ -975,7 +975,7 @@ function ProviderCard() {
                 <span className="text-[12px] font-medium text-gray-800">
                   {r.active && <span className="text-teal-600 mr-1">●</span>}{v}
                 </span>
-                <div className="text-[11px] text-gray-400 font-mono">{r.baseUrl}</div>
+                <div className="text-[11px] text-gray-400 font-mono">{r.baseUrl} · {r.wireApi === "responses" ? "Responses" : "Chat Completions"}</div>
               </div>
             ),
           },
@@ -1046,7 +1046,7 @@ function ProviderCard() {
             <Form.Item label="快速模板">
               <Space wrap size={4}>
                 {ENDPOINT_PRESETS.map(p => (
-                  <Tag key={p.label} className="cursor-pointer" onClick={() => form.setFieldsValue({ baseUrl: p.baseUrl, model: p.model })}>
+                  <Tag key={p.label} className="cursor-pointer" onClick={() => form.setFieldsValue({ baseUrl: p.baseUrl, model: p.model, wireApi: p.wireApi })}>
                     {p.label}
                   </Tag>
                 ))}
@@ -1058,6 +1058,10 @@ function ProviderCard() {
           </Form.Item>
           <Form.Item name="baseUrl" label="Base URL" rules={[{ required: true, pattern: /^https?:\/\//, message: "需以 http(s):// 开头" }]}>
             <Input placeholder="https://xxx/v1" className="!font-mono" />
+          </Form.Item>
+          <Form.Item name="wireApi" label="接口类型" rules={[{ required: true, message: "请选择接口类型" }]}
+            extra="供应商配置写 wire_api=responses 时选 Responses；原有服务商保持 Chat Completions。">
+            <Select options={[{ value: "chat_completions", label: "Chat Completions" }, { value: "responses", label: "Responses" }]} />
           </Form.Item>
           <Form.Item name="model" label="模型名" rules={[{ required: true, message: "模型名必填，否则会报 400" }]}>
             <Input placeholder="如 agnes-2.5-pro-beta / deepseek-chat" className="!font-mono" />

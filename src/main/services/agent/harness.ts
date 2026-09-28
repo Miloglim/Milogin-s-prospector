@@ -7,12 +7,12 @@
 import * as crypto from "crypto";
 import OpenAI from "openai";
 import {
-  Agent, run, setTracingDisabled, OpenAIChatCompletionsModel,
+  Agent, run, setTracingDisabled, OpenAIChatCompletionsModel, OpenAIResponsesModel,
   type RunState,
 } from "@openai/agents";
 import { Log } from "../../logger";
 import { EVENTS } from "../../events";
-import { endpointFamily, thinkingExtras, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR } from "../endpoint.service";
+import { endpointFamily, thinkingExtras, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR, type WireApi } from "../endpoint.service";
 import { netFetch } from "../../net-proxy";
 import { buildHarnessTools, auditRejected, normalizePlan, noteToolOutcome, isToolRuntimeError, isEnvelopeFailure, type ToolCtx, type PlanItem } from "./tools";
 import { toolRoutesBlock, pickTools } from "./manifest";
@@ -122,6 +122,7 @@ export interface HarnessOptions {
   baseUrl: string;
   apiKey: string;
   model: string;
+  wireApi?: WireApi;
   history: ChatMsg[];
   conversationId: string;
   push: PushFn;
@@ -350,7 +351,10 @@ export function hasPending(approvalId: string): boolean {
 /** 发起一轮带工具的流式执行；遇 write 工具中断时返回 approval 态，等 resolveApproval 续跑 */
 export async function runHarnessTurn(profile: AgentProfile, o: HarnessOptions): Promise<TurnOutcome> {
   disableTracingOnce();
-  const model = new OpenAIChatCompletionsModel(makeClient(o.baseUrl, o.apiKey), o.model);
+  const client = makeClient(o.baseUrl, o.apiKey);
+  const model = o.wireApi === "responses"
+    ? new OpenAIResponsesModel(client, o.model)
+    : new OpenAIChatCompletionsModel(client, o.model);
   const ctx: ToolCtx = {
     conversationId: o.conversationId, push: o.push, counts: new Map(), failures: new Map(),
     // 用户原话取历史里最后一条 user 消息：工具层做参数兜底用（如查价漏传起运港）
@@ -368,6 +372,7 @@ export async function runHarnessTurn(profile: AgentProfile, o: HarnessOptions): 
     instructions,
     tools,
     model,
+    ...(o.wireApi === "responses" ? { modelSettings: { store: false, reasoning: { effort: "none" as const } } } : {}),
   });
   return streamRun(agent, ctx, o, undefined, profile.maxTurns);
 }
@@ -496,7 +501,7 @@ async function streamRun(
   // 而 SDK 的流式分支只累积 name/arguments/callId（把签名丢了 → 第 2 轮直接 400）；
   // 非流式分支会把整条 tool_call 存进 providerData 并原样 spread 回去。故对 google 族走非流式。
   const family = endpointFamily(o.baseUrl);
-  const streaming = family !== "google";
+  const streaming = o.wireApi === "responses" || family !== "google";
 
   if (!streaming) {
     const r = await run(agent, (resumeState ?? o.history) as never, {

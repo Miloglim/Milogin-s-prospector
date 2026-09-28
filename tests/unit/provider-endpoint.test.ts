@@ -20,7 +20,7 @@ const STORE_FILE = path.join(tmp, "providers.json");
 process.env.QW_ENV_PATH = ENV_FILE;
 process.env.AI_PROVIDERS_PATH = STORE_FILE;
 
-const KEYS = ["AGENT_API_BASE_URL", "AGENT_MODEL", "AGENT_KEY_ENV", "AGENT_API_KEY", "DEEPSEEK_API_KEY"];
+const KEYS = ["AGENT_API_BASE_URL", "AGENT_MODEL", "AGENT_WIRE_API", "AGENT_KEY_ENV", "AGENT_API_KEY", "DEEPSEEK_API_KEY"];
 for (const k of KEYS) delete process.env[k];
 
 const { readActiveEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn, readLightEndpoint, isOpenAiLuna } = await import("../../src/main/services/endpoint.service");
@@ -116,6 +116,31 @@ describe("provider.service 端点管理", () => {
     expect(process.env.AGENT_API_KEY).toBeUndefined();
   });
 
+  it("磁盘旧档案没有 wireApi 时按 Chat Completions 读取", () => {
+    fs.writeFileSync(STORE_FILE, JSON.stringify({ activeId: null, profiles: [
+      { id: "legacy", name: "旧档", baseUrl: "https://old.example/v1", model: "old", keyEnv: "PROVIDER_KEY_LEGACY" },
+    ] }));
+    const result = Prov.listProfiles();
+    expect(result.success && result.data[0]?.wireApi).toBe("chat_completions");
+  });
+
+  it("旧档案默认 Chat Completions；Responses 档激活和编辑后立即生效", () => {
+    const old = Prov.upsertProfile({ name: "旧档", baseUrl: "https://old.example/v1", model: "old" });
+    if (!old.success) throw new Error("upsert 失败");
+    expect(old.data.wireApi).toBe("chat_completions");
+    const modern = Prov.upsertProfile({ name: "新档", baseUrl: "https://gateway.example", model: "gpt-5.6-luna", wireApi: "responses" });
+    if (!modern.success) throw new Error("upsert 失败");
+    Prov.setProfileKey(modern.data.id, "test-only-key");
+    expect(Prov.activateProfile(modern.data.id).success).toBe(true);
+    expect(readActiveEndpoint().wireApi).toBe("responses");
+    expect(process.env.AGENT_WIRE_API).toBe("responses");
+    Prov.upsertProfile({ id: modern.data.id, name: "新档", baseUrl: "https://gateway.example/v1", model: "gpt-5.6-luna", wireApi: "responses" });
+    expect(readActiveEndpoint().baseUrl).toBe("https://gateway.example/v1");
+    Prov.setProfileKey(old.data.id, "test-only-key");
+    expect(Prov.activateProfile(old.data.id).success).toBe(true);
+    expect(readActiveEndpoint().wireApi).toBe("chat_completions");
+  });
+
   it("没配密钥的端点不能激活（而不是悄悄切过去变成 401）", () => {
     const p = Prov.upsertProfile({ name: "空", baseUrl: "https://c.example/v1", model: "m" });
     if (!p.success) throw new Error("upsert 失败");
@@ -165,6 +190,25 @@ describe("provider.service 端点管理", () => {
     } finally { request.mockRestore(); }
   });
 
+  it("Responses 连通性测试发送 input 并读取 output_text", async () => {
+    const p = Prov.upsertProfile({ name: "Responses", baseUrl: "https://gateway.example", model: "gpt-5.6-luna", wireApi: "responses" });
+    if (!p.success) throw new Error("upsert 失败");
+    Prov.setProfileKey(p.data.id, "test-only-key");
+    const request = vi.spyOn(NetProxy, "netFetch").mockResolvedValue(new Response(
+      JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: "pong" }] }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    try {
+      const result = await Prov.testProfile(p.data.id);
+      expect(result.success && result.data).toMatchObject({ ok: true, preview: "pong" });
+      const [url, init] = request.mock.calls[0]!;
+      expect(url).toBe("https://gateway.example/responses");
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({ model: "gpt-5.6-luna", input: "Reply pong", store: false });
+      expect(body).not.toHaveProperty("messages");
+    } finally { request.mockRestore(); }
+  });
+
   it("网页误响应不能通过连接测试，要提示 API 路径或接口类型", async () => {
     const p = Prov.upsertProfile({ name: "网页根地址", baseUrl: "https://gateway.example", model: "gpt-5.6-luna" });
     if (!p.success) throw new Error("upsert 失败");
@@ -173,7 +217,7 @@ describe("provider.service 端点管理", () => {
     try {
       const result = await Prov.testProfile(p.data.id);
       expect(result.success && result.data).toMatchObject({ ok: false, kind: "badrequest" });
-      if (result.success) expect(result.data.error).toContain("Chat Completions");
+      if (result.success) expect(result.data.error).toContain("接口类型");
     } finally { request.mockRestore(); }
   });
 
@@ -233,6 +277,56 @@ describe("Luna 实际调用参数", () => {
     } finally { request.mockRestore(); }
   });
 
+  it("Responses 轻任务与一次性解析走各自接口，不读取 choices", async () => {
+    process.env.AGENT_API_BASE_URL = "https://gateway.example";
+    process.env.AGENT_MODEL = "gpt-5.6-luna";
+    process.env.AGENT_API_KEY = "test-only-key";
+    process.env.AGENT_WIRE_API = "responses";
+    const request = vi.spyOn(NetProxy, "netFetch").mockImplementation(async () => new Response(
+      JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: "{\"ok\":true}" }] }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    try {
+      expect((await Ai.chat("system", "user")).success).toBe(true);
+      expect(request.mock.calls[0]![0]).toBe("https://gateway.example/responses");
+      expect(JSON.parse(String(request.mock.calls[0]![1]?.body))).toMatchObject({ instructions: "system", input: "user", store: false });
+      expect(await Once.askJsonOnce<{ ok: boolean }>("Reply in JSON", "user")).toEqual({ ok: true });
+      expect(String(request.mock.calls[1]![0])).toBe("https://gateway.example/responses");
+      expect(JSON.parse(String(request.mock.calls[1]![1]?.body))).toMatchObject({ max_output_tokens: 400, store: false });
+    } finally { request.mockRestore(); }
+  });
+
+  it("Responses Agent 流式正文经 SDK 正常交付", async () => {
+    const response = { id: "resp_test", object: "response", created_at: 0, model: "gpt-5.6-luna", status: "completed",
+      output: [{ type: "message", id: "msg_test", status: "completed", role: "assistant",
+        content: [{ type: "output_text", text: "pong", annotations: [] }] }],
+      usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 } };
+    const event = (name: string, data: unknown) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+    const sse = event("response.created", { type: "response.created", response: { ...response, status: "in_progress", output: [] } })
+      + event("response.output_text.delta", { type: "response.output_text.delta", delta: "pong", item_id: "msg_test", output_index: 0, content_index: 0 })
+      + event("response.completed", { type: "response.completed", response }) + "data: [DONE]\n\n";
+    const request = vi.spyOn(NetProxy, "netFetch").mockImplementation(async () => new Response(sse,
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    ));
+    const chunks: string[] = [];
+    try {
+      const result = await Harness.runHarnessTurn(
+        { name: "test", maxTurns: 2, toolNames: [], buildInstructions: () => "Reply to the user" },
+        { baseUrl: "https://gateway.example", apiKey: "test-only-key", model: "gpt-5.6-luna", wireApi: "responses",
+          history: [{ role: "user", content: "test" }], conversationId: "test",
+          push: (channel, data) => { if (channel === "agent:chunk") chunks.push(String((data as { delta?: string }).delta)); },
+          signal: new AbortController().signal },
+      );
+      expect(result.kind).toBe("done");
+      expect(result.text).toBe("pong");
+      expect(chunks.join("")).toBe("pong");
+      expect(request.mock.calls[0]![0]).toBe("https://gateway.example/responses");
+      const body = JSON.parse(String(request.mock.calls[0]![1]?.body));
+      expect(body).toMatchObject({ model: "gpt-5.6-luna", stream: true, store: false, reasoning: { effort: "none" } });
+      expect(body).not.toHaveProperty("messages");
+    } finally { request.mockRestore(); }
+  });
+
   it("一次性 JSON 解析使用 max_completion_tokens", async () => {
     configure();
     const request = vi.spyOn(NetProxy, "netFetch").mockImplementation(async () => new Response(
@@ -265,6 +359,16 @@ describe("轻任务端点（大小模型路由）", () => {
     const e = readLightEndpoint({ baseUrl: "https://main/v1", apiKey: "sk-main", model: "big", source: "profile" });
     expect(e.source).toBe("main");
     expect(e.model).toBe("big");
+  });
+
+  it("主端点 Responses 回落到轻任务；独立轻任务默认 Chat Completions", () => {
+    const main = { baseUrl: "https://main.example", apiKey: "test-only-key", model: "big", wireApi: "responses" as const, source: "profile" as const };
+    expect(readLightEndpoint(main).wireApi).toBe("responses");
+    process.env.LIGHT_API_BASE_URL = "https://light.example/v1";
+    process.env.LIGHT_MODEL = "small";
+    process.env.LIGHT_API_KEY = "test-only-key";
+    expect(readLightEndpoint(main).wireApi).toBe("chat_completions");
+    delete process.env.LIGHT_API_BASE_URL; delete process.env.LIGHT_MODEL; delete process.env.LIGHT_API_KEY;
   });
 
   it("配置齐备 → 走轻任务档；指针密钥优先于 legacy", () => {

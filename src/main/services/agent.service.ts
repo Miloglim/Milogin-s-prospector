@@ -21,7 +21,7 @@ import { composeEmailNote } from "./agent/email-context";
 
 type TurnOutcomeUsage = TurnOutcome["usage"];
 import { executeAction, dropActionsForConversation } from "./agent/actions";
-import { readActiveEndpoint } from "./endpoint.service";
+import { readActiveEndpoint, type WireApi } from "./endpoint.service";
 
 export type { PushFn };
 
@@ -64,13 +64,14 @@ interface ProviderConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  wireApi: WireApi;
 }
 
 /** 生效端点：统一走 endpoint.service 解析（界面激活 profile 后立即变化，无需重启）。
  *  需同时具备 BASE_URL + KEY 才算就绪；未就绪时对话直接失败并给出配置指引。 */
 function getProviderConfig(): ProviderConfig {
   const e = readActiveEndpoint();
-  return { configured: !!(e.baseUrl && e.apiKey), baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.model };
+  return { configured: !!(e.baseUrl && e.apiKey), baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.model, wireApi: e.wireApi };
 }
 
 /** 配置状态（不含密钥值），供 UI 显示模式横幅 */
@@ -238,7 +239,7 @@ export async function chat(push: PushFn, input: ChatInput): Promise<Result<{ con
       {
         // harness 自带系统提示词（L0 规则）与工具集；历史只带 user/assistant 正文
         const outcome = await runHarnessTurn(DEFAULT_PROFILE, {
-          baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model,
+          baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: cfg.wireApi,
           history: await loadConversation(conversationId),
           conversationId, push: touchPush, signal: state.abort.signal,
           contextNote: resolveContextNote(input.context),
@@ -339,7 +340,7 @@ export async function resolveApprovalRequest(push: PushFn, input: ApprovalInput)
   const touchPush: PushFn = (channel, data) => { armResume(); push(channel, data); };
   try {
     const outcome = await resolveApproval(approvalId, !!input.approved, {
-      baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model,
+      baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: cfg.wireApi,
       history: [], conversationId: "", push: touchPush, signal: ac.signal,
     });
     if (outcome.kind === "approval") return okResult({ resumed: false });

@@ -2,7 +2,7 @@
 
 > 国际货代 / 外贸销售的客户开发与跟进桌面工具 —— 找客户、背调、写开发信、批量发信、追回复，一个窗口里闭环。
 
-**开发中版本 v0.7.1-alpha.1** · [已发布安装包](https://github.com/Miloglim/Milogin-s-prospector/releases) · 应用内置自动更新（每 4 小时检查一次，新版本自动提醒）
+**开发中版本 v0.8.0-alpha.1** · [已发布安装包](https://github.com/Miloglim/Milogin-s-prospector/releases) · 应用内置自动更新（每 4 小时检查一次，新版本自动提醒）
 
 ---
 

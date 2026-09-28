@@ -10,7 +10,7 @@ import { APP_ROOT } from "../config";
 import { Log } from "../logger";
 import { okResult, failResult, type Result } from "../errors";
 import { upsertEnv, readEnvFile } from "../env-store";
-import { readActiveEndpoint, endpointView, endpointFamily, thinkingExtras, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR } from "./endpoint.service";
+import { readActiveEndpoint, endpointView, endpointFamily, thinkingExtras, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR, readWireApi, extractResponsesText, modelApiUrl, type WireApi } from "./endpoint.service";
 import { netFetch } from "../net-proxy";
 
 export interface ProviderProfile {
@@ -18,6 +18,7 @@ export interface ProviderProfile {
   name: string;
   baseUrl: string;
   model: string;
+  wireApi: WireApi;
   /** .env 中该端点密钥的变量名（密钥本身不落此文件） */
   keyEnv: string;
 }
@@ -56,6 +57,7 @@ function seedStore(): Store {
     name: "当前配置",
     baseUrl,
     model: (env.AGENT_MODEL || "").trim(),
+    wireApi: readWireApi(env.AGENT_WIRE_API),
     keyEnv: keyEnv || keyEnvFor("current"),
   };
   return { activeId: keyEnv ? "current" : null, profiles: [p] };
@@ -72,6 +74,7 @@ function readStore(): Store {
     const raw = JSON.parse(fs.readFileSync(file, "utf-8")) as Partial<Store>;
     const profiles = Array.isArray(raw.profiles)
       ? raw.profiles.filter((p): p is ProviderProfile => !!p && typeof p.id === "string" && typeof p.name === "string")
+        .map(p => ({ ...p, wireApi: readWireApi(p.wireApi) }))
       : [];
     return { activeId: typeof raw.activeId === "string" ? raw.activeId : null, profiles };
   } catch (err) {
@@ -121,6 +124,7 @@ export interface ProfileInput {
   name: string;
   baseUrl: string;
   model: string;
+  wireApi?: WireApi;
 }
 
 /** 新增或修改端点（密钥请用 setProfileKey，此处不接受密钥入参） */
@@ -129,13 +133,20 @@ export function upsertProfile(input: ProfileInput): Result<ProfileDto> {
   const baseUrl = normalizeBaseUrl(input.baseUrl || "");
   if (!name) return failResult("端点名必填");
   if (!/^https?:\/\//i.test(baseUrl)) return failResult("Base URL 需以 http:// 或 https:// 开头");
+  if (input.wireApi && input.wireApi !== "chat_completions" && input.wireApi !== "responses") return failResult("接口类型不支持");
   const s = readStore();
   if (input.id) {
     const p = s.profiles.find(x => x.id === input.id);
     if (!p) return failResult(`端点不存在: ${input.id}`);
     p.name = name; p.baseUrl = baseUrl;
     p.model = input.model?.trim() ?? p.model;
+    p.wireApi = input.wireApi ?? p.wireApi;
     writeStore(s);
+    if (s.activeId === p.id) {
+      upsertEnv("AGENT_API_BASE_URL", p.baseUrl);
+      upsertEnv("AGENT_MODEL", p.model);
+      upsertEnv("AGENT_WIRE_API", p.wireApi);
+    }
     Log.info("provider.upsert", `更新端点 ${p.id}（${p.name}）`);
     return okResult(toDto(s, p));
   }
@@ -143,6 +154,7 @@ export function upsertProfile(input: ProfileInput): Result<ProfileDto> {
   const p: ProviderProfile = {
     id, name, baseUrl,
     model: input.model?.trim() ?? "",
+    wireApi: input.wireApi ?? "chat_completions",
     keyEnv: keyEnvFor(id),
   };
   s.profiles.push(p);
@@ -159,6 +171,7 @@ export function deleteProfile(id: string): Result<void> {
   if (s.activeId === id) {
     s.activeId = null;
     upsertEnv("AGENT_KEY_ENV", null);   // 撤指针，不撤 base/model（下次激活会覆盖）
+    upsertEnv("AGENT_WIRE_API", null);
   }
   writeStore(s);
   // 顺手清掉该端点残留在 .env 的密钥，避免留下无人引用的旧 key
@@ -189,6 +202,7 @@ export function activateProfile(id: string): Result<{ configured: boolean; model
   writeStore(s);
   upsertEnv("AGENT_API_BASE_URL", p.baseUrl);
   upsertEnv("AGENT_MODEL", p.model);
+  upsertEnv("AGENT_WIRE_API", p.wireApi);
   upsertEnv("AGENT_KEY_ENV", p.keyEnv);
   const e = readActiveEndpoint();
   Log.info("provider.activate", `切换到 ${p.name}（model=${p.model || "默认"}）即时生效`);
@@ -200,6 +214,7 @@ export function deactivateProfile(): Result<void> {
   s.activeId = null;
   writeStore(s);
   upsertEnv("AGENT_KEY_ENV", null);
+  upsertEnv("AGENT_WIRE_API", null);
   return okResult(undefined);
 }
 
@@ -228,20 +243,21 @@ export async function testProfile(id: string): Promise<Result<EndpointTestResult
   if (!p.model.trim()) return okResult({ ok: false, latencyMs: 0, model: "", kind: "model", error: "模型名未填" });
 
   // 探活走各端点自己的参数方言。Luna 的推理和可见输出共用 completion tokens。
+  const responses = p.wireApi === "responses";
   const luna = isOpenAiLuna(p.baseUrl, p.model);
-  const body: Record<string, unknown> = {
-    model: p.model,
-    messages: [{ role: "user", content: "ping" }],
-    ...(luna
-      ? { max_completion_tokens: LUNA_TEST_MAX_COMPLETION_TOKENS, reasoning_effort: "none" }
-      : { max_tokens: 8, temperature: 0, ...thinkingExtras(endpointFamily(p.baseUrl)) }),
-  };
+  const body: Record<string, unknown> = responses
+    ? { model: p.model, input: "Reply pong", max_output_tokens: LUNA_TEST_MAX_COMPLETION_TOKENS,
+      reasoning: { effort: "none" }, store: false }
+    : { model: p.model, messages: [{ role: "user", content: "ping" }],
+      ...(luna
+        ? { max_completion_tokens: LUNA_TEST_MAX_COMPLETION_TOKENS, reasoning_effort: "none" }
+        : { max_tokens: 8, temperature: 0, ...thinkingExtras(endpointFamily(p.baseUrl)) }) };
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TEST_TIMEOUT_MS);
   const t0 = Date.now();
   try {
-    const res = await netFetch(`${p.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    const res = await netFetch(modelApiUrl(p.baseUrl, p.wireApi), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify(body),
@@ -254,7 +270,7 @@ export async function testProfile(id: string): Promise<Result<EndpointTestResult
     }
     if (isHtmlEndpointResponse(res)) return okResult({ ok: false, latencyMs, model: p.model, kind: "badrequest", error: HTML_ENDPOINT_ERROR });
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = json.choices?.[0]?.message?.content?.trim();
+    const content = responses ? extractResponsesText(json) : json.choices?.[0]?.message?.content?.trim();
     if (!content) return okResult({ ok: false, latencyMs, model: p.model, kind: "empty", error: "端点返回空内容（模型名可用但没出字，试试关掉思考或换模型）" });
     return okResult({ ok: true, latencyMs, model: p.model, preview: content.slice(0, 40) });
   } catch (err: unknown) {

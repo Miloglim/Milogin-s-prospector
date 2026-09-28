@@ -9,10 +9,32 @@
 // 解析优先级：指针指向的密钥 > AGENT_API_KEY > 旧 DEEPSEEK_API_KEY（仅能力调用回落）。
 import { Log } from "../logger";
 
+export const WIRE_APIS = ["chat_completions", "responses"] as const;
+export type WireApi = (typeof WIRE_APIS)[number];
+
+/** 旧配置默认沿用 Chat Completions，显式选择 Responses 才切换协议。 */
+export function readWireApi(value: string | undefined): WireApi {
+  return value === "responses" ? "responses" : "chat_completions";
+}
+
+export function modelApiUrl(baseUrl: string, wireApi: WireApi): string {
+  const suffix = wireApi === "responses" ? "/responses" : "/chat/completions";
+  return baseUrl.endsWith(suffix) ? baseUrl : baseUrl.replace(/\/$/, "") + suffix;
+}
+
+export function extractResponsesText(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const response = value as { output_text?: unknown; output?: Array<{ content?: Array<{ text?: unknown }> }> };
+  if (typeof response.output_text === "string" && response.output_text.trim()) return response.output_text.trim();
+  return (response.output ?? []).flatMap(item => item.content ?? [])
+    .map(part => typeof part.text === "string" ? part.text : "").join("").trim();
+}
+
 export interface ActiveEndpoint {
   baseUrl: string;
   apiKey: string;
   model: string;
+  wireApi: WireApi;
   /** profile=界面激活的端点 / legacy=.env 手写 / none=未配置 */
   source: "profile" | "legacy" | "none";
 }
@@ -20,6 +42,7 @@ export interface ActiveEndpoint {
 export function readActiveEndpoint(): ActiveEndpoint {
   const baseUrl = (process.env.AGENT_API_BASE_URL || "").trim();
   const model = (process.env.AGENT_MODEL || "").trim();
+  const wireApi = readWireApi(process.env.AGENT_WIRE_API);
   const keyEnv = (process.env.AGENT_KEY_ENV || "").trim();
   const pointed = keyEnv ? (process.env[keyEnv] || "").trim() : "";
   const legacy = (process.env.AGENT_API_KEY || "").trim();
@@ -30,7 +53,7 @@ export function readActiveEndpoint(): ActiveEndpoint {
   if (source === "none" && (baseUrl || legacy) && process.env.AGENT_DEBUG_ENDPOINT) {
     Log.debug("endpoint", `未就绪 baseUrl=${!!baseUrl} key=${!!legacy}`);
   }
-  return { baseUrl, apiKey, model, source };
+  return { baseUrl, apiKey, model, wireApi, source };
 }
 
 /** 端点是否就绪：缺 base 或 key 都算未配置（对话会直接失败并提示去设置） */
@@ -56,7 +79,7 @@ export function endpointFamily(baseUrl: string): EndpointFamily {
   return "compat";   // agnes / vLLM / 自建 OpenAI 兼容网关
 }
 
-export const HTML_ENDPOINT_ERROR = "端点返回的是网页，不是模型 API。请检查 Base URL 和接口类型；本程序当前使用 Chat Completions。";
+export const HTML_ENDPOINT_ERROR = "端点返回的是网页，不是模型 API。请检查 Base URL 与所选接口类型。";
 
 export function isHtmlEndpointResponse(res: Response): boolean {
   return /text\/html/i.test(res.headers.get("content-type") ?? "");
@@ -125,6 +148,7 @@ export interface LightEndpoint {
   baseUrl: string;
   apiKey: string;
   model: string;
+  wireApi: WireApi;
   /** main=未配置轻任务档，回落主端点 */
   source: "light" | "main";
 }
@@ -137,19 +161,20 @@ export function readLightEndpoint(main: ActiveEndpoint = readActiveEndpoint()): 
   const legacy = (process.env.LIGHT_API_KEY || "").trim();
   const apiKey = pointed || legacy;
   if (baseUrl && apiKey && model) {
-    return { baseUrl, apiKey, model, source: "light" };
+    return { baseUrl, apiKey, model, wireApi: readWireApi(process.env.LIGHT_WIRE_API), source: "light" };
   }
-  return { baseUrl: main.baseUrl, apiKey: main.apiKey, model: main.model, source: "main" };
+  return { baseUrl: main.baseUrl, apiKey: main.apiKey, model: main.model, wireApi: main.wireApi, source: "main" };
 }
 
 /** 供 UI 展示的安全视图（绝不含密钥值） */
 export function endpointView(e: ActiveEndpoint = readActiveEndpoint()):
-  { hasBaseUrl: boolean; hasKey: boolean; baseUrl: string; model: string; source: ActiveEndpoint["source"]; keyEnv: string } {
+  { hasBaseUrl: boolean; hasKey: boolean; baseUrl: string; model: string; wireApi: WireApi; source: ActiveEndpoint["source"]; keyEnv: string } {
   return {
     hasBaseUrl: !!e.baseUrl,
     hasKey: !!e.apiKey,
     baseUrl: e.baseUrl,
     model: e.model,
+    wireApi: e.wireApi,
     source: e.source,
     keyEnv: (process.env.AGENT_KEY_ENV || "").trim(),
   };

@@ -4,9 +4,11 @@
 // 红线：名单由确定性规则选出（dev-letter.service），模型不决定选谁、也不发任何东西
 //       （docs/home-cards-spec.md §5-3 + docs/task-card-devletter-spec.md §4）。
 import OpenAI from "openai";
-import { readActiveEndpoint, isOpenAiLuna } from "../endpoint.service";
+import { readActiveEndpoint, isOpenAiLuna, extractResponsesText } from "../endpoint.service";
 import { netFetch } from "../../net-proxy";
 import { Log } from "../../logger";
+
+const ONCE_MAX_OUTPUT_TOKENS = 400;
 
 /** 模型端点是否可用（UI 要如实告诉用户"这次是关键词理解的"） */
 export function onceModelReady(): boolean {
@@ -27,13 +29,36 @@ export async function askJsonOnce<T>(system: string, user: string, timeoutMs = 2
   const fetchImpl: typeof fetch = async (url, init) =>
     (await netFetch(url as string, init as RequestInit)) as Response;
   const client = new OpenAI({ baseURL: e.baseUrl, apiKey: e.apiKey, timeout: timeoutMs, maxRetries: 1, fetch: fetchImpl });
+  if (e.wireApi === "responses") {
+    const parameters = { model: e.model, instructions: system, input: user,
+      reasoning: { effort: "none" as const }, max_output_tokens: ONCE_MAX_OUTPUT_TOKENS, store: false };
+    try {
+      const r = await client.responses.create({ ...parameters, text: { format: { type: "json_object" } } });
+      const hit = looseJson<T>(extractResponsesText(r));
+      if (hit) return hit;
+      throw new Error("返回里没有 JSON");
+    } catch (err) {
+      // 仅格式参数不被兼容网关接受时才去掉它重试；鉴权和网络错误不重复请求。
+      if ((err as { status?: number }).status !== 400 && (err as Error).message !== "返回里没有 JSON") {
+        Log.warn("llm.once", `Responses 解析失败: ${(err as Error).message}`);
+        return null;
+      }
+      try {
+        const r = await client.responses.create(parameters);
+        return looseJson<T>(extractResponsesText(r));
+      } catch (e2) {
+        Log.warn("llm.once", `Responses 解析失败: ${(err as Error).message} / ${(e2 as Error).message}`);
+        return null;
+      }
+    }
+  }
   const messages = [
     { role: "system" as const, content: system },
     { role: "user" as const, content: user },
   ];
   const parameters = isOpenAiLuna(e.baseUrl, e.model)
-    ? { model: e.model, max_completion_tokens: 400, reasoning_effort: "none" as const, messages }
-    : { model: e.model, temperature: 0, max_tokens: 400, messages };
+    ? { model: e.model, max_completion_tokens: ONCE_MAX_OUTPUT_TOKENS, reasoning_effort: "none" as const, messages }
+    : { model: e.model, temperature: 0, max_tokens: ONCE_MAX_OUTPUT_TOKENS, messages };
   try {
     const r = await client.chat.completions.create({
       ...parameters, response_format: { type: "json_object" },

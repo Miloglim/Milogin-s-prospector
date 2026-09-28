@@ -101,8 +101,8 @@ npm run eval:agent # AI 能力回归评测（需真实端点与 API key）
 
 | 变量 | 用途 |
 |---|---|
-| `AGENT_API_BASE_URL` / `AGENT_API_KEY` / `AGENT_MODEL` | 对话与能力调用的生效端点（可由设置页写入） |
-| `LIGHT_API_BASE_URL` / `LIGHT_KEY_ENV` / `LIGHT_MODEL` | 轻任务档（邮件总结、背调报告、会话压缩），不填则用主端点 |
+| `AGENT_API_BASE_URL` / `AGENT_API_KEY` / `AGENT_MODEL` / `AGENT_WIRE_API` | 对话与能力调用的生效端点与接口类型（`chat_completions` 或 `responses`；可由设置页写入） |
+| `LIGHT_API_BASE_URL` / `LIGHT_KEY_ENV` / `LIGHT_MODEL` / `LIGHT_WIRE_API` | 轻任务档（邮件总结、背调报告、会话压缩）；接口类型默认 Chat Completions，整档未配置则用主端点 |
 | `EXA_API_KEY` / `TAVILY_API_KEY` | 联网检索源：公司背调与航线行情调研共用（都不配则这两类能力会明确报「未配置」） |
 | `KB_BASE_URL` / `KB_TOKEN` / `KB_APPLICATION_ID` | 公司内网 KB 中转（可选） |
 | `GH_TOKEN` / `GITHUB_TOKEN` | 读取 releases 与自动更新检查用（私有仓库或限流时需要） |
