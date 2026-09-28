@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
+import * as path from "path";
 import { diagnosticsLogFile, maskSecrets, tailByBytes } from "../../src/main/services/diagnostics.service";
 
 describe("诊断日志路径", () => {
   it("只依赖已解析的数据根目录，不在服务层加载 Electron", () => {
-    expect(diagnosticsLogFile("C:/app-data")).toBe("C:/app-data/logs/app.log");
+    expect(diagnosticsLogFile("C:/app-data")).toBe(path.join("C:/app-data", "logs", "app.log"));
   });
 });
 

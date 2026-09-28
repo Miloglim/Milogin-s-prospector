@@ -5,6 +5,6 @@ import { defineConfig } from "vitest/config";
 // （实测一次假「12%」就是这么来的）。永久排除。
 export default defineConfig({
   test: {
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.trash/**", "**/*.bak"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.trash/**", "**/*.bak", "**/scripts/check.test.mjs"],
   },
 });

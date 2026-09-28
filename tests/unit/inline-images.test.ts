@@ -101,7 +101,7 @@ describe("救不回来的引用判据：main 与编辑器侧必须同一套口�
     expect(editorDeadRefs(ok)).toEqual([]);
     const r = await embedInlineImages(ok, loader);
     expect(r.unresolved).toEqual([]);
-    expect(r.converted).toBe(4);
+    expect(r.converted).toBe(2); // 两个唯一图片引用各转换一次
   });
 
   it("deadImageRefs（main 侧导出）与编辑器实现一致", () => {

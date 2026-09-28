@@ -1,20 +1,3 @@
 {
-  "exceptions": [
-    {
-      "file": "src/main/transport/send.ipc.ts",
-      "rule": "transport-db",
-      "specifier": "../db",
-      "ticket": "ARCH-004",
-      "expires": "2026-10-31",
-      "reason": "Extract the SMTP adapter and account lookup from the IPC module."
-    },
-    {
-      "file": "src/main/transport/send.ipc.ts",
-      "rule": "transport-db",
-      "specifier": "../db/schema/accounts",
-      "ticket": "ARCH-004",
-      "expires": "2026-10-31",
-      "reason": "Extract the SMTP adapter and account lookup from the IPC module."
-    }
-  ]
+  "exceptions": []
 }
