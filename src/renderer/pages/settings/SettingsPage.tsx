@@ -879,6 +879,7 @@ type TestState = { running?: boolean; ok?: boolean; text?: string };
 
 const ENDPOINT_PRESETS = [
   { label: "Gemini Flash（推荐）", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.7-flash" },
+  { label: "OpenAI GPT-5.6 Luna", baseUrl: "https://api.openai.com/v1", model: "gpt-5.6-luna" },
   { label: "Agnes（云端 OpenAI 兼容）", baseUrl: "https://apihub.agnes-ai.com/v1", model: "agnes-2.5-pro-beta" },
   { label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-v4-flash" },
   { label: "本地 Ollama", baseUrl: "http://localhost:11434/v1", model: "qwen3:8b" },

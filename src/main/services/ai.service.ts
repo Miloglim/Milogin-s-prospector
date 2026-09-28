@@ -3,7 +3,7 @@ import { APP_ROOT } from "../config";
 import { Log } from "../logger";
 import { okResult, failResult, type Result } from "../errors";
 import { upsertEnv } from "../env-store";
-import { readActiveEndpoint, readLightEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn } from "./endpoint.service";
+import { readActiveEndpoint, readLightEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn, isOpenAiLuna } from "./endpoint.service";
 import { readIdentity } from "./agent/identity";
 import { netFetch } from "../net-proxy";
 
@@ -98,10 +98,11 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      temperature: 0.7,
-      ...(opts?.thinking
-        ? thinkingExtrasOn(endpointFamily(ep.url))
-        : thinkingExtras(endpointFamily(ep.url))),
+      ...(isOpenAiLuna(ep.url, ep.model)
+        ? { reasoning_effort: opts?.thinking ? "low" : "none" }
+        : { temperature: 0.7, ...(opts?.thinking
+          ? thinkingExtrasOn(endpointFamily(ep.url))
+          : thinkingExtras(endpointFamily(ep.url))) }),
     };
     const res = await netFetch(ep.url, {
       method: "POST",

@@ -12,7 +12,7 @@ import {
 } from "@openai/agents";
 import { Log } from "../../logger";
 import { EVENTS } from "../../events";
-import { endpointFamily, thinkingExtras } from "../endpoint.service";
+import { endpointFamily, thinkingExtras, isOpenAiLuna } from "../endpoint.service";
 import { netFetch } from "../../net-proxy";
 import { buildHarnessTools, auditRejected, normalizePlan, noteToolOutcome, isToolRuntimeError, isEnvelopeFailure, type ToolCtx, type PlanItem } from "./tools";
 import { toolRoutesBlock, pickTools } from "./manifest";
@@ -282,13 +282,19 @@ function makeClient(baseUrl: string, apiKey: string): OpenAI {
         const body = JSON.parse(init.body) as Record<string, unknown>;
         if (Array.isArray(body.messages)) {
           Object.assign(body, extras);
+          const luna = isOpenAiLuna(baseUrl, String(body.model ?? ""));
+          if (luna) {
+            delete body.temperature;
+            delete body.max_tokens;
+            body.reasoning_effort = "none";
+          }
           // 流式默认不回报 token 用量；加上后 DeepSeek/vLLM/OpenAI 会在末帧给 usage
           if (body.stream === true && !body.stream_options) body.stream_options = { include_usage: true };
           // 输出上限必须给足：工具参数 JSON 被端点默认上限截断 → Invalid JSON input for tool，
           // 这类故障发生在 execute 之前、熔断够不着，模型会同参重试到撞墙（规范 §2.2 的根因修）
           const maxOut = Number(process.env.AGENT_MAX_OUTPUT_TOKENS || 16384);
           if (Number.isFinite(maxOut) && maxOut > 0 && body.max_tokens == null && body.max_completion_tokens == null) {
-            body[endpointFamily(baseUrl) === "google" ? "max_completion_tokens" : "max_tokens"] = maxOut;
+            body[luna || endpointFamily(baseUrl) === "google" ? "max_completion_tokens" : "max_tokens"] = maxOut;
           }
           init = { ...init, body: JSON.stringify(body) };
           if (process.env.AGENT_DEBUG_BODY === "1") {

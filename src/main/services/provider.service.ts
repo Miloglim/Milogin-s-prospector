@@ -10,7 +10,7 @@ import { APP_ROOT } from "../config";
 import { Log } from "../logger";
 import { okResult, failResult, type Result } from "../errors";
 import { upsertEnv, readEnvFile } from "../env-store";
-import { readActiveEndpoint, endpointView } from "./endpoint.service";
+import { readActiveEndpoint, endpointView, endpointFamily, thinkingExtras, isOpenAiLuna } from "./endpoint.service";
 import { netFetch } from "../net-proxy";
 
 export interface ProviderProfile {
@@ -216,6 +216,7 @@ export interface EndpointTestResult {
 }
 
 const TEST_TIMEOUT_MS = 15_000;
+const LUNA_TEST_MAX_COMPLETION_TOKENS = 128;
 
 /** 最小一次补全：既验密钥也验模型名，顺带告诉你首字延迟 */
 export async function testProfile(id: string): Promise<Result<EndpointTestResult>> {
@@ -226,15 +227,15 @@ export async function testProfile(id: string): Promise<Result<EndpointTestResult
   if (!key) return okResult({ ok: false, latencyMs: 0, model: p.model, kind: "auth", error: "尚未设置该端点的密钥" });
   if (!p.model.trim()) return okResult({ ok: false, latencyMs: 0, model: "", kind: "model", error: "模型名未填" });
 
-  // 关闭思考再测：pro/flash 档开思考会拖到十几秒，测的是连通性不是推理
-  const isOllama = /localhost|127\.0\.0\.1|:11434/i.test(p.baseUrl);
+  // 探活走各端点自己的参数方言。Luna 的推理和可见输出共用 completion tokens。
+  const luna = isOpenAiLuna(p.baseUrl, p.model);
   const body: Record<string, unknown> = {
     model: p.model,
     messages: [{ role: "user", content: "ping" }],
-    max_tokens: 8,
-    temperature: 0,
+    ...(luna
+      ? { max_completion_tokens: LUNA_TEST_MAX_COMPLETION_TOKENS, reasoning_effort: "none" }
+      : { max_tokens: 8, temperature: 0, ...thinkingExtras(endpointFamily(p.baseUrl)) }),
   };
-  body.chat_template_kwargs = isOllama ? { thinking: false } : { enable_thinking: false, thinking: false };
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TEST_TIMEOUT_MS);

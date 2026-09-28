@@ -4,7 +4,7 @@
 // 红线：名单由确定性规则选出（dev-letter.service），模型不决定选谁、也不发任何东西
 //       （docs/home-cards-spec.md §5-3 + docs/task-card-devletter-spec.md §4）。
 import OpenAI from "openai";
-import { readActiveEndpoint } from "../endpoint.service";
+import { readActiveEndpoint, isOpenAiLuna } from "../endpoint.service";
 import { netFetch } from "../../net-proxy";
 import { Log } from "../../logger";
 
@@ -31,10 +31,12 @@ export async function askJsonOnce<T>(system: string, user: string, timeoutMs = 2
     { role: "system" as const, content: system },
     { role: "user" as const, content: user },
   ];
+  const parameters = isOpenAiLuna(e.baseUrl, e.model)
+    ? { model: e.model, max_completion_tokens: 400, reasoning_effort: "none" as const, messages }
+    : { model: e.model, temperature: 0, max_tokens: 400, messages };
   try {
     const r = await client.chat.completions.create({
-      model: e.model, temperature: 0, max_tokens: 400, messages,
-      response_format: { type: "json_object" },
+      ...parameters, response_format: { type: "json_object" },
     });
     const hit = looseJson<T>(r.choices?.[0]?.message?.content ?? "");
     if (hit) return hit;
@@ -42,7 +44,7 @@ export async function askJsonOnce<T>(system: string, user: string, timeoutMs = 2
   } catch (err) {
     // 部分网关不认 response_format：去掉它再试一次；仍失败就交回调用方兜底
     try {
-      const r = await client.chat.completions.create({ model: e.model, temperature: 0, max_tokens: 400, messages });
+      const r = await client.chat.completions.create(parameters);
       return looseJson<T>(r.choices?.[0]?.message?.content ?? "");
     } catch (e2) {
       Log.warn("llm.once", `一次性解析失败: ${(err as Error).message} / ${(e2 as Error).message}`);

@@ -23,8 +23,9 @@ process.env.AI_PROVIDERS_PATH = STORE_FILE;
 const KEYS = ["AGENT_API_BASE_URL", "AGENT_MODEL", "AGENT_KEY_ENV", "AGENT_API_KEY", "DEEPSEEK_API_KEY"];
 for (const k of KEYS) delete process.env[k];
 
-const { readActiveEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn, readLightEndpoint } = await import("../../src/main/services/endpoint.service");
-const { parseProxyServer } = await import("../../src/main/net-proxy");
+const { readActiveEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn, readLightEndpoint, isOpenAiLuna } = await import("../../src/main/services/endpoint.service");
+const NetProxy = await import("../../src/main/net-proxy");
+const { parseProxyServer } = NetProxy;
 const { upsertEnv, readEnvFile } = await import("../../src/main/env-store");
 const Prov = await import("../../src/main/services/provider.service");
 
@@ -139,6 +140,28 @@ describe("provider.service 端点管理", () => {
     expect(Prov.classifyHttp(500, "boom").kind).toBe("server");
   });
 
+  it("Luna 连通性测试使用官方推理参数，不向端点发送 temperature/max_tokens", async () => {
+    const p = Prov.upsertProfile({ name: "Luna", baseUrl: "https://api.openai.com/v1", model: "gpt-5.6-luna" });
+    if (!p.success) throw new Error("upsert 失败");
+    Prov.setProfileKey(p.data.id, "test-only-key");
+    const request = vi.spyOn(NetProxy, "netFetch").mockResolvedValue(new Response(
+      JSON.stringify({ choices: [{ message: { content: "pong" } }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    try {
+      const result = await Prov.testProfile(p.data.id);
+      expect(result.success && result.data.ok).toBe(true);
+      expect(request).toHaveBeenCalledOnce();
+      const [url, init] = request.mock.calls[0]!;
+      expect(url).toBe("https://api.openai.com/v1/chat/completions");
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({ model: "gpt-5.6-luna", max_completion_tokens: 128, reasoning_effort: "none" });
+      expect(body).not.toHaveProperty("temperature");
+      expect(body).not.toHaveProperty("max_tokens");
+      expect(body).not.toHaveProperty("chat_template_kwargs");
+    } finally { request.mockRestore(); }
+  });
+
   it("测试未填模型名的端点：直接给人话提示，不发请求", async () => {
     const p = Prov.upsertProfile({ name: "无模型", baseUrl: "https://e.example/v1", model: "" });
     if (!p.success) throw new Error("upsert 失败");
@@ -195,6 +218,12 @@ describe("轻任务端点（大小模型路由）", () => {
 });
 
 describe("端点族识别与关思考参数方言", () => {
+  it("仅官方 OpenAI 主机的 Luna 应用专属参数，兼容网关不受影响", () => {
+    expect(isOpenAiLuna("https://api.openai.com/v1", "gpt-5.6-luna")).toBe(true);
+    expect(isOpenAiLuna("https://api.openai.com.evil.test/v1", "gpt-5.6-luna")).toBe(false);
+    expect(isOpenAiLuna("https://proxy.example/v1", "gpt-5.6-luna")).toBe(false);
+  });
+
   it("按域名识别 google / ollama / openai / compat", () => {
     expect(endpointFamily("https://generativelanguage.googleapis.com/v1beta/openai")).toBe("google");
     expect(endpointFamily("http://localhost:11434/v1")).toBe("ollama");

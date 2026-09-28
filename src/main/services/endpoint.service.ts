@@ -56,6 +56,12 @@ export function endpointFamily(baseUrl: string): EndpointFamily {
   return "compat";   // agnes / vLLM / 自建 OpenAI 兼容网关
 }
 
+/** 官方 OpenAI Luna 使用 Chat Completions 的推理模型参数，不能混用兼容网关的 temperature/max_tokens。 */
+export function isOpenAiLuna(baseUrl: string, model: string): boolean {
+  try { return new URL(baseUrl).hostname === "api.openai.com" && model === "gpt-5.6-luna"; }
+  catch { return false; }
+}
+
 /**
  * 要合并进请求体的额外字段（按端点族）。思考开关已从产品里移除，这里恒为「关思考」：
  * 尽力关掉各家推理换首字速度、并规避思考模式带来的多轮回传约束；关不掉也不能把请求搞坏。
