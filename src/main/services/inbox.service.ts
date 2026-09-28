@@ -11,6 +11,7 @@ import { Log } from "../logger";
 import { EVENTS } from "../events";
 import { saveDatabase, getRawDb } from "../db";
 import { updateContactStatus, markAsBounced, deleteContactCascade, removeCompanyIfOrphan } from "./contact.service";
+import { nudge as nudgeSuggestions } from "./suggestion-bus";
 // 发信受阻熔断（规范 docs/sender-block-circuit-spec.md）：本模块只做「改道」，窗口计数与熔断落在服务里
 // （sender-block.service 不静态引本模块，无环）
 import { detectSenderBlockSignal, recordSenderBlock } from "./sender-block.service";
@@ -336,6 +337,19 @@ export function setInboxPushFn(fn: (channel: string, data: unknown) => void) {
   pushFn = fn;
 }
 
+interface PostFetchAdapters {
+  isPop3Port: (port: number) => boolean;
+  backfillBounceDeep: (accountId: number) => Promise<number>;
+  detectSent: (accountId: number) => Promise<number>;
+}
+
+let postFetchAdapters: PostFetchAdapters | null = null;
+
+/** 由 transport 注入协议层操作，避免收件箱服务反向依赖 IMAP/POP3 实现。 */
+export function setPostFetchAdapters(adapters: PostFetchAdapters): void {
+  postFetchAdapters = adapters;
+}
+
 // ── 抓取 ──
 
 export async function fetchInbox(accountId?: number, excludeIds?: number[]): Promise<Result<InboxMessageRow[]>> {
@@ -467,6 +481,55 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
   }
 
   return okResult(allNew);
+}
+
+/** 用户手动抓取：抓取完成后异步补齐退信关联、正文缓存和 Sent 文件夹。 */
+export async function refreshInbox(accountId?: number): Promise<Result<InboxMessageRow[]>> {
+  await fetchInbox(accountId);
+  cleanupInbox();
+  void prefetchRecentBodies(20);
+
+  if (postFetchAdapters) {
+    void backfillAfterFetch(accountId, postFetchAdapters);
+    void detectSentAfterFetch(postFetchAdapters);
+  } else {
+    Log.warn("inbox.refresh", "抓取后网络适配器未配置，跳过退信与 Sent 补齐");
+  }
+
+  return listInbox();
+}
+
+async function backfillAfterFetch(accountId: number | undefined, adapters: PostFetchAdapters): Promise<void> {
+  try {
+    let matched = await backfillBounceMatches();
+    const accountIds = accountId
+      ? [accountId]
+      : getDb().select({ id: emailAccounts.id }).from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all().map(a => a.id);
+    for (const id of accountIds) matched += await adapters.backfillBounceDeep(id);
+    if (matched > 0) {
+      pushFn?.("inbox:newMail", { count: 0 });
+      nudgeSuggestions();
+    }
+  } catch (error) {
+    Log.error("inbox.backfill", "退信补匹配失败", error instanceof Error ? error.stack : undefined);
+  }
+}
+
+async function detectSentAfterFetch(adapters: PostFetchAdapters): Promise<void> {
+  const accounts = getDb().select().from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all();
+  const sentTargets = accounts.filter(account => !adapters.isPop3Port(account.imapPort || 993));
+  Log.debug("inbox.sent", `将检测 ${sentTargets.length}/${accounts.length} 个账号`);
+  const results = await Promise.allSettled(sentTargets.map(account => adapters.detectSent(account.id)));
+  const totalNew = results.reduce((sum, result) => sum + (result.status === "fulfilled" ? (result.value || 0) : 0), 0);
+  if (totalNew <= 0) return;
+
+  try {
+    cleanupInbox();
+    pushFn?.("inbox:newMail", { count: totalNew });
+    nudgeSuggestions();
+  } catch (error) {
+    Log.error("inbox.sent", "Sent 文件夹更新通知失败", error instanceof Error ? error.stack : undefined);
+  }
 }
 
 // ── 清理超上限旧邮件（先备份再删除）──

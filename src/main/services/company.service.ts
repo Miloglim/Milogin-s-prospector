@@ -7,6 +7,7 @@ import { okResult, failResult, type Result } from "../errors";
 import { Log } from "../logger";
 import { saveDatabase } from "../db";
 import { deleteContactCascade } from "./contact.service";
+import { classifyClientType, type ClientType } from "./client-type.service";
 
 export async function getCompanyById(id: number): Promise<Result<CompanyRow>> {
   Log.debug("company.getById", `id=${id}`);
@@ -162,27 +163,70 @@ export function getCompanyDetail(companyId: number): Result<CompanyDetail> {
   return okResult({ company, contacts: contactRows, sentCount, repliedCount });
 }
 
-/** 保存背调报告 — AI 背调写回 companies 表 */
-export function saveBackcheck(input: { name: string; domain?: string; report: unknown }): Result<{ id: number }> {
+export interface SavedBackcheck {
+  id: number;
+  clientType: ClientType;
+}
+
+/** 保存背调报告，并同步可识别的客户类型到该公司的联系人。 */
+export function saveBackcheck(input: { name: string; domain?: string; report: unknown }): Result<SavedBackcheck> {
   Log.debug("company.saveBackcheck", `name=${input.name}`);
+  const name = input.name.trim();
+  if (!name) return failResult("公司名必填");
+
+  let backcheckData: string | undefined;
+  try {
+    backcheckData = JSON.stringify(input.report);
+  } catch (error) {
+    Log.warn("company.saveBackcheck", `报告无法序列化: ${error instanceof Error ? error.message : String(error)}`);
+    return failResult("背调报告无法保存");
+  }
+  if (backcheckData === undefined) return failResult("背调报告不能为空");
+
   const db = getDb();
-  let company = db.select().from(companies).where(eq(companies.name, input.name)).get();
+  const now = new Date().toISOString();
+  let company = db.select().from(companies).where(eq(companies.name, name)).get();
   if (company) {
     db.update(companies).set({
       domain: input.domain ?? company.domain,
-      updatedAt: new Date().toISOString(),
+      backcheckData,
+      updatedAt: now,
     }).where(eq(companies.id, company.id)).run();
   } else {
     db.insert(companies).values({
-      name: input.name,
+      name,
       domain: input.domain ?? null,
+      backcheckData,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     } as InsertCompanyRow).run();
-    company = db.select().from(companies).where(eq(companies.name, input.name)).get()!;
+    company = db.select().from(companies).where(eq(companies.name, name)).get()!;
+  }
+
+  const clientType = classifyClientType(name);
+  if (clientType) {
+    db.update(contacts).set({ clientType, updatedAt: now })
+      .where(eq(contacts.companyId, company.id)).run();
   }
   saveDatabase();
-  return okResult({ id: company.id });
+  return okResult({ id: company.id, clientType });
+}
+
+/** 读取已保存的背调报告。坏数据只影响本次读取，不能阻断开发信起草。 */
+export function getBackcheckReport(name: string): unknown | null {
+  const normalizedName = name.trim();
+  if (!normalizedName) return null;
+
+  const company = getDb().select({ backcheckData: companies.backcheckData })
+    .from(companies).where(eq(companies.name, normalizedName)).get();
+  if (!company?.backcheckData) return null;
+
+  try {
+    return JSON.parse(company.backcheckData);
+  } catch (error) {
+    Log.warn("company.getBackcheckReport", `报告 JSON 无法解析: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 export async function deleteCompany(id: number): Promise<Result<void>> {

@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Tabs } from "antd";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert, Button, Tabs, message } from "antd";
+import { PlayCircleOutlined } from "@ant-design/icons";
 import { CampaignTasks } from "./CampaignTasks";
 import { CampaignWizard } from "./CampaignWizard";
 import { HistoryPage } from "../history/HistoryPage";
@@ -11,6 +13,7 @@ import { HistoryPage } from "../history/HistoryPage";
  * 首页「自动开发信」跳转：#/campaigns?create=1 → 直接打开创建子窗口。
  */
 export function SendCenter() {
+  const qc = useQueryClient();
   const [tab, setTab] = useState<string>(() => {
     const h = window.location.hash;
     const qs = h.includes("?") ? h.split("?")[1] : "";
@@ -22,9 +25,47 @@ export function SendCenter() {
     return new URLSearchParams(qs).get("create") === "1";
   });
   const [editingDraft, setEditingDraft] = useState<string | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const { data: interruptedData } = useQuery({
+    queryKey: ["send", "interruptedBatch"],
+    queryFn: () => window.api.invoke("send:getInterruptedBatch") as Promise<{
+      success: boolean;
+      data?: { batchId: string; startedAt: string; pendingGroups: number; pendingRecipients: number } | null;
+    }>,
+    refetchInterval: 15_000,
+  });
+  const interrupted = interruptedData?.success ? interruptedData.data ?? null : null;
+
+  const recoverInterrupted = async () => {
+    setRecovering(true);
+    try {
+      const result = await window.api.invoke("send:resumeInterruptedBatch") as { success: boolean; error?: string; data?: { queued?: number; queuedCount?: number } };
+      if (!result.success) {
+        message.error(result.error || "恢复失败");
+        return;
+      }
+      message.success(`已恢复 ${result.data?.queued ?? 0} 组 / ${result.data?.queuedCount ?? 0} 位收件人的发送任务`);
+      void qc.invalidateQueries({ queryKey: ["send"] });
+      void qc.invalidateQueries({ queryKey: ["campaigns"] });
+    } catch (err) {
+      message.error(`恢复失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRecovering(false);
+    }
+  };
 
   return (
     <>
+      {interrupted && (
+        <Alert
+          className="mb-3"
+          type="warning"
+          showIcon
+          message="检测到上次中断的发送批次"
+          description={`开始于 ${new Date(interrupted.startedAt).toLocaleString("zh-CN")}，${interrupted.pendingGroups} 组 / ${interrupted.pendingRecipients} 位收件人仍待发送。`}
+          action={<Button type="primary" icon={<PlayCircleOutlined />} loading={recovering} onClick={() => { void recoverInterrupted(); }}>恢复此批次</Button>}
+        />
+      )}
       <Tabs
         activeKey={tab}
         onChange={setTab}

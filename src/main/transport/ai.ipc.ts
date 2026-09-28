@@ -3,14 +3,9 @@ import { IPC } from "../contract";
 import * as Ai from "../services/ai.service";
 import * as Provider from "../services/provider.service";
 import * as NetProxy from "../net-proxy";
-import { saveBackcheck } from "../services/company.service";
-import { classifyClientType } from "../services/client-type.service";
+import { getBackcheckReport, saveBackcheck } from "../services/company.service";
 import { failResult } from "../errors";
 import { Log } from "../logger";
-import { getDb } from "../db";
-import { companies, type CompanyRow } from "../db/schema/companies";
-import { contacts } from "../db/schema/contacts";
-import { eq } from "drizzle-orm";
 
 export function registerAiIPC() {
   // 配置状态
@@ -39,28 +34,18 @@ export function registerAiIPC() {
     });
     if (!saved.success) return saved;
 
-    // 自动识别代理/直客，回写该公司所有联系人
-    const ctype = classifyClientType(input.companyName);
-    if (ctype) {
-      try {
-        getDb().update(contacts).set({ clientType: ctype, updatedAt: new Date().toISOString() })
-          .where(eq(contacts.companyId, saved.data.id)).run();
-      } catch { /* 回写失败不影响背调结果 */ }
-    }
-
-    return { success: true as const, data: { report: report.data, companyId: saved.data.id, clientType: ctype } };
+    return { success: true as const, data: {
+      report: report.data,
+      companyId: saved.data.id,
+      clientType: saved.data.clientType,
+    } };
   });
 
   // AI 开发信：自动带上该公司已存的背调报告（若有）
   ipcMain.handle(IPC.AI.GENERATE_DRAFT, async (_e, input: Ai.EmailDraftInput) => {
     if (!input?.companyName?.trim() || !input?.contactName?.trim()) return failResult("公司名和联系人必填");
     if (!input.language) return failResult("请选择语言");
-    let backcheck: Ai.BackcheckReport | null = null;
-    try {
-      const comp = getDb().select().from(companies)
-        .where(eq(companies.name, input.companyName.trim())).get() as CompanyRow | undefined;
-      if (comp?.backcheckData) backcheck = JSON.parse(comp.backcheckData) as Ai.BackcheckReport;
-    } catch { /* 无背调或坏 JSON，忽略 */ }
+    const backcheck = getBackcheckReport(input.companyName) as Ai.BackcheckReport | null;
     return Ai.generateEmailDraft({ ...input, backcheck });
   });
 

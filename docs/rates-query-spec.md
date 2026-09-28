@@ -1,6 +1,6 @@
 # 查运价规范（清洗 → 归属 → 呈现 → 报价表）
 
-日期：2026-09-07　状态：规范已定，代码待落　适用：Prospector 查询侧
+日期：2026-09-07　状态：查询侧已实施；本文保留清洗与呈现契约。当前实现以 `src/main/services/rates-clean.ts`、`src/main/services/agent/toolkit/rates.ts` 及 `tests/unit/rates-*.test.ts` 为准。
 上游文档：匹配与定论的三段式见 `docs/rates-query-fallback-spec.md`；同步链路见 `docs/rates-remote-source-spec.md`
 台账侧目标结构（下一期在入库层实现，本轮不动台账数据）：见本文 §7
 

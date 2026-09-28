@@ -42,6 +42,13 @@ export interface SendItem {
   sendMode?: "individual" | "bcc";  // individual=单独一封（收件人走 To，像人工手发）；缺省 bcc（互不可见）
 }
 
+export interface InterruptedBatchStatus {
+  batchId: string;
+  startedAt: string;
+  pendingGroups: number;
+  pendingRecipients: number;
+}
+
 export interface SendTemplate {
   name?: string;  // 模板名（卡片展示用；即时撰写等场景可传来源标签）
   subject: string;  // 含 {{firstName}} {{company}} 变量
@@ -157,8 +164,8 @@ export function setSaveConfigFn(fn: (c: RuntimeConfig) => void) { saveConfigFn =
 export function getQuotaStatus(): ReturnType<typeof checkQuota> { return checkQuota(); }
 
 // ── 批次运行中标志（持久化到 config）──
-// 批次真实启动时写入、结束/取消时清除；退出/崩溃后残留 → 下次启动 autoResumeInterruptedBatch
-// 自动续跑。没有这个标志，重启后引擎不知道批次在跑，用户得回队列页手动点「开始发送」。
+// 批次真实启动时写入、结束/取消时清除。退出/崩溃后残留时，启动阶段只提示用户恢复，
+// 绝不自动外发。
 
 function saveRunningBatch(batchId: string | null): void {
   try {
@@ -167,16 +174,49 @@ function saveRunningBatch(batchId: string | null): void {
   } catch { /* 标志写失败退化为现状：重启后队列页手动开始 */ }
 }
 
-/** 启动自动续跑：上次退出/崩溃时批次在跑（config.runningBatch 残留且队列还有 pending 行）→
- *  从 DB 恢复续发，语义与队列页手动「开始发送」完全一致（配额守卫/时段等待都在链路里）。
- *  在 registerAllIPC 之后调用（saveConfigFn 已注入）。 */
-export function autoResumeInterruptedBatch(): void {
+/** 认领上次中断的批次，清除一次性启动标记。调用方必须取得明确用户确认后才可恢复发送。 */
+export function claimInterruptedBatch(): { batchId: string; startedAt: string } | null {
   const flag = loadConfig().runningBatch;
-  if (!flag?.batchId) return;
-  saveRunningBatch(null); // 无论续跑成败先清标志，不残留（resumeQueue 真启动会重新写入）
-  const r = resumeQueue();
-  if (r.success) Log.info("send.autoResume", `检测到中断批次，已自动续跑: ${r.data.queued} 组待发`);
-  else Log.warn("send.autoResume", `中断批次未自动续跑（${r.error}），可在发送队列手动开始`);
+  if (!flag?.batchId) return null;
+  try {
+    const cfg = loadConfig();
+    saveConfigFn({ ...cfg, runningBatch: null, interruptedBatch: flag });
+  } catch { /* 下次启动仍会提示，不自动外发 */ }
+  Log.info("send.interrupted", `检测到中断批次，等待用户确认恢复: ${flag.batchId.slice(0, 8)}`);
+  return flag;
+}
+
+export function getInterruptedBatchStatus(): Result<InterruptedBatchStatus | null> {
+  const interrupted = loadConfig().interruptedBatch;
+  if (!interrupted?.batchId) return okResult(null);
+  try {
+    const rows = getDb().select({ recipients: sendQueue.recipients }).from(sendQueue)
+      .where(and(eq(sendQueue.batchId, interrupted.batchId), eq(sendQueue.status, "pending"))).all();
+    const pendingRecipients = rows.reduce((total, row) => {
+      try {
+        const recipients = JSON.parse(row.recipients) as unknown[];
+        return total + recipients.length;
+      } catch { return total; }
+    }, 0);
+    return okResult({ ...interrupted, pendingGroups: rows.length, pendingRecipients });
+  } catch (err) {
+    Log.warn("send.interrupted", `读取中断批次失败: ${err instanceof Error ? err.message : String(err)}`);
+    return failResult("读取中断批次失败");
+  }
+}
+
+export function resumeInterruptedBatch(): Result<{ batchId: string; queued: number; queuedCount: number; dropped: number }> {
+  const interrupted = loadConfig().interruptedBatch;
+  if (!interrupted?.batchId) return failResult("没有等待恢复的中断批次");
+  const result = resumeQueue(interrupted.batchId);
+  if (!result.success) return result;
+  try {
+    const cfg = loadConfig();
+    saveConfigFn({ ...cfg, interruptedBatch: null });
+  } catch (err) {
+    Log.warn("send.interrupted", `恢复后清理中断标记失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return result;
 }
 
 /** 检查全局日限额，24h 自动重置 */
@@ -227,6 +267,49 @@ function push(c: string, d: unknown) { try { pushFn?.(c, d); } catch { /* */ } i
 
 let sendBccFn: ((item: SendItem & { body: string }) => Promise<Result<{ messageId: string | null }>>) | null = null;
 export function setSendBccFn(fn: (item: SendItem & { body: string }) => Promise<Result<{ messageId: string | null }>>) { sendBccFn = fn; }
+
+export interface SendTestInput {
+  to: string;
+  accountId: number;
+  subject?: string;
+  body?: string;
+  contactId?: number;
+}
+
+function renderTestText(template: string, values: Record<string, string>): string {
+  return template.replace(/\{\{(firstName|lastName|company|email)\}\}/g, (_match, key: string) => values[key] ?? "");
+}
+
+/** 测试或 CRM 快速发信：联系人查询和变量渲染属于发送用例，不能留在 IPC 层。 */
+export async function sendTestMessage(input: SendTestInput): Promise<Result<{ messageId: string | null }>> {
+  if (!input.to.trim()) return failResult("收件人必填");
+  if (!Number.isInteger(input.accountId) || input.accountId <= 0) return failResult("发件账号必填");
+  if (!sendBccFn) return failResult("发送适配器未配置");
+  if (input.contactId && loadConfig().test.dryRun) {
+    Log.info("send.dryRun", `CRM 快速发信 → ${input.to}：测试模式，跳过真实发送`);
+    return okResult({ messageId: null });
+  }
+
+  let firstName = "Test", lastName = "User", name = "Test User", company = "ACME Corp", companyId = 0, contactId = 0;
+  if (input.contactId) {
+    const contact = getDb().select().from(contacts).where(eq(contacts.id, input.contactId)).get();
+    if (contact) {
+      firstName = contact.firstName || firstName; lastName = contact.lastName || lastName;
+      name = [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.email;
+      contactId = contact.id;
+      if (contact.companyId) {
+        const found = getDb().select().from(companies).where(eq(companies.id, contact.companyId)).get();
+        if (found) { company = found.name; companyId = found.id; }
+      }
+    }
+  }
+  const values = { firstName, lastName, company, email: input.to };
+  return sendBccFn({
+    id: "crm", companyName: company, companyId, recipients: [{ contactId, email: input.to, name }],
+    accountId: input.accountId, subject: renderTestText(input.subject || "Test", values),
+    body: renderTestText(input.body || "Test email from Prospector.", values), status: "sending", tplBody: "", contactVars: { email: input.to },
+  });
+}
 
 // ── 可中断延迟 ──
 
@@ -1676,12 +1759,14 @@ export function getQueueItems(): Result<Array<Omit<SendItem, "tplBody" | "contac
 }
 
 /** 恢复中断的批次 — 从 DB 加载 pending 项，重建内存队列（与 startQueue 共享配额纪律） */
-export function resumeQueue(): Result<{ batchId: string; queued: number; queuedCount: number; dropped: number }> {
+export function resumeQueue(requestedBatchId?: string): Result<{ batchId: string; queued: number; queuedCount: number; dropped: number }> {
   if (state.isRunning) return failResult("已有发送任务运行中");
 
   try {
     const rows = getDb().select().from(sendQueue)
-      .where(eq(sendQueue.status, "pending"))
+      .where(requestedBatchId
+        ? and(eq(sendQueue.status, "pending"), eq(sendQueue.batchId, requestedBatchId))
+        : eq(sendQueue.status, "pending"))
       .orderBy(dsql`${sendQueue.createdAt} ASC`)
       .all();
 
@@ -1696,7 +1781,7 @@ export function resumeQueue(): Result<{ batchId: string; queued: number; queuedC
     const qCheck = checkQuota();
     if (!qCheck.ok) return failResult(qCheck.reason || "已达全局发信限额");
 
-    const batchId = rows[0]!.batchId || nanoid();
+    const resumedBatchId = rows[0]!.batchId || nanoid();
 
     const items: SendItem[] = [];
     for (const r of rows) {
@@ -1762,7 +1847,7 @@ export function resumeQueue(): Result<{ batchId: string; queued: number; queuedC
 
     stateHydrated = true;   // 恢复的批次接管状态后，重启水合不得再回头覆盖
     state = {
-      batchId, totalItems: totalItems + sentCount + failedCount,
+      batchId: resumedBatchId, totalItems: totalItems + sentCount + failedCount,
       sentCount, failedCount,
       isPaused: false, isRunning: true, currentItem: null, delaySeconds: 0, delayUntil: null, delayReason: null,
       pausedReason: null,
@@ -1772,10 +1857,10 @@ export function resumeQueue(): Result<{ batchId: string; queued: number; queuedC
       }),
     };
 
-    Log.info("send.resume", `恢复批次 ${batchId}: ${kept.length} 待发送, ${sentCount} 已完成`);
-    saveRunningBatch(batchId);   // 恢复续跑同样视为"运行中"：再次退出/崩溃后仍可自动续跑
+    Log.info("send.resume", `恢复批次 ${resumedBatchId}: ${kept.length} 待发送, ${sentCount} 已完成`);
+    saveRunningBatch(resumedBatchId);   // 恢复续跑同样视为"运行中"：再次退出/崩溃后仍可自动续跑
     void runBatchLoop();
-    return okResult({ batchId, queued: kept.length, queuedCount: keptCount, dropped });
+    return okResult({ batchId: resumedBatchId, queued: kept.length, queuedCount: keptCount, dropped });
   } catch (err) {
     Log.error("send.resumeQueue", err instanceof Error ? err.message : String(err));
     return failResult("恢复队列失败: " + (err instanceof Error ? err.message : String(err)));
