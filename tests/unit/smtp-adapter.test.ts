@@ -6,6 +6,7 @@ import * as schema from "../../src/main/db/schema";
 import { BASE_SCHEMA_SQL } from "../../src/main/db/schema-sql";
 import { emailAccounts } from "../../src/main/db/schema/accounts";
 import type { SendItem } from "../../src/main/services/send.service";
+import { simpleParser } from "mailparser";
 
 const h = vi.hoisted(() => ({
   db: null as unknown,
@@ -50,10 +51,10 @@ function item(accountId: number, extra: Partial<SendItem & { body: string }> = {
   };
 }
 
-function seedAccount(): number {
+function seedAccount(signature?: string): number {
   const db = h.db as ReturnType<typeof drizzle<typeof schema>>;
   db.insert(emailAccounts).values({
-    email: "sender@example.com", encryptedPass: "encrypted", smtpHost: "smtp.example.com", smtpPort: 587,
+    email: "sender@example.com", encryptedPass: "encrypted", smtpHost: "smtp.example.com", smtpPort: 587, signature,
   }).run();
   return db.select({ id: emailAccounts.id }).from(emailAccounts).get()!.id;
 }
@@ -79,6 +80,34 @@ describe("SMTP 适配器", () => {
     expect(h.createTransport).toHaveBeenCalledTimes(2);
     expect(h.close).toHaveBeenCalledOnce();
     expect(h.sendMail.mock.calls[0]?.[0]).toMatchObject({ bcc: ["client@example.com"] });
+  });
+
+  it("真实 MIME 组装后正文的 CID 引用能找到同一张图片附件（不走网络）", async () => {
+    const actual = await vi.importActual<typeof import("nodemailer")>("nodemailer");
+    const stream = actual.createTransport({ streamTransport: true, buffer: true });
+    let raw: Buffer | undefined;
+    h.createTransport.mockReturnValue({
+      sendMail: async (options: Record<string, unknown>) => {
+        const info = await stream.sendMail(options);
+        raw = (info as { message: Buffer }).message;
+        return info;
+      },
+      close: () => {},
+    });
+    const image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
+    const accountId = seedAccount("<p>Kind regards</p>");
+    const result = await sendBcc(item(accountId, { body: `<p>Hi</p><img src="${image}">` }));
+    expect(result.success).toBe(true);
+    expect(raw).toBeDefined();
+    const parsed = await simpleParser(raw!, { keepCidLinks: true });
+    expect(parsed.html).toContain("<p>Hi</p>");
+    expect(parsed.html).toContain("Kind regards");
+    expect(parsed.html).not.toContain("data:image");
+    expect(parsed.attachments).toHaveLength(1);
+    const [attachment] = parsed.attachments;
+    expect(attachment?.contentType).toBe("image/png");
+    expect(attachment?.content.length).toBeGreaterThan(0);
+    expect(parsed.html).toContain(`cid:${attachment!.cid}`);
   });
 
   it("本地图片引用被移除，不读取本地路径或发起远程请求", async () => {
