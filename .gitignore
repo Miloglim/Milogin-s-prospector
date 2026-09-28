@@ -30,9 +30,6 @@ docs/local_board/taizhang.xlsx
 docs/local_board/token.txt
 # 发送引擎运行期配置：程序自己写（时段/配额/测试模式），首启缺失会自动落默认配置，不入库
 send/config.json
-# CI 工作流：推送 workflows/* 需要 token 具备 workflow 权限，当前令牌没有 → 暂不入库
-# 拿到该权限后用 `git add -f .github` 即可收入
-.github/
 # 编码助手本地痕迹（不入库）
 .serena/
 .superpowers/
