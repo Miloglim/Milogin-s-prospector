@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useState } from "react";
 import { Table, Card, Tabs, Input, Tag, Select, Button, Popconfirm, message } from "antd";
 import { SearchOutlined, DeleteOutlined } from "@ant-design/icons";
@@ -56,8 +57,7 @@ export function HistoryPage() {
     onSuccess: (r: unknown) => {
       const rr = r as { success: boolean; data?: number; error?: string };
       rr?.success ? message.success(`已清除 ${rr.data} 条发送历史`) : message.error(rr?.error || "失败");
-      qc.invalidateQueries({ queryKey: ["history"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      void invalidateDomain(qc, "history", "crm");
     },
   });
   const bounceRows = bounces?.success ? bounces.data || [] : [];

@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../lib/cacheDeps";
 import { useState, useRef } from "react";
 import { Drawer, Tabs, Upload, Input, Button, Table, Select, message, Tag, Space } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
@@ -152,9 +153,7 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
 
       if (r.success && r.data) {
         message.success(`导入 ${r.data.imported} 条，跳过 ${r.data.skipped} 条（重复）`);
-        qc.invalidateQueries({ queryKey: ["contacts"] });
-        qc.invalidateQueries({ queryKey: ["crm"] });
-        qc.invalidateQueries({ queryKey: ["dashboard"] });
+        void invalidateDomain(qc, "contacts");
         handleClose();
       } else {
         message.error(r.error || "导入失败");

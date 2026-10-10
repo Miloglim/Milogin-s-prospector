@@ -6,34 +6,41 @@ import { Log } from "../logger";
 import { getDb, saveDatabase } from "../db";
 import { rateQuotes, spaceQuotes, type InsertRateQuoteRow, type InsertSpaceQuoteRow } from "../db/schema/rates";
 import { okResult, failResult, type Result } from "../errors";
-import { netFetch } from "../net-proxy";
 import { nudge } from "./suggestion-bus";
 import type { QuoteRowRaw } from "./rates-clean";   // 仅类型：清洗器是纯模块，不引运行时依赖
 
 // ── 运价 / 舱位同步服务 ──────────────────────────────────────────
-// 链路：公司电脑台账（board_server）→ 本服务分页拉取 + 归一化 → 两张只读镜像：
+// 链路：公司电脑台账（manual_server）→ 本服务分页拉取 + 归一化 → 两张只读镜像：
 //       rate_quotes（运价）+ space_records（舱位）。程序只读镜像，不回写。
-// 地址来源（优先级高→低）：RATES_REMOTE_URL 环境变量 > 设置页自定义 url >
-// 设置页选的源（lan=公司局域网，默认；remote=公网镜像）> 内置局域网地址。
+// 地址来源（优先级高→低）：RATES_REMOTE_URL 环境变量 > 设置页自定义局域网 url > 内置局域网地址。
 // 连接不上时给出简单提示；镜像保留上次同步成功的数据，失败不删旧。
 // 规范：docs/rates-remote-source-spec.md（同步）+ docs/rates-query-fallback-spec.md（查询三段式）
 
 /** 公司局域网台账 = 内置默认（报价截图与明细都在这台机器上） */
-export const LAN_BASE = "http://192.168.189.229:8788";
-/** 公网台账镜像：不在公司网时读数用。注意它的 /images/ 未部署，截图会 404 */
-export const REMOTE_BASE = "https://l5ruag9m.qwenwork.host";
+export const LAN_BASE = "http://192.168.190.244:8795";
 
-/** 台账工作台跳转与报价截图 URL 都用它：界面层经 IPC/镜像字段取值，不再各自硬编码地址 */
-export function remoteBase(): string {
-  const env = (process.env.RATES_REMOTE_URL || "").trim();
-  if (env) return env.replace(/\/+$/, "");
+/** 旧设置可能仍存公网 URL，只有本机或私有 IPv4 HTTP 地址才允许作为台账源。 */
+function lanUrl(value: string): string | null {
   try {
-    const r = loadConfig().rates;
-    const custom = (r?.url || "").trim();
-    if (custom) return custom.replace(/\/+$/, "");
-    return r?.source === "remote" ? REMOTE_BASE : LAN_BASE;
-  } catch { return LAN_BASE; }   // 配置读不到（单测/首启）也按内置默认走
+    const url = new URL(value.trim());
+    const host = url.hostname;
+    const privateHost = host === "localhost" || host === "127.0.0.1"
+      || /^10\.\d+\.\d+\.\d+$/.test(host)
+      || /^192\.168\.\d+\.\d+$/.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(host);
+    return url.protocol === "http:" && privateHost && !url.username && !url.password
+      ? url.href.replace(/\/+$/, "") : null;
+  } catch { return null; } // 旧配置可能不是 URL；直接使用已验证的默认地址。
 }
+
+/** 台账工作台、截图、探测与同步共用唯一局域网地址；旧公网配置被忽略。 */
+export function remoteBase(): string {
+  const env = lanUrl(process.env.RATES_REMOTE_URL || "");
+  if (env) return env;
+  try { return lanUrl(loadConfig().rates?.url || "") ?? LAN_BASE; }
+  catch { return LAN_BASE; } // 首启或配置读取失败时使用内置地址。
+}
+
 /**
  * board_server 可达性探测：GET 根路径，3 秒内有任何 HTTP 响应即视为通
  * （服务在跑就行，状态码不挑）；连不上/超时返回 false。
@@ -116,6 +123,7 @@ export function stripLaneTag(podRaw: string, lane: string | null): { podRaw: str
 const AUTO_MINUTES = Math.max(1, Number(process.env.RATES_REMOTE_MINUTES || 240) || 240);   // 默认 4 小时
 const PAGE_SIZE = 500;
 const ROW_CAP = 20_000;
+const LAN_REQUEST_TIMEOUT_MS = 5_000;
 
 /** 同步失败提示（短句；排查细节只进日志） */
 const REMOTE_DOWN_HINT = "网络连接失败";
@@ -207,9 +215,9 @@ export function imageUrlOf(imageName: string | null, base: string): string | nul
 
 /**
  * 远程行 → 归一化镜像行（纯函数，不触库，供单测）。
- * 键名以实测为准（docs/运价接口字段对接说明.md，2026-09-06 从线上服务抓取核对）：
+ * 键名以现行局域网 8795 的统一记录为准；旧字段只作兼容：
  * route→航线 lane、remark→备注、dead_freight→亏舱费、message_time→消息时间、
- * content_key→稳定记录键、freight_usd 为字符串（"6815.00"）、container_type 可为 null。
+ * content_key→稳定记录键、price_usd→价格、container_type 可为 null。
  * 柜型归一 / 有效期解析复用 normalizeContainer / parseValidity；
  * valid_from/valid_to 独立采信（缺一边才用本地解析补）。
  * 无目的港的行无业务意义，返回 null 跳过。
@@ -222,7 +230,7 @@ export function mapRemoteRow(row: Record<string, unknown>, fallbackId: string): 
   const vf = pick(row, ["valid_from"]);
   const vt = pick(row, ["valid_to"]);
   const parsed = parseValidity(pick(row, ["validity_raw"]), msgTime);
-  const usdRaw = pick(row, ["freight_usd", "ocean_usd"]);
+  const usdRaw = pick(row, ["price_usd", "freight_usd", "ocean_usd"]);
   const usd = usdRaw != null ? Number(usdRaw.replace(/[,\s]/g, "")) : NaN;
   // 目的港尾部粘连的航线小字（"… 地东"）剥掉，空 lane 用它回填
   const cleaned = stripLaneTag(pod, pick(row, ["route", "lane"]));
@@ -244,6 +252,9 @@ export function mapRemoteRow(row: Record<string, unknown>, fallbackId: string): 
     sourceGroup: pick(row, ["source_group"]),
     sender: pick(row, ["sender"]),
     msgTime,
+    etd: pick(row, ["etd"]),
+    status: pick(row, ["status"]),
+    messageText: pick(row, ["message_text"]),
     imageName: pickImageName(row),
     syncedAt: new Date().toISOString(),
   };
@@ -286,7 +297,7 @@ export function mapRemoteSpace(row: Record<string, unknown>, fallbackId: string)
   };
 }
 
-let lastSync: { at: string; imported: number; source: string } | null = null;
+let lastSync: { at: string; imported: number } | null = null;
 let lastError: string | null = null;
 let syncing = false;
 let autoTimer: ReturnType<typeof setInterval> | null = null;
@@ -430,12 +441,14 @@ function todayBeijing(): string {
 async function pullPage(base: string, path: string, query: string, offset: number):
   Promise<{ rows: Record<string, unknown>[]; total: number } | null> {
   try {
-    const res = await netFetch(`${base}${path}?${query}&limit=${PAGE_SIZE}&offset=${offset}`,
-      { headers: { Accept: "application/json" } });
+    const res = await fetch(`${base}${path}?${query}&limit=${PAGE_SIZE}&offset=${offset}`,
+      { headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(LAN_REQUEST_TIMEOUT_MS) });
     if (!res.ok) { lastError = `${path} 返回 HTTP ${res.status}（${base}）`; return null; }
     const json = await res.json() as { ok?: boolean; total?: number; rows?: Record<string, unknown>[] };
     if (json.ok === false) { lastError = `${path} 响应 ok=false（${base}）`; return null; }
-    const list = Array.isArray(json.rows) ? json.rows : [];
+    if (!Array.isArray(json.rows)) { lastError = `${path} 缺少 rows 数组（${base}）`; return null; }
+    const list = json.rows;
     return { rows: list, total: Number.isFinite(Number(json.total)) ? Number(json.total) : offset + list.length };
   } catch (err) {
     lastError = `${REMOTE_DOWN_HINT}（${err instanceof Error ? err.message.slice(0, 80) : "网络不可达"}）`;
@@ -523,7 +536,7 @@ export async function sync(): Promise<Result<{ imported: number }>> {
     }
 
     saveDatabase();
-    lastSync = { at: new Date().toISOString(), imported: rates.rows.length, source: base };
+    lastSync = { at: new Date().toISOString(), imported: rates.rows.length };
     lastError = null;
     // 镜像 diff：「可同步资讯」建议的原料；算完落盘（重启后 24h 内仍可用）并推建议流重算
     try {

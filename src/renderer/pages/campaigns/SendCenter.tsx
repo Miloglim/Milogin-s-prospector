@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Tabs, message } from "antd";
@@ -45,8 +46,7 @@ export function SendCenter() {
         return;
       }
       message.success(`已恢复 ${result.data?.queued ?? 0} 组 / ${result.data?.queuedCount ?? 0} 位收件人的发送任务`);
-      void qc.invalidateQueries({ queryKey: ["send"] });
-      void qc.invalidateQueries({ queryKey: ["campaigns"] });
+      void invalidateDomain(qc, "send");
     } catch (err) {
       message.error(`恢复失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {

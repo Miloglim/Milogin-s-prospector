@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import { contacts } from "./contacts";
 import { emailAccounts } from "./accounts";
@@ -15,7 +15,7 @@ export const interactions = sqliteTable("interactions", {
   accountId:   integer("account_id").references(() => emailAccounts.id),
   metadata:    text("metadata"),
   createdAt:   text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-});
+}, t => ({ byContact: index("idx_interactions_contact_id").on(t.contactId) }));
 
 export type InteractionRow = typeof interactions.$inferSelect;
 export type InsertInteractionRow = typeof interactions.$inferInsert;

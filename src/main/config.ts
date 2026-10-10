@@ -2,6 +2,9 @@ import * as path from "path";
 import * as fs from "fs";
 import { z } from "zod";
 import { Log } from "./logger";
+import { DEFAULT_CRM_OVERDUE_DAYS, DEFAULT_CRM_WARN_DAYS, normalizeCrmThresholds, MAX_CRM_THRESHOLD_DAYS } from "../shared/crm";
+import { okResult, failResult, type Result } from "./errors";
+import { nudge } from "./services/suggestion-bus";
 
 // ponytail: process.resourcesPath 是 Electron 扩展，Node 类型不含它
 
@@ -80,6 +83,8 @@ export interface RuntimeConfig {
   };
   /** CRM 客户跟进偏好 */
   crm: {
+    silentOverdueDays?: number;
+    warnDays?: number;
     /** 阶段 → 默认跟进间隔（天）*/
     followupDays: Record<string, number>;
     /** Dashboard 待办提前天数 */
@@ -90,9 +95,8 @@ export interface RuntimeConfig {
   /** 预设句库自定义主题（key = `${clientType}.${lang}`，如 direct.EN） */
   sentenceSubjects?: Record<string, string>;
   /**
-   * 运价台账（board_server）地址来源。默认 lan = 公司局域网（截图/明细最全）；
-   * remote = 公网镜像地址（不在公司网时读数用，截图可能缺失）。
-   * url 非空时优先于 source（自定义地址）；RATES_REMOTE_URL 环境变量优先级最高。
+   * 运价台账只读局域网地址。url 可覆盖内置局域网地址，RATES_REMOTE_URL 环境变量优先。
+   * source 为旧版存量配置，保留读取兼容但不参与选源（公网镜像已废弃）。
    */
   rates?: { source?: "lan" | "remote"; url?: string };
 }
@@ -110,9 +114,11 @@ const DEFAULT_CONFIG: RuntimeConfig = {
   fromName: "",
   schedule: DEFAULT_SCHEDULE,
   test: { email: "", company: "", enabled: false, dryRun: false },
-  // 台账默认走公司局域网：内置行为跟以前一致，公网地址只是不在公司网时的备选（设置页可切）
-  rates: { source: "lan" },
+  // 台账只走局域网；历史 source 值不再影响选源。
+  rates: {},
   crm: {
+    silentOverdueDays: DEFAULT_CRM_OVERDUE_DAYS,
+    warnDays: DEFAULT_CRM_WARN_DAYS,
     followupDays: { reaching: 3, quoting: 3, trial: 5, cooperating: 7, lost: 14, other: 7 },
     todoAdvanceDays: 2,
     autoArchiveDays: 30,
@@ -137,7 +143,7 @@ const TestSchema = z.object({
 }).partial();
 
 function defaults(): RuntimeConfig {
-  return { ...DEFAULT_CONFIG, schedule: { ...DEFAULT_SCHEDULE }, test: { ...DEFAULT_CONFIG.test } };
+  return { ...DEFAULT_CONFIG, schedule: { ...DEFAULT_SCHEDULE }, test: { ...DEFAULT_CONFIG.test }, crm: { ...DEFAULT_CONFIG.crm, followupDays: { ...DEFAULT_CONFIG.crm.followupDays } } };
 }
 
 export function loadConfig(): RuntimeConfig {
@@ -160,12 +166,13 @@ export function loadConfig(): RuntimeConfig {
   }
   const sched = ScheduleSchema.safeParse(raw.schedule);
   const test = TestSchema.safeParse(raw.test);
+  const thresholds = normalizeCrmThresholds(raw.crm);
   return {
     ...DEFAULT_CONFIG,
     ...raw,
     schedule: sched.success ? { ...DEFAULT_SCHEDULE, ...sched.data } : DEFAULT_SCHEDULE,
     test: test.success ? { ...DEFAULT_CONFIG.test, ...test.data } : DEFAULT_CONFIG.test,
-    crm: { ...DEFAULT_CONFIG.crm, ...(raw.crm || {}), followupDays: { ...DEFAULT_CONFIG.crm.followupDays, ...(raw.crm?.followupDays || {}) } },
+    crm: { ...DEFAULT_CONFIG.crm, ...(raw.crm || {}), silentOverdueDays: thresholds.overdueDays, warnDays: thresholds.warnDays, followupDays: { ...DEFAULT_CONFIG.crm.followupDays, ...(raw.crm?.followupDays || {}) } },
     rates: { ...DEFAULT_CONFIG.rates, ...(raw.rates || {}) },
   };
 }
@@ -174,4 +181,27 @@ export function saveConfig(config: RuntimeConfig): void {
   const dir = path.dirname(CONFIG_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+/** 现有设置通道的写入口：嵌套配置合并，CRM 数值在落盘前校验。 */
+export function updateRuntimeConfig(input: unknown): Result<void> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return failResult("配置参数错误");
+  try {
+    const partial = input as Partial<RuntimeConfig>;
+    for (const value of [partial.crm?.silentOverdueDays, partial.crm?.warnDays]) {
+      if (value !== undefined && (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > MAX_CRM_THRESHOLD_DAYS)) return failResult("跟进阈值须为 1–365 的整数");
+    }
+    const current = loadConfig();
+    const crm = { ...current.crm, ...partial.crm, followupDays: { ...current.crm.followupDays, ...partial.crm?.followupDays } };
+    if ((crm.warnDays ?? DEFAULT_CRM_WARN_DAYS) > (crm.silentOverdueDays ?? DEFAULT_CRM_OVERDUE_DAYS)) return failResult("预警天数不能大于逾期天数");
+    saveConfig({ ...current, ...partial, crm,
+      schedule: { ...DEFAULT_SCHEDULE, ...current.schedule, ...partial.schedule },
+      sentenceSubjects: { ...current.sentenceSubjects, ...partial.sentenceSubjects },
+    });
+    nudge();
+    return okResult(undefined);
+  } catch (error) {
+    Log.error("config.update", "配置保存失败", error instanceof Error ? error.stack : undefined);
+    return failResult("配置保存失败");
+  }
 }

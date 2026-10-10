@@ -28,7 +28,7 @@ beforeEach(() => {
   const raw: SqlJsDatabase = new SQLLIB.Database();
   raw.run(BASE_SCHEMA_SQL);
   h.db = drizzle(raw, { schema });
-  h.db.insert(emailAccounts).values({ email: "sales@example.com", encryptedPass: "x", isActive: 1 }).run();
+  h.db.insert(emailAccounts).values({ email: "sales@example.com", encryptedPass: "x", imapHost: "imap.example.com", imapPort: 993, isActive: 1 }).run();
   Inbox.setImapFetchFn(async () => ({ success: true, data: [] }));
 });
 
@@ -43,5 +43,24 @@ describe("手动抓取收件箱", () => {
 
     expect(result.success).toBe(true);
     expect(detectSent).toHaveBeenCalledOnce();
+  });
+
+  it("跳过仅发信账号，不触发抓取、退信深补或 Sent 探测", async () => {
+    h.db.insert(emailAccounts).values({ email: "send-only@example.com", encryptedPass: "x", isActive: 1 }).run();
+    const fetch = vi.fn(async () => ({ success: true as const, data: [] }));
+    const backfillBounceDeep = vi.fn(async () => 0);
+    const detectSent = vi.fn(async () => 0);
+    Inbox.setImapFetchFn(fetch);
+    Inbox.setPostFetchAdapters({ isPop3Port: () => false, backfillBounceDeep, detectSent });
+
+    await Inbox.refreshInbox();
+    await vi.waitFor(() => expect(backfillBounceDeep).toHaveBeenCalledOnce());
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(detectSent).toHaveBeenCalledOnce();
+    const accounts = h.db.select().from(emailAccounts).all();
+    expect(accounts.find(a => a.email === "send-only@example.com")?.fetchFailCount).toBe(0);
+
+    await Inbox.fetchInbox(accounts.find(a => a.email === "send-only@example.com")!.id);
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });

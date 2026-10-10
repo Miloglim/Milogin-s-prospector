@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import { emailAccounts } from "./accounts";
 
@@ -21,7 +21,7 @@ export const inboxMessages = sqliteTable("inbox_messages", {
   isRead:            integer("is_read").notNull().default(0),
   receivedAt:        text("received_at").notNull(),
   createdAt:         text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-});
+}, t => ({ byContact: index("idx_inbox_matched").on(t.matchedContactId) }));
 
 export type InboxMessageRow = typeof inboxMessages.$inferSelect;
 export type InsertInboxMessageRow = typeof inboxMessages.$inferInsert;

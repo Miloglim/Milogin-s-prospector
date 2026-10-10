@@ -40,7 +40,7 @@ function KeepAliveOutlet() {
 }
 
 const btn: React.CSSProperties = {
-  width: 46, height: 36, border: "none", background: "transparent",
+  width: 46, height: "var(--app-titlebar-height)", border: "none", background: "transparent",
   color: "#999", cursor: "pointer", display: "inline-flex",
   alignItems: "center", justifyContent: "center", borderRadius: 0,
 };
@@ -50,7 +50,7 @@ function TitleBar() {
   return (
     <div
       style={{
-        height: 36, background: "#1a1a1a", display: "flex",
+        height: "var(--app-titlebar-height)", background: "#1a1a1a", display: "flex",
         alignItems: "center", justifyContent: "space-between",
         flexShrink: 0, userSelect: "none",
         borderBottom: "1px solid rgba(128,128,128,0.25)",

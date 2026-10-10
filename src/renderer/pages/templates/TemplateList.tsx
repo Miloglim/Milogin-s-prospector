@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useState, useEffect, useCallback } from "react";
 import { Table, Button, Input, Modal, Form, Select, message, Tag, Tabs, Card, Radio } from "antd";
 import { PlusOutlined, DeleteOutlined, ImportOutlined, ThunderboltOutlined, EditOutlined, CopyOutlined, EyeOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -58,12 +59,12 @@ export function TemplateList() {
 
   const upsertMut = useMutation({
     mutationFn: (input: unknown) => window.api.invoke("templates:upsert", input),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["templates"] }); },
+    onSuccess: () => { invalidateDomain(qc, "templates"); },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => window.api.invoke("templates:delete", id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["templates"] }); },
+    onSuccess: () => { invalidateDomain(qc, "templates"); },
   });
 
   const templates = data?.success ? data.data || [] : [];

@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../lib/cacheDeps";
 import { useState } from "react";
 import { Button, Modal, Form, Input, Rate, Tag, message, Empty, Alert } from "antd";
 import { SafetyCertificateOutlined, ThunderboltOutlined } from "@ant-design/icons";
@@ -54,8 +55,7 @@ export function CompanyBackcheck({ companyId }: { companyId: number | null }) {
         setOpen(false);
         form.resetFields();
         // 刷新公司查询（新 companyId 或更新后的 backcheckData）
-        qc.invalidateQueries({ queryKey: ["companies"] });
-        qc.invalidateQueries({ queryKey: ["contacts"] });
+        void invalidateDomain(qc, "contacts");
       } else {
         message.error(r?.error || "背调失败");
       }

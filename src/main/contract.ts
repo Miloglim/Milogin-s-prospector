@@ -18,6 +18,7 @@ const PREFIX = {
   KB:        "kb",
   SYSTEM:    "system",
   UPDATE:    "update",
+  SEARCH:    "search",
 } as const;
 
 function chan(domain: string, action: string): string {
@@ -25,6 +26,7 @@ function chan(domain: string, action: string): string {
 }
 
 export const IPC = {
+  SEARCH: { GLOBAL: chan(PREFIX.SEARCH, "global") },
   CONTACTS: {
     LIST:      chan(PREFIX.CONTACTS, "list"),
     GET_BY_ID: chan(PREFIX.CONTACTS, "getById"),

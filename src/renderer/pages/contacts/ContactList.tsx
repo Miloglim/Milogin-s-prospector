@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useState, useEffect, useRef, type ReactNode, type ComponentRef } from "react";
 import { Table, Button, Input, Space, Drawer, Tag, message, Form, Select, Popover, Checkbox, Modal, Dropdown } from "antd";
 import { PlusOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, ImportOutlined, PartitionOutlined, MailOutlined, ExportOutlined } from "@ant-design/icons";
@@ -155,7 +156,7 @@ export function ContactList() {
           ? message.success(`已删除 ${r.data?.deleted ?? ids.length} 个联系人`)
           : message.error(r?.error || "删除失败");
         setSelectedRowKeys([]);
-        qc.invalidateQueries({ queryKey: ["contacts"] });
+        invalidateDomain(qc, "contacts");
       },
     });
   };

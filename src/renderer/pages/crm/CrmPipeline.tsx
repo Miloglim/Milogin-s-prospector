@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Card, Tag, Button, Tabs, Input, Select, message, Empty, Timeline, DatePicker, Modal, Popconfirm, Tooltip, Checkbox } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +8,7 @@ import { COUNTRIES, STAGE_META } from "../../components/ContactDetail";
 import {
   ClockCircleOutlined, CloseOutlined, MailOutlined, SearchOutlined,
   DownOutlined, RightOutlined, EditOutlined, SaveOutlined,
-  DeleteOutlined, PlusOutlined, SendOutlined, EnvironmentOutlined, CopyOutlined,
+  DeleteOutlined, PlusOutlined, SendOutlined, EnvironmentOutlined, CopyOutlined, SwapOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
@@ -23,6 +24,7 @@ interface PipelineContact {
   reminderAt: string | null;
   /** 服务端统一口径：沉默天数与是否逾期（看板红点与助手 reminders_due 同源） */
   staleDays: number | null; overdue: boolean;
+  overdueDays: number; warnDays: number;
   lastFollowupAt: string | null; lastFollowupNote: string | null;
   country: string | null; language: string | null; clientType: string | null;
   assignee: string | null;
@@ -47,6 +49,7 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   autoreply: { label: "自动回复", color: "#ff9800" },
   cc: { label: "抄送", color: "#0891b2" },
   note: { label: "跟进", color: "#607d8b" },
+  stage: { label: "阶段变更", color: "#8e24aa" },
 };
 
 const EMAIL_TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -67,11 +70,9 @@ function daysAgo(d: string) {
  * 避免出现「看板标红、助手说没逾期」这种自相矛盾。
  * 红 = 沉默超期（>5 天，看板与助手都算逾期）；橙 = >3 天预警；其余灰。
  */
-function followAgeClass(d: string, overdue?: boolean): string {
-  if (overdue) return "text-red-500 font-medium";
-  const days = (Date.now() - new Date(d).getTime()) / 86400000;
-  if (days > 5) return "text-red-500 font-medium";
-  if (days > 3) return "text-orange-500 font-medium";
+function followAgeClass(contact: PipelineContact): string {
+  if (contact.overdue) return "text-red-500 font-medium";
+  if (contact.staleDays !== null && contact.staleDays > contact.warnDays) return "text-orange-500 font-medium";
   return "text-gray-400";
 }
 
@@ -160,17 +161,17 @@ export function CrmPipeline() {
 
   const setStageMut = useMutation({
     mutationFn: (p: { contactId: number; stage: string }) => window.api.invoke("crm:setStage", p),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm"] }); },
+    onSuccess: () => { invalidateDomain(qc, "crm"); },
   });
 
   const upsertMut = useMutation({
     mutationFn: (p: Record<string, unknown>) => window.api.invoke("contacts:upsert", p),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm"] }); },
+    onSuccess: () => { invalidateDomain(qc, "crm"); },
   });
 
   const addReminderMut = useMutation({
     mutationFn: (p: { contactId: number; reminderAt: string; note?: string }) => window.api.invoke("crm:addReminder", p),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm"] }); },
+    onSuccess: () => { invalidateDomain(qc, "crm"); },
   });
 
   const clearReminderMut = useMutation({
@@ -178,7 +179,7 @@ export function CrmPipeline() {
     onSuccess: (result) => {
       const r = result as { success: boolean; error?: string };
       if (r?.success) {
-        qc.invalidateQueries({ queryKey: ["crm"] });
+        invalidateDomain(qc, "crm");
         message.success("提醒已清除");
       } else {
         message.error(r?.error || "清除失败");
@@ -189,7 +190,7 @@ export function CrmPipeline() {
 
   const updateNoteMut = useMutation({
     mutationFn: (p: { interactionId: number; text: string }) => window.api.invoke("crm:updateNote", p),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm"] }); },
+    onSuccess: () => { invalidateDomain(qc, "crm"); },
   });
 
   const deleteNoteMut = useMutation({
@@ -197,7 +198,7 @@ export function CrmPipeline() {
     onSuccess: (result) => {
       const r = result as { success: boolean; error?: string };
       r?.success ? message.success("已删除") : message.error(r?.error || "删除失败");
-      qc.invalidateQueries({ queryKey: ["crm"] });
+      invalidateDomain(qc, "crm");
     },
   });
 
@@ -209,10 +210,7 @@ export function CrmPipeline() {
       r?.success ? message.success("已删除") : message.error(r?.error || "删除失败");
       if (r?.success) {
         setDetailId(null);
-        qc.invalidateQueries({ queryKey: ["crm"] });
-        qc.invalidateQueries({ queryKey: ["contacts"] });
-        qc.invalidateQueries({ queryKey: ["dashboard"] });
-        qc.invalidateQueries({ queryKey: ["send"] });
+        void invalidateDomain(qc, "contacts", "send");
       }
     },
   });
@@ -353,7 +351,7 @@ export function CrmPipeline() {
     // 只写跟进记录，不设置提醒（提醒由用户通过 DatePicker 手动设置）
     await window.api.invoke("crm:addNote", { contactId: contact.id, text: noteText.trim() });
     setNoteText("");
-    qc.invalidateQueries({ queryKey: ["crm"] }); // 刷新详情 + 看板「最近跟进」
+    invalidateDomain(qc, "crm"); // 刷新详情 + 看板「最近跟进」
   };
 
   // 选取联系人（多选）+ 分行复制邮箱
@@ -496,7 +494,7 @@ export function CrmPipeline() {
                         <span className="text-[11px] text-gray-400 flex-1 truncate">{c.companyName || "—"}</span>
                         <span className="flex items-center gap-2 flex-shrink-0">
                           {c.lastFollowupAt ? (
-                            <span className={`text-[10px] flex items-center gap-1 ${followAgeClass(c.lastFollowupAt, c.overdue)}`}>
+                            <span className={`text-[10px] flex items-center gap-1 ${followAgeClass(c)}`}>
                               <span className="flex-shrink-0">{daysAgo(c.lastFollowupAt)}</span>
                               <EditOutlined className="text-[9px] flex-shrink-0" />
                               <span className="truncate">{(c.lastFollowupNote || "").slice(0, 10)}</span>
@@ -640,7 +638,7 @@ export function CrmPipeline() {
                         onChange={async (v) => {
                           const saveField = (row as unknown as { saveField?: string }).saveField ?? (row as { field: string }).field;
                           await upsertMut.mutateAsync({ id: contact.id, email: contact.email, [saveField]: v });
-                          qc.invalidateQueries({ queryKey: ["crm", "detail", detailId] });
+                          invalidateDomain(qc, "crm");
                         }}
                       />
                     ) : (
@@ -656,7 +654,7 @@ export function CrmPipeline() {
                           } else {
                             await upsertMut.mutateAsync({ id: contact.id, email: contact.email, [(row as { field: string }).field]: val });
                           }
-                          qc.invalidateQueries({ queryKey: ["crm", "detail", detailId] });
+                          invalidateDomain(qc, "crm");
                         }}
                       />
                     )}
@@ -700,7 +698,7 @@ export function CrmPipeline() {
                 const newExtra = { ...extraRef.current, ...patch };
                 extraRef.current = newExtra; // 立即更新 ref，港口/备注共用避免并发覆盖
                 await upsertMut.mutateAsync({ id: contact.id, email: contact.email, extra: JSON.stringify(newExtra) });
-                qc.invalidateQueries({ queryKey: ["crm", "detail", detailId] });
+                invalidateDomain(qc, "crm");
               };
 
               // 港口：本地 draft 同步击键（无异步竞态），blur 一次性持久化
@@ -771,7 +769,7 @@ export function CrmPipeline() {
                         const next = [...portsRef.current, ...derived.map(d => ({ pol: d.pol ?? "", pod: d.pod }))];
                         portsRef.current = next; setPortsDraft(next);
                         await saveExtra({ preferredPorts: JSON.stringify(next) });
-                        qc.invalidateQueries({ queryKey: ["rate-update", "ports", detailId] });
+                        invalidateDomain(qc, "rate-update");
                       };
                       return (
                         <div className="pb-2 border-b border-gray-100">
@@ -857,6 +855,7 @@ export function CrmPipeline() {
                   const isOpenable = !!i.id && (i.type === "sent" || i.type === "replied" || i.type === "cc");
                   return {
                   color: TYPE_LABELS[i.type]?.color || "gray",
+                  dot: i.type === "stage" ? <SwapOutlined /> : undefined,
                   children: (
                     <div className={`text-[10px] ${isOpenable ? "cursor-pointer group" : ""}`}
                       onClick={isOpenable ? () => openEmailDetail({ id: i.id, fromEmail: i.fromEmail, subject: i.subject, receivedAt: i.createdAt, bodyPreview: i.bodyPreview }) : undefined}

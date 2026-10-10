@@ -1,3 +1,4 @@
+import { htmlToText } from "../core/html-text";
 import { getDb } from "../db";
 import { inboxMessages, inboxBounceMatches, type InboxMessageRow, type InsertInboxMessageRow } from "../db/schema/inbox";
 import { emailAccounts } from "../db/schema/accounts";
@@ -12,6 +13,8 @@ import { EVENTS } from "../events";
 import { saveDatabase, getRawDb } from "../db";
 import { updateContactStatus, markAsBounced, deleteContactCascade, removeCompanyIfOrphan } from "./contact.service";
 import { nudge as nudgeSuggestions } from "./suggestion-bus";
+import { enrichMatchedMail } from "./enrichment.service";
+import { indexEmailBody } from "./search.service";
 // 发信受阻熔断（规范 docs/sender-block-circuit-spec.md）：本模块只做「改道」，窗口计数与熔断落在服务里
 // （sender-block.service 不静态引本模块，无环）
 import { detectSenderBlockSignal, recordSenderBlock } from "./sender-block.service";
@@ -363,6 +366,9 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
   let accounts = accountId
     ? getDb().select().from(emailAccounts).where(eq(emailAccounts.id, accountId)).all()
     : getDb().select().from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all();
+  if (accountId && accounts.length && !accounts[0]!.imapHost) return failResult("该账号未配置收信服务器");
+  // 仅发信账号不参与后台抓取，不能把有意留空的 IMAP 当作连接失败。
+  if (!accountId) accounts = accounts.filter(a => !!a.imapHost);
   if (!accountId && excludeIds?.length) accounts = accounts.filter(a => !excludeIds.includes(a.id));
   if (!accounts.length) return okResult([]);
 
@@ -478,6 +484,21 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
   // 每次抓取后自动清理超限旧邮件
   if (allNew.length > 0) {
     try { cleanupInbox(); } catch { /* */ }
+    setImmediate(() => {
+      try {
+      for (const mail of allNew) {
+        const stored = mail.id > 0 ? mail : mail.messageId
+          ? getDb().select({ id: inboxMessages.id }).from(inboxMessages)
+            .where(and(eq(inboxMessages.accountId, mail.accountId), eq(inboxMessages.messageId, mail.messageId))).get()
+          : undefined;
+        const html = stored ? readLocalBodyHtml(stored.id) : null;
+        if (stored && html) enrichAndNotify(stored.id, html);
+      }
+      } catch (error) {
+        Log.error("inbox.enrichment", "抓取后签名回填失败", error instanceof Error ? error.stack : undefined);
+      }
+    });
+    void prefetchRecentBodies();
   }
 
   return okResult(allNew);
@@ -503,8 +524,10 @@ async function backfillAfterFetch(accountId: number | undefined, adapters: PostF
   try {
     let matched = await backfillBounceMatches();
     const accountIds = accountId
-      ? [accountId]
-      : getDb().select({ id: emailAccounts.id }).from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all().map(a => a.id);
+      ? getDb().select({ id: emailAccounts.id, imapHost: emailAccounts.imapHost }).from(emailAccounts)
+        .where(eq(emailAccounts.id, accountId)).all().filter(a => !!a.imapHost).map(a => a.id)
+      : getDb().select({ id: emailAccounts.id, imapHost: emailAccounts.imapHost }).from(emailAccounts)
+        .where(eq(emailAccounts.isActive, 1)).all().filter(a => !!a.imapHost).map(a => a.id);
     for (const id of accountIds) matched += await adapters.backfillBounceDeep(id);
     if (matched > 0) {
       pushFn?.("inbox:newMail", { count: 0 });
@@ -517,7 +540,7 @@ async function backfillAfterFetch(accountId: number | undefined, adapters: PostF
 
 async function detectSentAfterFetch(adapters: PostFetchAdapters): Promise<void> {
   const accounts = getDb().select().from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all();
-  const sentTargets = accounts.filter(account => !adapters.isPop3Port(account.imapPort || 993));
+  const sentTargets = accounts.filter(account => !!account.imapHost && !adapters.isPop3Port(account.imapPort || 993));
   Log.debug("inbox.sent", `将检测 ${sentTargets.length}/${accounts.length} 个账号`);
   const results = await Promise.allSettled(sentTargets.map(account => adapters.detectSent(account.id)));
   const totalNew = results.reduce((sum, result) => sum + (result.status === "fulfilled" ? (result.value || 0) : 0), 0);
@@ -683,6 +706,15 @@ export async function writeBodyFile(id: number, html: string): Promise<void> {
   if (!html) return;
   if (!fs.existsSync(BODY_DIR)) fs.mkdirSync(BODY_DIR, { recursive: true });
   await fs.promises.writeFile(bodyFilePath(id), html, "utf-8");
+  indexEmailBody(id, htmlToText(html));
+  setImmediate(() => enrichAndNotify(id, html));
+}
+
+function enrichAndNotify(id: number, html: string): void {
+  const result = enrichMatchedMail(id, htmlToText(html));
+  if (!result.success || !result.data) return;
+  try { pushFn?.("inbox:newMail", { count: 0 }); }
+  catch (error) { Log.error("inbox.enrichment", "档案刷新通知失败", error instanceof Error ? error.stack : undefined); }
 }
 
 /**
@@ -736,20 +768,7 @@ function backfillMatchFromBody(id: number, current: number | null, classificatio
 }
 
 /** 邮件 HTML → 可读纯文本：剔 style/script/head 与 data:URI 内嵌图片，块级标签转换行，去标签+解码常见实体，压缩空白 */
-export function htmlToText(html: string): string {
-  return html
-    .replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, " ")
-    .replace(/"data:[^"]*"/g, '""')
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/?(p|div|tr|li|h[1-6]|table|blockquote|pre)(\s[^>]*)?\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#0?39;/g, "'")
-    .replace(/[ \t\r]+/g, " ")
-    .replace(/ *\n */g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+export { htmlToText } from "../core/html-text";
 
 export async function getBody(id: number): Promise<Result<string>> {
   if (!Number.isInteger(id) || id <= 0) return failResult("无效的 ID");
@@ -761,6 +780,7 @@ export async function getBody(id: number): Promise<Result<string>> {
     try {
       const html = await fs.promises.readFile(file, "utf-8");
       backfillMatchFromBody(row.id, row.matchedContactId, row.classification, html);
+      enrichAndNotify(row.id, html);
       return okResult(html);
     }
     catch (err) { Log.error("inbox.body", `正文文件读取失败 id=${id}`, err instanceof Error ? err.stack : undefined); }
@@ -774,7 +794,16 @@ export async function getBody(id: number): Promise<Result<string>> {
 }
 
 /** 预加载最近 N 封无正文文件的邮件（限速 ~50ms/封，参考 Foxmail 读条后秒开体验） */
-export async function prefetchRecentBodies(limit = 20): Promise<void> {
+const PREFETCH_BODY_LIMIT = 20;
+let prefetchBodiesTask: Promise<void> | null = null;
+export function prefetchRecentBodies(limit = PREFETCH_BODY_LIMIT): Promise<void> {
+  if (prefetchBodiesTask) return prefetchBodiesTask;
+  prefetchBodiesTask = prefetchBodies(limit).catch(error => {
+    Log.error("inbox.prefetch", "正文预加载失败", error instanceof Error ? error.stack : undefined);
+  }).finally(() => { prefetchBodiesTask = null; });
+  return prefetchBodiesTask;
+}
+async function prefetchBodies(limit: number): Promise<void> {
   if (!imapFetchBodyFn) return;
   const rows = getDb().select({ id: inboxMessages.id, accountId: inboxMessages.accountId, messageId: inboxMessages.messageId, classification: inboxMessages.classification })
     .from(inboxMessages)

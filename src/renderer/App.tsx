@@ -1,9 +1,19 @@
 import { RouterProvider } from "@tanstack/react-router";
 import { ConfigProvider, App as AntApp } from "antd";
 import { AppProvider } from "./AppContext";
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateDomain } from "./lib/cacheDeps";
 import { router } from "./router";
 
 export function App() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    // 路由尚未挂载时也要接收现有业务事件，不能依赖某个页面恰好打开。
+    const inbox = window.api.on("inbox:newMail", () => { void invalidateDomain(qc, "inbox"); });
+    const send = window.api.on("send:progress", () => { void invalidateDomain(qc, "send"); });
+    return () => { inbox(); send(); };
+  }, [qc]);
   return (
     <AppProvider>
       <ConfigProvider

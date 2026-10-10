@@ -8,6 +8,7 @@ import {
 import { Dropdown, Input, Modal } from "antd";
 import { useAppContext } from "../../AppContext";
 import { DiamondLogo } from "../DiamondLogo";
+import { GlobalSearch } from "../GlobalSearch";
 import { CONVS_CHANGED, gotoConversation } from "../../lib/agent-route";
 import { drop as dropConv, useRunningConvIds } from "../../hooks/useAgentTranscript";
 
@@ -366,6 +367,7 @@ export function Sidebar() {
         )}
       </div>
 
+      <GlobalSearch collapsed={sidebarCollapsed} />
       {/* Nav — 平铺列表；会话历史常驻导航项下方（豆包式：任何页面都可直切会话） */}
       <nav style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
         <ul style={{ listStyle: "none", padding: 0, margin: 0, flexShrink: 0 }}>

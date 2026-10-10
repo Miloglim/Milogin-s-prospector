@@ -63,4 +63,10 @@ The raw mirror remains the source of record. Query-side cleaning derives a prese
 
 ## Operational Notes
 
+### Search index (0.9.0-alpha.1)
+
+`search_idx` is an FTS5 virtual table installed by the named `v0.9-search-fts5` migration, after legacy business-table migrations. Only `content` is indexed; `kind`, `sourceId`, `contactId`, `title`, and `body` are UNINDEXED. Stable row ids encode the source table and id. Contacts, manual notes, and inbox rows are backfilled on migration and maintained by insert/update/delete triggers, including company-name changes. Full locally cached email bodies replace previews in the index.
+
+The connection registers deterministic `search_latin` before migrations. Chinese text is retained in unindexed fields for LIKE fallback. FTS DDL is intentionally separate from `BASE_SCHEMA_SQL`: existing sql.js evaluation sandboxes lack FTS5, while the Electron/better-sqlite3 integration test executes the actual named migration and triggers. No business-table columns change. Both contact foreign-key indexes already exist in `schema-sql.ts` and now have matching Drizzle declarations.
+
 SQLite runs in WAL mode. `saveDatabase()` performs a checkpoint after batches and during shutdown; individual writes are already durable. Backup location and retention are operational configuration, not schema.

@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useEffect, useMemo, useState } from "react";
 import { Button, Descriptions, Drawer, Input, Select, Space, Table, Tag, Tooltip, App as AntApp } from "antd";
 import { SearchOutlined, SyncOutlined, DollarOutlined, GlobalOutlined } from "@ant-design/icons";
@@ -102,7 +103,7 @@ export function RateBoard() {
     mutationFn: () => window.api.invoke("rates:sync") as Promise<IpcResult<{ imported: number }>>,
     onSuccess: (r) => {
       r?.success ? message.success(`镜像已刷新 ${r.data?.imported} 条`) : message.error(r?.error || "同步失败");
-      qc.invalidateQueries({ queryKey: ["rates"] });
+      invalidateDomain(qc, "rates");
     },
   });
   /** 台账工作台：主进程先探测局域网可达再开浏览器；探测最长 3 秒，按钮期间转 loading */
@@ -129,7 +130,7 @@ export function RateBoard() {
           </span>
           {st?.lastSyncAt && (
             <span className="text-[11px] text-gray-400">
-              上次同步 {new Date(st.lastSyncAt).toLocaleString("zh-CN")}
+              上次同步 {new Date(st.lastSyncAt).toLocaleString("zh-CN")} · 来源 {st.remoteHost}
             </span>
           )}
           {st?.lastError && (
@@ -230,8 +231,10 @@ export function RateBoard() {
 
       {/* 详情抽屉：航线/有效期原文/免箱/亏舱费/来源/备注 + 报价截图（board_server /images 静态服务） */}
       <Drawer
+        rootStyle={{ top: "var(--app-titlebar-height)", height: "calc(100% - var(--app-titlebar-height))" }}
         title={detail ? `${detail.carrier || "—"} · ${detail.pol || "?"} → ${detail.podRaw} · ${detail.container || "—"}` : ""}
         open={!!detail}
+        closable={false}
         onClose={() => setDetail(null)}
         width={560}
       >

@@ -66,6 +66,15 @@ describe("mapRemoteRow — board_server 行 → 归一化镜像行（键名=2026
     content_key: "97025e16abc", mid: null,
   };
 
+  it("现行统一记录的 price_usd、原文和状态完整映射", () => {
+    const r = mapRemoteRow({ ...fullRow, price_usd: 6094, freight_usd: undefined,
+      message_text: "原文", status: "当前生效", etd: "2026-09-30" }, "fallback")!;
+    expect(r.oceanUsd).toBe(6094);
+    expect(r.messageText).toBe("原文");
+    expect(r.status).toBe("当前生效");
+    expect(r.etd).toBe("2026-09-30");
+  });
+
   it("完整行：route→lane / remark→note / content_key→recordId / 独立采信 valid_*", () => {
     const r = mapRemoteRow(fullRow, "remote-0")!;
     expect(r.recordId).toBe("97025e16abc");

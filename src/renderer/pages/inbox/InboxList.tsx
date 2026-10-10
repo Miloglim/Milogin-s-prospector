@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button, message, Modal, Tooltip, Progress, notification, Dropdown, Select } from "antd";
 
@@ -116,7 +117,7 @@ export function InboxList() {
     setFetching(true);
     setFetchProgress({});
     try { await window.api.invoke("inbox:fetch"); } finally { setFetching(false); setFetchProgress({}); }
-    qc.invalidateQueries({ queryKey: ["inbox"] });
+    invalidateDomain(qc, "inbox");
   };
 
   // 收信健康度：主进程每轮抓取推送 → 失败账号弹常驻通知，同时刷新设置页账号列表缓存
@@ -134,21 +135,21 @@ export function InboxList() {
       } else if (list?.length) {
         notification.destroy?.("inbox-health");
       }
-      qc.invalidateQueries({ queryKey: ["accounts"] });
+      invalidateDomain(qc, "accounts");
     });
   }, [qc]);
 
   const classMut = useMutation({
     mutationFn: (p: { id: number; classification: string }) => window.api.invoke("inbox:classify", p),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
+    onSuccess: () => invalidateDomain(qc, "inbox"),
   });
   const readMut = useMutation({
     mutationFn: (ids: number[]) => Promise.all(ids.map(id => window.api.invoke("inbox:markRead", id))),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
+    onSuccess: () => invalidateDomain(qc, "inbox"),
   });
   const delMut = useMutation({
     mutationFn: (ids: number[]) => Promise.all(ids.map(id => window.api.invoke("inbox:delete", id))),
-    onSuccess: () => { setSid(null); setSel(new Set()); qc.invalidateQueries({ queryKey: ["inbox"] }); },
+    onSuccess: () => { setSid(null); setSel(new Set()); invalidateDomain(qc, "inbox"); },
   });
   const delBounceMut = useMutation({
     mutationFn: () => window.api.invoke("inbox:deleteBounce"),
@@ -156,11 +157,7 @@ export function InboxList() {
       const rr = r as { success: boolean; data?: { deleted: number; archive: string | null }; error?: string };
       message[rr?.success ? "success" : "error"](rr?.success ? `已删除 ${rr.data?.deleted ?? 0} 位被退联系人，删除前档案已归档` : (rr?.error || "失败"));
       setSid(null); setSel(new Set());
-      qc.invalidateQueries({ queryKey: ["inbox"] });
-      // 联系人已删 → 匹配索引必须失效，否则右侧详情还拿旧缓存显示「已匹配」
-      qc.invalidateQueries({ queryKey: ["contacts"] });
-      qc.invalidateQueries({ queryKey: ["crm"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      void invalidateDomain(qc, "inbox", "contacts");
     },
   });
 
@@ -179,10 +176,7 @@ export function InboxList() {
       const rr = r as { success: boolean; error?: string };
       if (rr?.success) message.success("已更新");
       else message.error(rr?.error || "更新失败");
-      qc.invalidateQueries({ queryKey: ["inbox"] });
-      qc.invalidateQueries({ queryKey: ["contacts"] });
-      qc.invalidateQueries({ queryKey: ["crm"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      void invalidateDomain(qc, "inbox", "contacts");
     },
   });
 
@@ -210,8 +204,7 @@ export function InboxList() {
         const r = await window.api.invoke("contacts:delete", c.id) as { success: boolean; error?: string };
         if (r?.success) {
           message.success("已删除");
-          qc.invalidateQueries({ queryKey: ["inbox"] });
-          qc.invalidateQueries({ queryKey: ["contacts"] });
+          void invalidateDomain(qc, "inbox", "contacts");
         } else message.error(r?.error || "删除失败");
       },
     });
@@ -361,7 +354,7 @@ export function InboxList() {
         const detail = pp.byClass ? Object.entries(pp.byClass).map(([k, v]) => `${labels[k] || k} ${v}`).join("、") : "";
         message.info(`拉取到 ${pp.count} 封新邮件${detail ? `：${detail}` : ""}`);
       }
-      qc.invalidateQueries({ queryKey: ["inbox"] });
+      // App 的全局监听统一刷新数据，这里仅负责新邮件提示。
     });
     return off;
   }, [qc]);
@@ -381,6 +374,12 @@ export function InboxList() {
     const qs = rawHash.includes("?") ? rawHash.split("?")[1] : "";
     if (!qs) return;
     const sp = new URLSearchParams(qs);
+    const detail = Number(sp.get("detail"));
+    if (Number.isInteger(detail) && detail > 0) {
+      setSid(detail); setSel(new Set([detail])); setFilter("all"); setSearch("");
+      window.location.hash = rawHash.split("?")[0]!;
+      return;
+    }
     const q = sp.get("search");
     if (q) {
       setSearch(q);

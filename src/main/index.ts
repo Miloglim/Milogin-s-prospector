@@ -23,6 +23,8 @@ import { registerRateUpdateIPC } from "./transport/rate-update.ipc";
 import { registerDevLetterIPC } from "./transport/dev-letter.ipc";
 import { registerKbIPC } from "./transport/kb.ipc";
 import { registerSystemIPC } from "./transport/system.ipc";
+import { registerSearchIPC } from "./transport/search.ipc";
+import { backfillLocalSearchBodies } from "./services/search.service";
 import { registerUpdateIPC } from "./transport/update.ipc";
 import { dailyBackup } from "./services/backup.service";
 import { initUpdater, cleanupUpdater } from "./updater";
@@ -201,6 +203,7 @@ function registerAllIPC() {
   registerDevLetterIPC();
   registerKbIPC();
   registerSystemIPC();
+  registerSearchIPC();
   registerUpdateIPC();
 
   // 窗口控制
@@ -236,6 +239,7 @@ app.whenReady().then(async () => {
   await migrateBodiesOut(); // 存量正文出库迁移（幂等，首次启动把库从正文撑大的状态缩回几 MB）
   migrateAccountPasswords(); // P0-1: 旧密钥密文一次性重封装为 safeStorage 主密钥（幂等）
   registerAllIPC();
+  void backfillLocalSearchBodies();
   // 上次退出/崩溃时批次在跑：只认领标记，等待用户确认，绝不自动外发。
   // 必须在 registerAllIPC 之后：saveConfigFn/sendBccFn 等引擎注入在此之前完成。
   const interruptedBatch = claimInterruptedBatch();

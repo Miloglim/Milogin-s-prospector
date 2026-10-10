@@ -9,6 +9,8 @@ import { okResult, failResult, type Result } from "../errors";
 import { Log } from "../logger";
 import { saveDatabase } from "../db";
 import { nudge as nudgeSuggestions } from "./suggestion-bus";
+import { loadConfig } from "../config";
+import { DEFAULT_CRM_OVERDUE_DAYS, normalizeCrmThresholds } from "../../shared/crm";
 
 // ── 阶段定义 ──
 export const STAGES = [
@@ -32,6 +34,7 @@ export interface PipelineContact {
   reminderAt: string | null;
   /** 距最近一次跟进/阶段变更的天数（沉默时长）；无记录为 null */
   staleDays: number | null;
+  overdueDays: number; warnDays: number;
   /** 沉默超期：看板标红与助手「今天该跟进谁」共用此判定，不再各算一套 */
   overdue: boolean;
   lastFollowupAt: string | null;
@@ -50,7 +53,7 @@ export interface StageData { key: string; label: string; color: string; contacts
  *   无显式提醒 → 按沉默时长判定（最近跟进/阶段变更距今 > SILENT_OVERDUE_DAYS）
  * 看板红点与 agent 的 reminders_due 都走这里，不再一处说逾期、一处说没有。
  */
-export const SILENT_OVERDUE_DAYS = 5;
+export const SILENT_OVERDUE_DAYS = DEFAULT_CRM_OVERDUE_DAYS;
 
 function staleDaysOf(lastAt: string | null): number | null {
   if (!lastAt) return null;
@@ -59,19 +62,20 @@ function staleDaysOf(lastAt: string | null): number | null {
   return Math.floor((Date.now() - t) / 86400000);
 }
 
-function isOverdue(reminderAt: string | null | undefined, lastAt: string | null): boolean {
+function isOverdue(reminderAt: string | null | undefined, lastAt: string | null, overdueDays: number): boolean {
   if (reminderAt) {
     const t = new Date(reminderAt).getTime();
     return !Number.isNaN(t) && t <= Date.now();
   }
   const days = staleDaysOf(lastAt);
-  return days !== null && days > SILENT_OVERDUE_DAYS;
+  return days !== null && days > overdueDays;
 }
 
 // ── 管线列表 — 从 contacts 表直接读取 ──
 
 export function listPipeline(): Result<StageData[]> {
   const db = getDb();
+  const thresholds = normalizeCrmThresholds(loadConfig().crm);
   // 进入 CRM 管线的条件：仅 status=reached（已触达）；tags 为分类，联动保证有值
   const rows = db.select({
     id: contacts.id, email: contacts.email,
@@ -92,7 +96,8 @@ export function listPipeline(): Result<StageData[]> {
   // 抄送/回复邮件只落 inbox_messages 不写 interactions —— 不合并的话收到抄送后"最近跟进"不更新
   const noteRows = db.select({
     contactId: interactions.contactId, bodyPreview: interactions.bodyPreview, createdAt: interactions.createdAt,
-  }).from(interactions).orderBy(desc(interactions.createdAt)).all();
+  }).from(interactions).where(dsql`${interactions.type} NOT IN ('stage', 'reminder')`)
+    .orderBy(desc(interactions.createdAt)).all();
   const lastNote = new Map<number, { at: string; note: string }>();
   for (const n of noteRows) {
     if (!lastNote.has(n.contactId)) lastNote.set(n.contactId, { at: n.createdAt, note: n.bodyPreview || "" });
@@ -122,14 +127,14 @@ export function listPipeline(): Result<StageData[]> {
     else if (lm) { followAt = lm.at; followNote = lm.subject ? `邮件: ${lm.subject}` : "邮件往来"; }
 
     const c: PipelineContact = {
-      ...r, tags, extra,
+      ...r, tags, extra, ...thresholds,
       stage,
       sendStage: r.sendStage || "cold",
       status: r.status || "",
       companyName: r.companyName || null,
       reminderAt: reminder?.nextFollowupAt || null,
       staleDays: staleDaysOf(followAt ?? (extra.stageChangedAt as string) ?? null),
-      overdue: isOverdue(reminder?.nextFollowupAt, followAt ?? (extra.stageChangedAt as string) ?? null),
+      overdue: isOverdue(reminder?.nextFollowupAt, followAt ?? (extra.stageChangedAt as string) ?? null, thresholds.overdueDays),
       lastFollowupAt: followAt,
       lastFollowupNote: followNote,
       stageChangedAt: extra.stageChangedAt as string || null,
@@ -149,24 +154,41 @@ export function listPipeline(): Result<StageData[]> {
 
 export async function setStage(contactId: number, newStage: string): Promise<Result<void>> {
   if (!(PIPE_KEYS as readonly string[]).includes(newStage)) return failResult("无效阶段");
-  const contact = getDb().select().from(contacts).where(eq(contacts.id, contactId)).get();
-  if (!contact) return failResult("联系人不存在");
+  if (!Number.isInteger(contactId) || contactId <= 0) return failResult("无效的 ID");
+  try {
+    const contact = getDb().select().from(contacts).where(eq(contacts.id, contactId)).get();
+    if (!contact) return failResult("联系人不存在");
 
-  // v4.0: 覆盖式写入 — tags 只存单个分类值（管线仅 reached 进入，反向联动已保证 status=reached）
-  const now = new Date().toISOString();
-  const extra = JSON.parse(contact.extra || "{}");
-  extra.stageChangedAt = now;
-  const set: { tags: string; updatedAt: string; extra: string; status?: string } = {
-    tags: JSON.stringify([newStage]),
-    updatedAt: now,
-    extra: JSON.stringify(extra),
-  };
-  if (contact.status !== "reached") set.status = "reached";
+    // v4.0: 覆盖式写入 — tags 只存单个分类值（管线仅 reached 进入，反向联动已保证 status=reached）
+    const now = new Date().toISOString();
+    const extra = parseJSON(contact.extra || "{}");
+    const oldStage = PIPE_KEYS.find(k => parseStringArray(contact.tags || "[]").includes(k)) || "reaching";
+    // 保留首次进入管线的兜底时间；阶段历史改由 stage 活动记录表达，切阶段不重置沉默天数。
+    extra.stageChangedAt ??= now;
+    const set: { tags: string; updatedAt: string; extra: string; status?: string } = {
+      tags: JSON.stringify([newStage]),
+      updatedAt: now,
+      extra: JSON.stringify(extra),
+    };
+    if (contact.status !== "reached") set.status = "reached";
 
-  getDb().update(contacts).set(set as Partial<typeof contacts.$inferInsert>).where(eq(contacts.id, contactId)).run();
-  saveDatabase();
-  Log.debug("crm.setStage", `${contactId} → ${newStage}`);
-  return okResult(undefined);
+    getDb().transaction(tx => {
+      tx.update(contacts).set(set as Partial<typeof contacts.$inferInsert>).where(eq(contacts.id, contactId)).run();
+      if (oldStage !== newStage) {
+        tx.insert(interactions).values({
+          contactId, type: "stage", direction: "internal", channel: "manual",
+          bodyPreview: `${STAGES.find(s => s.key === oldStage)!.label} → ${STAGES.find(s => s.key === newStage)!.label}`,
+          createdAt: now,
+        }).run();
+      }
+    });
+    saveDatabase();
+    Log.debug("crm.setStage", `${contactId} → ${newStage}`);
+    return okResult(undefined);
+  } catch (error) {
+    Log.error("crm.setStage", "阶段变更失败", error instanceof Error ? error.stack : undefined);
+    return failResult("阶段变更失败");
+  }
 }
 
 // ── 设置提醒 — 更新 contacts.extra ──
@@ -281,17 +303,18 @@ export function getDetail(contactId: number): Result<{
     .where(eq(contacts.id, contactId)).get();
 
   const tags = parseStringArray(row?.tags || "[]");
+  const thresholds = normalizeCrmThresholds(loadConfig().crm);
   const extra = parseJSON(row?.extra || "{}");
   const reminder = extra.crmReminder as Record<string, string> | undefined;
 
   const contact: PipelineContact | null = row ? {
-    ...row, tags, extra, companyName: row.companyName || null,
+    ...row, tags, extra, ...thresholds, companyName: row.companyName || null,
     stage: PIPE_KEYS.find(k => tags.includes(k)) || "reaching",
     sendStage: row.sendStage || "cold",
     status: row.status || "",
     reminderAt: reminder?.nextFollowupAt || null,
     staleDays: staleDaysOf((extra.stageChangedAt as string) ?? null),
-    overdue: isOverdue(reminder?.nextFollowupAt, (extra.stageChangedAt as string) ?? null),
+    overdue: isOverdue(reminder?.nextFollowupAt, (extra.stageChangedAt as string) ?? null, thresholds.overdueDays),
     lastFollowupAt: null,
     lastFollowupNote: null,
     stageChangedAt: extra.stageChangedAt as string || null,
@@ -302,7 +325,9 @@ export function getDetail(contactId: number): Result<{
     .orderBy(desc(interactions.createdAt)).limit(50).all();
 
   // 最近一次跟进（interactionRows 已按时间倒序，取第一条，不限类型）
-  const lastNoteRow = interactionRows[0];
+  const lastNoteRow = db.select().from(interactions)
+    .where(and(eq(interactions.contactId, contactId), dsql`${interactions.type} NOT IN ('stage', 'reminder')`))
+    .orderBy(desc(interactions.createdAt)).limit(1).get();
   if (contact && lastNoteRow) {
     contact.lastFollowupAt = lastNoteRow.createdAt;
     contact.lastFollowupNote = lastNoteRow.bodyPreview || null;
@@ -334,6 +359,19 @@ export function getDetail(contactId: number): Result<{
       };
     });
 
+  if (contact) {
+    const lastMail = db.select({ at: inboxMessages.receivedAt, subject: inboxMessages.subject })
+      .from(inboxMessages).where(eq(inboxMessages.matchedContactId, contactId))
+      .orderBy(desc(inboxMessages.receivedAt)).limit(1).get();
+    if (lastMail && (!contact.lastFollowupAt || lastMail.at > contact.lastFollowupAt)) {
+      contact.lastFollowupAt = lastMail.at;
+      contact.lastFollowupNote = lastMail.subject ? `邮件: ${lastMail.subject}` : "邮件往来";
+    }
+    const followAt = contact.lastFollowupAt ?? contact.stageChangedAt;
+    contact.staleDays = staleDaysOf(followAt);
+    contact.overdue = isOverdue(contact.reminderAt, followAt, thresholds.overdueDays);
+  }
+
   // ── 跟进记录时间线（读时合并）──
   // 旧版时间线只读 interactions，而邮件类 interaction 只为"主联系人"（BCC 收件人/发件人）写入，
   // 被抄送的联系人没有 interaction → 时间线与邮件往来（走 relatedContactIds）对不上。
@@ -341,7 +379,7 @@ export function getDetail(contactId: number): Result<{
   // sent/replied 类 interaction 不进时间线（对应邮件行已覆盖，避免双份）；退信/自动回复邮件行不重复进（由事件行表达）。
   // 读时派生 ⇒ 历史数据立即同步，无需回填，不影响 dashboard/历史页的 interactions 计数口径。
   const eventRows = interactionRows
-    .filter(r => r.type === "note" || r.type === "bounced" || r.type === "autoreply")
+    .filter(r => r.type === "note" || r.type === "bounced" || r.type === "autoreply" || r.type === "stage")
     .map(r => ({ id: r.id ?? null, type: r.type, direction: r.direction, fromEmail: null as string | null, subject: r.subject ?? null, bodyPreview: r.bodyPreview ?? null, createdAt: r.createdAt }));
   const emailEvents = emailRows
     .filter(e => e.classification !== "bounce" && e.classification !== "autoreply")
@@ -358,6 +396,7 @@ export function getDetail(contactId: number): Result<{
 export interface ReminderContact extends PipelineContact { followupNote: string | null; }
 
 export function checkReminders(): Result<{ due: ReminderContact[]; overdue: ReminderContact[] }> {
+  const thresholds = normalizeCrmThresholds(loadConfig().crm);
   const pipe = listPipeline();
   if (!pipe.success) return failResult(pipe.error);
   const flat = pipe.data.flatMap(st => st.contacts);
@@ -369,7 +408,7 @@ export function checkReminders(): Result<{ due: ReminderContact[]; overdue: Remi
   const due: ReminderContact[] = [];
   for (const c of flat) {
     // 逾期：显式提醒时间已过 或 无提醒但沉默超期（看板标红的那批）
-    if (isOverdue(c.reminderAt, c.lastFollowupAt ?? c.stageChangedAt)) { overdue.push(asReminder(c)); continue; }
+    if (c.overdue) { overdue.push(asReminder(c)); continue; }
     const t = c.reminderAt ? new Date(c.reminderAt).getTime() : NaN;
     if (!Number.isNaN(t) && t <= tomorrow) due.push(asReminder(c));   // 24 小时内到期
   }
@@ -392,7 +431,7 @@ export function checkReminders(): Result<{ due: ReminderContact[]; overdue: Remi
     const t = new Date(reminder.nextFollowupAt).getTime();
     if (Number.isNaN(t)) continue;
     const c: PipelineContact = {
-      ...r, tags: parseStringArray(r.tags || "[]"), extra, companyName: r.companyName || null, companyId: r.companyId,
+      ...r, ...thresholds, tags: parseStringArray(r.tags || "[]"), extra, companyName: r.companyName || null, companyId: r.companyId,
       stage: "other", sendStage: r.stage || "cold", status: r.status || "",
       reminderAt: reminder.nextFollowupAt, staleDays: null, overdue: t <= now,
       lastFollowupAt: null, lastFollowupNote: null, title: null, phone: null, linkedinUrl: null,

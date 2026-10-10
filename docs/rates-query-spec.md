@@ -1,5 +1,7 @@
 # 查运价规范（清洗 → 归属 → 呈现 → 报价表）
 
+> 2026-09-28 来源口径已变更：本文件中 2026-09-07 的公网真源、旧端口、数量与代理要求仅为历史记录，不可用于当前接线。现行唯一局域网接口和字段以 `docs/rates-remote-source-spec.md` §4 为准。查询清洗规则仍按本文其余适用条款。
+
 日期：2026-09-07　状态：查询侧已实施；本文保留清洗与呈现契约。当前实现以 `src/main/services/rates-clean.ts`、`src/main/services/agent/toolkit/rates.ts` 及 `tests/unit/rates-*.test.ts` 为准。
 上游文档：匹配与定论的三段式见 `docs/rates-query-fallback-spec.md`；同步链路见 `docs/rates-remote-source-spec.md`
 台账侧目标结构（下一期在入库层实现，本轮不动台账数据）：见本文 §7

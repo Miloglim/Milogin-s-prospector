@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Card, Drawer, Empty, Popconfirm, Progress, Table, Tag, Tooltip, message } from "antd";
@@ -99,10 +100,7 @@ export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEd
 
   useEffect(() => {
     const refresh = () => {
-      qc.invalidateQueries({ queryKey: ["campaigns"] });
-      qc.invalidateQueries({ queryKey: ["campaign", "detail"] });
-      // 发出信会推进 stage/interactions → 首页推荐口径与选人器灰显口径都跟着变
-      qc.invalidateQueries({ queryKey: ["send", "pickerStats"] });
+      void invalidateDomain(qc, "send");
     };
     let again: ReturnType<typeof setTimeout> | null = null;
     const off = window.api.on("send:progress", () => {
@@ -149,8 +147,7 @@ export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEd
       const r = await window.api.invoke(ch[action]!) as { success: boolean; error?: string };
       if (!r?.success) { message.error(r?.error || "操作失败"); return; }
       if (action === "start") message.success("已开始发送");
-      qc.invalidateQueries({ queryKey: ["send"] });
-      qc.invalidateQueries({ queryKey: ["campaigns"] });
+      void invalidateDomain(qc, "send");
     } catch (err) {
       message.error(`操作失败：${err instanceof Error ? err.message : String(err)}`);
     }
@@ -160,9 +157,7 @@ export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEd
     const verb = action === "pause" ? "暂停" : action === "resume" ? "启动" : action === "restart" ? "再启动" : "终止";
     try {
       const r = await window.api.invoke("send:campaignControl", { campaignId: id, action }) as { success: boolean; error?: string };
-      qc.invalidateQueries({ queryKey: ["campaigns"] }); // 失败也可能改了状态（restart 缺内容 → 转草稿），两边都要刷新
-      qc.invalidateQueries({ queryKey: ["dev-letter"] });   // 任务归属变了 → 首页可推荐名单要重算（规范 §5）
-      qc.invalidateQueries({ queryKey: ["send", "pickerStats"] });
+      void invalidateDomain(qc, "send");
       if (!r?.success) { message.warning(r?.error || `${verb}失败`); return; }
       message.success(`已${verb}「${name}」`);
     } catch (err) {
@@ -174,9 +169,7 @@ export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEd
   const remove = async (id: string, name: string) => {
     try {
       const r = await window.api.invoke("send:campaignDelete", id) as { success: boolean; error?: string };
-      qc.invalidateQueries({ queryKey: ["campaigns"] });
-      qc.invalidateQueries({ queryKey: ["dev-letter"] });
-      qc.invalidateQueries({ queryKey: ["send", "pickerStats"] });
+      void invalidateDomain(qc, "send");
       if (!r?.success) { message.warning(r?.error || "删除失败"); return; }
       if (drawerId === id) setDrawerId(null);
       message.success(`已删除任务「${name}」，发送历史保留`);

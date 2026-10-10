@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../lib/cacheDeps";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 
 export interface Contact {
@@ -61,7 +62,7 @@ export function useUpsertContact() {
         data?: Contact;
         error?: string;
       }>,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["contacts"] }); },
+    onSuccess: () => { invalidateDomain(qc, "contacts"); },
   });
 }
 
@@ -91,10 +92,7 @@ export function useDeleteContact() {
       }
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["contacts"] });
-      qc.invalidateQueries({ queryKey: ["crm"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      qc.invalidateQueries({ queryKey: ["send"] }); // 退信桶等按联系人统计的桶缓存
+      void invalidateDomain(qc, "contacts", "send");
     },
   });
 }

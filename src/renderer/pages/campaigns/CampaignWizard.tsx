@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useEffect, useState } from "react";
 import { Button, Card, Input, InputNumber, Modal, Segmented, Select, Steps, Switch, Tag, message } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
@@ -221,10 +222,9 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
       if (!r?.success) { message.error(r?.error || "保存失败"); return; }
       const eligible = r.data?.eligible ?? selectedIds.length;
       message.success(`已添加任务「${name.trim()}」：${eligible} 人 × ${rounds.length} 轮——到任务卡片点「启动」开始执行`);
-      qc.invalidateQueries({ queryKey: ["campaigns"] });
+      invalidateDomain(qc, "send");
       // 名单已归属任务 → 首页推荐与选人器灰显一起重算（漏一条就会"还在推荐同一批人"，规范 §5）
-      qc.invalidateQueries({ queryKey: ["dev-letter"] });
-      qc.invalidateQueries({ queryKey: ["send", "pickerStats"] });
+      void invalidateDomain(qc, "send");
       onDone();
     } catch (err) {
       message.error(`提交失败：${err instanceof Error ? err.message : String(err)}`);

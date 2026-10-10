@@ -1,7 +1,7 @@
 import { ipcMain, app, dialog, BrowserWindow, shell } from "electron";
 import * as path from "path";
 import { IPC } from "../contract";
-import { loadConfig, saveConfig, DEFAULT_SCHEDULE, DB_PATH } from "../config";
+import { loadConfig, saveConfig, updateRuntimeConfig, DB_PATH } from "../config";
 import { Log } from "../logger";
 import { okResult, failResult } from "../errors";
 
@@ -36,16 +36,7 @@ export function registerSystemIPC() {
   });
 
   ipcMain.handle(IPC.SYSTEM.UPDATE_CONFIG, (_e, partial) => {
-    const current = loadConfig();
-    // schedule / sentenceSubjects 深度合并，避免前端只传部分字段时覆盖丢失
-    const merged = {
-      ...current,
-      ...partial,
-      schedule: { ...DEFAULT_SCHEDULE, ...(current.schedule || {}), ...(partial?.schedule || {}) },
-      sentenceSubjects: { ...(current.sentenceSubjects || {}), ...(partial?.sentenceSubjects || {}) },
-    };
-    saveConfig(merged);
-    return okResult(undefined);
+    return updateRuntimeConfig(partial);
   });
 
   ipcMain.handle(IPC.SYSTEM.APP_VERSION, () => okResult(app.getVersion()));

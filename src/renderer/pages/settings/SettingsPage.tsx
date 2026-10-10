@@ -1,8 +1,10 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
+import { DEFAULT_CRM_OVERDUE_DAYS, DEFAULT_CRM_WARN_DAYS, MAX_CRM_THRESHOLD_DAYS } from "../../../shared/crm";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card, Input, InputNumber, Button, message, notification, Table, Modal, Form, Tag, Space,
-  Switch, TimePicker, Tooltip, Badge, Popconfirm, Segmented, Select,
+  Switch, TimePicker, Tooltip, Badge, Popconfirm, Select,
 } from "antd";
 import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined, DownloadOutlined, SyncOutlined, FolderOpenOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import { RichTextEditor } from "../../components/RichTextEditor";
@@ -39,7 +41,7 @@ interface RuntimeConfig {
   fromName: string;
   schedule: SendSchedule;
   test: { email: string; company: string; enabled: boolean; dryRun: boolean };
-  crm: { followupDays: Record<string, number>; todoAdvanceDays: number; autoArchiveDays: number };
+  crm: { followupDays: Record<string, number>; todoAdvanceDays: number; autoArchiveDays: number; silentOverdueDays?: number; warnDays?: number };
 }
 
 // ── 右侧浮动导航分区 ──
@@ -218,7 +220,7 @@ function KbDispatchCard() {
     if (Object.keys(patch).length) {
       const s = await window.api.invoke("kb:setConfig", patch) as { success: boolean; error?: string };
       if (!s?.success) { setTest({ ok: false, text: s?.error || "保存失败" }); setBusy(false); return; }
-      qc.invalidateQueries({ queryKey: ["kb", "config"] });
+      invalidateDomain(qc, "kb");
       setToken("");
     }
     const r = await window.api.invoke("kb:testConnection") as {
@@ -245,7 +247,7 @@ function KbDispatchCard() {
         {cfg?.hasToken && (
           <Button size="small" danger type="text" onClick={async () => {
             await window.api.invoke("kb:setConfig", { token: "" });
-            qc.invalidateQueries({ queryKey: ["kb", "config"] }); setTest(null); message.success("令牌已清除");
+            invalidateDomain(qc, "kb"); setTest(null); message.success("令牌已清除");
           }}>清除</Button>
         )}
       </div>
@@ -280,16 +282,8 @@ function KbDispatchCard() {
   );
 }
 
-// ── 运价台账来源：内置默认局域网（截图与明细最全），不在公司网时可切公网镜像（能查价、截图缺）──
-// 切换即自动重新同步镜像，不留「保存 / 测试连接」两步（设置页只放必须项）
+// ── 运价台账：只读公司局域网接口；同步失败时保留已下载的镜像 ──
 function RatesSourceCard() {
-  const qc = useQueryClient();
-  const { data: cfg } = useQuery({
-    queryKey: ["rates", "config"],
-    queryFn: () => window.api.invoke("system:getConfig") as Promise<{
-      success: boolean; data?: { rates?: { source?: string; url?: string } };
-    }>,
-  });
   const { data: st } = useQuery({
     queryKey: ["rates", "status"],
     queryFn: () => window.api.invoke("rates:status") as Promise<{
@@ -297,25 +291,6 @@ function RatesSourceCard() {
       data?: { remoteHost: string; total: number; lastSyncAt: string | null; lastError: string | null };
     }>,
   });
-  const [busy, setBusy] = useState(false);
-  const custom = (cfg?.data?.rates?.url || "").trim();
-  const source = cfg?.data?.rates?.source === "remote" ? "remote" : "lan";
-
-  const pick = async (next: "lan" | "remote") => {
-    if (busy || (next === source && !custom)) return;
-    setBusy(true);
-    try {
-      // 自定义地址一并清掉：分段按钮就是唯一入口，不留两套并存的地址来源
-      await window.api.invoke("system:updateConfig", { rates: { source: next, url: "" } });
-      const r = await window.api.invoke("rates:sync") as { success: boolean; error?: string; data?: { imported: number } };
-      const where = next === "lan" ? "公司局域网" : "公网镜像";
-      if (r?.success) message.success(`已切到${where}，重新同步 ${r.data?.imported ?? 0} 条运价`);
-      else message.warning(`已切到${where}，但这次没同步上：${r?.error || "台账连不上"}（镜像保留上次的数据）`);
-    } finally {
-      setBusy(false);
-      qc.invalidateQueries({ queryKey: ["rates"] });
-    }
-  };
 
   return (
     <SettingCard icon="" title="运价台账"
@@ -323,15 +298,11 @@ function RatesSourceCard() {
         ? <Tag color={st.data?.lastError ? "orange" : "green"}>镜像 {st.data?.total ?? 0} 条</Tag>
         : <Tag>状态未知</Tag>}>
       <div className="text-[11px] text-gray-400 mb-2">
-        运价与报价截图都来自公司台账。在公司网内用局域网（截图完整）；不在公司网时切公网镜像——能查价，但截图目录没部署，图会打不开。
+        只从公司局域网运价库同步；连接失败时保留上次已下载的数据。地址变更由本机环境变量 RATES_REMOTE_URL 配置。
       </div>
-      <Segmented size="small" disabled={busy} value={source}
-        options={[{ label: "公司局域网", value: "lan" }, { label: "公网镜像", value: "remote" }]}
-        onChange={v => void pick(v as "lan" | "remote")} />
       <div className="mt-2 text-[11px] text-gray-400">
-        当前地址：{custom || st?.data?.remoteHost || "—"}
+        局域网地址：{st?.data?.remoteHost || "—"}
         {st?.data?.lastSyncAt ? ` · 上次同步 ${new Date(st.data.lastSyncAt).toLocaleString("zh-CN")}` : ""}
-        {busy ? " · 切换并重新同步中…" : ""}
       </div>
     </SettingCard>
   );
@@ -356,7 +327,7 @@ function SearchKeyCard() {
     setBusy(false);
     if (!r?.success) { message.error(r?.error || "写入失败"); return; }
     message.success(clear ? "密钥已清除" : "已写入 .env，本次运行立即生效");
-    qc.invalidateQueries({ queryKey: ["ai", "keys"] });
+    invalidateDomain(qc, "ai");
     if (name === "EXA_API_KEY") setExa(""); else setTavily("");
   };
 
@@ -674,8 +645,7 @@ function AgentConversationCard() {
   const list = data ?? [];
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["agentArchivedConversations"] });
-    qc.invalidateQueries({ queryKey: ["agentConversations"] });
+    void invalidateDomain(qc, "conversations");
     window.dispatchEvent(new Event(CONVS_CHANGED));   // 侧栏历史同步
   };
 
@@ -910,8 +880,7 @@ function ProviderCard() {
   const proxy = proxyData?.success ? proxyData.data : null;
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["ai", "endpoint"] });
-    qc.invalidateQueries({ queryKey: ["agent", "status"] });
+    void invalidateDomain(qc, "ai");
   };
 
   const runTest = async (p: ProfileDto) => {
@@ -1034,7 +1003,7 @@ function ProviderCard() {
                   : <span>未检测到（直连中）</span>}
             </span>
           </Tooltip>
-          <Button size="small" type="text" onClick={() => qc.invalidateQueries({ queryKey: ["ai", "proxy"] })}>重新探测</Button>
+          <Button size="small" type="text" onClick={() => invalidateDomain(qc, "ai")}>重新探测</Button>
         </Space>
       </div>
 
@@ -1093,7 +1062,7 @@ export function SettingsPage() {
 
   // 收信健康度事件驱动刷新：后台每轮抓取成功后账号列表状态实时更新（无需重进设置页）
   useEffect(() => {
-    return window.api.on("inbox:health", () => { qc.invalidateQueries({ queryKey: ["accounts"] }); });
+    return window.api.on("inbox:health", () => { invalidateDomain(qc, "accounts"); });
   }, [qc]);
 
   const { data: configData } = useQuery({
@@ -1103,15 +1072,19 @@ export function SettingsPage() {
 
   const upsertMut = useMutation({
     mutationFn: (input: unknown) => window.api.invoke("accounts:upsert", input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["accounts"] }),
+    onSuccess: () => invalidateDomain(qc, "accounts"),
   });
   const deleteMut = useMutation({
     mutationFn: (id: number) => window.api.invoke("accounts:delete", id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["accounts"] }),
+    onSuccess: () => invalidateDomain(qc, "accounts"),
   });
   const saveConfigMut = useMutation({
-    mutationFn: (input: unknown) => window.api.invoke("system:updateConfig", input),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); message.success("已保存"); },
+    mutationFn: (input: unknown) => window.api.invoke("system:updateConfig", input) as Promise<{ success: boolean; error?: string }>,
+    onSuccess: result => {
+      if (!result.success) { message.error(result.error || "保存失败"); return; }
+      void invalidateDomain(qc, "settings"); message.success("已保存");
+    },
+    onError: error => message.error(`保存失败：${error.message}`),
   });
 
   const accounts = accountData?.success ? accountData.data || [] : [];
@@ -1128,7 +1101,7 @@ export function SettingsPage() {
 
   // 账号熔断状态变化 → 即时刷新账号列表
   useEffect(() => {
-    const off = window.api.on("accounts:circuitChanged", () => qc.invalidateQueries({ queryKey: ["accounts"] }));
+    const off = window.api.on("accounts:circuitChanged", () => invalidateDomain(qc, "accounts"));
     return off;
   }, [qc]);
 
@@ -1186,13 +1159,18 @@ export function SettingsPage() {
 
   const accountColumns = [
     { title: "邮箱", dataIndex: "email", key: "email", render: (v: string) => <span className="font-mono text-xs">{v}</span> },
-    { title: "SMTP", key: "smtp", render: (_: unknown, r: EmailAccount) => <span className="text-[11px] text-gray-500">{r.smtpHost}:{r.smtpPort}</span> },
+    { title: "服务器", key: "servers", render: (_: unknown, r: EmailAccount) => (
+      <span className="text-[11px] text-gray-500">
+        <span className="block">SMTP {r.smtpHost}:{r.smtpPort}</span>
+        <span className="block">IMAP {r.imapHost ? `${r.imapHost}${r.imapPort ? `:${r.imapPort}` : ""}` : "未配置（仅发信）"}</span>
+      </span>
+    ) },
     { title: "状态", key: "status", width: 160, render: (_: unknown, r: EmailAccount) => {
       // 发信熔断（服务商拦截 / 连续发送失败）与收信失败分开呈现
       const open = circuitOpenOf(r);
       const blocked = open && r.circuitReason === "sender_block";
-      const recvBad = r.fetchFailCount > 0;
-      if (!open && !r.consecutiveFails && !recvBad) return <Tag color="green">正常</Tag>;
+      const recvBad = !!r.imapHost && r.fetchFailCount > 0;
+      if (!open && !r.consecutiveFails && !recvBad) return <Tag color={r.imapHost ? "green" : "default"}>{r.imapHost ? "正常" : "仅发信"}</Tag>;
       return (
         <Space size={2}>
           {blocked && (
@@ -1236,17 +1214,21 @@ export function SettingsPage() {
             try {
               const res = await window.api.invoke("accounts:validate", r.id) as {
                 success: boolean;
-                data?: { smtpOk: boolean; smtpError?: string; imapOk: boolean; imapError?: string };
+                data?: { smtpOk: boolean; smtpError?: string; imapConfigured?: boolean; imapOk: boolean; imapError?: string };
                 error?: string;
               };
               if (!res?.success || !res.data) { message.error(res?.error || "验证请求失败"); return; }
               const { smtpOk, smtpError, imapOk, imapError } = res.data;
-              if (smtpOk && imapOk) {
+              // 旧主进程不返回 imapConfigured；不能把“字段缺席”误判成“未配置收信”。
+              const imapConfigured = res.data.imapConfigured ?? (!!r.imapHost || imapOk);
+              if (smtpOk && imapConfigured && imapOk) {
                 message.success(`${r.email} 连接正常（SMTP + IMAP 认证通过）`);
+              } else if (smtpOk && !imapConfigured) {
+                message.warning(`${r.email} SMTP 认证通过；未配置收信，请编辑账号并保存 IMAP 服务器`);
               } else {
                 const parts = [
                   !smtpOk && `SMTP ✗ ${smtpError || "失败"}`,
-                  !imapOk && `IMAP ✗ ${imapError || "失败"}`,
+                  imapConfigured && !imapOk && `IMAP ✗ ${imapError || "失败"}`,
                 ].filter(Boolean).join("；");
                 notification.error({
                   message: `${r.email} 连接异常`,
@@ -1269,7 +1251,7 @@ export function SettingsPage() {
               onConfirm={async () => {
                 const res = await window.api.invoke("accounts:resetCircuit", r.id) as { success: boolean; error?: string };
                 res?.success ? message.success(`${r.email} 已解除熔断`) : message.error(res?.error || "解除失败");
-                qc.invalidateQueries({ queryKey: ["accounts"] });
+                invalidateDomain(qc, "accounts");
               }}
             >
               <Button size="small" danger type="primary" ghost icon={<PlayCircleOutlined />}>解除熔断</Button>
@@ -1441,6 +1423,20 @@ export function SettingsPage() {
         {/* ═══ 客户跟进 ═══ */}
         <div id="sec-crm" className="settings-section">
           <div className="text-[13px] font-bold mb-3 text-gray-800">客户跟进</div>
+          <SettingCard icon="" title="沉默预警">
+            <Space wrap>
+              <span>沉默逾期</span>
+              <InputNumber aria-label="沉默逾期天数" min={1} max={MAX_CRM_THRESHOLD_DAYS} precision={0}
+                value={config?.crm?.silentOverdueDays ?? DEFAULT_CRM_OVERDUE_DAYS}
+                onChange={value => { if (value !== null) saveConfigMut.mutate({ crm: { silentOverdueDays: value } }); }} />
+              <span>天；提前预警</span>
+              <InputNumber aria-label="沉默预警天数" min={1} max={config?.crm?.silentOverdueDays ?? DEFAULT_CRM_OVERDUE_DAYS} precision={0}
+                value={config?.crm?.warnDays ?? DEFAULT_CRM_WARN_DAYS}
+                onChange={value => { if (value !== null) saveConfigMut.mutate({ crm: { warnDays: value } }); }} />
+              <span>天</span>
+            </Space>
+            <div className="text-[10px] text-gray-400 mt-2">超过阈值生效；显式提醒仍以提醒到期时间为准。看板、仪表盘和助手使用同一口径。</div>
+          </SettingCard>
           <SettingCard icon="" title="默认跟进间隔">
             <div className="text-[11px] text-gray-400 mb-2">
               切换阶段后的默认提醒天数，可在 CRM 管线中单独覆盖
@@ -1611,7 +1607,7 @@ export function SettingsPage() {
             rules={editingAccount ? [] : [{ required: true, message: "新增时密码必填" }]}>
             <Input.Password placeholder={editingAccount ? "留空则不变" : ""} />
           </Form.Item>
-          <Form.Item name="imapHost" label="IMAP 服务器"><Input placeholder="自动推导" /></Form.Item>
+          <Form.Item name="imapHost" label="IMAP 服务器（留空则仅发信）"><Input placeholder="如 imap.mxhichina.com" /></Form.Item>
           <Form.Item name="imapPort" label="IMAP 端口"><InputNumber min={1} max={65535} style={{ width: "100%" }} placeholder="993" /></Form.Item>
           <Form.Item name="signature" label="HTML 签名">
             <RichTextEditor

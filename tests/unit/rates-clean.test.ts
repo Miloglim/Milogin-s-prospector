@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+afterEach(() => vi.useRealTimers());
 import {
   cleanPol, cleanPod, cleanCarrier, parsePrices, cleanFreeDays, cleanEtd, quoteState,
   stripLaneTag, fmtValidity, fmtEtdShort, cleanQuoteRow, pivotQuotes, groupByPol,
@@ -180,6 +181,9 @@ describe("状态与报价格式", () => {
 
 describe("清洗成行 / 宽表透视 / 按港分组", () => {
   it("真源样例A的一行 → 规范行（三列价齐、目免 21、ETD 9.21、状态当前有效）", () => {
+    // 样例是在 9 月采集的，校验当时的状态，不依赖测试运行日期。
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-07T07:40:31.000Z"));
     const c = cleanQuoteRow(row({
       carrier: "CMA", pol: "盐田/蛇口", podRaw: "ALIAGA", lane: "地东",
       container: "40HQ/HC", oceanUsd: 3900, validityRaw: "9.1~9.30",

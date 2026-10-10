@@ -5,6 +5,7 @@ import { DB_PATH } from "../config";
 import { Log } from "../logger";
 import { migrateTagsValue } from "./tags-migrate";
 import { BASE_SCHEMA_SQL } from "./schema-sql";
+import { installSearchIndex, searchLatin } from "./search-index";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -77,6 +78,7 @@ export function runMigrations(): void {
 
   const statements = SCHEMA_SQL.split(";").map(s => s.trim()).filter(s => s.length > 0);
   raw.exec(SCHEMA_SQL); // better-sqlite3 exec 支持多语句，一次执行
+  raw.function("search_latin", { deterministic: true }, searchLatin);
 
   // ── 迁移版本表（P1）：记录已应用的迁移名，幂等跳过 ──
   raw.exec(`CREATE TABLE IF NOT EXISTS _migrations (
@@ -333,5 +335,6 @@ export function runMigrations(): void {
     }
   });
 
+  step("v0.9-search-fts5", () => raw.transaction(() => installSearchIndex(raw))());
   Log.info("db.migrations", `${statements.length} 条建表语句已执行`);
 }

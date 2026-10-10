@@ -19,7 +19,7 @@ interface FormState {
 
 const INITIAL: FormState = {
   smtpHost: "smtp.mxhichina.com", smtpPort: "465", user: "", pass: "",
-  imapHost: "", imapPort: "993",
+  imapHost: "imap.mxhichina.com", imapPort: "993",
   fromName: "",
   closeAction: "tray", autoLaunch: false,
 };
@@ -193,7 +193,7 @@ export function OnboardingWizard() {
                   {step === 0 && (<>
                     <div className="ob-inline" style={{ display: "flex", gap: 10 }}>
                       <div style={{ flex: 2 }}>
-                        <Field label="SMTP 服务器" err={errs.has("smtpHost")} placeholder={errs.has("smtpHost") ? "请填写 SMTP 服务器" : "smtp.mxhichina.com"}
+                        <Field label="SMTP 服务器（默认阿里云邮箱，其他邮箱请修改）" err={errs.has("smtpHost")} placeholder={errs.has("smtpHost") ? "请填写 SMTP 服务器" : "smtp.mxhichina.com"}
                           value={form.smtpHost} onChange={v => set("smtpHost", v)} />
                       </div>
                       <div style={{ flex: 1 }}>
@@ -206,7 +206,7 @@ export function OnboardingWizard() {
                       value={form.pass} onChange={v => set("pass", v)} />
                     <div className="ob-inline" style={{ display: "flex", gap: 10 }}>
                       <div style={{ flex: 2 }}>
-                        <Field label="IMAP 服务器（选填）" placeholder="imap.mxhichina.com" value={form.imapHost} onChange={v => set("imapHost", v)} />
+                        <Field label="IMAP 服务器（选填；默认阿里云，留空则不收信）" placeholder="imap.mxhichina.com" value={form.imapHost} onChange={v => set("imapHost", v)} />
                       </div>
                       <div style={{ flex: 1 }}>
                         <Field label="IMAP 端口" placeholder="993" value={form.imapPort} onChange={v => set("imapPort", v)} />

@@ -22,6 +22,7 @@ vi.mock("../../src/main/db", () => ({
 vi.mock("../../src/main/logger", () => ({
   Log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
+vi.mock("../../src/main/config", () => ({ loadConfig: () => ({ crm: {} }) }));
 
 const DDL = `
 CREATE TABLE companies (

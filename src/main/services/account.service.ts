@@ -87,7 +87,7 @@ interface ValidateInput {
 
 interface ValidateResult {
   smtpOk: boolean; smtpError?: string;
-  imapOk: boolean; imapError?: string;
+  imapConfigured: boolean; imapOk: boolean; imapError?: string;
 }
 
 /** 把 nodemailer / imapflow 的原始报错归类成人话，重点区分"认证失败(授权码错)" */
@@ -175,6 +175,7 @@ export async function upsertAccount(
   if (!input.email || !input.smtpHost) return failResult("email、smtpHost 必填");
   if (!isEdit && !input.password) return failResult("新增时密码必填");
 
+  let receiveVerified = false;
   // ponytail: 编辑模式无密码 → 跳过验证，保留原密码；有密码 → 重新验证+加密
   if (!isEdit || input.password) {
     const pass = input.password!;
@@ -184,6 +185,7 @@ export async function upsertAccount(
     if (input.imapHost) {
       const imapResult = await validateImap(input.imapHost, input.imapPort || 993, input.email, pass);
       if (!imapResult.ok) return failResult(`IMAP 连接失败: ${imapResult.error}`);
+      receiveVerified = true;
     }
   }
 
@@ -203,6 +205,10 @@ export async function upsertAccount(
       displayName: input.displayName, signature: input.signature,
     };
     if (encryptedPass) updateData.encryptedPass = encryptedPass;
+    if (receiveVerified || !input.imapHost) {
+      updateData.fetchFailCount = 0;
+      updateData.lastFetchError = null;
+    }
     getDb().update(emailAccounts).set(updateData).where(eq(emailAccounts.id, existing.id)).run();
     saveDatabase();
     const updated = getDb().select().from(emailAccounts)
@@ -265,9 +271,10 @@ export async function validateAccount(id: number): Promise<Result<ValidateResult
     ? await validateSmtp(account.smtpHost, account.smtpPort || 587, account.email, password.data)
     : { ok: false, error: "未配置 SMTP" };
 
-  const imapOk = account.imapHost
-    ? await validateImap(account.imapHost, account.imapPort || 993, account.email, password.data)
-    : { ok: false, error: "未配置 IMAP" };
+  const imapConfigured = !!account.imapHost;
+  const imapOk = imapConfigured
+    ? await validateImap(account.imapHost!, account.imapPort || 993, account.email, password.data)
+    : { ok: false };
 
-  return okResult({ smtpOk: smtpOk.ok, smtpError: smtpOk.error, imapOk: imapOk.ok, imapError: imapOk.error });
+  return okResult({ smtpOk: smtpOk.ok, smtpError: smtpOk.error, imapConfigured, imapOk: imapOk.ok, imapError: imapOk.error });
 }

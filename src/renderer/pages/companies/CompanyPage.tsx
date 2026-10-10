@@ -1,3 +1,4 @@
+import { invalidateDomain } from "../../lib/cacheDeps";
 import { useState, useEffect } from "react";
 import { Card, Input, Button, Tag, message, Empty, Popconfirm, Space } from "antd";
 import { SearchOutlined, PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined, CloseOutlined, EnvironmentOutlined } from "@ant-design/icons";
@@ -67,7 +68,7 @@ export function CompanyPage() {
   const upsertMut = useMutation({
     mutationFn: (input: Record<string, unknown>) => window.api.invoke("companies:upsert", input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["companies"] });
+      invalidateDomain(qc, "companies");
       message.success("已保存");
     },
   });
@@ -77,7 +78,7 @@ export function CompanyPage() {
     onSuccess: (result) => {
       const r = result as { success: boolean; error?: string };
       r?.success ? (message.success("已删除"), setSelectedId(null)) : message.error(r?.error || "删除失败");
-      qc.invalidateQueries({ queryKey: ["companies"] });
+      invalidateDomain(qc, "companies");
     },
   });
 
