@@ -109,7 +109,15 @@
 .customer-assignment-table .ant-table-body{flex:1 1 auto;min-height:0;overflow:auto!important}
 .customer-assignment-table-wrap{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .customer-legacy-page{gap:12px;padding-bottom:0}
+.customer-table-deferred{flex:1 1 auto;min-height:0;border:1px solid var(--customer-border,#e5e7eb);border-radius:8px;background:var(--customer-surface,#fff)}
 .customer-legacy-page > .customer-contacts-page{flex:1 1 auto;min-height:0;height:auto}
 .customer-legacy-page > .customer-contacts-page > .prospector-page-table{flex:1 1 auto;min-height:0;height:auto}
 .customer-contacts-table .ant-table-pagination{margin:10px 0 0!important}
+/* Keep native horizontal scrolling; the vertical thumb overlays the right edge. */
+.customer-contacts-page .customer-contacts-table .ant-table-content{scrollbar-width:auto;scrollbar-color:auto}
+.customer-contacts-page .customer-contacts-table .ant-table-content::-webkit-scrollbar{width:0;height:8px}
+.contact-scroll-rail{position:absolute;right:0;top:0;width:10px;z-index:4;opacity:0;touch-action:none;transition:opacity .15s}
+.contact-scroll-rail.is-active,.contact-scroll-rail:focus-visible{opacity:1}
+.contact-scroll-rail[hidden]{display:none}
+.contact-scroll-thumb{width:6px;margin:0 2px;background:#c9cdd2;border-radius:999px}
 .customer-legacy-shell > .customer-legacy-table{flex:1 1 auto;min-height:0}

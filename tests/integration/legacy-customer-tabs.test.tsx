@@ -13,13 +13,14 @@ describe('restored original customer view switch', () => {
   let root: Root; let host: HTMLDivElement;
   beforeEach(() => { (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; window.history.replaceState(null, '', '#/customers'); host = document.createElement('div'); document.body.append(host); root = createRoot(host); });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
-  const mount = () => act(async () => { root.render(<QueryClientProvider client={new QueryClient()}><LegacyCustomersPage /></QueryClientProvider>); });
+  const waitForDeferredTable = () => act(async () => { await new Promise<void>(resolve => window.setTimeout(resolve, 80)); });
+  const mount = async () => { await act(async () => { root.render(<QueryClientProvider client={new QueryClient()}><LegacyCustomersPage /></QueryClientProvider>); }); await waitForDeferredTable(); };
   const select = (label: string) => act(async () => { Array.from(host.querySelectorAll('.ant-segmented-item')).find(item => item.textContent === label)!.querySelector<HTMLInputElement>('input')!.click(); });
   it('restores all three original tabs and switches the original pages', async () => {
     await mount(); expect(host.querySelector('[data-view="table"]')).not.toBeNull();
     await select('跟进看板'); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
     await select('公司'); expect(host.querySelector('[data-view="company"]')).not.toBeNull();
-    await select('联系人'); expect(host.querySelector('[data-view="table"]')).not.toBeNull();
+    await select('联系人'); await waitForDeferredTable(); expect(host.querySelector('[data-view="table"]')).not.toBeNull();
   });
   it('keeps the board selected after its child consumes the detail deep link', async () => {
     window.history.replaceState(null, '', '#/customers?view=board&detail=123'); await mount();

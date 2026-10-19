@@ -26,6 +26,9 @@ export function LegacyCustomersPage() {
   const { identity, baseUrl, status } = useIdentity();
   const qc = useQueryClient();
   const [view, setView] = useState<LegacyView>(readView);
+  // 先让客户页的导航和工具栏完成一次浏览器绘制，再挂载联系人大表格。
+  // 这样切页的首帧不会同时承担表格列、查询和操作组件的初始化。
+  const [tableReady, setTableReady] = useState(false);
   const operations = identity?.identityAdmin || identity?.crmRoles.some(role => ['operations', 'admin'].includes(role)) || false;
   const [scope, setScope] = useState<NonNullable<CenterContactQuery['scope']>>('all');
   const [assigning, setAssigning] = useState<CenterContact[]>([]);
@@ -38,6 +41,17 @@ export function LegacyCustomersPage() {
   const currentSession = useRef(''); currentSession.current = `${baseUrl}:${identity?.userId}`;
   const port = useMemo(() => createCenterContactPort({ key, scope: activeScope, isCurrent: () => currentIdentity.current === identityKey }), [key, activeScope]);
   const importPort = useMemo(() => { const session = `${baseUrl}:${identity?.userId}`; return createCenterImportPort(centerInvoke, operations, () => { void qc.invalidateQueries({ queryKey: ['center-contacts'] }); }, () => currentSession.current === session); }, [key, operations, qc]);
+  useEffect(() => {
+    if (view !== 'table') { setTableReady(false); return; }
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => setTableReady(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [view]);
   useEffect(() => {
     const onHashChange = () => {
       // Old child pages consume/clear deep links; that must not reset the selected tab.
@@ -70,7 +84,7 @@ export function LegacyCustomersPage() {
       ]} />
       {view === 'table' && <div ref={setHeaderActionsTarget} className="flex flex-1 min-w-[350px] items-center justify-end" />}
     </div>
-    {view === 'table' && <ContactList key={key} dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail key={contact?.id ?? 'closed'} reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} />}
+    {view === 'table' && (tableReady ? <ContactList key={key} dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail key={contact?.id ?? 'closed'} reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} /> : <div className="prospector-page-table customer-table-deferred" aria-busy="true" aria-label="联系人列表加载中" />)}
     {(view === 'board' || view === 'company') && <div className="space-y-3">{sourceFilter}<CenterContactViews key={key} port={port} view={view} /></div>}
     {view === 'assignments' && <ContactAssignments key={`${baseUrl}:${identity?.userId}`} operations={operations} />}
     {assigning.length > 0 && <AssignmentModal key={assigning.map(row => row.contactId).join(',')} contacts={assigning} close={() => setAssigning([])} />}

@@ -14,6 +14,9 @@ import { ImportDrawer, type ImportDrawerPort } from "../../components/ImportDraw
 const COLS_KEY = "contacts-cols";
 const CENTER_COLS_KEY = "contacts-cols-lead-fields";
 const LOCAL_DEFAULT_COLS = ["name", "email", "companyName", "clientType", "status", "relationshipStage", "stage", "title", "source"];
+const SCROLL_THUMB_MIN_HEIGHT = 24;
+const SCROLL_THUMB_HIDE_MS = 520;
+const SCROLL_KEY_STEP = 42;
 const DEFAULT_COLS = ["companyName", "country", "clientType", "name", "title", "phone", "whatsapp", "email", "sourceLevel1", "sourceLevel2", "status", "relationshipStage", "stage"];
 
 interface ColDef { key: string; title: string; width?: number; render: (c: Contact) => ReactNode; }
@@ -152,6 +155,57 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
 
   const contacts = data?.success ? (data.data?.items || []) : [];
   const total = data?.success ? (data.data?.total || 0) : 0;
+
+  // Native vertical scrollbars reserve a gutter even when transparent. Overlay only
+  // this table's vertical control so its header and fixed action cells reach the border.
+  useEffect(() => {
+    const scroller = tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-content');
+    const container = scroller?.parentElement;
+    if (!scroller || !container || typeof ResizeObserver === 'undefined') return;
+    const rail = document.createElement('div');
+    const thumb = document.createElement('div');
+    rail.className = 'contact-scroll-rail'; thumb.className = 'contact-scroll-thumb';
+    rail.tabIndex = 0; rail.setAttribute('role', 'scrollbar');
+    rail.setAttribute('aria-label', '联系人纵向滚动'); rail.setAttribute('aria-orientation', 'vertical');
+    rail.append(thumb); container.append(rail);
+    let timer: ReturnType<typeof setTimeout>;
+    let drag: { y: number; top: number } | null = null;
+    let travel = 0, maximum = 0;
+    const update = () => {
+      const height = scroller.clientHeight;
+      maximum = Math.max(0, scroller.scrollHeight - height);
+      const thumbHeight = Math.min(height, Math.max(SCROLL_THUMB_MIN_HEIGHT, height * height / scroller.scrollHeight));
+      travel = height - thumbHeight;
+      rail.hidden = maximum === 0; rail.style.height = `${height}px`;
+      thumb.style.height = `${thumbHeight}px`;
+      thumb.style.transform = `translateY(${maximum ? scroller.scrollTop / maximum * travel : 0}px)`;
+      rail.setAttribute('aria-valuemin', '0'); rail.setAttribute('aria-valuemax', String(maximum));
+      rail.setAttribute('aria-valuenow', String(Math.round(scroller.scrollTop)));
+    };
+    const show = () => {
+      update(); rail.classList.add('is-active'); clearTimeout(timer);
+      timer = setTimeout(() => { if (!drag) rail.classList.remove('is-active'); }, SCROLL_THUMB_HIDE_MS);
+    };
+    rail.onpointerdown = event => {
+      if (event.button !== 0 || !maximum || !travel) return;
+      event.preventDefault(); rail.focus({ preventScroll: true });
+      if (event.target !== thumb) scroller.scrollTop = (event.clientY - rail.getBoundingClientRect().top - thumb.offsetHeight / 2) / travel * maximum;
+      drag = { y: event.clientY, top: scroller.scrollTop }; rail.setPointerCapture(event.pointerId); show();
+    };
+    rail.onpointermove = event => { if (drag && travel) { scroller.scrollTop = drag.top + (event.clientY - drag.y) / travel * maximum; show(); } };
+    rail.onpointerup = rail.onpointercancel = () => { drag = null; show(); };
+    rail.onkeydown = event => {
+      const delta = { ArrowDown: SCROLL_KEY_STEP, ArrowUp: -SCROLL_KEY_STEP, PageDown: scroller.clientHeight, PageUp: -scroller.clientHeight }[event.key];
+      if (delta === undefined && !['Home', 'End'].includes(event.key)) return;
+      event.preventDefault(); scroller.scrollTop = event.key === 'Home' ? 0 : event.key === 'End' ? maximum : scroller.scrollTop + delta!; show();
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(scroller); if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+    let previousTop = scroller.scrollTop;
+    const onScroll = () => { update(); if (scroller.scrollTop !== previousTop) { previousTop = scroller.scrollTop; show(); } };
+    scroller.addEventListener('scroll', onScroll, { passive: true }); update();
+    return () => { clearTimeout(timer); observer.disconnect(); scroller.removeEventListener('scroll', onScroll); rail.remove(); };
+  }, [dataUpdatedAt]);
 
   useEffect(() => {
     if (!dataPort || !data?.success || !selectedRowKeys.length) return;

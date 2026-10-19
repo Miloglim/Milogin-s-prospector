@@ -7,6 +7,6 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src/renderer", import.meta.url)) } },
   test: {
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.trash/**", "**/*.bak", "**/scripts/check.test.mjs"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.trash/**", "**/checkpoints/**", "**/*.bak", "**/scripts/check.test.mjs"],
   },
 });
