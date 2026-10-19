@@ -2,7 +2,16 @@
 // 生产（runMigrations）与评测沙箱（tests/eval）共用这一份，杜绝手抄 DDL 漂移。
 // 列改动直接改这里；旧库的存量列迁移仍走 runMigrations 里的 ALTER 补丁（幂等）。
 // 纯字符串、零依赖，评测侧可安全 import（不受 db 模块 mock 影响）。
-export const BASE_SCHEMA_SQL = `
+import { MAIL_CLASSIFICATION_CHANGES_DDL } from '../core/mail-classification-storage';
+import { CENTER_SEND_AUTHORIZATION_DDL } from '../core/center-send-storage';
+import { LEGACY_CONTACT_MAP_DDL } from '../core/legacy-contact-map';
+import { LEGACY_CONTACT_SYNC_DDL } from '../core/legacy-contact-sync';
+import { LEGACY_MAIL_SYNC_DDL } from '../core/legacy-mail-sync';
+export const BASE_SCHEMA_SQL = `${MAIL_CLASSIFICATION_CHANGES_DDL}
+${CENTER_SEND_AUTHORIZATION_DDL}
+${LEGACY_CONTACT_MAP_DDL}
+${LEGACY_CONTACT_SYNC_DDL}
+${LEGACY_MAIL_SYNC_DDL}
 CREATE TABLE IF NOT EXISTS email_accounts (
   id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
   email text NOT NULL UNIQUE,
@@ -195,6 +204,7 @@ CREATE TABLE IF NOT EXISTS send_campaign_targets (
   id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
   campaign_id text NOT NULL,
   contact_id integer NOT NULL,
+  center_reference_json text,
   status text DEFAULT 'pending' NOT NULL,
   round integer DEFAULT 0 NOT NULL,
   next_touch_at text,

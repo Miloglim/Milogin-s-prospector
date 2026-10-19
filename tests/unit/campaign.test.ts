@@ -79,7 +79,7 @@ CREATE TABLE send_campaigns (
   account_ids_json text, schedule_json text, send_mode text DEFAULT 'individual' NOT NULL,
   created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL);
 CREATE TABLE send_campaign_targets (
-  id integer PRIMARY KEY AUTOINCREMENT NOT NULL, campaign_id text NOT NULL, contact_id integer NOT NULL,
+  id integer PRIMARY KEY AUTOINCREMENT NOT NULL, campaign_id text NOT NULL, contact_id integer NOT NULL, center_reference_json text,
   status text DEFAULT 'pending' NOT NULL, round integer DEFAULT 0 NOT NULL, next_touch_at text,
   last_sent_at text, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL);
 CREATE TABLE send_queue (
@@ -147,6 +147,27 @@ describe("createCampaign（资格闸已解除：已回复/已触达照常入队�
   beforeAll(async () => { await initSql(); });
   beforeEach(() => { freshDb(); injectQueue(); });
 
+  it('attaches AI prepared queues to the existing task UI and excludes quota-dropped targets from rescheduling', async () => {
+    const item = { id: 'ai-queue', subject: 'AI subject', tplBody: 'Body', recipients: [{ contactId: 1, email: 'a@x.com', name: 'A' }], accountId: 1, companyId: 1, companyName: 'ACME', status: 'pending', contactVars: {} };
+    const r = await campaign.enqueuePreparedCampaign({ name: 'AI subject', contactIds: [1, 2], touches: [{ stage: 'initial', delayDays: 0 }] }, [item as never], async items => {
+      h.db.insert(schema.sendQueue).values({ id: items[0]!.id, batchId: 'ai-batch', campaignId: items[0]!.campaignId, recipients: JSON.stringify(items[0]!.recipients), accountId: 1 }).run();
+      return { success: true, data: { batchId: 'ai-batch', queued: 1, queuedCount: 1, dropped: 1, deferredContactIds: [] } };
+    });
+    expect(r.success).toBe(true);
+    const overview = campaign.getCampaignOverview();
+    expect(overview).toMatchObject([{ name: 'AI subject', queuedGroups: 1, autoSend: false }]);
+    const targets = h.db.select().from(schema.sendCampaignTargets).all();
+    expect(targets.find(t => t.contactId === 1)?.status).toBe('queued');
+    expect(targets.find(t => t.contactId === 2)?.status).toBe('skipped');
+  });
+
+  it('removes the temporary task if prepared enqueue explicitly fails', async () => {
+    const r = await campaign.enqueuePreparedCampaign({ name: 'Failed AI', contactIds: [1], touches: [{ stage: 'initial', delayDays: 0 }] }, [], async () => ({ success: false, error: 'disk full' }));
+    expect(r).toMatchObject({ success: false });
+    expect(h.db.select().from(schema.sendCampaigns).all()).toEqual([]);
+    expect(h.db.select().from(schema.sendCampaignTargets).all()).toEqual([]);
+  });
+
   it("已回复/已触达照常入队；只剔除不在库的联系人", () => {
     const r = campaign.createCampaign({
       name: "t", contactIds: [1, 2, 3, 999], autoSend: true,
@@ -177,6 +198,33 @@ describe("createCampaign（资格闸已解除：已回复/已触达照常入队�
 describe("scanDueCampaigns（到期触点 → 入队）", () => {
   beforeAll(async () => { await initSql(); });
   beforeEach(() => { freshDb(); injectQueue(); });
+
+  it('offline startup cannot enqueue, and reconnection cannot automatically resume overdue work', async () => {
+    let online = false;
+    const first = seedCampaign([1], true);
+    const second = seedCampaign([4], true);
+    campaign.setCampaignNetworkAllowed(() => online);
+    vi.useFakeTimers();
+    try {
+      campaign.startCampaignScheduler(1000);
+      await campaign.scanDueCampaigns();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(enqueued).toHaveLength(0);
+      online = true;
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(enqueued).toHaveLength(0);
+      // Explicit online resume re-enables future ticks for this campaign only.
+      expect(campaign.setCampaignStatus(first, 'running')).toMatchObject({ success: true });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(enqueued).toHaveLength(1);
+      expect(h.db.select().from(schema.sendCampaigns).where(eq(schema.sendCampaigns.id, second)).get()!.status).toBe('paused');
+    } finally {
+      campaign.stopCampaignScheduler();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      campaign.setCampaignNetworkAllowed(() => true);
+    }
+  });
 
   it("到期 pending → 组队入队并标 queued；autoSend 透传", async () => {
     const cid = seedCampaign([1], true);
@@ -491,6 +539,31 @@ describe("再启动新周期（restartCampaign + 完结清空固定内容）", (
   beforeAll(async () => { await initSql(); });
   beforeEach(() => { freshDb(); injectQueue(); });
 
+  it('rejects offline restart and restores future scheduler ticks only after explicit online restart', async () => {
+    const cid = seedCampaign([1], true);
+    h.db.update(schema.sendCampaignTargets).set({ status: 'sent' }).where(eq(schema.sendCampaignTargets.campaignId, cid)).run();
+    h.db.update(schema.sendCampaigns).set({ status: 'done' }).where(eq(schema.sendCampaigns.id, cid)).run();
+    let online = false;
+    campaign.setCampaignNetworkAllowed(() => online);
+    vi.useFakeTimers();
+    try {
+      campaign.startCampaignScheduler(1000);
+      expect(campaign.restartCampaign(cid)).toMatchObject({ success: false });
+      expect(h.db.select().from(schema.sendCampaignTargets).where(eq(schema.sendCampaignTargets.campaignId, cid)).get()!.status).toBe('sent');
+      online = true;
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(enqueued).toHaveLength(0);
+      expect(campaign.restartCampaign(cid)).toMatchObject({ success: true });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(enqueued).toHaveLength(1);
+    } finally {
+      campaign.stopCampaignScheduler();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      campaign.setCampaignNetworkAllowed(() => true);
+    }
+  });
+
   it("完结任务再启动：sent/replied/skipped 重置待发，退信保持终态不重置", () => {
     const cid = seedCampaign([1, 2, 3, 4], true);
     h.db!.update(schema.sendCampaignTargets).set({ status: "sent" }).where(eq(schema.sendCampaignTargets.contactId, 1)).run();
@@ -704,4 +777,94 @@ describe("deleteCampaign", () => {
     expect(r.success).toBe(false);
     expect(r.error).toContain("任务不存在");
   });
+});
+
+const centerPort = await import("../../src/main/services/center-send.service");
+describe("center campaign identity", () => {
+  beforeAll(async () => { await initSql(); });
+  beforeEach(() => { freshDb(); injectQueue(); centerPort.setCenterSendPort(null); });
+  afterEach(() => centerPort.setCenterSendPort(null));
+  it("does not fall back to a same-number legacy contact", () => {
+    h.db.insert(schema.contacts).values({ id: 901, email: "legacy@example.test" }).run();
+    expect(campaign.previewCampaign([901], [{contactId:901,customerId:"center-a"}]).success).toBe(false);
+    expect(campaign.createCampaign({name:"center",contactIds:[901],centerContactRefs:[{contactId:901,customerId:"center-a"}],startNow:false,touches:[{stage:"initial",delayDays:0}]}).success).toBe(false);
+  });
+  function authorizeCenter() {
+    const legacy = h.db.select().from(schema.contacts).where(eq(schema.contacts.id,1)).get()!;
+    const row = {...legacy,email:"center@example.test",firstName:"Center",centerReference:{contactId:1,customerId:"center-a"},centerScope:"scope-a",companyName:"Center Co"};
+    centerPort.setCenterSendPort({contacts:()=>({success:true,data:[row]}),authorize:async()=>({success:true,data:undefined}),record:async()=>({success:true,data:undefined}),stats:()=>({success:true,data:{neverIds:[],lastSent:[],inCampaign:[]}}),lastAccounts:()=>new Map()});
+    return row;
+  }
+  it("draft roundtrip preserves exact reference and displays center instead of legacy", () => {
+    const row = authorizeCenter();
+    const created=campaign.createCampaign({name:"center draft",contactIds:[1],centerContactRefs:[row.centerReference],startNow:false,touches:[{stage:"initial",delayDays:0}]});
+    expect(created.success).toBe(true); if (!created.success) return;
+    const detail=campaign.getCampaignDetail(created.data.id);
+    expect(detail.success && detail.data.targets[0]).toMatchObject({centerReference:row.centerReference,email:row.email,name:"Center"});
+    const updated=campaign.updateCampaignDraft(created.data.id,{name:"edited",contactIds:[1],centerContactRefs:[row.centerReference],touches:[{stage:"initial",delayDays:0}]});
+    expect(updated.success).toBe(true);
+    expect(h.db.select().from(schema.sendCampaignTargets).all()[0]?.centerReferenceJson).toContain('scope-a');
+  });
+  it("callbacks isolate same-number legacy and other center campaigns", () => {
+    const row=authorizeCenter(); const legacy=seedCampaign([1]);
+    const input={name:"center",contactIds:[1],centerContactRefs:[row.centerReference],touches:[{stage:"initial",delayDays:0}]};
+    const first=campaign.createCampaign(input); const second=campaign.createCampaign(input);
+    if(!first.success||!second.success) throw new Error("creation failed");
+    h.db.update(schema.sendCampaignTargets).set({status:"queued"}).run();
+    campaign.onCampaignSendSent(1,row.centerReference,first.data.id);
+    const rows=h.db.select().from(schema.sendCampaignTargets).all();
+    expect(rows.find(t=>t.campaignId===first.data.id)?.status).toBe("sent");
+    expect(rows.find(t=>t.campaignId===second.data.id)?.status).toBe("queued");
+    expect(rows.find(t=>t.campaignId===legacy)?.status).toBe("queued");
+    campaign.onContactSignal(1,"replied");
+    expect(h.db.select().from(schema.sendCampaignTargets).where(eq(schema.sendCampaignTargets.campaignId,second.data.id)).get()?.status).toBe("queued");
+  });
+  it("scans center-only targets and blocks them after authorization disappears", async () => {
+    const row=authorizeCenter(); const created=campaign.createCampaign({name:"center",contactIds:[1],centerContactRefs:[row.centerReference],touches:[{stage:"initial",delayDays:0}]});
+    if(!created.success) throw new Error(created.error);
+    await campaign.scanDueCampaigns();
+    expect(enqueued).toHaveLength(1);
+    h.db.update(schema.sendCampaignTargets).set({status:"pending",nextTouchAt:new Date(0).toISOString()}).run();
+    centerPort.setCenterSendPort(null); enqueued=[];
+    await campaign.scanDueCampaigns(); expect(enqueued).toHaveLength(0);
+    expect(h.db.select().from(schema.sendCampaignTargets).get()?.status).toBe("pending");
+  });
+
+  it("does not retry an unknown center queued result or scan a different scope", async () => {
+    const row=authorizeCenter();const created=campaign.createCampaign({name:"center",contactIds:[1],centerContactRefs:[row.centerReference],touches:[{stage:"initial",delayDays:0}]});
+    if(!created.success) throw new Error(created.error);
+    h.db.update(schema.sendCampaignTargets).set({status:"queued",updatedAt:new Date(0).toISOString()}).run();
+    await campaign.scanDueCampaigns();
+    expect(h.db.select().from(schema.sendCampaignTargets).get()?.status).toBe("queued");
+    h.db.update(schema.sendCampaignTargets).set({status:"pending",nextTouchAt:new Date(0).toISOString(),centerReferenceJson:JSON.stringify({reference:row.centerReference,scope:"other-account"})}).run();
+    await campaign.scanDueCampaigns();expect(enqueued).toHaveLength(0);
+  });
+
+  it("center reply signal stops only exact reference and scope and finalizes its campaign", () => {
+    const row=authorizeCenter();const legacy=seedCampaign([1]);
+    const make=()=>campaign.createCampaign({name:"center",contactIds:[1],centerContactRefs:[row.centerReference],touches:[{stage:"initial",delayDays:0}]});
+    const matching=make(),other=make();if(!matching.success||!other.success) throw new Error("creation failed");
+    h.db.update(schema.sendCampaignTargets).set({status:"queued"}).run();
+    h.db.update(schema.sendCampaignTargets).set({centerReferenceJson:JSON.stringify({reference:row.centerReference,scope:"other"})}).where(eq(schema.sendCampaignTargets.campaignId,other.data.id)).run();
+    campaign.onContactSignal(1,"replied",row.centerReference);
+    expect(h.db.select().from(schema.sendCampaignTargets).where(eq(schema.sendCampaignTargets.campaignId,matching.data.id)).get()?.status).toBe("queued");
+    campaign.onContactSignal(1,"replied",row.centerReference,row.centerScope);
+    expect(h.db.select().from(schema.sendCampaignTargets).where(eq(schema.sendCampaignTargets.campaignId,matching.data.id)).get()?.status).toBe("replied");
+    expect(h.db.select().from(schema.sendCampaigns).where(eq(schema.sendCampaigns.id,matching.data.id)).get()?.status).toBe("done");
+    expect(h.db.select().from(schema.sendCampaignTargets).where(eq(schema.sendCampaignTargets.campaignId,other.data.id)).get()?.status).toBe("queued");
+    expect(h.db.select().from(schema.sendCampaignTargets).where(eq(schema.sendCampaignTargets.campaignId,legacy)).get()?.status).toBe("queued");
+  });
+
+  it.each(["replied", "bounce"] as const)("live campaign gate blocks queued SMTP item after %s but permits explicit manual send", (kind) => {
+    const row=authorizeCenter();const created=campaign.createCampaign({name:"center",contactIds:[1],centerContactRefs:[row.centerReference],touches:[{stage:"initial",delayDays:0}]});
+    if(!created.success) throw new Error(created.error);
+    h.db.update(schema.sendCampaignTargets).set({status:"queued"}).run();
+    const item={id:"queued",campaignId:created.data.id,centerScope:row.centerScope,recipients:[{contactId:1,email:row.email,name:"Center",centerReference:row.centerReference}],accountId:1,subject:"Hi",companyName:"Co"};
+    expect(campaign.canSendCenterCampaignItem(item).success).toBe(true);
+    expect(campaign.canSendCenterCampaignItem({...item,centerScope:"other"}).success).toBe(false);
+    campaign.onContactSignal(1,kind,row.centerReference,row.centerScope);
+    expect(campaign.canSendCenterCampaignItem(item).success).toBe(false);
+    expect(campaign.canSendCenterCampaignItem({...item,campaignId:undefined}).success).toBe(true);
+  });
+
 });

@@ -353,6 +353,7 @@ export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEd
 
       {/* 卡片展开：运行情况（队列组 + 引擎）+ 触点明细 */}
       <Drawer
+        rootClassName="app-drawer-below-titlebar"
         title={detail?.campaign ? `${detail.campaign.name} · 详情` : "任务详情"}
         placement="right"
         width={780}

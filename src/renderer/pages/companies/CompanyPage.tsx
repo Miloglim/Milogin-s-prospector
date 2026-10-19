@@ -3,19 +3,22 @@ import { useState, useEffect } from "react";
 import { Card, Input, Button, Tag, message, Empty, Popconfirm, Space } from "antd";
 import { SearchOutlined, PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined, CloseOutlined, EnvironmentOutlined } from "@ant-design/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ONLINE_LIMITS } from '../../../shared/online-crm';
 
-interface CompanyWithCounts {
-  id: number; name: string; domain: string | null; industry: string | null;
+export interface CompanyWithCounts {
+  id: number; name: string; domain: string | null; industry: string | null; customerType?: string | null;
   country: string | null; size: string | null;
-  contactCount: number; sentCount: number; repliedCount: number;
+  contactCount: number; sentCount: number | null; repliedCount: number | null;
   createdAt: string; updatedAt: string;
 }
 
-interface CompanyDetail {
-  company: { id: number; name: string; domain: string | null; industry: string | null; country: string | null; size: string | null; createdAt: string };
+export interface CompanyDetail {
+  company: { id: number; name: string; domain: string | null; industry: string | null; customerType?: string | null; country: string | null; size: string | null; createdAt: string };
   contacts: Array<{ id: number; email: string; firstName: string | null; lastName: string | null; title: string | null; phone: string | null; stage: string | null; status: string | null }>;
-  sentCount: number; repliedCount: number;
+  sentCount: number | null; repliedCount: number | null;
+  canEdit?: boolean; canDelete?:boolean;
 }
+export interface CompanyDataPort { canCreate?:boolean; delete?(id:number):Promise<{success:boolean;error?:string}>; update?(input: Record<string, unknown>): Promise<{success:boolean; error?:string}>; key: string; list(search: string, page: number, pageSize: number): Promise<{ success: boolean; data?: { items: CompanyWithCounts[]; total: number }; error?: string }>; detail(id: number): Promise<{ success: boolean; data?: CompanyDetail; error?: string }>; }
 
 const STAGE_LABELS: Record<string, { label: string; color: string }> = {
   cold: { label: "冷开发", color: "#1565c0" },
@@ -25,12 +28,13 @@ const STAGE_LABELS: Record<string, { label: string; color: string }> = {
   f4: { label: "F4", color: "#546e7a" },
 };
 
-export function CompanyPage() {
+export function CompanyPage({ dataPort }: { dataPort?: CompanyDataPort } = {}) {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   // 深链定位：#/customers?view=company&sel=<id>（AI 动作卡「查看公司档案」用）
   const [selectedId, setSelectedId] = useState<number | null>(() => {
+    if (dataPort) return null;
     const raw = window.location.hash;
     const qs = raw.includes("?") ? raw.split("?")[1] : "";
     const sel = Number(new URLSearchParams(qs).get("sel"));
@@ -54,40 +58,51 @@ export function CompanyPage() {
     window.location.hash = rest ? `${base}?${rest}` : base!;
   }, []);
 
-  const { data: listData, isLoading } = useQuery({
-    queryKey: ["companies", search, page],
-    queryFn: () => window.api.invoke("companies:list", search || undefined, page, PAGE_SIZE) as Promise<{ success: boolean; data?: { items: CompanyWithCounts[]; total: number } }>,
+  const { data: listData, isLoading, error: listError, dataUpdatedAt: listUpdatedAt } = useQuery({
+    queryKey: [dataPort ? 'center-companies' : "companies", dataPort?.key, search, page],
+    queryFn: () => dataPort ? dataPort.list(search, page, PAGE_SIZE) : window.api.invoke("companies:list", search || undefined, page, PAGE_SIZE) as Promise<{ success: boolean; data?: { items: CompanyWithCounts[]; total: number }; error?: string }>,
+    refetchInterval: dataPort ? ONLINE_LIMITS.pollMs : false,
   });
 
   const { data: detailData } = useQuery({
-    queryKey: ["companies", "detail", selectedId],
-    queryFn: () => window.api.invoke("companies:getDetail", selectedId) as Promise<{ success: boolean; data?: CompanyDetail }>,
+    queryKey: [dataPort ? 'center-company-detail' : "companies", "detail", dataPort?.key, selectedId],
+    queryFn: () => dataPort ? dataPort.detail(selectedId!) : window.api.invoke("companies:getDetail", selectedId) as Promise<{ success: boolean; data?: CompanyDetail; error?: string }>,
     enabled: !!selectedId,
   });
 
   const upsertMut = useMutation({
-    mutationFn: (input: Record<string, unknown>) => window.api.invoke("companies:upsert", input),
-    onSuccess: () => {
+    mutationFn: (input: Record<string, unknown>) => dataPort?.update ? dataPort.update(input) : window.api.invoke("companies:upsert", input),
+    onSuccess: (result) => {
+      const r = result as {success:boolean;error?:string};
+      if (!r.success) { message.error(r.error || '保存失败'); return; }
       invalidateDomain(qc, "companies");
+      void qc.invalidateQueries({queryKey:["center-companies"]});
+      void qc.invalidateQueries({queryKey:['center-company-detail']});
+      void qc.invalidateQueries({queryKey:['center-contacts']});
       message.success("已保存");
     },
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id: number) => window.api.invoke("companies:delete", id),
+    mutationFn: (id: number) => dataPort ? dataPort.delete!(id) : window.api.invoke("companies:delete", id),
     onSuccess: (result) => {
       const r = result as { success: boolean; error?: string };
       r?.success ? (message.success("已删除"), setSelectedId(null)) : message.error(r?.error || "删除失败");
       invalidateDomain(qc, "companies");
+      void qc.invalidateQueries({queryKey:["center-companies"]});
     },
   });
 
   const companies = listData?.success ? listData.data?.items || [] : [];
   const total = listData?.success ? listData.data?.total || 0 : 0;
   const detail = detailData?.success ? detailData.data : null;
+  useEffect(() => {
+    if (dataPort && selectedId && listData?.success) void qc.invalidateQueries({ queryKey: ['center-company-detail', 'detail', dataPort.key, selectedId] });
+  }, [dataPort, selectedId, listUpdatedAt, listData?.success, qc]);
+  useEffect(() => { if (dataPort && !detail?.canEdit) setEditingField(null); }, [dataPort, detail?.canEdit]);
 
   const saveField = (field: string, val: string) => {
-    if (!detail) return;
+    if (!detail || dataPort && !detail.canEdit) return;
     upsertMut.mutate({ id: detail.company.id, name: detail.company.name, [field]: val });
     setEditingField(null);
   };
@@ -97,21 +112,23 @@ export function CompanyPage() {
     const r = await upsertMut.mutateAsync({ name: newName.trim(), domain: newDomain.trim() || undefined });
     const res = r as { success: boolean; data?: { id: number } };
     if (res?.success && res.data?.id) setSelectedId(res.data.id);
-    setAdding(false); setNewName(""); setNewDomain("");
+    if(res?.success){setAdding(false); setNewName(""); setNewDomain("");}
   };
 
   return (
-    <div className="flex gap-4 h-full" style={{ minHeight: "calc(100vh - 130px)" }}>
+    <div className="flex gap-4 h-full" style={{ minHeight: "calc(100vh - var(--app-titlebar-height) - 32px)" }}>
       {/* ═══ 左侧公司列表 ═══ */}
       <div className="flex-shrink-0 bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden" style={{ width: 280 }}>
         <div className="p-3 border-b border-gray-100 space-y-2">
           <div className="flex items-center gap-2">
             <Input size="small" prefix={<SearchOutlined />} placeholder="搜索公司名或域名"
               value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} allowClear />
-            <Button size="small" type="dashed" icon={<PlusOutlined />}
+            <Button size="small" type="dashed" aria-label="新增公司" icon={<PlusOutlined />}
+              disabled={!!dataPort && !dataPort.canCreate}
               onClick={() => setAdding(true)} />
           </div>
           <div className="text-[10px] text-gray-400">共 {total} 家（当前 {companies.length} 家）</div>
+          {(listError || listData?.success === false) && <div role="alert" className="text-xs text-red-500">{listData?.error || '公司加载失败'}</div>}
         </div>
 
         {adding && (
@@ -143,8 +160,8 @@ export function CompanyPage() {
                 {c.domain && <div className="text-[10px] text-gray-400 truncate">{c.domain}</div>}
                 <div className="flex gap-3 text-[10px] text-gray-400 mt-0.5">
                   {c.country && <span><EnvironmentOutlined className="text-[9px]" /> {c.country}</span>}
-                  <span>发 {c.sentCount}</span>
-                  <span>回 {c.repliedCount}</span>
+                  <span>发 {c.sentCount ?? '—'}</span>
+                  <span>回 {c.repliedCount ?? '—'}</span>
                 </div>
               </div>
             ))
@@ -165,6 +182,7 @@ export function CompanyPage() {
 
       {/* ═══ 右侧公司详情 ═══ */}
       <div className="flex-1 bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
+        {detailData?.success === false && <div role="alert" className="text-xs text-red-500 p-3">{detailData.error || '公司详情加载失败'}</div>}
         {!selectedId ? (
           <div className="flex-1 flex items-center justify-center">
             <Empty description="选择左侧公司查看详情" />
@@ -180,7 +198,7 @@ export function CompanyPage() {
               <Space>
                 <Popconfirm title={`确定删除 ${detail.company.name}？`}
                   onConfirm={() => deleteMut.mutate(detail.company.id)}>
-                  <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                  <Button size="small" danger disabled={!!dataPort && (!dataPort.delete || !detail.canDelete)} icon={<DeleteOutlined />}>删除</Button>
                 </Popconfirm>
               </Space>
             </div>
@@ -190,14 +208,15 @@ export function CompanyPage() {
               <div className="grid grid-cols-2 gap-3">
                 {([
                   { label: "国家", field: "country" },
-                  { label: "行业", field: "industry" },
+                  { label: dataPort ? "业务类型" : "行业", field: "industry" },
+                  ...(dataPort ? [{label:"客户类型",field:"customerType"},{label:"网站",field:"domain"}] : []),
                   { label: "规模", field: "size" },
                 ]).map(row => {
                   const val = String((detail.company as Record<string, unknown>)[row.field] || "");
-                  const editing = editingField === row.field;
+                  const editing = editingField === row.field && (!dataPort || detail.canEdit);
                   return (
                     <div key={row.field} className="flex items-center gap-2 text-xs">
-                      <span className="w-10 text-gray-400">{row.label}</span>
+                      <span className="w-16 shrink-0 text-gray-400">{row.label}</span>
                       {editing ? (
                         <div className="flex gap-1 flex-1">
                           <Input size="small" value={editVal}
@@ -211,10 +230,10 @@ export function CompanyPage() {
                             onClick={() => setEditingField(null)} />
                         </div>
                       ) : (
-                        <span className="flex-1 text-gray-600 cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5"
-                          onClick={() => { setEditingField(row.field); setEditVal(val); }}>
+                        <span className={`flex-1 text-gray-600 rounded px-1 py-0.5 ${!dataPort || detail.canEdit ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                          onClick={() => { if (dataPort && !detail.canEdit) return; setEditingField(row.field); setEditVal(val); }}>
                           {val || "—"}
-                          <EditOutlined className="text-[9px] text-gray-300 ml-1 opacity-0 hover:opacity-100" />
+                          {(!dataPort || detail.canEdit) && <EditOutlined className="text-[9px] text-gray-300 ml-1 opacity-0 hover:opacity-100" />}
                         </span>
                       )}
                     </div>
@@ -229,11 +248,11 @@ export function CompanyPage() {
                   <div className="text-[10px] text-gray-400">联系人</div>
                 </div>
                 <div className="bg-blue-50 rounded-lg px-4 py-2 text-center">
-                  <div className="text-lg font-bold text-blue-700">{detail.sentCount}</div>
+                  <div className="text-lg font-bold text-blue-700">{detail.sentCount ?? '—'}</div>
                   <div className="text-[10px] text-gray-400">已发送</div>
                 </div>
                 <div className="bg-green-50 rounded-lg px-4 py-2 text-center">
-                  <div className="text-lg font-bold text-green-700">{detail.repliedCount}</div>
+                  <div className="text-lg font-bold text-green-700">{detail.repliedCount ?? '—'}</div>
                   <div className="text-[10px] text-gray-400">已回复</div>
                 </div>
               </div>

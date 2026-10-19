@@ -1,16 +1,19 @@
-﻿// ── Agent Harness 工具层 · 运价域（从 tools.ts 拆分）────────────────
+// ── Agent Harness 工具层 · 运价域（从 tools.ts 拆分）────────────────
 // 工具：quote_search / rate_update_plan / rate_update_enqueue。
+import { randomUUID } from "crypto";
+import { requireNavigatorAuthorization, navigatorAuthorizationEpoch } from "../../../adapters/navigator-auth.adapter";
+import { listQuotes, listQuoteRaws, countQuotes, listSpaces } from "../../../adapters/navigator-quotes.adapter";
 import { z } from "zod";
 import { resolveQueryPod, podRawExpansion, laneOfPod } from "../../rates-standard";
 // 两张表的唯一出口（规范 docs/rates-answer-chain-spec.md §3）：清洗器算列，模型只许原样贴
 import { cleanQuoteRow, pivotQuotes, cleanTableMarkdown, customerQuoteMarkdown, polExpansion, detectPolMentions, fmtValidity, customerRemarkEn, type CleanQuote } from "../../rates-clean";
-import { listQuotes, listQuoteRaws, countQuotes, listSpaces, normalizeContainer, quoteOptions, probeBoardCached, remoteBase, regionLanes, type SpaceDto } from "../../rate-sync.service";
+import { normalizeContainer, regionLanes, type SpaceDto } from "../../rate-sync.service";
 import { buildRateUpdatePlan, planView, enqueueRateUpdatePlan, pendingQueueGroups, looksLikeCountry } from "../../rate-update.service";
 import { getBody, htmlToText } from "../../inbox.service";
 import { invalidateCache } from "../tool-cache";
 import { rememberWork, fingerprint } from "../working-memory";
 import {
-  gate, cachedRead, finishRead, okOut, failOut, audit, promptAction, navAction, beijingTime,
+  gate, finishRead, okOut, failOut, audit, promptAction, navAction,
   optStr, optInt, optBool, toWords, toIds, type ToolCtx,
 } from "./common";
 
@@ -55,8 +58,12 @@ export const rateUpdateEnqueueSchema = z.object({
 });
 
 export async function execQuoteSearch(ctx: ToolCtx, args: z.infer<typeof quoteSearchSchema>): Promise<string> {
-  const cached = cachedRead(ctx, "quote_search", args);
-  if (cached) return cached;
+  const auth = await requireNavigatorAuthorization();
+  if (!auth.ok) return failOut("navigator_login_required", auth.error || "请先登录运价台账");
+  const note = gate(ctx, "quote_search");
+  if (note) return note;
+  const epoch = navigatorAuthorizationEpoch();
+  const queryId = randomUUID();
   // 模型可传 null（字段已声明 nullable），统一在此收敛成 undefined，保证 QuoteFilters 契约干净
   const trimmed = (v: string | null | undefined): string | undefined => {
     const t = (v ?? "").trim();
@@ -108,20 +115,22 @@ export async function execQuoteSearch(ctx: ToolCtx, args: z.infer<typeof quoteSe
   const laneFilters = laneHit
     ? { carrier: filtersBase.carrier, container: filtersBase.container, includeExpired: filtersBase.includeExpired, lanes: [laneHit] }
     : null;
-  const first = listQuotes({ ...filtersBase, limit: limitN });
-  const laneR = laneFilters ? listQuotes({ ...laneFilters, limit: 200 }) : null;
+  const first = await listQuotes({ ...filtersBase, limit: limitN }, queryId);
+  if (!first.success) return failOut("query_failed", first.error);
+  const laneR = laneFilters ? await listQuotes({ ...laneFilters, limit: 200 }, queryId) : null;
+  if (laneR && !laneR.success) return failOut("query_failed", laneR.error);
   const dtoKey = (q: { podRaw?: string | null; carrier?: string | null; container?: string | null; oceanUsd?: number | null; validFrom?: string | null; validTo?: string | null; pol?: string | null; note?: string | null }) =>
     [q.podRaw, q.carrier, q.container, q.oceanUsd, q.validFrom, q.validTo, q.pol, q.note].join("|");
   const firstRows = first.success ? first.data : [];
   const laneFetched = ((laneR?.success ? laneR.data : []) as typeof firstRows)
     .filter(q => !firstRows.some(x => dtoKey(x) === dtoKey(q)));
-  const dtoRows = [...firstRows, ...laneFetched];
+  const dtoRows = [...firstRows, ...laneFetched].sort((a, b) => (a.oceanUsd ?? Infinity) - (b.oceanUsd ?? Infinity));
   // 兜底 L2（区域词/非常规写法）：仅当 L1 与航线查询都空时走
   const useLane = isRegionQuery || (!dtoRows.length && laneWords.length > 0);
   const filters = useLane
     ? { ...filtersBase, pod: undefined, terms: undefined, lanes: isRegionQuery ? regionLs : undefined, podExtra: isRegionQuery ? undefined : laneWords }
     : filtersBase;
-  const r = useLane ? listQuotes({ ...filters, limit: limitN }) : { success: true as const, data: dtoRows };
+  const r = useLane ? await listQuotes({ ...filters, limit: limitN }, queryId) : { success: true as const, data: dtoRows };
   if (!r.success) {
     audit(ctx, "quote_search", "read", args, undefined, "auto", r.error);
     return failOut("query_failed", `查询失败：${r.error}`);
@@ -133,16 +142,16 @@ export async function execQuoteSearch(ctx: ToolCtx, args: z.infer<typeof quoteSe
   const laneRows = dtoRowsAll.filter(q => CJK_RE.test(q.podRaw));
   // total 诚实口径：精准∪扩展 与 航线集合 两次计数相加减去重叠（同一条行落在两个查询里只算一次）
   let total = 0;
-  if (useLane) total = countQuotes(filters);
+  if (useLane) total = await countQuotes(filters, queryId);
   else if (laneFilters) {
-    const overlap = countQuotes({ ...filtersBase, lanes: [laneHit!] });
-    total = countQuotes(filtersBase) + countQuotes(laneFilters) - overlap;
-  } else total = countQuotes(filtersBase);
-  // 规则：查运价必带相关舱位——同一次调用里用同一批词并联查舱位镜像（本地查询，不多花模型调用）。
+    const overlap = await countQuotes({ ...filtersBase, lanes: [laneHit!] }, queryId);
+    total = await countQuotes(filtersBase, queryId) + await countQuotes(laneFilters, queryId) - overlap;
+  } else total = await countQuotes(filtersBase, queryId);
+  // 规则：查运价必带相关舱位——同一次调用里用同一批词并联查舱位 API（同一个查询标识，不重复统计）。
   // 附带查询不得打挂主查询：老库缺表/列变更等异常一律按「无近期舱位动态」处理
   let spaces: SpaceDto[] = [];
   try {
-    const sp = listSpaces({ terms: termWords.length ? termWords : undefined, carrier: filters.carrier, limit: 8 });
+    const sp = await listSpaces({ terms: termWords.length ? termWords : undefined, carrier: filters.carrier, limit: 8 }, queryId);
     if (sp.success) spaces = sp.data;
   } catch { /* 宁可不带舱位，也不让查价失败 */ }
   const spaceTable = spaces.length
@@ -166,18 +175,18 @@ export async function execQuoteSearch(ctx: ToolCtx, args: z.infer<typeof quoteSe
   const podCanon = (canon || resolveQueryPod(queryWord) || queryWord).toUpperCase() || null;
   let cleanRows: CleanQuote[] = [];
   try {
-    const rawR = listQuoteRaws({ ...filters, limit: 200 }, Math.max(limitN * 4, 60));
+    const rawR = await listQuoteRaws({ ...filters, limit: 200 }, Math.max(limitN * 4, 60), queryId);
     let rawRows = rawR.success ? [...rawR.data] : [];
     if (laneFilters && !useLane) {
       // 航线查询的行也进两张表（L1 的 terms AND 会掐掉它们，这里补回来）
-      const laneRaw = listQuoteRaws({ ...laneFilters, limit: 200 }, 200);
+      const laneRaw = await listQuoteRaws({ ...laneFilters, limit: 200 }, 200, queryId);
       if (laneRaw.success) {
         const seen = new Set(rawRows.map(dtoKey));
         rawRows = [...rawRows, ...laneRaw.data.filter(x => !seen.has(dtoKey(x)))];
       }
     }
     cleanRows = pivotQuotes(rawRows.map(x => cleanQuoteRow(x, x.imageUrl)));
-  } catch { /* 清洗行取不到就退回镜像展示行，不炸整次查询 */ }
+  } catch { /* 清洗行取不到就退回本次 API 展示行，不炸整次查询 */ }
   const laneLevelRows = cleanRows.filter(c => /[\u4e00-\u9fa5]/.test(c.pod));
   // 分层排序：本港专属行在前，航线级行在后（组内保持价升序）——「先航线、再分层理解」的呈现口径
   const orderedRows = [...cleanRows].sort((a, b) =>
@@ -241,62 +250,14 @@ export async function execQuoteSearch(ctx: ToolCtx, args: z.infer<typeof quoteSe
         + `若用户意图是其中某一港或分港对比，带 pol 分开重查后再答。`);
     }
   }
-  let candidates: { lanes: { v: string; c: number }[]; pods: { v: string; c: number }[] } | undefined;
-  let mirror: { rows: number; latestSyncAt: string | null; remoteHost: string; reachable: boolean } | undefined;
   let concluded = false;                       // 是否已进入 L3 定论口径
   if (total === 0) {
-    // 查不到 ≠ 没有：L2 把库存事实回给模型做语义重试，两轮不过才 L3 定论（规范 rates-query-fallback-spec §3/§4）
-    const opts = quoteOptions();
-    const attempt = ctx.counts?.get("quote_search") ?? 1;
-    const words = termWords.map(w => w.toLowerCase());
-    const hasSub = (s: string, w: string) => {
-      for (let i = 0; i + 2 <= w.length; i++) if (s.includes(w.slice(i, i + 2))) return true;
-      return false;
-    };
-    // 贴合度只机械排个序（谁和查询词有公共子串靠前）；语义等价关系交给人/模型判断，代码不养同义词表
-    const score = (v: string) => {
-      const s = v.toLowerCase();
-      if (words.some(w => s.includes(w) || w.includes(s))) return 0;
-      return words.some(w => hasSub(s, w)) ? 1 : 2;
-    };
-    const rank = <T extends { v: string; c: number }>(items: T[]): T[] =>
-      [...items].sort((a, b) => score(a.v) - score(b.v) || b.c - a.c).slice(0, 12);
-    candidates = { lanes: rank(opts.lanes), pods: rank(opts.pods) };
-    const reachable = await probeBoardCached();
-    let remoteHost = remoteBase();
-    try { remoteHost = new URL(remoteBase()).host; } catch { /* 保底原样 */ }
-    mirror = { rows: opts.rows, latestSyncAt: opts.latestSyncAt, remoteHost, reachable };
-    const syncAt = opts.latestSyncAt ? beijingTime(opts.latestSyncAt) : "未知（本次运行还没同步过）";
-    const stale = !opts.latestSyncAt || Date.now() - Date.parse(opts.latestSyncAt) > 24 * 3600_000;
-    if (attempt <= 1) {
-      noticeLines.push(
-        "机械匹配第一轮没命中，这不是「库里没有」。candidates 是本地镜像里真实存在的航线与目的港（带条数，已按贴合度排序）："
-        + "请判断用户说的词是否对应其中某一项（区域简称、中英文译名、同一航线的不同叫法都算）。"
-        + "对得上就换成 candidates 里的原值再查一次（重试一次为限，别用同样的词重复调用）；对不上再等下一轮结论。",
-      );
-    } else {
-      concluded = true;
-      // 先分清「有行但都过期」与「真没有」：放宽有效期再数一次（不放宽就会把存量说成没有）
-      let expiredOnly = 0;
-      try {
-        const loose = countQuotes({ ...filters, includeExpired: true });
-        expiredOnly = Number.isFinite(loose) ? loose : 0;
-      } catch { expiredOnly = 0; }
-      if (expiredOnly > 0) {
-        noticeLines.push(`台账里其实有 ${expiredOnly} 条符合这些条件的报价，但**都已过有效期**，所以当期无价可报——`
-          + "这跟「库里没有这个港/航线」是两件事，别说错。请照实说「有历史报价但已过期」，"
-          + "再问用户要不要联网查当前市场行情（用户同意前不要自行联网）。");
-      } else {
-        noticeLines.push(!reachable || stale
-          ? `两轮都没命中。本地镜像共 ${opts.rows} 条、最近同步 ${syncAt}，局域网台账${reachable ? "可达" : "现在连不上"}`
-            + "——很可能是镜像没跟上真源。请照实说「本地镜像里查不到这条」，不要说成「该航线没有报价」；"
-            + "再给用户两条路：到「运价库」页点同步刷新镜像，或让你联网查当前市场行情。"
-          : `两轮都没命中（放宽有效期后仍是 0 条），且镜像刚同步过（${syncAt}）、台账可达——可以确定台账里没有这个航线/港口。`
-            + "请如实告诉用户库里没有，并问一句要不要你联网查当前市场行情；用户明确同意前不要自行联网。");
-      }
-    }
-    // 两段都空才算「本地查不到」：L1 精准港 + L2 航线级（podExtra 展开）都为零才走到这里，
-    // 口径仍按 rates-query-fallback-spec §3/§4 分「镜像没跟上」与「确实没有」两种说法
+    // 在线查不到只代表这些筛选条件未命中，不读取旧镜像或声称全库不存在。
+    const history = await countQuotes({ ...filters, includeExpired: true }, queryId);
+    concluded = true;
+    noticeLines.push(history > 0
+      ? `这些条件有 ${history} 条历史报价，但当前均已过有效期；请如实说明当期无价，不能使用历史价。`
+      : "实时台账未命中这些查询条件；请如实说明未查到，不能扩大为该港或航线没有报价。可核对港名、航线和起运港后再查。");
   } else {
     if (dtoRowsAll.length < total) noticeLines.push(`共命中 ${total} 条，本批返回 ${dtoRowsAll.length} 条，回答时必须注明。`);
     else noticeLines.push("命中数据已全部返回，无需再调用本工具，直接作答。");
@@ -329,7 +290,7 @@ export async function execQuoteSearch(ctx: ToolCtx, args: z.infer<typeof quoteSe
         + "只有用户点头「做成客户报价表/发给客户」时才贴它，且只在本工具带 forCustomer 重新查一次后取，不要自己翻译列名。"
         + "两表都没中文混排问题，customerTable 里绝不允许出现中文。"
         + "用户没明说「导出文件」就不要调 export_artifact。",
-      "末尾固定提醒：镜像价为参考价，以船司实时报价为准。",
+      "末尾固定提醒：台账报价为参考价，以船司实时报价为准。",
     );
   }
   // 舱位与运价同行（规则）：有近期动态必须一起答，没有也如实说一句，两种都不许编
@@ -363,13 +324,11 @@ ${priceDigest}`;
     spaceCount: spaces.length,
     ...(spaces.length ? { spaceTable } : {}),
     notice: noticeLines.join("\n"),
-    ...(candidates ? { candidates } : {}),
-    ...(mirror ? { mirror } : {}),
     ...(total > 0 && dtoRowsAll.length >= total ? { complete: true } : {}),
     ...(total === 0 ? { empty: true } : {}),
     ...(total > 0 ? {
       say: `共 ${total} 条` + (args.q || args.lane || args.pod || args.carrier || args.container
-        ? `（当前筛选条件下的命中数）` : `（镜像库全量）`)
+        ? `（当前筛选条件下的命中数）` : `（实时台账全量）`)
         + `，其中返回明细 ${dtoRowsAll.length} 条${dtoRowsAll.length ? `，最低 ${dtoRowsAll[0]!.oceanUsd ?? "-"} USD` : ""}`
         + `；相关舱位动态 ${spaces.length} 条`,
     } : {}),
@@ -383,15 +342,16 @@ ${priceDigest}`;
         navAction("在运价库筛选", "#/rates"),
       ],
     } : concluded ? {
-      // 定论后的两条出口：刷新镜像（用户自己在运价页点，agent 不代点）/ 联网调研（点了才做）
+      // 定论后的两条出口：核对筛选（用户在运价页查看）/ 联网调研（点了才做）
       actions: [
-        navAction("去运价页同步镜像", "#/rates"),
+        navAction("去运价页核对筛选", "#/rates"),
         promptAction("联网查市场行情",
-          `本地镜像没查到「${termWords.join(" ") || "这个航线"}」的运价。请联网调研该航线当前的市场行情与船期，`
+          `实时台账未查到「${termWords.join(" ") || "这个航线"}」的运价。请联网调研该航线当前的市场行情与船期，`
           + "回答时注明这是外部行情、不是公司台账报价。"),
       ],
     } : {}),
   };
+  if (epoch !== navigatorAuthorizationEpoch()) return failOut("navigator_identity_changed", "账号状态已变化，请重新查询");
   audit(ctx, "quote_search", "read", args, out, "auto");
   // 工作台：查到的真运价此前跨轮只剩"共 N 条"一行，起草时拿不到价 → 编占位（P2 根因）。
   // 这里把命中行按查询指纹落库，跨轮可复述、且供 generate_draft 程序化直取（Phase 2）。
@@ -414,7 +374,7 @@ ${priceDigest}`;
         q: args.q ?? null, pod: args.pod ?? null, lane: args.lane ?? null,
         container: args.container ?? null, carrier: args.carrier ?? null,
         total, cheapest: rows[0]?.price ?? null, rows,
-        mirrorSyncedAt: (out.mirror as { latestSyncAt?: string } | undefined)?.latestSyncAt ?? null,
+        mirrorSyncedAt: null,
       },
     });
   }
@@ -424,8 +384,10 @@ ${priceDigest}`;
 }
 
 export async function execRateUpdatePlan(ctx: ToolCtx, args: z.infer<typeof rateUpdatePlanSchema>): Promise<string> {
-  const cached = cachedRead(ctx, "rate_update_plan", args);
-  if (cached) return cached;
+  const auth = await requireNavigatorAuthorization();
+  if (!auth.ok) return failOut("navigator_login_required", auth.error || "请先登录运价台账");
+  const note = gate(ctx, "rate_update_plan");
+  if (note) return note;
   // 容错：模型常把国家名塞进 port（用户说「巴西的」→ port=巴西）。认得是国家就纠回 country，
   // 别让一次参数误用变成「查无此人」，更别让模型因此去自由发挥编原因
   let country = args.country ?? undefined;
@@ -436,7 +398,7 @@ export async function execRateUpdatePlan(ctx: ToolCtx, args: z.infer<typeof rate
     country = country ?? looksLikeCountry(port) ?? undefined;
     port = undefined;
   }
-  const r = buildRateUpdatePlan({
+  const r = await buildRateUpdatePlan({
     scope: args.scope === "contacts" ? "contacts" : "board",
     country,
     stages: args.stages?.map(s => s.toLowerCase()),
@@ -503,6 +465,8 @@ export async function execRateUpdatePlan(ctx: ToolCtx, args: z.infer<typeof rate
 }
 
 export async function execRateUpdateEnqueue(ctx: ToolCtx, args: z.infer<typeof rateUpdateEnqueueSchema>): Promise<string> {
+  const auth = await requireNavigatorAuthorization();
+  if (!auth.ok) return failOut("navigator_login_required", auth.error || "请先登录运价台账");
   const gateNote = gate(ctx, "rate_update_enqueue");
   if (gateNote) return gateNote;
   const r = await enqueueRateUpdatePlan(

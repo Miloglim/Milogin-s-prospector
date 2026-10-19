@@ -1,5 +1,6 @@
+import { ONLINE_CHANNELS as ONLINE, centerContactDisplayStatus, type CenterContactRef, type CenterContactPage } from "../../../shared/online-crm";
 import { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
-import { Table, Tag, Input, Button, Select, Space, Empty, Tooltip } from "antd";
+import { Table, Tag, Input, Button, Select, Space, Empty, Tooltip, message } from "antd";
 import { SearchOutlined, RightOutlined } from "@ant-design/icons";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 
@@ -15,6 +16,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 
 interface PickRow {
   id: number;
+  centerReference: CenterContactRef;
   firstName: string | null; lastName: string | null; email: string;
   companyId: number | null; companyName: string | null;
   country: string | null; language: string | null; clientType: string | null;
@@ -41,9 +43,10 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 
 const nameOf = (r: PickRow) => [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email;
 
-export function ContactPicker({ value, onChange, onNext }: {
+export function ContactPicker({ value, onChange: notifyChange, onNext, resolvePreset = true }: {
   value: number[];
-  onChange: (ids: number[]) => void;
+  resolvePreset?: boolean;
+  onChange: (ids: number[], refs: CenterContactRef[]) => void;
   onNext: () => void;
 }) {
   const [search, setSearch] = useState("");
@@ -55,15 +58,32 @@ export function ContactPicker({ value, onChange, onNext }: {
   /** 快捷筛选：true=只看已在任务里的人（chip 点亮）；undefined=不过滤 */
   const [fOnlyCampaign, setFOnlyCampaign] = useState<boolean | undefined>();
 
-  const { data: listData, isLoading } = useQuery({
+  const { data: listData, isLoading, error: listError } = useQuery({
     queryKey: ["contacts", "allForPick"],
-    queryFn: () => window.api.invoke("contacts:list", { page: 1, pageSize: 100000, slim: true }) as Promise<{
-      success: boolean; data?: { items: PickRow[]; total: number };
-    }>,
+    queryFn: async () => {
+      const items: PickRow[] = [];
+      let total: number | undefined;
+      const pageSize = 100;
+      for (let offset = 0; total === undefined || offset < total; offset += pageSize) {
+        const result = await window.api.invoke(ONLINE.CONTACT_LIST, { search: "", limit: pageSize, offset }) as { ok: boolean; data?: CenterContactPage; error?: { message?: string } };
+        if (!result.ok || !result.data) throw new Error(result.error?.message || "联系人读取失败");
+        if (total !== undefined && result.data.total !== total) throw new Error("联系人名单已变化，请重试");
+        total = result.data.total;
+        if (offset < total && !result.data.items.length) throw new Error("联系人名单未读取完整");
+        items.push(...result.data.items.filter(row => row.canFollowup === true).map(row => ({ ...row, id: row.contactId, email: row.email ?? "", status: centerContactDisplayStatus(row), centerReference: {contactId:row.contactId,customerId:row.customerId} })));
+      }
+      return {success:true, data:{items,total:items.length}};
+    },
     staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,
   });
   const rows = useMemo(() => listData?.success ? listData.data?.items || [] : [], [listData]);
+
+  useEffect(() => { if (listError) message.error(listError.message); }, [listError]);
+  const onChange = (ids: number[]) => notifyChange(ids, rows.filter(row => ids.includes(row.id)).map(row => row.centerReference));
+  useEffect(() => {
+    if (resolvePreset && listData?.success && value.length) notifyChange(value, rows.filter(row => value.includes(row.id)).map(row => row.centerReference));
+  }, [listData]);
 
   // 轻量统计（主进程两条聚合 SQL，替代旧的两个全表桶查询）：never 集合 + 最近发送档位
   const { data: statsData } = useQuery({

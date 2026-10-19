@@ -157,14 +157,14 @@ export function TemplateList() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="prospector-table-page template-table-page">
       <Tabs
         size="small"
         items={[
           {
             key: "mine", label: `我的模板 (${templates.length})`,
             children: (
-              <div className="space-y-4">
+              <div className="template-list-pane space-y-4">
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">{templates.length} 个模板</span>
                   <div className="flex gap-2">
@@ -176,7 +176,7 @@ export function TemplateList() {
                       onClick={() => { form.resetFields(); setEditingId(null); setAddOpen(true); }}>新增模板</Button>
                   </div>
                 </div>
-                <Table dataSource={templates} columns={columns} rowKey="id"
+                <Table className="prospector-page-table template-list-table" dataSource={templates} columns={columns} rowKey="id"
                   loading={isLoading} size="middle" />
               </div>
             ),

@@ -1,4 +1,4 @@
-﻿// ── Agent Harness 工具层 · 公共辅助（从 tools.ts 拆分）────────────────
+// ── Agent Harness 工具层 · 公共辅助（从 tools.ts 拆分）────────────────
 // 只放纯辅助/公共包络/审计/配置控制面等跨域共用件；域工具各自在
 // contacts.ts / rates.ts / inbox.ts / send.ts / research.ts / meta.ts。
 import * as crypto from "crypto";
@@ -14,7 +14,7 @@ import { checkBudget, ToolBudgetError } from "../policy";
 import { lookupCache, rememberCache, countHit, countMiss } from "../tool-cache";
 import { extractFact, rememberToolFact } from "../memory";
 import { readIdentity } from "../identity";
-import { listQuotes, countQuotes } from "../../rate-sync.service";
+import { listQuotes, countQuotes } from "../../../adapters/navigator-quotes.adapter";
 import type { ActionCard } from "../actions";
 import type { ToolCtx } from "../types";
 
@@ -165,19 +165,20 @@ export function splitRoute(route: string | null | undefined): { pol: string; pod
   return { pol: "", pod: "" };
 }
 
-/** 与本地运价镜像对照（只报库里真有的：条数、USD 区间、最晚有效期；没有就 null，不编造） */
-export function mirrorCompareForPod(podEn: string, podCn: string): string | null {
+/** 与已授权实时台账对照（只报库里真有的：条数、USD 区间、最晚有效期；没有就 null，不编造） */
+export async function mirrorCompareForPod(podEn: string, podCn: string): Promise<string | null> {
+  const queryId = crypto.randomUUID();
   for (const term of [podEn, podCn]) {
     const t = String(term || "").trim();
     if (!t) continue;
-    const rows = listQuotes({ terms: [t], limit: 30 });
+    const rows = await listQuotes({ terms: [t], limit: 30 }, queryId);
     if (!rows.success || !rows.data.length) continue;
     const prices = rows.data.map(q => q.oceanUsd).filter((n): n is number => typeof n === "number" && n > 0).sort((a, b) => a - b);
-    const total = countQuotes({ terms: [t] });
+    const total = await countQuotes({ terms: [t] }, queryId);
     const latest = rows.data.map(q => q.validTo || "").sort().pop();
-    return `镜像库「${t}」有 ${total} 条参考价`
-      + (prices.length ? `，区间 ${prices[0]}–${prices[prices.length - 1]} USD` : "")
-      + (latest ? `，最晚有效期 ${latest}` : "")
+    return `实时台账「${t}」有 ${total} 条参考价`
+      + (prices.length ? `，本批 ${rows.data.length} 条的区间 ${prices[0]}–${prices[prices.length - 1]} USD` : "")
+      + (latest ? `，本批最晚有效期 ${latest}` : "")
       + "；公开来源报价与它的差距要逐条对照口径判断，不要直接比大小";
   }
   return null;

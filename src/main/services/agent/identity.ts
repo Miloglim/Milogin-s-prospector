@@ -1,5 +1,5 @@
 // ── 助手身份档案（固定：运去哪（YQN）公司的 agent 助手，不由用户配置）──
-// 唯一可配置项：fromName（发件人显示名，向导/设置页收集）。公司身份与角色写死在本文件。
+// 全局 fromName 只作为没有确定邮箱账号时的默认身份；真实发信优先使用邮箱账号的 displayName + email。
 // 起草信件的自落款也读这里，保证与系统提示词一致（不再有 {{company}} 占位）。
 import { loadConfig } from "../../config";
 
@@ -10,12 +10,26 @@ export interface Identity {
   selfName: string;
   /** 我方公司（固定） */
   company: string;
+  /** 当前实际发信邮箱；没有确定账号时为空 */
+  email?: string;
+}
+
+export interface MailboxIdentityInput {
+  email: string;
+  displayName?: string | null;
 }
 
 export function readIdentity(): Identity {
   const c = loadConfig();
   const fromName = (c.fromName || "").trim();
   return { fromName, selfName: fromName, company: "运去哪（YQN）" };
+}
+
+/** 从已确定的邮箱账号构造 AI 身份，避免把客户来信身份误当成我方身份。 */
+export function identityForMailbox(mailbox: MailboxIdentityInput, fallback: Identity = readIdentity()): Identity {
+  const email = mailbox.email.trim();
+  const name = (mailbox.displayName || "").trim() || fallback.fromName || email.split("@")[0] || email;
+  return { fromName: name, selfName: name, company: fallback.company, ...(email ? { email } : {}) };
 }
 
 /** 注入到系统提示词的身份块。公司身份恒定，不再依赖用户填写，永不为空。 */
@@ -26,6 +40,7 @@ export function identityBlock(i: Identity = readIdentity()): string {
     "",
     "【我方身份档案】",
     `我方身份：${who} —— 运去哪（YQN）国际物流的 agent 助手，代表运去哪与客户沟通海运货代业务。`,
+    ...(i.email ? [`当前发信邮箱：${i.email}（邮箱地址是稳定身份键）`] : []),
     "",
     "行事原则：",
     "1. 事实先查后说：联系人、邮件、运价、跟进状态一律先调工具取数，绝不凭记忆或想象回答。",

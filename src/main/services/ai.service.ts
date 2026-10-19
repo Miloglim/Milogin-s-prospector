@@ -260,6 +260,7 @@ export async function searchCompany(query: string): Promise<Result<SearchHit[]>>
 // ── 功能调用：背调报告 / 开发信 / 邮件总结 ────────────────
 
 export interface BackcheckInput {
+  centerReference?: import("../../shared/online-crm").CenterContactRef;
   companyName: string;
   website?: string;
   country?: string;
@@ -285,6 +286,8 @@ export async function generateBackcheckReport(input: BackcheckInput, hits: Searc
 
 export interface DraftSender {
   selfName?: string;
+  /** 当前实际发信账号；用于 AI 识别身份，不能拿收件人的邮箱代替。 */
+  email?: string;
   company?: string;
   title?: string;
   business?: string;
@@ -306,13 +309,14 @@ export async function generateEmailDraft(input: EmailDraftInput): Promise<Result
   // 身份固定后缺省取全局档案：任何调用方（含批量跟进/后台任务）起草都不再"裸奔"
   const s = input.sender ?? readIdentity();
   const who = [s.selfName, s.company].filter(Boolean).join(" / ");
+  const senderEmail = s.email ? `\n【发信邮箱】${s.email}（仅用于身份匹配，不要把它写成收件人）` : "";
   const system = `你是运去哪（YQN）国际物流的销售文案助理，代表运去哪用${lang}写一封给客户的经营性邮件（开发信 / 跟进信 / 回信）。语气专业但不生硬，像资深销售：简洁、有分寸、不堆砌客套、不过度承诺时效。3-4 段，带主题行（用 SUBJECT: 开头）和正文。不要多余解释。`;
   const back = input.backcheck
     ? `\n背调要点：${input.backcheck.summary ?? ""}${input.backcheck.logisticsFit ? `；契合点：${input.backcheck.logisticsFit}` : ""}`
     : "";
   // 身份 + 报价纪律进 prompt：模型不再编发件人、不留占位符、不承诺未确认价格
   const idBlock = who
-    ? `\n【我方身份】${who}\n`
+    ? `\n【我方身份】${who}${senderEmail}\n`
       + "正文一律用上面的真实自称与身份落款，禁止留 {{firstName}} {{company}} {{phone}} 这类占位符。\n"
       + "报价纪律：未经确认的运价、舱位、船期不向客户承诺；涉及价格注明「以最终确认为准」。"
     : "";
@@ -394,11 +398,12 @@ export async function generateEmailReply(input: EmailReplyInput): Promise<Result
     : input.language === "EN" ? "用英语" : "用对方来信使用的语言";
   const s = input.sender ?? readIdentity();
   const who = [s.selfName, s.company].filter(Boolean).join(" / ");
+  const senderEmail = s.email ? `\n【发信邮箱】${s.email}（仅用于身份匹配，不要把它写成收件人）` : "";
   const hasRates = !!(input.rates && input.rates.length);
   const hasTable = !!(input.quoteTable && input.quoteTable.trim());
   const system = `你是运去哪（YQN）国际物流的销售助理，代表运去哪回复一封客户来信。语气专业但不生硬，像资深销售：简洁、有分寸、不堆砌客套、不过度承诺时效。${langHint}回复。先一两句正面回应来信，再逐条应答对方提出的问题与要求；${hasRates ? "下方给了系统已查到的真实运价，报价必须严格据此填写、不得编造或留占位符；" : ""}${hasTable ? "下方还给了成品客户报价表，必须原样嵌进正文（列名、列序、数值、\"/\" 占位一个都不许改），不要自己另拼一张表；" : ""}无法立即提供、且下方也没有的内容（资质文件等）坦诚说明会后续补，绝不编造。带主题行（用 SUBJECT: 开头）和正文，不要多余解释。`;
   const idBlock = who
-    ? `\n【我方身份】${who}\n`
+    ? `\n【我方身份】${who}${senderEmail}\n`
       + "正文一律用上面的真实自称与身份落款，禁止留 {{firstName}} {{company}} {{phone}} 这类占位符。\n"
       + "报价纪律：未经确认的运价、舱位、船期不向客户承诺；涉及价格注明「以最终确认为准」。"
     : "";

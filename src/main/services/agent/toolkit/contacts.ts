@@ -1,3 +1,4 @@
+import { normStage, normStatus, STATUS_LABEL } from "../../../core/agent-contact";
 ﻿// ── Agent Harness 工具层 · 联系人域（从 tools.ts 拆分）────────────────
 // 工具：search_contacts / record_followup / delete_contacts / update_contact / import_contacts。
 import { z } from "zod";
@@ -17,6 +18,9 @@ import { generateEmailDraft } from "../../ai.service";
 import { startDynamicSend } from "../../send.service";
 import { okResult } from "../../../errors";
 import { readIdentity } from "../identity";
+import { getAgentContactPort } from "../../agent-contact.service";
+import { importAgentContacts } from "../../agent-crm-tools.service";
+import { searchCenterContacts, writeCenterContact } from "./center-contacts";
 import {
   gate, cachedRead, finishRead, okOut, failOut, audit, toIds, toInt, optStr, optInt, optBool,
   tagsArr, nextStageAfter, promptAction, buildImportTsv, IMPORT_HEADER, type AnyAction, type ToolCtx,
@@ -27,6 +31,7 @@ export interface ResolvedContact { id: number; name: string; email: string; comp
 
 /** 按 id / 邮箱 / 姓名 / 公司名在库里确定性定位联系人（最多回 10 条） */
 export function resolveContacts(q: string): ResolvedContact[] {
+  if (getAgentContactPort()) return [];
   const tokens = (q || "").split(/\s+/).filter(Boolean).slice(0, 4);
   if (!tokens.length) return [];
   const rows = getDb().select({
@@ -51,6 +56,7 @@ export function resolveContacts(q: string): ResolvedContact[] {
 export function pickTarget(
   args: { contactId?: number | null; contact?: string | null },
 ): { ok: true; person: ResolvedContact } | { ok: false; why: "ambiguous" | "notfound"; candidates: ResolvedContact[] } {
+  if (getAgentContactPort()) return { ok: false, why: "notfound", candidates: [] };
   if (args.contactId) {
     const one = getDb().select({
       id: contacts.id, email: contacts.email, firstName: contacts.firstName, lastName: contacts.lastName,
@@ -74,6 +80,7 @@ export const candidatesText = (list: ResolvedContact[]) => list.slice(0, 5)
 
 /** 回信模式收件人定位：fromEmail 精确等值（邮箱是唯一键；模糊匹配会跨国错配，禁用） */
 export function pickByEmail(email: string): ResolvedContact | null {
+  if (getAgentContactPort()) return null;
   const e = (email || "").trim().toLowerCase();
   if (!e) return null;
   const one = getDb().select({
@@ -153,41 +160,6 @@ export const importContactsSchema = z.object({
 });
 
 // ── search_contacts 结构化筛选助手（冷开发按前置条件精确圈人，不再全库扫）──────
-const STAGE_VALUES = ["cold", "f1", "f2", "f3", "f4"];
-const STAGE_ALIAS: Record<string, string> = {
-  cold: "cold", 冷开发: "cold", 冷: "cold", 未开发: "cold",
-  f1: "f1", 跟进1: "f1", 跟进一: "f1", f2: "f2", 跟进2: "f2", 跟进二: "f2",
-  f3: "f3", 跟进3: "f3", 跟进三: "f3", f4: "f4", 跟进4: "f4", 跟进四: "f4",
-};
-/** 归一阶段值：空→null（不过滤）；合法/别名→标准值；非法→undefined（调用方据此当面纠错，不静默降级） */
-function normStage(raw: string | null | undefined): string | null | undefined {
-  const t = (raw ?? "").trim();
-  if (!t) return null;
-  const low = t.toLowerCase();
-  if (STAGE_VALUES.includes(low)) return low;
-  return STAGE_ALIAS[t] ?? STAGE_ALIAS[low] ?? undefined;
-}
-
-const STATUS_VALUES = ["reached", "replied", "bounced", "autoreply", "none"];
-const STATUS_ALIAS: Record<string, string> = {
-  reached: "reached", 已触达: "reached", 触达: "reached", 触达过: "reached",
-  replied: "replied", 已回复: "replied", 回复: "replied", 回复过: "replied",
-  bounced: "bounced", 已退信: "bounced", 退信: "bounced",
-  autoreply: "autoreply", 自动回复: "autoreply",
-  none: "none", 未触达: "none", 无状态: "none", 未发送: "none", 没发过: "none",
-};
-const STATUS_LABEL: Record<string, string> = {
-  reached: "已触达", replied: "已回复", bounced: "退信", autoreply: "自动回复", none: "未触达",
-};
-/** 归一发送状态：空→null（不过滤）；合法/别名→标准值（none=空状态哨兵，筛未触达用）；非法→undefined（当面纠错） */
-function normStatus(raw: string | null | undefined): string | null | undefined {
-  const t = (raw ?? "").trim();
-  if (!t) return null;
-  const low = t.toLowerCase();
-  if (STATUS_VALUES.includes(low)) return low;
-  return STATUS_ALIAS[t] ?? STATUS_ALIAS[low] ?? undefined;
-}
-
 type RawContactRow = {
   id: number; email: string; firstName: string | null; lastName: string | null;
   country: string | null; stage: string | null; status: string | null; companyName: string | null;
@@ -269,6 +241,8 @@ import { countryMatchWords } from "../../rate-update.service";
 import { getRawDb } from "../../../db";
 
 export async function execSearchContacts(ctx: ToolCtx, args: z.infer<typeof searchContactsSchema>): Promise<string> {
+  const port = getAgentContactPort();
+  if (port) return searchCenterContacts(ctx, args, port);
   const cached = cachedRead(ctx, "search_contacts", args);
   if (cached) return cached;
   // 阶段值归一 + 当面纠错（非法值不静默降级，对齐 inbox_search 过滤词表原则）
@@ -463,6 +437,8 @@ export async function execSearchContacts(ctx: ToolCtx, args: z.infer<typeof sear
 }
 
 export async function execRecordFollowup(ctx: ToolCtx, args: z.infer<typeof recordFollowupSchema>): Promise<string> {
+  const port = getAgentContactPort();
+  if (port) return writeCenterContact(ctx, 'followup', args, port);
   const gateNote = gate(ctx, "record_followup");
   if (gateNote) return gateNote;
   // 幂等：同一会话里相同内容 5 分钟内只落一次（模型重复提交/用户连点）
@@ -499,6 +475,7 @@ export async function execRecordFollowup(ctx: ToolCtx, args: z.infer<typeof reco
 }
 
 export async function execDeleteContacts(ctx: ToolCtx, args: z.infer<typeof deleteContactsSchema>): Promise<string> {
+  if (getAgentContactPort()) return failOut("UNAVAILABLE", "中心联系人删除尚未开放，未删除任何数据。");
   const gateNote = gate(ctx, "delete_contacts");
   if (gateNote) return gateNote;
   const suffix = (args.emailSuffix ?? "").trim().replace(/^@/, "");
@@ -571,6 +548,8 @@ export async function execDeleteContacts(ctx: ToolCtx, args: z.infer<typeof dele
 }
 
 export async function execUpdateContact(ctx: ToolCtx, args: z.infer<typeof updateContactSchema>): Promise<string> {
+  const port = getAgentContactPort();
+  if (port) return writeCenterContact(ctx, 'update', args, port);
   const gateNote = gate(ctx, "update_contact");
   if (gateNote) return gateNote;
   const target = pickTarget(args);
@@ -614,6 +593,21 @@ export async function execUpdateContact(ctx: ToolCtx, args: z.infer<typeof updat
 }
 
 export async function execImportContacts(ctx: ToolCtx, args: z.infer<typeof importContactsSchema>): Promise<string> {
+  const center = getAgentContactPort();
+  if (center) {
+    const gateNote = gate(ctx, "import_contacts");
+    if (gateNote) return gateNote;
+    const before = center.snapshot();
+    if (!before.ok) return failOut(before.error.code, before.error.message);
+    const result = await importAgentContacts(center, ctx.conversationId, args.contacts);
+    if (!before.data.active()) return failOut("UNAUTHORIZED", "账号或权限已变化");
+    audit(ctx, "import_contacts", "write", args, result.ok ? result.data : undefined, "approved", result.ok ? undefined : result.error.message);
+    if (!result.ok) return failOut(result.error.code, result.error.message);
+    invalidateCache("search_contacts");
+    const data = result.data;
+    return okOut({ ...data, say: `中心导入：新增 ${data.imported} 位，重复 ${data.duplicates + data.skippedInputDuplicates} 位，冲突 ${data.conflicts} 位，无效 ${data.invalidCount} 位。`,
+      ...(data.notesArchived ? { notice: "备注已保留在导入来源记录中，未创建跟进记录。" } : {}) });
+  }
   const gateNote = gate(ctx, "import_contacts");
   if (gateNote) return gateNote;
   const { tsv, invalid, count } = buildImportTsv(args.contacts);

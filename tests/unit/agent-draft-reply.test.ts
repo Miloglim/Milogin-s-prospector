@@ -41,6 +41,17 @@ vi.mock("../../src/main/services/ai.service", () => ({
   searchCompany: vi.fn(),
 }));
 
+const live = { rows: [] as Array<Record<string, unknown>> };
+vi.mock("../../src/main/adapters/navigator-quotes.adapter", () => ({
+  listQuotes: async () => ({ success: true, data: live.rows }),
+  countQuotes: async () => live.rows.length,
+}));
+const authState = vi.hoisted(() => ({ epoch: 1 }));
+vi.mock("../../src/main/adapters/navigator-auth.adapter", () => ({
+  requireNavigatorAuthorization: async () => ({ ok: true, data: { authenticated: true } }),
+  navigatorAuthorizationEpoch: () => authState.epoch, onNavigatorIdentityChanged: () => () => {}, navigatorHasAuthorization: () => true,
+}));
+
 const DDL = `
 CREATE TABLE companies (
   id integer PRIMARY KEY AUTOINCREMENT NOT NULL, name text NOT NULL, domain text, industry text,
@@ -120,6 +131,8 @@ describe("generate_draft 回信模式", () => {
   });
   beforeEach(() => {
     newSandbox();
+    authState.epoch = 1;
+    live.rows = [];
     ctx.counts.clear();
     ctx.failures.clear();
     replyFn.mockClear();
@@ -127,7 +140,7 @@ describe("generate_draft 回信模式", () => {
     toolByName = Object.fromEntries(all.map(t => [t.name ?? "", t]));
   });
 
-  it("闭环：工作台有匹配真价 → 回信把真价+来信要素喂给 LLM，不再占位编造", async () => {
+  it("闭环：工作台历史价与实时价不同 → 回信只用实时价与来信要素", async () => {
     // 预置一条与来信柜型(40HQ)匹配的运价到会话工作台（如此前 quote_search 查到的）
     h.db!.insert(schema.agentWorkingMemory).values({
       conversationId: "test-conv", kind: "rates", refId: "r-veracruz-40hq", toolName: "quote_search",
@@ -142,6 +155,9 @@ describe("generate_draft 回信模式", () => {
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     }).run();
 
+    h.db.update(schema.inboxMessages).set({ bodyPreview: "Please quote 2x40HQ. POD: VERACRUZ" }).where(eq(schema.inboxMessages.id, 1)).run();
+    live.rows = [{ carrier: "MSK", container: "40HQ", pol: "宁波", podRaw: "VERACRUZ", oceanUsd: 8100 },
+      { carrier: "EMC", container: "40HQ", pol: "宁波", podRaw: "VERACRUZ", oceanUsd: 9200 }];
     const out = JSON.parse(await call(T("generate_draft"), { messageId: 1 })) as { ratesUsed?: number };
     expect(replyFn).toHaveBeenCalledTimes(1);
     const arg = replyFn.mock.calls[0]![0] as {
@@ -151,7 +167,7 @@ describe("generate_draft 回信模式", () => {
     expect(arg.emailFacts?.container).toBe("40HQ");          // 来信要素已解析并传入
     expect(Array.isArray(arg.rates)).toBe(true);
     expect(arg.rates).toHaveLength(2);                        // 工作台真价被程序化拉进起草
-    expect(arg.rates![0]!.price).toBe(8800);
+    expect(arg.rates![0]!.price).toBe(8100); // 使用实时新价，忽略工作台历史 8800
     expect(out.ratesUsed).toBe(2);                            // 出参回显用了几条真价
   });
 
@@ -210,4 +226,26 @@ describe("generate_draft 回信模式", () => {
     const out = JSON.parse(await call(T("generate_draft"), { messageId: 4 })) as { subject: string };
     expect(out.subject).toBe("Re: Quote request 40HQ");
   });
+  it("a delayed quote draft from account A cannot create actions or context after switching to B", async () => {
+    const { dropActionsForConversation } = await import("../../src/main/services/agent/actions");
+    dropActionsForConversation(ctx.conversationId);
+    h.db.update(schema.inboxMessages).set({ bodyPreview: "Please quote 2x40HQ. POD: VERACRUZ" }).where(eq(schema.inboxMessages.id, 1)).run();
+    live.rows = [{ carrier: "MSK", container: "40HQ", podRaw: "VERACRUZ", oceanUsd: 8100 }];
+    let release!: (value: { success: true; data: string }) => void;
+    let started!: () => void;
+    const waiting = new Promise<void>(resolve => { started = resolve; });
+    replyFn.mockImplementationOnce(() => new Promise(resolve => { release = resolve; started(); }));
+    const pending = call(T("generate_draft"), { messageId: 1 });
+    await waiting;
+    authState.epoch++;
+    release({ success: true, data: "SUBJECT: Quote\n\nRate USD 8100 from account A" });
+    const out = JSON.parse(await pending);
+    expect(out.ok).toBe(false);
+    expect(out.error.code).toBe("navigator_identity_changed");
+    expect(out.actions).toBeUndefined();
+    expect(dropActionsForConversation(ctx.conversationId)).toBe(0);
+    expect(h.db.select().from(schema.agentWorkingMemory).all()).toHaveLength(0);
+    expect(h.db.select().from(schema.agentToolCalls).all()).toHaveLength(0);
+  });
+
 });

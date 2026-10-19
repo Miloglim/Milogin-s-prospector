@@ -1,13 +1,8 @@
-import { invalidateDomain } from "../../lib/cacheDeps";
-import { useEffect, useMemo, useState } from "react";
-import { Button, Descriptions, Drawer, Input, Select, Space, Table, Tag, Tooltip, App as AntApp } from "antd";
-import { SearchOutlined, SyncOutlined, DollarOutlined, GlobalOutlined } from "@ant-design/icons";
+import type { NavigatorResult, NavigatorStatus, NavigatorOptions, NavigatorChoice } from "../../../shared/navigator";
+import { useEffect, useState } from "react";
+import { Button, Descriptions, Drawer, Image, Select, Space, Table, Tag, Tooltip, App as AntApp } from "antd";
+import { DollarOutlined, GlobalOutlined } from "@ant-design/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-
-interface RateStatus {
-  total: number; active: number; lastSyncAt: string | null; lastImported: number | null;
-  remoteHost: string; lastError: string | null;
-}
 
 interface QuoteDto {
   podRaw: string; lane: string | null; carrier: string | null; container: string | null;
@@ -19,7 +14,11 @@ interface QuoteDto {
 
 interface IpcResult<T> { success: boolean; data?: T; error?: string }
 
-const CONTAINERS = ["20GP", "40GP", "40HQ", "NOR", "40GP+40HQ"];
+const CONTAINERS = ["20GP", "40HQ/HC", "40NOR", "45HQ/HC"];
+const RATE_PAGE_CAP = 300;
+const TABLE_PAGE_SIZE = 50;
+const TOAST_SECONDS = 2;
+const BEIJING_OFFSET_MS = 8 * 3600_000;
 
 /** 柜型色标：固定映射到归一化后的柜型值，扫表时一眼分桶 */
 const CONTAINER_COLORS: Record<string, string> = {
@@ -55,57 +54,95 @@ function fmtValidity(from: string | null, to: string | null): string {
 }
 
 /**
- * 运价库 — 钉钉《海运运价智能台账》的本地镜像查询界面。
- * 数据来源单向：AI 表格（另一台电脑定时导出快照文件）→ 本程序读快照入库。
- * 镜像价为参考价，对外报价以船司实时运价为准。
+ * 运价库：以 Navigator 账号实时查询，查询记录归属于登录用户。
  */
 export function RateBoard() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [container, setContainer] = useState<string | undefined>();
-  const [podInput, setPodInput] = useState("");
-  const [pod, setPod] = useState<string | undefined>();     // 防抖后的目的港关键词
-  const [polInput, setPolInput] = useState("");
-  const [pol, setPol] = useState<string | undefined>();     // 防抖后的起运港关键词（模糊）
+  const [container, setContainer] = useState<string[]>([]);
+  const [podInput, setPodInput] = useState<string[]>([]);
+  const [polInput, setPolInput] = useState<string[]>([]);
   const [laneInput, setLaneInput] = useState("");
-  const [lane, setLane] = useState<string | undefined>();   // 防抖后的航线关键词（模糊）
   const [carrierInput, setCarrierInput] = useState("");
-  const [carrier, setCarrier] = useState<string | undefined>(); // 防抖后的船司关键词（模糊）
+  const [filters, setFilters] = useState<Record<string, unknown> | null>(null);
+  const [image, setImage] = useState<string | null>(null);
+  const [imagePending, setImagePending] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   /** 详情抽屉的当前行（船司/POL/POD/柜型/海运费/有效期之外的信息都收在这里） */
   const [detail, setDetail] = useState<QuoteDto | null>(null);
 
-  // 文本筛选统一防抖 400ms
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setPod(podInput.trim() || undefined);
-      setPol(polInput.trim() || undefined);
-      setLane(laneInput.trim() || undefined);
-      setCarrier(carrierInput.trim() || undefined);
-    }, 400);
-    return () => clearTimeout(t);
-  }, [podInput, polInput, laneInput, carrierInput]);
-
-  // 目的港框走跨字段并集（与 agent 工具 q 同口径）：清洗后 pod_raw 里不再有航线小字，
-  // 用户在目的港框敲「地东」这类习惯仍要筛得出来；航线框保持 lane 精滤
-  const filters = useMemo(() => ({ lane, carrier, pol, container, terms: pod ? [pod] : undefined, limit: 5000 }),
-    [lane, carrier, pol, container, pod]);
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["rates", "list", filters],
-    queryFn: () => window.api.invoke("rates:list", filters) as Promise<IpcResult<QuoteDto[]>>,
-  });
   const { data: statusData } = useQuery({
-    queryKey: ["rates", "status"],
-    queryFn: () => window.api.invoke("rates:status") as Promise<IpcResult<RateStatus>>,
-    refetchInterval: 60_000,
+    queryKey: ["rates", "navigatorStatus"],
+    queryFn: () => window.api.invoke("rates:navigatorStatus") as Promise<NavigatorResult<NavigatorStatus>>,
+    refetchOnWindowFocus: false,
   });
-  const syncMut = useMutation({
-    mutationFn: () => window.api.invoke("rates:sync") as Promise<IpcResult<{ imported: number }>>,
-    onSuccess: (r) => {
-      r?.success ? message.success(`镜像已刷新 ${r.data?.imported} 条`) : message.error(r?.error || "同步失败");
-      invalidateDomain(qc, "rates");
+  const st = statusData?.ok ? statusData.data : null;
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const { data: optionsData, isFetching: optionsPending, error: optionsError } = useQuery({
+    queryKey: ["rates", "options", st?.user?.user_id],
+    queryFn: async () => {
+      const result = await window.api.invoke("rates:options") as NavigatorResult<NavigatorOptions>;
+      if (!result.ok || !result.data) throw new Error(result.error || "匹配候选读取失败");
+      return result.data;
+    },
+    enabled: !!st?.authenticated, retry: false,
+  });
+  const choices = (items: NavigatorChoice[]) => items.map(item => ({
+    value: item.n, label: item.c || item.l ? `${item.n} · ${item.c || item.l}` : item.n,
+    search: [item.n,item.c,item.e,item.a,item.l].filter(Boolean).join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(),
+  }));
+  const ports = (side: "pol" | "pod") => choices([
+    ...(optionsData?.ports || []).filter(item => !item.k || item.k === side || item.k === "both"),
+    ...(optionsData?.portGroups || []).filter(item => item.k === side || item.k === "both"),
+  ]);
+  const filterChoice = (input: string, option?: {search?: string}) => !!option?.search?.includes(input.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase());
+  const { data, isFetching: isLoading, refetch, error } = useQuery({
+    queryKey: ["rates", "list", st?.user?.user_id, filters],
+    queryFn: async () => {
+      const result = await window.api.invoke("rates:list", filters) as IpcResult<QuoteDto[]>;
+      if (!result.success) throw new Error(result.error || "查询失败");
+      return result;
+    },
+    enabled: !!filters && !!st?.authenticated,
+    retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, staleTime: Infinity,
+  });
+  const clearView = () => { setFilters(null); setDetail(null); setImage(null); setPreviewVisible(false); qc.removeQueries({queryKey:["rates", "list"]}); qc.removeQueries({queryKey:["rates", "options"]}); };
+  useEffect(() => window.api.on("navigator:identityChanged", () => {
+    clearView();
+    void qc.invalidateQueries({queryKey:["rates", "navigatorStatus"]});
+  }), [qc]);
+  useEffect(() => { if (error) message.error(error.message, TOAST_SECONDS); }, [error, message]);
+  useEffect(() => {
+    let active = true;
+    setImage(null);
+    setPreviewVisible(false);
+    setImageError(null);
+    setImagePending(!!detail?.imageUrl);
+    if (detail?.imageUrl) {
+      void window.api.invoke("rates:image", detail.imageUrl).then(value => {
+        const result = value as NavigatorResult<string>;
+        if (active && result.ok) setImage(result.data || null);
+        if (active && !result.ok) setImageError(result.error || "截图读取失败");
+        if (active) setImagePending(false);
+      }).catch(() => { if (active) { setImagePending(false); setImageError("截图连接失败，请稍后重试"); } }); // Transport failure is shown inline below.
+    }
+    return () => { active = false; };
+  }, [detail]);
+  const authMut = useMutation({
+    mutationFn: (logout: boolean) => window.api.invoke(logout ? "rates:navigatorLogout" : "rates:navigatorLogin") as Promise<NavigatorResult<NavigatorStatus>>,
+    onSuccess: result => {
+      clearView();
+      if (!result.ok) message.error(result.error || "授权失败", TOAST_SECONDS);
+      void qc.invalidateQueries({queryKey:["rates", "navigatorStatus"]});
     },
   });
+  const search = () => {
+    if (!st?.authenticated) { message.info("请先登录 Navigator 后查价", TOAST_SECONDS); return; }
+    const next = { match: "web", route: laneInput || undefined, carrier: carrierInput || undefined,
+      pol: polInput.join(",") || undefined, pod: podInput.join(",") || undefined, ctype: container.join(",") || undefined, limit: RATE_PAGE_CAP };
+    if (JSON.stringify(next) === JSON.stringify(filters)) void refetch();
+    else setFilters(next);
+  };
   /** 台账工作台：主进程先探测局域网可达再开浏览器；探测最长 3 秒，按钮期间转 loading */
   const boardMut = useMutation({
     mutationFn: () => window.api.invoke("rates:openBoard") as Promise<IpcResult<void>>,
@@ -114,11 +151,11 @@ export function RateBoard() {
   });
 
   const rows = data?.success ? data.data || [] : [];
-  const st = statusData?.success ? statusData.data : null;
-  const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+
+  const today = new Date(Date.now() + BEIJING_OFFSET_MS).toISOString().slice(0, 10);
 
   return (
-    <div className="space-y-3">
+    <div className="prospector-table-page rate-board-page">
       {/* 页头 */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <Space>
@@ -126,53 +163,46 @@ export function RateBoard() {
             <DollarOutlined className="text-emerald-600 mr-1" />运价库
           </h2>
           <span className="text-[12px] text-gray-400">
-            {st ? <><b className="font-medium text-gray-600">{st.total.toLocaleString()}</b> 条</> : "…"}
+            {st?.authenticated ? `${st.user?.display_name || st.user?.name} · 实时查询` : "使用 Navigator 账号查价"}
           </span>
-          {st?.lastSyncAt && (
-            <span className="text-[11px] text-gray-400">
-              上次同步 {new Date(st.lastSyncAt).toLocaleString("zh-CN")} · 来源 {st.remoteHost}
-            </span>
-          )}
-          {st?.lastError && (
-            <Tooltip title={st.lastError}>
-              <Tag color="red">同步异常</Tag>
-            </Tooltip>
-          )}
+          {!statusData?.ok && statusData?.error && <Tag color="red">{statusData.error}</Tag>}
         </Space>
         <Space>
           <Button size="small" icon={<GlobalOutlined />} loading={boardMut.isPending}
             onClick={() => boardMut.mutate()}>台账工作台</Button>
-          <Button size="small" icon={<SyncOutlined spin={syncMut.isPending} />}
-            loading={syncMut.isPending} onClick={() => syncMut.mutate()}>同步运价库</Button>
+          <Button size="small" loading={authMut.isPending}
+            onClick={() => authMut.mutate(!!st?.authenticated)}>{st?.authenticated ? "退出账号" : "登录 Navigator"}</Button>
         </Space>
       </div>
 
       {/* 筛选栏：与表格列同序（船司→起运港→目的港→柜型→航线） */}
       <div className="flex items-center gap-2 flex-wrap bg-white border border-gray-200 rounded-lg px-3 py-2">
-        <Input size="small" placeholder="船司" allowClear
-          style={{ width: 90 }} value={carrierInput} onChange={e => setCarrierInput(e.target.value)} />
-        <Input size="small" placeholder="起运港" allowClear
-          style={{ width: 100 }} value={polInput} onChange={e => setPolInput(e.target.value)} />
-        <Input size="small" prefix={<SearchOutlined className="text-gray-300" />}
-          placeholder="目的港（如 santos / KINGSTON）" allowClear
-          style={{ width: 220 }} value={podInput} onChange={e => setPodInput(e.target.value)} />
-        <Select size="small" placeholder="柜型" allowClear style={{ width: 120 }}
+        <Select size="small" aria-label="船司匹配" placeholder="船司" allowClear showSearch filterOption={filterChoice}
+          options={choices(optionsData?.carriers || [])} loading={optionsPending} style={{ width: 160 }} value={carrierInput || undefined} onChange={v => setCarrierInput(v || "")} />
+        <Select size="small" aria-label="起运港匹配" mode="multiple" placeholder="起运港" allowClear showSearch filterOption={filterChoice}
+          options={ports("pol")} loading={optionsPending} style={{ minWidth: 180 }} value={polInput} onChange={setPolInput} />
+        <Select size="small" aria-label="目的港匹配" mode="multiple" placeholder="目的港（从匹配候选中选择）" allowClear showSearch filterOption={filterChoice}
+          options={ports("pod")} loading={optionsPending} style={{ minWidth: 240 }} value={podInput} onChange={setPodInput} />
+        <Select size="small" placeholder="柜型" mode="multiple" allowClear style={{ minWidth: 160 }}
           value={container} onChange={v => setContainer(v)}
           options={CONTAINERS.map(c => ({ value: c, label: c }))} />
-        <Input size="small" placeholder="航线" allowClear
-          style={{ width: 100 }} value={laneInput} onChange={e => setLaneInput(e.target.value)} />
-        {rows.length >= 5000 && (
-          <span className="text-[10px] text-amber-600">命中过多，按价格升序仅显示前 5000 条，请细化筛选</span>
+        <Select size="small" aria-label="航线匹配" placeholder="航线" allowClear showSearch filterOption={filterChoice}
+          options={choices(optionsData?.routes || [])} loading={optionsPending} style={{ width: 160 }} value={laneInput || undefined} onChange={v => setLaneInput(v || "")} />
+        <Button size="small" type="primary" loading={isLoading} onClick={search}>查价</Button>
+        {rows.length >= RATE_PAGE_CAP && (
+          <span className="text-[10px] text-amber-600">按入库时间倒序最多显示前 {RATE_PAGE_CAP} 条，请细化筛选</span>
         )}
       </div>
 
       {/* 运价表：主表只放一眼要用的六列，其余信息与报价截图收进「详情」抽屉 */}
+      {optionsError && <div className="text-xs text-red-600">{optionsError.message}</div>}
       <Table
+        className="prospector-page-table rate-board-table"
         dataSource={rows}
         rowKey={(r: QuoteDto, i?: number) => `${i ?? 0}|${r.podRaw}|${r.carrier}|${r.container}|${r.validFrom}|${r.sourceGroup}|${r.msgTime}`}
         loading={isLoading}
         size="small"
-        pagination={{ pageSize: 50, showSizeChanger: false, size: "small", showTotal: t => `${t} 条` }}
+        pagination={{ pageSize: TABLE_PAGE_SIZE, showSizeChanger: false, size: "small", showTotal: t => `${t} 条` }}
         columns={[
           { title: "船司", dataIndex: "carrier", key: "carrier", width: 80, align: "center", ellipsis: { showTitle: false },
             render: (v: string | null) => v
@@ -231,7 +261,7 @@ export function RateBoard() {
 
       {/* 详情抽屉：航线/有效期原文/免箱/亏舱费/来源/备注 + 报价截图（board_server /images 静态服务） */}
       <Drawer
-        rootStyle={{ top: "var(--app-titlebar-height)", height: "calc(100% - var(--app-titlebar-height))" }}
+        rootClassName="app-drawer-below-titlebar"
         title={detail ? `${detail.carrier || "—"} · ${detail.pol || "?"} → ${detail.podRaw} · ${detail.container || "—"}` : ""}
         open={!!detail}
         closable={false}
@@ -257,17 +287,17 @@ export function RateBoard() {
             {detail.imageUrl ? (
               <div>
                 <div className="text-[11px] text-gray-400 mb-1">报价截图</div>
-                <img
-                  src={detail.imageUrl}
+                {image ? <Image
+                  src={image || undefined}
                   alt="报价截图"
                   className="w-full rounded-lg border border-gray-200"
-                  onError={(e) => {
-                    const img = e.currentTarget;
-                    img.style.display = "none";
-                    img.nextElementSibling?.classList.remove("hidden");
+                  width="100%"
+                  preview={{ visible: previewVisible, onVisibleChange: setPreviewVisible }}
+                  onError={() => {
+                    setImage(null);
+                    setImageError("截图文件无法显示，可能已损坏或格式不支持");
                   }}
-                />
-                <div className="hidden text-[11px] text-gray-400 py-2">截图加载失败——需与公司电脑的运价服务在同一网络</div>
+                /> : <div className="text-[11px] text-gray-400 py-2">{imagePending ? "截图读取中…" : imageError || "截图暂不可用"}</div>}
               </div>
             ) : (
               <div className="text-[11px] text-gray-300">这条记录没有关联报价截图</div>

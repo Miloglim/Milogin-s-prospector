@@ -28,6 +28,19 @@ vi.mock("../../src/main/services/ai.service", () => ({
   summarizeEmail: vi.fn(async () => ({ success: true, data: { summary: "客户要 2x40HQ 报价", nextStep: "今日回复报价" } })),
 }));
 
+// 产品走实时授权 API；此 fixture 只验证工具的查询/清洗语义。
+vi.mock("../../src/main/adapters/navigator-quotes.adapter", async () => {
+  const fixture = await import("../../src/main/services/rate-sync.service");
+  return { listQuotes: async (...a: Parameters<typeof fixture.listQuotes>) => fixture.listQuotes(...a),
+    countQuotes: async (...a: Parameters<typeof fixture.countQuotes>) => fixture.countQuotes(...a),
+    listQuoteRaws: async (...a: Parameters<typeof fixture.listQuoteRaws>) => fixture.listQuoteRaws(...a),
+    listSpaces: async (...a: Parameters<typeof fixture.listSpaces>) => fixture.listSpaces(...a) };
+});
+vi.mock("../../src/main/adapters/navigator-auth.adapter", () => ({
+  requireNavigatorAuthorization: async () => ({ ok: true, data: { authenticated: true } }),
+  navigatorAuthorizationEpoch: () => 1, onNavigatorIdentityChanged: () => () => {}, navigatorHasAuthorization: () => true,
+}));
+
 const DDL = `
 CREATE TABLE companies (
   id integer PRIMARY KEY AUTOINCREMENT NOT NULL, name text NOT NULL, domain text, industry text,

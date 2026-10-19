@@ -390,7 +390,7 @@ function scheduleSentence(text: string): string {
  */
 export async function runResearchScene(
   input: LaneInput,
-  deps: { mirrorCompare?: (podEn: string, podCn: string) => string | null } = {},
+  deps: { mirrorCompare?: (podEn: string, podCn: string) => string | null | Promise<string | null> } = {},
 ): Promise<Result<{ out: ResearchOutput }>> {
   const pol = String(input.pol || "").trim();
   const pod = String(input.pod || "").trim();
@@ -507,7 +507,7 @@ export async function runResearchScene(
 
   const route = `${ports.polEn} → ${ports.podEn}`;
   const window = `近 ${weeks} 周`;
-  const mirror = deps.mirrorCompare ? deps.mirrorCompare(ports.podEn, ports.podCn) : null;
+  const mirror = deps.mirrorCompare ? await deps.mirrorCompare(ports.podEn, ports.podCn) : null;
   const report = composeReport({
     route, window, container: input.container, scope: scope === "both" ? "运价 + 船期" : scope === "rates" ? "运价" : "船期",
     conclusions: conclusions.slice(0, 5), rates: verified.slice(0, 10), schedules, gaps, dropped, mirror, at: today,

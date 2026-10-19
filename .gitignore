@@ -1,6 +1,12 @@
 node_modules/
 dist/
 dist-release/
+dist-server/
+dist-admin/
+.work/
+checkpoints/
+.claude/
+.mcp.json
 data/
 .env
 *.db

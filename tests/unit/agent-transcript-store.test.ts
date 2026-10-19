@@ -202,4 +202,34 @@ describe("agent 回合现场 store", () => {
     mod.drop(id);
     expect(mod.getConv(id).messages).toHaveLength(0);
   });
+  it("产品退出清除私有会话，取消旧监听并丢弃待返回历史", async () => {
+    await openConversation('product-user-a', [{ role: 'assistant', content: 'private synthetic history' }]);
+    let finish!: (value: unknown) => void;
+    invoke.mockImplementation((channel: string) => channel === 'agent:getConversation'
+      ? new Promise(resolve => { finish = resolve; }) : Promise.resolve({ success: true, data: {} }));
+    mod.navigate('product-pending-history', undefined);
+    mod.clearSessionTranscript();
+    emit('agent:chunk', { conversationId: 'product-user-a', delta: 'late private stream' });
+    finish({ success: true, data: [{ role: 'assistant', content: 'late private history' }] });
+    await flush();
+    expect(mod.getConv('product-user-a').messages).toHaveLength(0);
+    expect(mod.getConv('product-pending-history').messages).toHaveLength(0);
+    expect(channels.get('agent:chunk')).toHaveLength(0);
+    await openConversation('product-user-b');
+    expect(channels.get('agent:chunk')).toHaveLength(1);
+  });
+  it("Navigator 身份改变清除报价缓存，并丢弃切换前发起的历史读取", async () => {
+    await openConversation("previous-user", [{role:"assistant",content:"SANTOS $1200"}]);
+    expect(mod.getConv("previous-user").messages).toHaveLength(1);
+    let finish!: (value: unknown) => void;
+    invoke.mockImplementation((channel: string) => channel === "agent:getConversation"
+      ? new Promise(resolve => { finish = resolve; }) : Promise.resolve({success:true,data:{}}));
+    mod.navigate("pending-history", undefined);
+    emit("navigator:identityChanged", {epoch:1});
+    finish({success:true,data:[{role:"assistant",content:"STALE PRICE $999"}]});
+    await flush();
+    expect(mod.getConv("previous-user").messages).toHaveLength(0);
+    expect(mod.getConv("pending-history").messages).toHaveLength(0);
+    expect(mod.getConv(NEW_KEY).messages).toHaveLength(0);
+  });
 });

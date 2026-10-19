@@ -1,9 +1,11 @@
-import { useLayoutEffect, useRef } from "react";
-import { Layout } from "antd";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Layout, message, Modal, Spin } from "antd";
 import { Outlet, useRouterState } from "@tanstack/react-router";
 import { Sidebar } from "./Sidebar";
-import { OnboardingWizard } from "../OnboardingWizard";
 import { KEEPALIVE_ROUTE_COMPONENTS } from "../../router";
+import { useOptionalIdentity } from '../../IdentityContext';
+import { OnboardingWizard } from "../OnboardingWizard";
+import { globalStatusNotices, GLOBAL_STATUS_TOAST_DURATION_SECONDS, type GlobalStatusNotice } from './app-layout-status';
 
 const { Content } = Layout;
 
@@ -46,20 +48,12 @@ const btn: React.CSSProperties = {
 };
 
 // ponytail: 无边框窗口自定义标题栏 — 匹配旧 PE 布局
-function TitleBar() {
+export function TitleBar() {
   return (
-    <div
-      style={{
-        height: "var(--app-titlebar-height)", background: "#1a1a1a", display: "flex",
-        alignItems: "center", justifyContent: "space-between",
-        flexShrink: 0, userSelect: "none",
-        borderBottom: "1px solid rgba(128,128,128,0.25)",
-      }}
-      className="titlebar-drag"
-    >
-      <div />
+    <div className="app-titlebar titlebar-drag">
+      <div className="app-titlebar-spacer" aria-hidden="true" />
 
-      <div className="titlebar-nodrag" style={{ display: "flex" }}>
+      <div className="app-window-controls titlebar-nodrag">
         <button onClick={() => window.api.send("window:minimize")} style={btn}
           onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
           onMouseLeave={e => e.currentTarget.style.background = "transparent"}
@@ -101,7 +95,7 @@ function ScrollArea({ pathname, children }: { pathname: string; children: React.
     <div
       ref={scrollRef}
       onScroll={e => posMap.current.set(activePath.current, e.currentTarget.scrollTop)}
-      style={{ height: "100%", overflow: "auto", padding: "28px 36px" }}
+      style={{ height: "100%", overflow: "auto", padding: '16px 20px' }}
     >
       {children}
     </div>
@@ -110,20 +104,97 @@ function ScrollArea({ pathname, children }: { pathname: string; children: React.
 
 export function AppLayout() {
   const pathname = useRouterState({ select: s => s.location.pathname });
+  const session = useOptionalIdentity();
+  const localAvailable = !session || session.localAvailable;
+  const centerUnavailable = session?.status === 'offline' && pathname === '/messages';
+  const [messageApi, contextHolder] = message.useMessage();
+  const shownNoticeKeys = useRef<Set<GlobalStatusNotice['key']>>(new Set());
+  const statusNotices = globalStatusNotices({
+    offline: session?.status === 'offline',
+    centerUnavailable,
+    localAvailable,
+    pathname,
+  });
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [onboardingEmail, setOnboardingEmail] = useState("");
+  const [onboardingSignal, setOnboardingSignal] = useState(0);
+  useEffect(() => {
+    const positions = new WeakMap<HTMLElement, { left: number; top: number }>();
+    const timers = new WeakMap<HTMLElement, { x?: number; y?: number }>();
+    const selector = '.prospector-page-table .ant-table-content, .prospector-page-table .ant-table-body';
+    const onScroll = (event: Event) => {
+      const element = event.target;
+      if (!(element instanceof HTMLElement) || !element.matches(selector)) return;
+      const previous = positions.get(element) ?? { left: element.scrollLeft, top: element.scrollTop };
+      const next = { left: element.scrollLeft, top: element.scrollTop };
+      positions.set(element, next);
+      const timer = timers.get(element) ?? {};
+      if (next.left !== previous.left) {
+        element.classList.add('is-scrolling-x');
+        if (timer.x !== undefined) window.clearTimeout(timer.x);
+        timer.x = window.setTimeout(() => element.classList.remove('is-scrolling-x'), 520);
+      }
+      if (next.top !== previous.top) {
+        element.classList.add('is-scrolling-y');
+        if (timer.y !== undefined) window.clearTimeout(timer.y);
+        timer.y = window.setTimeout(() => element.classList.remove('is-scrolling-y'), 520);
+      }
+      timers.set(element, timer);
+    };
+    document.addEventListener('scroll', onScroll, true);
+    return () => document.removeEventListener('scroll', onScroll, true);
+  }, []);
+  useEffect(() => {
+    const email = session?.identity?.email?.trim().toLowerCase();
+    if (!email || window.localStorage.getItem("prospector:registered-email") !== email) return;
+    setOnboardingEmail(email);
+    setWelcomeOpen(true);
+  }, [session?.identity?.email]);
+  useEffect(() => {
+    const open = () => setOnboardingSignal(value => value + 1);
+    window.addEventListener("open-onboarding", open);
+    return () => window.removeEventListener("open-onboarding", open);
+  }, []);
+  useEffect(() => {
+    const activeKeys = new Set(statusNotices.map(notice => notice.key));
+    for (const notice of statusNotices) {
+      if (shownNoticeKeys.current.has(notice.key)) continue;
+      shownNoticeKeys.current.add(notice.key);
+      messageApi.open({
+        key: `global-status-${notice.key}`,
+        type: notice.type,
+        content: notice.content,
+        duration: GLOBAL_STATUS_TOAST_DURATION_SECONDS,
+      });
+    }
+    for (const key of shownNoticeKeys.current) {
+      if (!activeKeys.has(key)) shownNoticeKeys.current.delete(key);
+    }
+  }, [messageApi, statusNotices]);
+  const openOnboarding = () => {
+    setWelcomeOpen(false);
+    window.localStorage.removeItem("prospector:registered-email");
+    window.dispatchEvent(new Event("open-onboarding"));
+  };
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div className="app-shell">
+      {contextHolder}
       <TitleBar />
-      <Layout style={{ flex: 1, minHeight: 0 }} hasSider>
+      <Layout className="app-body" hasSider>
         <Sidebar />
         <Layout>
           <Content style={{ background: "#f5f5f5", minHeight: 0, overflow: "hidden" }}>
             <ScrollArea pathname={pathname}>
-              <KeepAliveOutlet />
+              <div hidden={centerUnavailable}>{!localAvailable && pathname === '/settings' ? <Spin /> : !localAvailable && !['/customers', '/customers-online', '/account', '/messages'].includes(pathname) ? null : <KeepAliveOutlet />}</div>
             </ScrollArea>
           </Content>
         </Layout>
       </Layout>
-      <OnboardingWizard />
+      <Modal open={welcomeOpen} title="欢迎使用 Prospector" centered okText="配置账号" cancelText="稍后配置"
+        onOk={openOnboarding} onCancel={() => { setWelcomeOpen(false); window.localStorage.removeItem("prospector:registered-email"); }}>
+        <p style={{ margin: 0, color: "#666" }}>是否现在配置邮箱账号？</p>
+      </Modal>
+      <OnboardingWizard autoCheck={false} prefillEmail={onboardingEmail} openSignal={onboardingSignal} />
     </div>
   );
 }

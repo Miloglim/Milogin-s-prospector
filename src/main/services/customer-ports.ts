@@ -1,3 +1,4 @@
+import { getAgentContactPort } from "./agent-contact.service";
 // ── 客户港口偏好聚合（读时派生，不落库）──────────────────────────────
 // 规范 docs/rate-update-push-spec.md §2。为什么读时算而不建表：
 //   偏好有两个出处——看板「偏好设置」里人工录的 contacts.extra.preferredPorts，和客户来信正文里的
@@ -11,8 +12,8 @@ import { ne, and, or, inArray, gte, desc, isNull, isNotNull, sql as dsql } from 
 import { readLocalBodyHtml, htmlToText } from "./inbox.service";
 import { parseEmailInquiry } from "./agent/email-parse";
 import { podQueryWord } from "./agent/reply-rates";
-import { listQuotes, normalizeContainer } from "./rate-sync.service";
-import { resolveQueryPod } from "./rates-standard";
+import { normalizeContainer } from "./rate-sync.service";
+import { resolveQueryPod, laneOfPod } from "./rates-standard";
 
 export type PortSource = "manual" | "inbound";
 
@@ -121,28 +122,11 @@ export function plausiblePortToken(word: string): boolean {
   return !/\b(UPDATE|QUOTE|SPACE|ALERT|NOTICE|GROUP|COMPANY|LTD|SRL|SALES|INFO|URGENT|RE)\b|CONGESTI|RETARDOS|PRESENTAN/i.test(s);
 }
 
-// 「这词是不是真港」查一次记住（键=大写原词）：每客户偏好只有几个词，缓存够撑一整天
-const podKnownCache = new Map<string, string | null>();
-
-/** 台账（含过期行——港的存在性与时效无关）里是否有该目的港 */
-function mirrorHasPod(word: string): boolean {
-  try {
-    const r = listQuotes({ pod: word, includeExpired: true, limit: 1 });
-    return !!(r.success && r.data.length);
-  } catch { return false; }
-}
-
-/** 认证目的港：形态可信 + （词表归一后或原词）台账真有其港；认不出 null，绝不放行脏字符串 */
+/** 港口存在性来自已维护的纯词表，不能用旧镜像的报价来认证港名。
+ * 当期有没有报价交给后续已授权的实时查询。 */
 export function knownPod(word: string | null | undefined): string | null {
-  const raw = (word ?? "").trim();
-  if (!raw) return null;
-  const key = raw.toUpperCase();
-  if (podKnownCache.has(key)) return podKnownCache.get(key) ?? null;
-  const tryOne = (w: string): string | null =>
-    (plausiblePortToken(w) && mirrorHasPod(w)) ? w : null;
-  const hit = tryOne(resolveQueryPod(key).trim().toUpperCase()) ?? tryOne(key);
-  podKnownCache.set(key, hit);
-  return hit;
+  const canonical = resolveQueryPod((word ?? "").trim()).toUpperCase();
+  return plausiblePortToken(canonical) && laneOfPod(canonical) ? canonical : null;
 }
 
 /** 人工登记的港：只过形态闸门 + 词表归一，不查镜像（当期有没有价交给方案层判 no_live_rate） */
@@ -197,7 +181,7 @@ function parseExtra(raw: string | null | undefined): Record<string, unknown> {
 
 type MailRow = {
   id: number; matchedContactId: number | null; relatedContactIds: string | null;
-  receivedAt: string; subject: string | null; bodyPreview: string | null;
+  fromEmail?: string; receivedAt: string; subject: string | null; bodyPreview: string | null;
 };
 
 /**
@@ -215,7 +199,9 @@ export function deriveCustomerPorts(contactIds?: number[], opts: DeriveOpts = {}
   // ① 圈人
   const wantIds = contactIds?.length ? new Set(contactIds) : null;
   const companyCol = dsql<string | null>`(select name from companies where companies.id = ${contacts.companyId})`;
-  const rows = (wantIds
+  const snapshot = getAgentContactPort()?.snapshot();
+  if (snapshot && (!snapshot.ok || !snapshot.data.active())) return [];
+  const rows = snapshot?.ok ? snapshot.data.contacts.filter(row => wantIds ? wantIds.has(row.contactId) : ['contacted','replied'].includes(row.touchStatus)).slice(0, o.maxContacts).map(row => ({ id:row.contactId,email:row.email ?? '',firstName:row.firstName,lastName:row.lastName,language:row.language,country:row.country,extra:JSON.stringify(row.extra),companyName:row.companyName })) : (wantIds
     ? db.select({
       id: contacts.id, email: contacts.email, firstName: contacts.firstName, lastName: contacts.lastName,
       language: contacts.language, country: contacts.country, extra: contacts.extra, companyName: companyCol,
@@ -232,10 +218,10 @@ export function deriveCustomerPorts(contactIds?: number[], opts: DeriveOpts = {}
   const idList = [...idSet];
   // 主联系人命中这批 id；带 related 的邮件整批捞回来由下面按 idSet 精判
   // （不给每个 id 拼一条 instr：客户数上千会撞 SQLite 的变量上限）
-  const idMatch = or(inArray(inboxMessages.matchedContactId, idList), isNotNull(inboxMessages.relatedContactIds));
+  const idMatch = snapshot ? inArray(dsql`lower(${inboxMessages.fromEmail})`, rows.map(row => row.email.toLowerCase()).filter(Boolean)) : or(inArray(inboxMessages.matchedContactId, idList), isNotNull(inboxMessages.relatedContactIds));
   const notSent = or(isNull(inboxMessages.classification), ne(inboxMessages.classification, "sent"));
   const mails = db.select({
-    id: inboxMessages.id, matchedContactId: inboxMessages.matchedContactId,
+    fromEmail: inboxMessages.fromEmail, id: inboxMessages.id, matchedContactId: inboxMessages.matchedContactId,
     relatedContactIds: inboxMessages.relatedContactIds, receivedAt: inboxMessages.receivedAt,
     subject: inboxMessages.subject, bodyPreview: inboxMessages.bodyPreview,
   }).from(inboxMessages)
@@ -248,8 +234,12 @@ export function deriveCustomerPorts(contactIds?: number[], opts: DeriveOpts = {}
   const byContact = new Map<number, MailRow[]>();
   for (const m of mails) {
     const targets = new Set<number>();
-    if (m.matchedContactId && idSet.has(m.matchedContactId)) targets.add(m.matchedContactId);
-    for (const rid of parseRelatedIds(m.relatedContactIds)) if (idSet.has(rid)) targets.add(rid);
+    if (snapshot) {
+      for (const row of rows) if (row.email && row.email.toLowerCase() === m.fromEmail?.toLowerCase()) targets.add(row.id);
+    } else {
+      if (m.matchedContactId && idSet.has(m.matchedContactId)) targets.add(m.matchedContactId);
+      for (const rid of parseRelatedIds(m.relatedContactIds)) if (idSet.has(rid)) targets.add(rid);
+    }
     for (const cid of targets) {
       const arr = byContact.get(cid);
       if (arr) { if (arr.length < o.maxEmailsPerContact) arr.push(m); }

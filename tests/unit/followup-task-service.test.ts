@@ -1,0 +1,14 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createTaskService } from '../../server/services/tasks';
+import type { TaskRepository } from '../../server/core/tasks';
+import { success } from '../../server/core/crm';
+const ID='00000000-0000-0000-0000-000000000001', TOKEN='a'.repeat(43);
+function setup(){const create=vi.fn().mockResolvedValue(success({}));const reschedule=vi.fn().mockResolvedValue(success({}));const complete=vi.fn().mockResolvedValue(success({}));const processDue=vi.fn().mockResolvedValue(success(0));return {create,reschedule,complete,processDue,service:createTaskService({create,reschedule,complete,processDue} as unknown as TaskRepository,{hash:()=> 'hash'} as never)};}
+const input={customerId:ID,title:'Call customer',dueAt:'2026-10-13T12:00:00+08:00',expectedCustomerVersion:1,idempotencyKey:'key'};
+describe('followup task service boundaries',()=>{
+ it('allows a valid optional opportunity link and rejects malformed IDs',async()=>{const {service,create}=setup();const linked={...input,opportunityId:ID};expect((await service.create(TOKEN,linked)).ok).toBe(true);expect(create).toHaveBeenCalledWith('hash',linked);expect(await service.create(TOKEN,{...input,opportunityId:'bad'})).toMatchObject({error:{code:'INVALID_INPUT'}});});
+ it('keeps exact retry input and allows past due time for catch-up',async()=>{const {service,create}=setup();expect((await service.create(TOKEN,input)).ok).toBe(true);expect(create).toHaveBeenCalledWith('hash',input);});
+ it.each([{responsibleUserId:ID},{unexpected:true},{title:' '},{expectedCustomerVersion:0},{dueAt:'2026-02-30T00:00:00Z'},{dueAt:'2026-10-13T12:00:00'},{dueAt:'2026-10-13T25:00:00Z'},{dueAt:'2026-10-13T12:00:00+24:00'}])('rejects malformed creation %j',async extra=>{const {service,create}=setup();expect(await service.create(TOKEN,{...input,...extra})).toMatchObject({error:{code:'INVALID_INPUT'}});expect(create).not.toHaveBeenCalled();});
+ it('rejects missing feedback and stale-invalid mutation shapes before IO',async()=>{const {service,complete,reschedule}=setup();const base={taskId:ID,expectedVersion:1,idempotencyKey:'key'};expect(await service.complete(TOKEN,{...base,feedback:' '})).toMatchObject({error:{code:'INVALID_INPUT'}});expect(await service.reschedule(TOKEN,{...base,dueAt:'bad'})).toMatchObject({error:{code:'INVALID_INPUT'}});expect(complete).not.toHaveBeenCalled();expect(reschedule).not.toHaveBeenCalled();});
+ it('hashes only valid sessions and bounds background batches',async()=>{const {service,create,processDue}=setup();expect(await service.create('bad',input)).toMatchObject({error:{code:'UNAUTHORIZED'}});expect(create).not.toHaveBeenCalled();expect(await service.processDue(0)).toMatchObject({error:{code:'INVALID_INPUT'}});expect((await service.processDue()).ok).toBe(true);expect(processDue).toHaveBeenCalledWith(50);});
+});

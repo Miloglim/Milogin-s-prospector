@@ -9,6 +9,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../db";
 import { agentWorkingMemory } from "../../db/schema/agent";
 import type { ChatMsg } from "./harness";
+import { navigatorVisibleContext, navigatorContextRowVisible } from '../../adapters/navigator-context.adapter';
 
 export type WmKind = "email" | "rates" | "contacts" | "inbox" | "backcheck" | "draft";
 
@@ -102,6 +103,7 @@ function trimLongStrings(obj: unknown, arrKey: string, threshold: number): unkno
 
 /** 写一条工作台项（upsert：同 conversationId+kind+refId 覆盖刷新）。失败吞掉，不阻塞主流程。 */
 export function rememberWork(conversationId: string, item: WmItem): void {
+  if (!navigatorContextRowVisible(conversationId,{...item,payloadJson:fitPayload(item.payload),createdAt:new Date().toISOString()})) return;
   const contextLine = (item.contextLine || "").trim().slice(0, CONTEXT_LINE_CAP);
   const refId = (item.refId || "").trim().slice(0, 120);
   if (!contextLine || !refId) return;
@@ -130,14 +132,14 @@ export function rememberWork(conversationId: string, item: WmItem): void {
 export function recallWorkBlock(conversationId: string): ChatMsg[] {
   let rows: Array<{ kind: string; contextLine: string; updatedAt: string }>;
   try {
-    rows = getDb().select({
+    rows = navigatorVisibleContext(conversationId,getDb().select({
       kind: agentWorkingMemory.kind,
       contextLine: agentWorkingMemory.contextLine,
       updatedAt: agentWorkingMemory.updatedAt,
     }).from(agentWorkingMemory)
       .where(eq(agentWorkingMemory.conversationId, conversationId))
       .orderBy(desc(agentWorkingMemory.updatedAt), desc(agentWorkingMemory.id))
-      .all();
+      .all());
   } catch { return []; }
   if (!rows.length) return [];
   // 新→旧累加到封顶，再翻回时间正序展示（旧的读起来顺，新的不会被总量挤掉）
@@ -168,7 +170,7 @@ export function getWork(conversationId: string, kind: WmKind, refId?: string): u
       : and(eq(agentWorkingMemory.conversationId, conversationId), eq(agentWorkingMemory.kind, kind));
     const row = db.select().from(agentWorkingMemory).where(conds)
       .orderBy(desc(agentWorkingMemory.updatedAt), desc(agentWorkingMemory.id)).get();
-    if (!row) return null;
+    if (!row || !navigatorContextRowVisible(conversationId,row)) return null;
     return JSON.parse(row.payloadJson) as unknown;
   } catch { return null; }
 }
@@ -180,7 +182,7 @@ export function listWork(conversationId: string, kind: WmKind, limit = 10): Arra
       .where(and(eq(agentWorkingMemory.conversationId, conversationId), eq(agentWorkingMemory.kind, kind)))
       .orderBy(desc(agentWorkingMemory.updatedAt), desc(agentWorkingMemory.id))
       .limit(limit).all();
-    return rows.map(r => ({ refId: r.refId, payload: safeParse(r.payloadJson), updatedAt: r.updatedAt }));
+    return navigatorVisibleContext(conversationId,rows).map(r => ({ refId: r.refId, payload: safeParse(r.payloadJson), updatedAt: r.updatedAt }));
   } catch { return []; }
 }
 function safeParse(s: string): unknown { try { return JSON.parse(s); } catch { return null; } }

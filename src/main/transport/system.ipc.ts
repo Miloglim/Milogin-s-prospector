@@ -5,6 +5,15 @@ import { loadConfig, saveConfig, updateRuntimeConfig, DB_PATH } from "../config"
 import { Log } from "../logger";
 import { okResult, failResult } from "../errors";
 
+/** Session-level control must remain available before a personal profile is active. */
+export function registerSystemRestartIPC(confirm: (confirmed: boolean) => void): void {
+  ipcMain.removeHandler(IPC.SYSTEM.RESTART_CONFIRM);
+  ipcMain.handle(IPC.SYSTEM.RESTART_CONFIRM, (_event, confirmed: unknown) => {
+    confirm(confirmed === true);
+    return okResult(undefined);
+  });
+}
+
 export function registerSystemIPC() {
   ipcMain.handle(IPC.SYSTEM.SELECT_DIRECTORY, async () => {
     const win = BrowserWindow.getAllWindows()[0];

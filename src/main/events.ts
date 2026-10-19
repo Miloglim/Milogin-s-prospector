@@ -1,5 +1,7 @@
 /** 应用级事件常量 — 主进程→渲染进程推送用（preload 白名单由本常量推导） */
 export const EVENTS = {
+  APP_RESTART_REQUEST: "app:restartRequest",
+  NAVIGATOR_IDENTITY_CHANGED: "navigator:identityChanged",
   /** 发送进度更新 */
   SEND_PROGRESS: "send:progress",
   /** 退信检测到新退信 */

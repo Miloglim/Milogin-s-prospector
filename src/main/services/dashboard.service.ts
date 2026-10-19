@@ -3,7 +3,8 @@ import { contacts } from "../db/schema/contacts";
 import { inboxMessages } from "../db/schema/inbox";
 import { interactions } from "../db/schema/interactions";
 import { sql } from "drizzle-orm";
-import { okResult, type Result } from "../errors";
+import { getAgentContactPort } from "./agent-contact.service";
+import { failResult, okResult, type Result } from "../errors";
 import { Log } from "../logger";
 
 export interface DashboardStats {
@@ -22,7 +23,9 @@ export function getStats(): Result<DashboardStats> {
 
   const db = getDb();
 
-  const totalContacts = db.select({ count: sql<number>`count(*)` }).from(contacts).get()?.count || 0;
+  const center = getAgentContactPort()?.snapshot();
+  if (center && (!center.ok || !center.data.active())) return failResult(center.ok ? '账号或权限已变化' : center.error.message);
+  const totalContacts = center?.ok ? center.data.contacts.length : db.select({ count: sql<number>`count(*)` }).from(contacts).get()?.count || 0;
   // 口径修复：三个数字直查 inbox_messages 按 classification 计数，与收件箱界面的统计同源。
   // 原实现数 interactions.type（sent/replied/bounced），该表只覆盖「匹配到联系人的邮件事件」，
   // 且 markReplied 曾误写 sent 造成虚增 —— 两表天然不一致且随时间漂移。
@@ -35,10 +38,17 @@ export function getStats(): Result<DashboardStats> {
 
   // 阶段统计 — 从 contacts.tags（CRM 管线标签）读取，crm_stages 已废弃
   const STAGE_KEYS = ["reaching", "quoting", "trial", "cooperating", "lost", "other"];
-  const tagRows = db.select({ tags: contacts.tags }).from(contacts).all();
+  const tagRows = center ? [] : db.select({ tags: contacts.tags }).from(contacts).all();
   const pipelineSummary: Record<string, number> = {};
   for (const k of STAGE_KEYS) pipelineSummary[k] = 0;
-  for (const r of tagRows) {
+  if (center?.ok) {
+    for (const row of center.data.contacts) {
+      if (!['contacted', 'replied'].includes(row.touchStatus)) continue;
+      const stage = row.relationshipStage && row.relationshipStage !== 'cold' ? row.relationshipStage : 'reaching';
+      if (STAGE_KEYS.includes(stage)) pipelineSummary[stage] = (pipelineSummary[stage] || 0) + 1;
+    }
+  }
+  for (const r of center ? [] : tagRows) {
     let tags: string[] = [];
     try { const p = JSON.parse(r.tags || "[]"); if (Array.isArray(p)) tags = p; } catch { /* 忽略坏 JSON */ }
     const stage = STAGE_KEYS.find(k => tags.includes(k));
@@ -46,7 +56,7 @@ export function getStats(): Result<DashboardStats> {
   }
 
   // 最近活动（前 10 条）
-  const recentRows = db.select({
+  const recentRows = center ? [] : db.select({
     type: interactions.type,
     contactEmail: contacts.email,
     subject: interactions.subject,
@@ -58,7 +68,7 @@ export function getStats(): Result<DashboardStats> {
     .limit(10)
     .all();
 
-  const recentActivity = recentRows.map(r => ({
+  const recentActivity = center ? db.select({ type: inboxMessages.classification, contactEmail: inboxMessages.fromEmail, subject: inboxMessages.subject, createdAt: inboxMessages.receivedAt }).from(inboxMessages).orderBy(sql`${inboxMessages.receivedAt} DESC`).limit(10).all().map(row => ({ ...row, type: row.type ?? '', contactEmail: row.contactEmail ?? '未知' })) : recentRows.map(r => ({
     type: r.type,
     contactEmail: r.contactEmail || "未知",
     subject: r.subject,

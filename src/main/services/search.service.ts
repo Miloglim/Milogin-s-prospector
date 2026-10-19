@@ -1,3 +1,4 @@
+import { getAgentContactPort } from "./agent-contact.service";
 import { getRawDb } from "../db";
 import { DB_PATH } from "../config";
 import { htmlToText } from "../core/html-text";
@@ -25,13 +26,15 @@ export function searchGlobal(request: SearchRequest): Result<GlobalSearchData> {
   const data: GlobalSearchData = { email: [], note: [], contact: [], truncated: false };
   if (!query) return okResult(data);
   try {
+    const center = getAgentContactPort()?.snapshot();
+    if (center && (!center.ok || !center.data.active())) return failResult(center.ok ? '账号或权限已变化' : center.error.message);
     const raw = getRawDb();
     const chinese = /[\u3400-\u9fff]/u.test(query);
     const terms = searchLatin(query).trim().split(/\s+/).filter(Boolean);
     if (!chinese && !terms.length) return okResult(data);
     const match = terms.map(term => `"${term}"*`).join(" AND ");
     const like = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
-    for (const kind of SEARCH_KINDS) {
+    for (const kind of center ? ['email'] as const : SEARCH_KINDS) {
       const rows = (chinese
         ? raw.prepare(`SELECT kind,sourceId,contactId,title,body AS snippet FROM search_idx
             WHERE kind=? AND (title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\') ORDER BY rowid DESC LIMIT ?`).all(kind, like, like, limit + 1)
@@ -39,6 +42,21 @@ export function searchGlobal(request: SearchRequest): Result<GlobalSearchData> {
             FROM search_idx WHERE search_idx MATCH ? AND kind=? ORDER BY rank LIMIT ?`).all(SNIPPET_TOKENS, match, kind, limit + 1)) as SearchHit[];
       data.truncated ||= rows.length > limit;
       data[kind] = rows.slice(0, limit).map(row => ({ ...row, snippet: chinese ? chineseSnippet(row.snippet, query) : row.snippet }));
+    }
+    if (center?.ok) {
+      const matches = (text: string) => chinese ? text.toLowerCase().includes(query.toLowerCase()) : terms.every(term => searchLatin(text).includes(term));
+      const notesByContact = new Map<string, string[]>();
+      for (const note of center.data.notes ?? []) { const key = `${note.customerId}:${note.contactId}`; const list = notesByContact.get(key) ?? []; list.push(note.note); notesByContact.set(key,list); }
+      for (const row of center.data.contacts) {
+        const title = [row.firstName, row.lastName].filter(Boolean).join(' ') || row.email || row.companyName;
+        const text = [title, row.email, row.companyName, row.title, row.phone, row.country].filter(Boolean).join(' ');
+        const hit = { kind: 'contact' as const, sourceId: row.contactId, contactId: row.contactId, customerId: row.customerId, dataSource: 'center' as const, title, snippet: chineseSnippet(text, query) };
+        if (matches(text)) data.contact.push(hit);
+        const notes = [...(notesByContact.get(`${row.customerId}:${row.contactId}`) ?? []), row.lastFollowupNote ?? ''].filter(Boolean).join('\n');
+        if (notes && matches(notes)) data.note.push({ ...hit, kind: 'note', snippet: chineseSnippet(notes, query) });
+      }
+      for (const kind of ['contact', 'note'] as const) { data.truncated ||= data[kind].length > limit; data[kind] = data[kind].slice(0, limit); }
+      if (!center.data.active()) return failResult('账号或权限已变化');
     }
     return okResult(data);
   } catch (error) {

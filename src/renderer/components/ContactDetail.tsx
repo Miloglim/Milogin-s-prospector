@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { Drawer, Tabs, Tag, Select, message, Timeline, Input, Button, Tooltip, Modal } from "antd";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Drawer, Tabs, Tag, Select, message, Timeline, Input, Button, Tooltip, Modal, type DrawerProps } from "antd";
 import { EditOutlined, SearchOutlined, PartitionOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useUpsertContact, useDeleteContact, type Contact } from "../hooks/useContacts";
@@ -92,15 +92,15 @@ function parseTags(s: string | null): string[] {
     return Array.isArray(arr) ? arr.map(String) : [];
   } catch { return []; }
 }
-function SectionTitle({ children }: { children: ReactNode }) {
+export function SectionTitle({ children }: { children: ReactNode }) {
   return <div className="text-[10px] font-semibold text-gray-400 tracking-wider mt-6 mb-1.5 first:mt-0">{children}</div>;
 }
 
 /* ---------- 扁平信息行（读态为主） ---------- */
-function FieldRow({ label, children }: { label: string; children: ReactNode }) {
+export function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="group/row flex items-center gap-4 px-2 py-1.5 rounded-md -mx-2 hover:bg-gray-50 transition-colors">
-      <span className="w-16 shrink-0 text-[11px] text-gray-400">{label}</span>
+      <span className="w-24 shrink-0 text-[11px] text-gray-400">{label}</span>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
   );
@@ -112,28 +112,36 @@ const readValCls = (has: boolean) =>
 const Pencil = () => (
   <EditOutlined className="text-[10px] text-gray-400 opacity-30 transition-opacity group-hover/val:opacity-100" />
 );
+type SaveFieldResult = void | boolean | Promise<void | boolean>;
 
 /* 文本行：点击进入编辑，失焦/回车保存 */
-function EditText({ value, onSave, placeholder }: {
-  value: string | null; onSave: (v: string | null) => void; placeholder?: string;
+function EditText({ value, onSave, placeholder, readOnly = false }: {
+  value: string | null; onSave: (v: string | null) => SaveFieldResult; placeholder?: string; readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  if (!editing) {
+  const [isSaving, setIsSaving] = useState(false);
+  const saving = useRef(false);
+  useEffect(() => { if (readOnly) { setEditing(false); setDraft(''); } }, [readOnly]);
+  if (!editing || readOnly) {
     return (
-      <button type="button" className={readBtnCls}
+      <button type="button" className={readBtnCls} disabled={readOnly}
         onClick={() => { setDraft(value || ""); setEditing(true); }}>
         <span className={readValCls(!!value)}>{value || placeholder || "-"}</span>
-        <Pencil />
+        {!readOnly && <Pencil />}
       </button>
     );
   }
   return (
-    <Input size="small" autoFocus value={draft}
+    <Input size="small" autoFocus value={draft} disabled={isSaving}
       onChange={e => setDraft(e.target.value)}
-      onBlur={() => {
-        if (draft !== (value || "")) onSave(draft.trim() ? draft.trim() : null);
-        setEditing(false);
+      onBlur={async () => {
+        if (saving.current) return;
+        if (draft === (value || "")) { setEditing(false); return; }
+        saving.current = true; setIsSaving(true);
+        try { if (await onSave(draft.trim() ? draft.trim() : null) !== false) setEditing(false); }
+        catch { /* The owner reports save errors; retain this submitted draft for retry. */ }
+        finally { saving.current = false; setIsSaving(false); }
       }}
       onPressEnter={e => (e.target as HTMLInputElement).blur()}
       className="!text-xs"
@@ -142,58 +150,71 @@ function EditText({ value, onSave, placeholder }: {
 }
 
 /* 下拉行：点击展开，选择即存 */
-function EditSelect({ value, onSave, options, allowClear, readNode, disabled }: {
+function EditSelect({ value, onSave, options, allowClear, readNode, disabled, readOnly = false }: {
   value: string | null;
-  onSave: (v: string | null) => void;
+  onSave: (v: string | null) => SaveFieldResult;
   options: { value: string; label: string }[];
   allowClear?: boolean;
   readNode?: ReactNode;
   disabled?: boolean;
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
-  if (!editing) {
+  const [draft, setDraft] = useState<string | null>(value);
+  const [isSaving, setIsSaving] = useState(false);
+  const saving = useRef(false);
+  useEffect(() => { if (readOnly) { setEditing(false); setDraft(null); } }, [readOnly]);
+  async function commit(next: string | null) {
+    if (saving.current) return;
+    setDraft(next); saving.current = true; setIsSaving(true);
+    try { if (await onSave(next) !== false) setEditing(false); }
+    catch { /* The owner reports save errors; retain the selected draft for retry. */ }
+    finally { saving.current = false; setIsSaving(false); }
+  }
+  if (!editing || readOnly) {
     return (
-      <button type="button" className={readBtnCls} onClick={() => { if (!disabled) setEditing(true); }}>
+      <button type="button" className={readBtnCls} disabled={readOnly} onClick={() => { if (!disabled && !readOnly) { setDraft(value); setEditing(true); } }}>
         <span className={readValCls(!!value)}>{readNode || value || "未设置"}</span>
-        {disabled ? <span className="text-[10px] text-gray-300">需先触达</span> : <Pencil />}
+        {!readOnly && (disabled ? <span className="text-[10px] text-gray-300">需先触达</span> : <Pencil />)}
       </button>
     );
   }
   return (
-    <Select size="small" autoFocus defaultOpen className="w-full !text-xs"
-      value={value || undefined} allowClear={allowClear} options={options}
+    <Select size="small" autoFocus defaultOpen className="w-full !text-xs" disabled={isSaving}
+      value={draft || undefined} allowClear={allowClear} options={options}
       showSearch optionFilterProp="label"
       popupMatchSelectWidth={false}
-      onBlur={() => setEditing(false)}
-      onChange={(v) => { onSave(v ?? null); setEditing(false); }}
+      onBlur={() => { if (draft === value) { if (!saving.current) setEditing(false); } else void commit(draft); }}
+      onChange={v => void commit(v ?? null)}
     />
   );
 }
 
 /* ---------- 基本信息 Tab ---------- */
-function InfoTab({ contact, onSaveField }: {
-  contact: Contact; onSaveField: (field: string, value: string | null) => void;
+export function InfoTab({ contact, onSaveField, canEdit = true, canEditField }: {
+  contact: Contact; onSaveField: (field: string, value: string | null) => SaveFieldResult; canEdit?: boolean; canEditField?: (field: string) => boolean;
 }) {
+  const allowed = (field: string) => canEdit && (canEditField?.(field) ?? true);
   const clientMeta = contact.clientType ? CLIENT_TYPE[contact.clientType] : null;
   const statusMeta = STATUS_META[contact.status || ""];
   const stageMeta = STAGE_META[contact.stage || ""];
-  const tagKey = parseTags(contact.tags)[0] || null;
+  const tagKey = contact.dataSource === 'center' ? contact.relationshipStage === 'cold' ? null : contact.relationshipStage ?? null : parseTags(contact.tags)[0] || null;
   const tagMeta = tagKey ? CRM_STAGES.find(s => s.key === tagKey) : null;
 
   return (
-    <div className="px-1 pb-2">
+    <fieldset disabled={!canEdit} className="px-1 pb-2 border-0 m-0 min-w-0">
       <SectionTitle>身份信息</SectionTitle>
-      <FieldRow label="名"><EditText value={contact.firstName} onSave={v => onSaveField("firstName", v)} /></FieldRow>
-      <FieldRow label="姓"><EditText value={contact.lastName} onSave={v => onSaveField("lastName", v)} /></FieldRow>
-      <FieldRow label="职位"><EditText value={contact.title} onSave={v => onSaveField("title", v)} placeholder="如 Purchasing Manager" /></FieldRow>
+      <FieldRow label="名"><EditText readOnly={!allowed("firstName")} value={contact.firstName} onSave={v => onSaveField("firstName", v)} /></FieldRow>
+      <FieldRow label="姓"><EditText readOnly={!allowed("lastName")} value={contact.lastName} onSave={v => onSaveField("lastName", v)} /></FieldRow>
+      <FieldRow label="职位 / Title"><EditText readOnly={!allowed("title")} value={contact.title} onSave={v => onSaveField("title", v)} placeholder="如 Purchasing Manager" /></FieldRow>
 
       <SectionTitle>联系方式</SectionTitle>
-      <FieldRow label="邮箱"><EditText value={contact.email} onSave={v => onSaveField("email", v)} /></FieldRow>
-      <FieldRow label="电话"><EditText value={contact.phone} onSave={v => onSaveField("phone", v)} placeholder="含国家码" /></FieldRow>
-      <FieldRow label="LinkedIn"><EditText value={contact.linkedinUrl} onSave={v => onSaveField("linkedinUrl", v)} placeholder="linkedin.com/in/..." /></FieldRow>
-      <FieldRow label="国家"><EditSelect value={contact.country} onSave={v => onSaveField("country", v)} allowClear options={COUNTRIES.map(c => ({ value: c.code, label: `${c.code} ${c.label}` }))} /></FieldRow>
+      <FieldRow label="邮箱"><EditText readOnly={!allowed("email")} value={contact.email} onSave={v => onSaveField("email", v)} /></FieldRow>
+      <FieldRow label="电话"><EditText readOnly={!allowed("phone")} value={contact.phone} onSave={v => onSaveField("phone", v)} placeholder="含国家码" /></FieldRow>
+      <FieldRow label="WhatsApp"><EditText readOnly={!allowed("whatsapp")} value={contact.whatsapp ?? null} onSave={v => onSaveField("whatsapp", v)} placeholder="含国家码" /></FieldRow>
+      <FieldRow label="LinkedIn"><EditText readOnly={!allowed("linkedinUrl")} value={contact.linkedinUrl} onSave={v => onSaveField("linkedinUrl", v)} placeholder="linkedin.com/in/..." /></FieldRow>
       <FieldRow label="语言">
-        <EditSelect value={(contact as unknown as Record<string, string>).language || null} onSave={v => onSaveField("language", v)} allowClear
+        <EditSelect readOnly={!allowed("language")} value={(contact as unknown as Record<string, string>).language || null} onSave={v => onSaveField("language", v)} allowClear
           options={[
             { value: "ES", label: "ES 西班牙语" },
             { value: "PT", label: "PT 葡萄牙语" },
@@ -202,39 +223,44 @@ function InfoTab({ contact, onSaveField }: {
       </FieldRow>
 
       <SectionTitle>客户与跟进</SectionTitle>
+      <FieldRow label="发送阶段">
+        <EditSelect readOnly={!allowed("stage")} value={contact.stage} onSave={v => onSaveField("stage", v)}
+          allowClear options={Object.entries(STAGE_META).map(([k, m]) => ({ value: k, label: m.label }))}
+          readNode={stageMeta ? <Tag color={stageMeta.color} className="text-[10px] my-0 leading-none py-0.5">{stageMeta.label}</Tag> : undefined} />
+      </FieldRow>
+      <FieldRow label="负责人">{contact.dataSource === 'center' ? <span className="text-xs">{contact.assignee || '-'}</span> : <EditText readOnly={!allowed("assignee")} value={contact.assignee} onSave={v => onSaveField("assignee", v)} />}</FieldRow>
+      <FieldRow label="联系状态">
+        <EditSelect readOnly={!allowed("status")} value={contact.status || null}
+          onSave={v => onSaveField("status", v || null)}
+          allowClear options={Object.entries(STATUS_META).filter(([key]) => !canEditField || ['reached', 'replied'].includes(key)).map(([k, m]) => ({ value: k, label: m.label }))}
+          readNode={statusMeta ? <Tag color={statusMeta.color} className="text-[10px] my-0 leading-none py-0.5">{statusMeta.label}</Tag> : undefined} />
+      </FieldRow>
+      <FieldRow label={contact.dataSource === 'center' ? '客户阶段' : '标签'}>
+        <EditSelect readOnly={!allowed(contact.dataSource === 'center' ? 'relationshipStage' : 'tags')} value={tagKey} onSave={v => onSaveField(contact.dataSource === 'center' ? "relationshipStage" : "tags", contact.dataSource === 'center' ? v ?? "reaching" : v ? JSON.stringify([v]) : null)}
+          allowClear options={CRM_STAGES.map(s => ({ value: s.key, label: s.label }))}
+          disabled={contact.dataSource === 'center' ? !['contacted', 'replied'].includes(contact.touchStatus ?? '') : contact.status !== "reached"}
+          readNode={tagMeta ? <Tag color={tagMeta.color} className="text-[10px] my-0 leading-none py-0.5">{tagMeta.label}</Tag> : undefined} />
+      </FieldRow>
+
+      <SectionTitle>公司资料</SectionTitle>
+      <FieldRow label="国家"><EditSelect readOnly={contact.dataSource === 'center' || !allowed("country")} value={contact.country} onSave={v => onSaveField("country", v)} allowClear options={COUNTRIES.map(c => ({ value: c.code, label: `${c.code} ${c.label}` }))} /></FieldRow>
       <FieldRow label="客户类型">
-        <EditSelect value={contact.clientType} onSave={v => onSaveField("clientType", v)}
+        <EditSelect readOnly={contact.dataSource === "center" || !allowed("clientType")} value={contact.clientType} onSave={v => onSaveField("clientType", v)}
           allowClear options={[
             { value: "agent", label: "代理" },
             { value: "direct", label: "直客" },
           ]}
           readNode={clientMeta ? <Tag color={clientMeta.color} className="text-[10px] my-0 leading-none py-0.5">{clientMeta.label}</Tag> : undefined} />
       </FieldRow>
-      <FieldRow label="阶段">
-        <EditSelect value={contact.stage} onSave={v => onSaveField("stage", v)}
-          allowClear options={Object.entries(STAGE_META).map(([k, m]) => ({ value: k, label: m.label }))}
-          readNode={stageMeta ? <Tag color={stageMeta.color} className="text-[10px] my-0 leading-none py-0.5">{stageMeta.label}</Tag> : undefined} />
-      </FieldRow>
-      <FieldRow label="负责人"><EditText value={contact.assignee} onSave={v => onSaveField("assignee", v)} /></FieldRow>
-      <FieldRow label="状态">
-        <EditSelect value={contact.status || null}
-          onSave={v => onSaveField("status", v || null)}
-          allowClear options={Object.entries(STATUS_META).map(([k, m]) => ({ value: k, label: m.label }))}
-          readNode={statusMeta ? <Tag color={statusMeta.color} className="text-[10px] my-0 leading-none py-0.5">{statusMeta.label}</Tag> : undefined} />
-      </FieldRow>
-      <FieldRow label="标签">
-        <EditSelect value={tagKey} onSave={v => onSaveField("tags", v ? JSON.stringify([v]) : null)}
-          allowClear options={CRM_STAGES.map(s => ({ value: s.key, label: s.label }))}
-          disabled={contact.status !== "reached"}
-          readNode={tagMeta ? <Tag color={tagMeta.color} className="text-[10px] my-0 leading-none py-0.5">{tagMeta.label}</Tag> : undefined} />
-      </FieldRow>
-
+      <FieldRow label="公司名">{contact.dataSource === 'center' ? <span className="text-xs">{contact.companyName || '-'}</span> : <EditText readOnly={!allowed("companyName")} value={contact.companyName} onSave={v => onSaveField("companyName", v)} placeholder="公司名称" />}</FieldRow>
+      {contact.dataSource === 'center' && <><FieldRow label="业务类型"><span className="text-xs">{contact.businessType || '-'}</span></FieldRow><FieldRow label="网站"><span className="text-xs">{contact.website || '-'}</span></FieldRow></>}
+      <SectionTitle>线索来源</SectionTitle>
+      {contact.dataSource === 'center' ? <><FieldRow label="一级来源"><span className="text-xs">{contact.sourceLevel1 || '-'}</span></FieldRow><FieldRow label="二级来源"><span className="text-xs">{contact.sourceLevel2 || '-'}</span></FieldRow></> : <FieldRow label="来源"><span className="text-xs text-gray-800 truncate">{contact.source || '-'}</span></FieldRow>}
       <SectionTitle>系统信息</SectionTitle>
-      <FieldRow label="公司"><EditText value={contact.companyName} onSave={v => onSaveField("companyName", v)} placeholder="公司名称" /></FieldRow>
-      <FieldRow label="来源"><span className="text-xs text-gray-800 truncate">{contact.source || "-"}</span></FieldRow>
+      {contact.dataSource === 'center' && <FieldRow label="导入批次来源"><span className="text-xs">{contact.source || '-'}</span></FieldRow>}
       <FieldRow label="创建时间"><span className="text-xs text-gray-500">{fmt(contact.createdAt)}</span></FieldRow>
       <FieldRow label="更新时间"><span className="text-xs text-gray-500">{fmt(contact.updatedAt)}</span></FieldRow>
-    </div>
+    </fieldset>
   );
 }
 
@@ -297,6 +323,16 @@ function ContactInteractions({ contactId }: { contactId: number }) {
 }
 
 /* ---------- 主抽屉 ---------- */
+export const CONTACT_DETAIL_WIDTH = 500;
+/** Shared original drawer layout; data and commands remain owned by each caller. */
+export function ContactDetailLayout({ children, ...props }: DrawerProps) {
+  return <Drawer width={CONTACT_DETAIL_WIDTH} title={null} closable={false}
+    styles={{ body: { padding: '24px', height: '100%', overflow: 'hidden' } }}
+    rootStyle={{ top: 'var(--app-titlebar-height)' }} {...props}>
+    <div className="flex flex-col h-full">{children}</div>
+  </Drawer>;
+}
+
 export function ContactDetailDrawer({ contact, open, onClose, onUpdated }: {
   contact: Contact | null;
   open: boolean;
@@ -340,16 +376,10 @@ export function ContactDetailDrawer({ contact, open, onClose, onUpdated }: {
   const fullName = [contact.firstName, contact.lastName].filter(Boolean).join(" ") || "未命名联系人";
 
   return (
-    <Drawer
+    <ContactDetailLayout
       open={open}
       onClose={onClose}
-      width={500}
-      title={null}
-      closable={false}
-      rootStyle={{ top: 36 }}
-      styles={{ body: { padding: "24px", height: "100%", overflow: "hidden" } }}
     >
-      <div className="flex flex-col h-full">
         {/* 头部 — 固定不滚动 */}
         <div className="flex-shrink-0 pb-3 mb-2 border-b border-gray-100">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -404,7 +434,6 @@ export function ContactDetailDrawer({ contact, open, onClose, onUpdated }: {
             { key: "history", label: "往来记录", children: <ContactInteractions contactId={contact.id} /> },
           ]}
         />
-      </div>
-    </Drawer>
+    </ContactDetailLayout>
   );
 }

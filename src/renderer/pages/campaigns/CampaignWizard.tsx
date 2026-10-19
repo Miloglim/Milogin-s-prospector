@@ -1,3 +1,4 @@
+import type { CenterContactRef } from "../../../shared/online-crm";
 import { invalidateDomain } from "../../lib/cacheDeps";
 import { useEffect, useState } from "react";
 import { Button, Card, Input, InputNumber, Modal, Segmented, Select, Steps, Switch, Tag, message } from "antd";
@@ -54,7 +55,7 @@ interface DetailResult {
   success: boolean; error?: string;
   data?: {
     campaign: { id: string; name: string; status: string; autoSend: boolean } | null;
-    targets: Array<{ contactId: number }>;
+    targets: Array<{ contactId: number; centerReference?: CenterContactRef }>;
     raw: {
       touches: Array<{ stage: string; delayDays: number; mode?: TouchMode; templateId?: number; content?: { subject: string; body: string; cc?: string } }>;
       accountPolicy: "rotate" | "fixed";
@@ -75,6 +76,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
   const [step, setStep] = useState(0);
   const [presetNote, setPresetNote] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [centerRefs, setCenterRefs] = useState<CenterContactRef[]>([]);
   const [mode, setMode] = useState<TouchMode>("system");
   const [name, setName] = useState("");
   const [rounds, setRounds] = useState<RoundDraft[]>([newRound("initial", 0, "system"), newRound("followup1", 5, "system")]);
@@ -110,6 +112,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
       const { raw, campaign, targets } = r.data;
       setName(campaign?.name ?? "");
       setSelectedIds(targets.map(t => t.contactId));
+      setCenterRefs(targets.flatMap(t => t.centerReference ? [t.centerReference] : []));
       setRounds(raw.touches.map(t => ({
         stage: t.stage, delayDays: t.delayDays ?? 0,
         mode: t.mode ?? "system",
@@ -191,8 +194,8 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
 
   // step5 资格预览（资格闸已解除：已触达/已回复照常入队，只报计数提示发不发由用户定）
   const { data: previewData } = useQuery({
-    queryKey: ["campaign", "preview", draftId ?? "new", selectedIds.length],
-    queryFn: () => window.api.invoke("send:campaignPreview", selectedIds) as Promise<{ success: boolean; data?: PreviewData }>,
+    queryKey: ["campaign", "preview", draftId ?? "new", selectedIds, centerRefs],
+    queryFn: () => window.api.invoke("send:campaignPreview", { contactIds: selectedIds, ...(!draftId || centerRefs.length ? { centerContactRefs: centerRefs } : {}) }) as Promise<{ success: boolean; data?: PreviewData }>,
     enabled: step === 4 && selectedIds.length > 0,
   });
   const preview = previewData?.success ? previewData.data : null;
@@ -206,6 +209,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
       const payload = {
         name: name.trim(),
         contactIds: selectedIds,
+        ...(!draftId || centerRefs.length ? { centerContactRefs: centerRefs } : {}),
         touches: buildTouches(),
         autoSend, sendMode,
         accountPolicy: { mode: acctMode, ...(acctMode === "fixed" ? { accountIds: acctIds } : {}) },
@@ -261,10 +265,10 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
             <div className="flex items-center gap-2 text-[12px] text-gray-500 bg-teal-50/60 border border-teal-100 rounded px-3 py-1.5">
               <span>{presetNote}——已为你预选，模式与计划在后面几步确认。</span>
               <Button size="small" type="text" className="!text-[11px] !px-1"
-                onClick={() => { setSelectedIds([]); setPresetNote(null); }}>清空重选</Button>
+                onClick={() => { setSelectedIds([]); setCenterRefs([]); setPresetNote(null); }}>清空重选</Button>
             </div>
           )}
-          <ContactPicker value={selectedIds} onChange={setSelectedIds} onNext={() => setStep(1)} />
+          <ContactPicker resolvePreset={!draftId || centerRefs.length > 0} value={selectedIds} onChange={(ids, refs) => { setSelectedIds(ids); setCenterRefs(refs); }} onNext={() => setStep(1)} />
         </>
       )}
 

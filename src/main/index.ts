@@ -1,38 +1,36 @@
 import { app, BrowserWindow, Menu, ipcMain, Tray, nativeImage, dialog, session, shell } from "electron";
 import * as path from "path";
 import { initDatabase, runMigrations, saveDatabase, closeDatabase } from "./db";
-import { migrateBodiesOut } from "./services/inbox.service";
-import { migrateAccountPasswords } from "./services/account.service";
 import { Log } from "./logger";
-import { registerContactIPC } from "./transport/contact.ipc";
-import { registerCompanyIPC } from "./transport/company.ipc";
-import { registerSendIPC } from "./transport/send.ipc";
-import { claimInterruptedBatch, resumeInterruptedBatch } from "./services/send.service";
-import { registerInboxIPC } from "./transport/inbox.ipc";
-import { registerCrmIPC } from "./transport/crm.ipc";
-import { registerTemplateIPC } from "./transport/template.ipc";
-import { registerAccountIPC } from "./transport/account.ipc";
-import { registerExportIPC } from "./transport/export.ipc";
-import { registerDashboardIPC } from "./transport/dashboard.ipc";
-import { registerHistoryIPC } from "./transport/history.ipc";
-import { registerBounceIPC } from "./transport/bounce.ipc";
-import { registerAiIPC } from "./transport/ai.ipc";
-import { registerAgentIPC } from "./transport/agent.ipc";
-import { registerRatesIPC } from "./transport/rates.ipc";
-import { registerRateUpdateIPC } from "./transport/rate-update.ipc";
-import { registerDevLetterIPC } from "./transport/dev-letter.ipc";
-import { registerKbIPC } from "./transport/kb.ipc";
-import { registerSystemIPC } from "./transport/system.ipc";
-import { registerSearchIPC } from "./transport/search.ipc";
-import { backfillLocalSearchBodies } from "./services/search.service";
+import { registerOnlineCrmIPC, closeOnlineCrmSession, getOnlineIdentity, isOnlineConnection, onOnlineIdentityChanged, configureOnlineLocalScope, loginDevelopmentIdentity, startContactMailDataflow } from "./transport/online-crm.ipc";
+import { developmentLogin } from './adapters/developer-login.adapter';
 import { registerUpdateIPC } from "./transport/update.ipc";
-import { dailyBackup } from "./services/backup.service";
+import { registerSystemRestartIPC } from "./transport/system.ipc";
 import { initUpdater, cleanupUpdater } from "./updater";
-import { getResourcesRoot, loadConfig } from "./config";
+import { APP_ROOT, getResourcesRoot, loadConfig, selectAccountRoot } from "./config";
+import { DesktopLocalScope, developerProfileRoot, accountProfileRoot } from "./adapters/desktop-local-scope.adapter";
+import { registerLockedLocalIPC, registerGuardedLocalIPC } from "./transport/desktop-local.ipc";
+import { EVENTS } from "./events";
+
+const developerRoot = developerProfileRoot(process.env.PROSPECTOR_DEV_PROFILE, app.isPackaged);
+// APP_ROOT already reads the environment at module evaluation; Electron's profile must
+// be selected before its lock/session/auth stores are opened as well.
+if (developerRoot) app.setPath("userData", developerRoot);
+let localScope = new DesktopLocalScope(APP_ROOT, !!developerRoot, getOnlineIdentity, isOnlineConnection);
+let normalAccountSelected = false;
+let localInitializationStarted = false;
+let localInitialized = false;
+let identityRestarting = false;
+let suspendLocalNetworkWork: () => void = () => {};
+const LOCAL_BACKUP_START_MS = 5 * 60_000;
+const LOCAL_BACKUP_INTERVAL_MS = 24 * 60 * 60_000;
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let trayRestartPending = false;
+let restartConfirmation: ((confirmed: boolean) => void) | null = null;
+let sessionIpcRegistered = false;
 
 // ── P0-5 崩溃兜底：主进程不再静默消失 ──────────────────────────
 // 错误一律落日志；对话框节流 60s 防异常风暴刷屏；进程保持存活（群发批次不受牵连）
@@ -111,7 +109,7 @@ function createWindow() {
   mainWindow.on("close", (e) => {
     if (isQuitting) return;
     try {
-      const cfg = loadConfig();
+      const cfg = localInitialized ? loadConfig() : { general: { closeAction: "tray" } };
       const closeAction = cfg.general?.closeAction || "tray";
       if (closeAction === "tray" && tray) {
         e.preventDefault();
@@ -139,10 +137,43 @@ function createWindow() {
     mainWindow?.webContents.reload();
   });
 
+  // 批处理启动、托盘唤醒和单实例复用都可能让窗口已创建但仍处于隐藏态；
+  // 等首屏渲染完成后显式显示，避免只剩后台进程而用户看不到窗口。
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+    mainWindow?.focus();
+  });
+
   if (process.env.NODE_ENV === "development" || process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL || "http://localhost:5173");
   } else {
     mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+  }
+}
+
+async function restartApplication(): Promise<void> {
+  if (trayRestartPending || isQuitting || identityRestarting) return;
+  trayRestartPending = true;
+  try {
+    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+    mainWindow.show();
+    mainWindow.focus();
+    const confirmed = await new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => { restartConfirmation = null; resolve(false); }, 30_000);
+      restartConfirmation = (value) => { clearTimeout(timeout); restartConfirmation = null; resolve(value); };
+      mainWindow?.webContents.send(EVENTS.APP_RESTART_REQUEST);
+    });
+    if (!confirmed || isQuitting || identityRestarting) return;
+    Log.info("app.restart", "用户从托盘重新启动应用");
+    app.relaunch();
+    identityRestarting = true;
+    isQuitting = true;
+    // Normal quit runs the existing session/SQLite/updater cleanup; never hide to tray.
+    app.quit();
+  } catch (error) {
+    Log.error("app.restart", error instanceof Error ? error.message : String(error), error instanceof Error ? error.stack : undefined);
+  } finally {
+    trayRestartPending = false;
   }
 }
 
@@ -156,8 +187,7 @@ function createTray() {
   tray = new Tray(trayIcon);
   tray.setToolTip("Milogin's Prospector.");
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "显示窗口", click: () => { mainWindow?.show(); mainWindow?.focus(); } },
-    { type: "separator" },
+    { label: "重启应用", click: () => { void restartApplication(); } },
     { label: "退出", click: () => { isQuitting = true; app.quit(); } },
   ]));
   tray.on("double-click", () => { mainWindow?.show(); mainWindow?.focus(); });
@@ -165,7 +195,7 @@ function createTray() {
 
 async function confirmInterruptedBatch(batchId: string): Promise<void> {
   const win = mainWindow;
-  if (!win) return;
+  if (!win || !localScope.allowed() || !isOnlineConnection()) return;
   const answer = await dialog.showMessageBox(win, {
     type: "warning",
     title: "恢复中断的发送批次",
@@ -179,32 +209,61 @@ async function confirmInterruptedBatch(batchId: string): Promise<void> {
     Log.info("send.interrupted", "用户选择暂不恢复中断批次");
     return;
   }
+  if (!localScope.allowed() || !isOnlineConnection()) return;
+  const { resumeInterruptedBatch } = await import("./services/send.service");
+  if (!localScope.allowed() || !isOnlineConnection()) return;
   const result = resumeInterruptedBatch();
   if (result.success) Log.info("send.interrupted", `用户确认恢复中断批次: ${result.data.queued} 组待发`);
   else Log.warn("send.interrupted", `用户确认恢复失败: ${result.error}`);
 }
 
-function registerAllIPC() {
-  registerContactIPC();
-  registerCompanyIPC();
-  registerSendIPC();
-  registerInboxIPC();
-  registerCrmIPC();
-  registerTemplateIPC();
-  registerAccountIPC();
-  registerExportIPC();
-  registerDashboardIPC();
-  registerHistoryIPC();
-  registerBounceIPC();
-  registerAiIPC();
-  registerAgentIPC();
-  registerRatesIPC();
-  registerRateUpdateIPC();
-  registerDevLetterIPC();
-  registerKbIPC();
-  registerSystemIPC();
-  registerSearchIPC();
+async function registerAllIPC() {
+  // Do not load personal-service modules (including their .env readers) for the
+  // locked legacy profile. They are imported only for a verified bound profile.
+  const modules = await Promise.all([
+    import("./transport/contact.ipc"), import("./transport/company.ipc"),
+    import("./transport/send.ipc"), import("./transport/inbox.ipc"),
+    import("./transport/crm.ipc"), import("./transport/template.ipc"),
+    import("./transport/account.ipc"), import("./transport/export.ipc"),
+    import("./transport/dashboard.ipc"), import("./transport/history.ipc"),
+    import("./transport/bounce.ipc"), import("./transport/ai.ipc"),
+    import("./transport/agent.ipc"), import("./transport/rates.ipc"),
+    import("./transport/rate-update.ipc"), import("./transport/dev-letter.ipc"),
+    import("./transport/kb.ipc"), import("./transport/system.ipc"),
+    import("./transport/search.ipc"),
+  ]);
+  if (!localScope.allowed() || identityRestarting) return;
+  const inboxModule = modules.find(module => 'suspendLocalNetworkWork' in module);
+  const [{ stopAll }, backgroundTasks] = await Promise.all([
+    import('./services/agent.service'), import('./services/bg-task.service'),
+  ]);
+  if (!localScope.allowed() || identityRestarting) return;
+  backgroundTasks.setBgTaskNetworkAllowed(() => localScope.allowed() && isOnlineConnection());
+  if (inboxModule && 'suspendLocalNetworkWork' in inboxModule) {
+    const suspendMail = inboxModule.suspendLocalNetworkWork as () => void;
+    suspendLocalNetworkWork = () => { suspendMail(); stopAll(); backgroundTasks.cancelAll(); };
+  }
+  const registrars = modules.map(module => {
+    const registration = Object.entries(module).find(([name]) => name.startsWith("register"));
+    if (!registration || typeof registration[1] !== "function") throw new Error("本地 IPC 注册入口缺失");
+    if (registration[0] === 'registerInboxIPC' || registration[0] === 'registerSendIPC') {
+      return () => (registration[1] as (networkAllowed: () => boolean) => void)(() => localScope.allowed() && isOnlineConnection());
+    }
+    return registration[1] as () => void;
+  });
+  registerGuardedLocalIPC(localScope, registrars);
+
+  Log.info("ipc", "本地 IPC 通道已按账号资料归属注册");
+}
+
+function registerSessionIPC() {
+  if (sessionIpcRegistered) return;
+  sessionIpcRegistered = true;
+  registerOnlineCrmIPC();
+  // Version/updater liveness carry no customer/configuration/credential information.
   registerUpdateIPC();
+  registerLockedLocalIPC(app.getVersion(), () => localScope.failure());
+  registerSystemRestartIPC(confirmed => restartConfirmation?.(confirmed));
 
   // 窗口控制
   ipcMain.on("window:minimize", () => mainWindow?.minimize());
@@ -215,6 +274,62 @@ function registerAllIPC() {
   ipcMain.on("window:close", () => mainWindow?.close());
 
   Log.info("ipc", "所有 IPC 通道注册完成");
+}
+
+async function activateLocalProfile(): Promise<void> {
+  if (!localScope.allowed() || localInitializationStarted) return;
+  localInitializationStarted = true;
+  const [{ migrateBodiesOut }, { migrateAccountPasswords }] = await Promise.all([
+    import("./services/inbox.service"), import("./services/account.service"),
+  ]);
+  if (!localScope.allowed() || identityRestarting) return;
+  await initDatabase();
+  if (!localScope.allowed() || identityRestarting) return;
+  runMigrations();
+  await migrateBodiesOut();
+  if (!localScope.allowed() || identityRestarting) return;
+  migrateAccountPasswords();
+  await startContactMailDataflow(()=>{if(localScope.allowed()&&mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send('inbox:newMail',{count:0});});
+  await registerAllIPC();
+  if (!localScope.allowed() || identityRestarting) return;
+  localInitialized = true;
+  const [{ backfillLocalSearchBodies }, { claimInterruptedBatch }, { dailyBackup }] = await Promise.all([
+    import("./services/search.service"), import("./services/send.service"), import("./services/backup.service"),
+  ]);
+  if (!localScope.allowed() || identityRestarting) return;
+  void backfillLocalSearchBodies();
+  const interruptedBatch = claimInterruptedBatch();
+  if (interruptedBatch && isOnlineConnection()) void confirmInterruptedBatch(interruptedBatch.batchId);
+  setTimeout(() => { if (localScope.allowed()) dailyBackup(); }, LOCAL_BACKUP_START_MS);
+  setInterval(() => { if (localScope.allowed()) dailyBackup(); }, LOCAL_BACKUP_INTERVAL_MS);
+  Log.info("local.scope", "隔离资料已绑定当前中心账号");
+}
+
+function updateLocalIdentity(): void {
+  if (localInitialized && !isOnlineConnection()) suspendLocalNetworkWork();
+  const identity = getOnlineIdentity();
+  if (identity && !normalAccountSelected) {
+    const root = accountProfileRoot(developerRoot || app.getPath('userData'), identity);
+    selectAccountRoot(root);
+    localScope = new DesktopLocalScope(root, true, getOnlineIdentity, isOnlineConnection);
+    normalAccountSelected = true;
+  }
+  localScope.setIdentity(getOnlineIdentity());
+  if (localInitializationStarted && !localScope.allowed()) {
+    // Existing services lack a complete stop-all contract (in-flight IMAP/model/SMTP).
+    // Terminating this process is the R1 boundary: no previous-account work survives
+    // a logout/revocation/switch, and a new account cannot reuse this profile.
+    identityRestarting = true;
+    Log.warn("local.scope", "身份已变化，本地任务停止并重启；未保存草稿将丢失");
+    app.relaunch();
+    app.exit(0);
+    return;
+  }
+  void activateLocalProfile().catch(error => {
+    Log.error("local.scope", `隔离资料初始化失败: ${error instanceof Error ? error.message : String(error)}`);
+    // Never leave a partially registered local runtime behind.
+    app.exit(1);
+  });
 }
 
 // 单实例锁 — 防止重复启动多个进程
@@ -232,25 +347,19 @@ if (!gotLock) {
   });
 }
 
-app.whenReady().then(async () => {
+if (gotLock) app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
-  await initDatabase();
-  runMigrations();
-  await migrateBodiesOut(); // 存量正文出库迁移（幂等，首次启动把库从正文撑大的状态缩回几 MB）
-  migrateAccountPasswords(); // P0-1: 旧密钥密文一次性重封装为 safeStorage 主密钥（幂等）
-  registerAllIPC();
-  void backfillLocalSearchBodies();
-  // 上次退出/崩溃时批次在跑：只认领标记，等待用户确认，绝不自动外发。
-  // 必须在 registerAllIPC 之后：saveConfigFn/sendBccFn 等引擎注入在此之前完成。
-  const interruptedBatch = claimInterruptedBatch();
+  configureOnlineLocalScope(() => localInitialized && localScope.allowed());
+  registerSessionIPC();
+  onOnlineIdentityChanged(updateLocalIdentity);
+  updateLocalIdentity();
   createWindow();
-  if (interruptedBatch) void confirmInterruptedBatch(interruptedBatch.batchId);
   createTray();
   initUpdater(mainWindow!);
+  if(developerRoot)void developmentLogin(app.isPackaged,developerRoot).then(async input=>{
+    if(input){const result=await loginDevelopmentIdentity(input);if(!result.ok)Log.warn('dev.login',result.error.message);}
+  }).catch(()=>Log.error('dev.login','开发账号自动登录失败，请先启动受控本机测试中心；未绕过鉴权'));
 
-  // Daily DB backup: first at +5min after launch, then every 24h (see backup.service.ts)
-  setTimeout(() => dailyBackup(), 5 * 60_000);
-  setInterval(() => dailyBackup(), 24 * 60 * 60_000);
 
   // 「行动建议」流已改为本地实时拼装 + 事件驱动热更新（suggestion-bus），无需启动批生成
 
@@ -260,9 +369,12 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  closeOnlineCrmSession();
   isQuitting = true;
-  saveDatabase();   // WAL checkpoint 收尾
-  closeDatabase();
+  if (localInitialized) {
+    saveDatabase();   // WAL checkpoint 收尾，仅当前账号已绑定的隔离库
+    closeDatabase();
+  }
   cleanupUpdater();
   Log.info("app", "正在退出...");
 });

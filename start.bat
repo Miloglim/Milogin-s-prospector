@@ -1,4 +1,5 @@
 @echo off
 set NODE_OPTIONS=
 cd /d "%~dp0"
-npm run dev
+call npm run dev
+if errorlevel 1 pause

@@ -67,7 +67,7 @@ function freshDb(): void {
       send_mode text DEFAULT 'individual' NOT NULL,
       created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL);
     CREATE TABLE send_campaign_targets (
-      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, campaign_id text NOT NULL, contact_id integer NOT NULL,
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, campaign_id text NOT NULL, contact_id integer NOT NULL, center_reference_json text,
       status text DEFAULT 'pending' NOT NULL, round integer DEFAULT 0 NOT NULL, next_touch_at text,
       last_sent_at text, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL);
   `);

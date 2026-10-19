@@ -78,8 +78,8 @@ export const TOOL_MANIFEST: ToolMeta[] = [
   },
   {
     name: "reminders_due", label: "查询到期提醒",
-    route: "到期/逾期跟进提醒（「今天该跟进谁」必查）；",
-    followUps: ["给第一位联系人记一条跟进", "逾期最久的那位最近有什么邮件往来"],
+    route: "到期/逾期跟进任务（中心模式为客户级任务，不能把taskId或customerId当联系人编号）；",
+    followUps: ["查看最早到期任务对应的客户联系人", "查一下这位客户最近的邮件往来"],
     spec: { sideEffect: "read", requiresApproval: false, budgetPerTurn: 4 },
   },
   {
@@ -127,7 +127,7 @@ export const TOOL_MANIFEST: ToolMeta[] = [
     name: "campaign_create", label: "创建发信任务",
     route: "创建发信任务（写，需确认）：对一批联系人按触点计划自动跟进——首信后隔 N 天自动发下一轮，"
       + "回复/退订/bounce 自动止损。用户从首页建议卡进来要「批量开发/自动跟进」时用：先 search_contacts 筛人，"
-      + "再把 id 传进来；已回复/已触达自动排除。内容=用户模板库对应阶段模板，支持无人值守；",
+      + "再把 id 传进来；已回复/已触达如实列出，由用户决定。中心联系人任务先保存草稿，由用户到发送中心启动。内容=用户模板库对应阶段模板，支持无人值守；",
     spec: { sideEffect: "write", requiresApproval: true, budgetPerTurn: 2 },
   },
   {
@@ -166,7 +166,7 @@ export const TOOL_MANIFEST: ToolMeta[] = [
   {
     name: "import_contacts", label: "导入联系人",
     route: "批量导入客户信息入库（写，需确认；用户粘贴任意格式名单/表格/签名时，你负责整理成 contacts 数组再调用，"
-      + "绝不要反问「用 CSV 还是 JSON」这类格式问题——邮箱是唯一键，无效或已存在会跳过不覆盖）；",
+      + "邮箱和公司名称必填；按中心回执报告新增、重复、冲突和无效，不覆盖已有联系人，备注仅保留导入来源）；",
     spec: { sideEffect: "write", requiresApproval: true, budgetPerTurn: 1 },
   },
   {

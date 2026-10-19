@@ -31,6 +31,17 @@ vi.mock("../../src/main/config", async (importOriginal) => {
   return { ...actual, APP_ROOT: TMP, DB_PATH: path.join(TMP, "prospector.db") };
 });
 
+// 已授权 API 的测试替身复用内存 fixture；产品代码不再读取离线镜像。
+vi.mock("../../src/main/adapters/navigator-quotes.adapter", async () => {
+  const fixture = await import("../../src/main/services/rate-sync.service");
+  return { listQuotes: async (...a: Parameters<typeof fixture.listQuotes>) => fixture.listQuotes(...a),
+    countQuotes: async (...a: Parameters<typeof fixture.countQuotes>) => fixture.countQuotes(...a) };
+});
+vi.mock("../../src/main/adapters/navigator-auth.adapter", () => ({
+  requireNavigatorAuthorization: async () => ({ ok: true, data: { authenticated: true } }),
+  navigatorAuthorizationEpoch: () => 1, onNavigatorIdentityChanged: () => () => {}, navigatorHasAuthorization: () => true,
+}));
+
 const { parseEmailInquiry } = await import("../../src/main/services/agent/email-parse");
 const { lookupReplyRates, mirrorPolSet, podQueryWord, customerQuoteTable } =
   await import("../../src/main/services/agent/reply-rates");
@@ -77,13 +88,13 @@ const REAL_BODY = [
   "Volume", "1 x 40' HC", "Remarks", "PLEASE ADVISE:", "Freight Rate / Validity",
 ].join("\n\n");
 
-describe("回信自查台账价", () => {
+describe("回信自查台账价", async () => {
   beforeAll(async () => {
     if (!SQLLIB) SQLLIB = await initSqlJs({ locateFile: f => path.resolve(process.cwd(), "node_modules/sql.js/dist", f) });
   });
   beforeEach(() => { freshDb(); });
 
-  it("真实询价信：标签独行也能抽出双港 + LOCODE + 柜型 + 询价号", () => {
+  it("真实询价信：标签独行也能抽出双港 + LOCODE + 柜型 + 询价号", async () => {
     const p = parseEmailInquiry(REAL_BODY);
     expect(p.polCode).toBe("CNNBG");
     expect(p.podCode).toBe("BRSSZ");
@@ -93,21 +104,21 @@ describe("回信自查台账价", () => {
     expect(p.incoterm).toBe("FOB");
   });
 
-  it("LOCODE 只认国家码开头的真代码：Porto/CHINA/ITALY 这类五字母词不许冒充", () => {
+  it("LOCODE 只认国家码开头的真代码：Porto/CHINA/ITALY 这类五字母词不许冒充", async () => {
     expect(parseEmailInquiry("Port of Loading: Porto de Ningbo - CNNBG (Ningbo)").polCode).toBe("CNNBG");
     expect(parseEmailInquiry("POL: Shanghai, CHINA").polCode).toBeNull();
     expect(parseEmailInquiry("POL: Genoa - ITGOA (Italy)").polCode).toBe("ITGOA");
     expect(parseEmailInquiry("Destination: Santos - BRSSZ (Santos, SP)").podCode).toBe("BRSSZ");
   });
 
-  it("脏目的港段归一成查询词：\"Santos - BRSSZ\" → SANTOS；只有 LOCODE 也认", () => {
+  it("脏目的港段归一成查询词：\"Santos - BRSSZ\" → SANTOS；只有 LOCODE 也认", async () => {
     expect(podQueryWord(inq({ pod: "Santos - BRSSZ", podCode: "BRSSZ" }))).toBe("SANTOS");
     expect(podQueryWord(inq({ pod: "", podCode: "BRSSZ" }))).toBe("SANTOS");
     expect(podQueryWord(inq({ pod: "Santos (Santos, SP)" }))).toBe("SANTOS");
     expect(podQueryWord(inq({}))).toBeNull();
   });
 
-  it("起运港映射成集合：CNNBG→宁波（同群全部写法都算命中）；深圳系→含华南基本港；未知港→null（不硬过滤）", () => {
+  it("起运港映射成集合：CNNBG→宁波（同群全部写法都算命中）；深圳系→含华南基本港；未知港→null（不硬过滤）", async () => {
     const nb = mirrorPolSet(inq({ pol: "Porto de Ningbo", polCode: "CNNBG" }))!;
     expect(nb).toContain("宁波");
     expect(nb).toContain("CNNBG");            // 同群别名原文也收进来：台账 pol 列可能存原词
@@ -117,8 +128,8 @@ describe("回信自查台账价", () => {
     expect(mirrorPolSet(inq({}))).toBeNull();
   });
 
-  it("来信起运港对得上：对齐的行排最前（哪怕更贵），过期与错柜型不许进来", () => {
-    const r = lookupReplyRates(inq({ pod: "Santos - BRSSZ", podCode: "BRSSZ", pol: "Porto de Ningbo", polCode: "CNNBG", container: "40HQ" }))!;
+  it("来信起运港对得上：对齐的行排最前（哪怕更贵），过期与错柜型不许进来", async () => {
+    const r = (await lookupReplyRates(inq({ pod: "Santos - BRSSZ", podCode: "BRSSZ", pol: "Porto de Ningbo", polCode: "CNNBG", container: "40HQ" })))!;
     expect(r.pod).toBe("SANTOS");
     expect(r.polAligned).toBe(true);
     expect(r.rows[0]!.carrier).toBe("EMC");          // 宁波 8800 排在天津 8000 前面
@@ -129,16 +140,16 @@ describe("回信自查台账价", () => {
     expect(r.rows.every(x => x.price != null && x.price >= 8000)).toBe(true);
   });
 
-  it("起运港对不上：仍给全量当期价（按价升序），但 polAligned=false 让回信逐条写明起运港", () => {
-    const r = lookupReplyRates(inq({ pod: "Santos", podCode: "BRSSZ", pol: "Mombasa", polCode: "KEMBA", container: "40HQ" }))!;
+  it("起运港对不上：仍给全量当期价（按价升序），但 polAligned=false 让回信逐条写明起运港", async () => {
+    const r = (await lookupReplyRates(inq({ pod: "Santos", podCode: "BRSSZ", pol: "Mombasa", polCode: "KEMBA", container: "40HQ" })))!;
     expect(r.polAligned).toBe(false);
     expect(r.rows[0]!.carrier).toBe("CMA");          // 最便宜的先给
     expect(r.rows[0]!.price).toBe(8000);
     expect(r.rows.length).toBeGreaterThanOrEqual(4);
   });
 
-  it("抽不到目的港就不查（宁可不报价，不可报错价）", () => {
-    expect(lookupReplyRates(inq({ pol: "Ningbo", polCode: "CNNBG", container: "40HQ" }))).toBeNull();
+  it("抽不到目的港就不查（宁可不报价，不可报错价）", async () => {
+    expect(await lookupReplyRates(inq({ pol: "Ningbo", polCode: "CNNBG", container: "40HQ" }))).toBeNull();
   });
 });
 
@@ -147,11 +158,11 @@ describe("回信自查台账价", () => {
 // 用户口径：CARRIER 国际标准缩写、POL/POD 唯一且全大写、缺项 "/"、TT 恒 "/"、
 // VALIDITY/ETD 形如 "1-15 Sep" / "16 Sep"；内部溯源（来源群/发送人/入库时间）不进客户表。
 // ═══════════════════════════════════════════════════════════════════
-describe("客户报价表（英文十一列）", () => {
+describe("客户报价表（英文十一列）", async () => {
   const HEAD = "| CARRIER | POL | POD | 20GP | 40HQ/HC | 40NOR | FT | ETD | VALIDITY | TT | REMARK |";
   const cells = (line: string) => line.split("|").slice(1, -1).map(s => s.trim());
 
-  it("表头锁死十一列，TT 恒 /", () => {
+  it("表头锁死十一列，TT 恒 /", async () => {
     const t = customerQuoteTable([
       { carrier: "MSC", container: "40HQ", pol: "青岛", pod: "SANTOS", price: 8500, validFrom: "2026-09-08", validTo: "2026-09-14", note: null },
     ], "SANTOS");
@@ -162,7 +173,7 @@ describe("客户报价表（英文十一列）", () => {
     expect(row[9]).toBe("/");                       // TT：台账没有航程数据，恒 "/"
   });
 
-  it("同船司同起运港的多柜型合并成一行三列；缺的柜型用 / 占位", () => {
+  it("同船司同起运港的多柜型合并成一行三列；缺的柜型用 / 占位", async () => {
     const t = customerQuoteTable([
       { carrier: "CMA CGM", container: "40HQ", pol: "天津", pod: "SANTOS", price: 8000, validFrom: "2026-09-08", validTo: "2026-09-14", note: "特价合约舱位 2个高柜 13820801000" },
       { carrier: "CMA", container: "20GP", pol: "天津", pod: "SANTOS", price: 4200, validFrom: "2026-09-08", validTo: "2026-09-14", note: null, ft: "21天", etd: "2026-09-12" },
@@ -188,7 +199,7 @@ describe("客户报价表（英文十一列）", () => {
     expect(msk.slice(6, 10)).toEqual(["/", "/", "/", "/"]);   // 无目免/船期/有效期 → 全 "/"
   });
 
-  it("POD 用查询归一后的标准港名：航线级行与多港粘连行都收敛到目标港", () => {
+  it("POD 用查询归一后的标准港名：航线级行与多港粘连行都收敛到目标港", async () => {
     const t = customerQuoteTable([
       { carrier: "PIL", container: "40HQ", pol: "青岛", pod: "南美东", price: 8800, validFrom: null, validTo: null, note: null },
       { carrier: "ONE", container: "40HQ", pol: "青岛", pod: "SANTOS/ITAJAI", price: 9000, validFrom: null, validTo: null, note: null },
@@ -197,7 +208,7 @@ describe("客户报价表（英文十一列）", () => {
     expect(rows.map(r => r[2])).toEqual(["SANTOS", "SANTOS"]);
   });
 
-  it("起运港出英文大写港名（清洗器的十值口岸表）；「未注明」不是船司名 → /", () => {
+  it("起运港出英文大写港名（清洗器的十值口岸表）；「未注明」不是船司名 → /", async () => {
     const t = customerQuoteTable([
       { carrier: "EMC", container: "40HQ", pol: "宁波", pod: "SANTOS", price: 8800, validFrom: null, validTo: null, note: null },
       { carrier: "未注明", container: "40HQ", pol: "宁波", pod: "SANTOS", price: 9900, validFrom: null, validTo: null, note: null },
@@ -207,7 +218,7 @@ describe("客户报价表（英文十一列）", () => {
     expect(rows[1]![0]).toBe("/");
   });
 
-  it("日期/目免格式一律走清洗器：跨月有效期、自由文本船期、目免取天数", () => {
+  it("日期/目免格式一律走清洗器：跨月有效期、自由文本船期、目免取天数", async () => {
     const t = customerQuoteTable([
       { carrier: "CMA", container: "40HQ", pol: "天津", pod: "SANTOS", price: 8000, validFrom: "2026-08-28", validTo: "2026-09-03", note: null, ft: "21 combined", etd: "EVER FIT 027W，9.6晚开" },
     ], "SANTOS");
@@ -217,7 +228,7 @@ describe("客户报价表（英文十一列）", () => {
     expect(row[6]).toBe("21");
   });
 
-  it("空行不出表（回信里不塞一张只有表头的空表）", () => {
+  it("空行不出表（回信里不塞一张只有表头的空表）", async () => {
     expect(customerQuoteTable([], "SANTOS")).toBe("");
   });
 });

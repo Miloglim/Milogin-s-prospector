@@ -26,6 +26,8 @@ export interface PendingAction {
   target?: { label: string; href: string };
   /** 执行闭包：返回一句人话结果，作为会话内回执 */
   run: () => Promise<Result<string>>;
+  /** Captured session guard; intentionally excluded from the renderer card. */
+  active?: () => boolean;
 }
 
 /** 卡片渲染用的可序列化视图（不含闭包） */
@@ -77,8 +79,10 @@ export async function executeAction(id: string): Promise<Result<{ label: string;
   if (!hit) return failResult("这个动作已经过期（超过 30 分钟或应用重启），请重新问一次");
   store.delete(id);
   const a = hit.action;
+  if (a.active && !a.active()) return failResult("账号或权限已变化，请重新操作");
   try {
     const r = await a.run();
+    if (a.active && !a.active()) return failResult("账号或权限已变化，请重新操作");
     if (r.success) invalidateCache();   // 动作卡写入成功 → 读缓存全清（宁多勿漏，防读到改前数据）
     audit(a, r.success ? r.data : undefined, r.success ? undefined : r.error);
     if (!r.success) return failResult(r.error);
@@ -86,7 +90,7 @@ export async function executeAction(id: string): Promise<Result<{ label: string;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     Log.error("agent.action", `动作执行失败 ${a.toolName}/${a.label}`, msg);
-    audit(a, undefined, msg);
+    if (!a.active || a.active()) audit(a, undefined, msg);
     return failResult(msg);
   }
 }

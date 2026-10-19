@@ -99,6 +99,26 @@ describe("agent 动作卡注册表", () => {
     if (!again.success) expect(again.error).toContain("过期");
   });
 
+  it('rejects an old-session action without touching the replacement account audit', async () => {
+    const run = vi.fn(async () => okResult('queued'));
+    const card = registerAction({ ...base, active: () => false, run });
+    expect(Object.keys(card)).not.toContain('active');
+    expect((await executeAction(card.id)).success).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+    expect(h.db.select().from(schema.agentToolCalls).all()).toHaveLength(0);
+  });
+
+  it.each(['success', 'throw'])('does not audit a delayed %s receipt into a switched account', async outcome => {
+    let active = true;
+    const card = registerAction({ ...base, active: () => active, run: async () => {
+      active = false;
+      if (outcome === 'throw') throw Error('late failure');
+      return okResult('queued');
+    } });
+    expect((await executeAction(card.id)).success).toBe(false);
+    expect(h.db.select().from(schema.agentToolCalls).all()).toHaveLength(0);
+  });
+
   it("执行失败也留痕（error 落审计），且动作同样失效", async () => {
     const card = registerAction({ ...base, run: async () => failResult("公司已被删除") });
     const r = await executeAction(card.id);

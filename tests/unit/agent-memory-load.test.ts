@@ -11,6 +11,13 @@ import * as schema from "../../src/main/db/schema";
 
 type Driz = ReturnType<typeof drizzle<typeof schema>>;
 const h = { db: null as unknown as Driz };
+// History ordering/compression tests assume a current grant; dedicated privacy tests use the real adapter.
+vi.mock('../../src/main/adapters/navigator-context.adapter', () => ({
+  navigatorVisibleContext: (_id:string, rows:unknown[]) => rows,
+  navigatorContextRowVisible: () => true,
+  navigatorContextEpoch: () => 0,
+  navigatorContextCurrent: () => true,
+}));
 let chatOk = true;
 
 vi.mock("../../src/main/db", () => ({

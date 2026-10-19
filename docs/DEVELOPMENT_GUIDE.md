@@ -87,6 +87,8 @@ export function MyPage() {
 
 ## 开发环境搭建
 
+2026-10-13 起只保留单实例：双击 `start.bat` 或运行 `npm run dev`，使用 `scripts/dev-single.mjs`。页面服务自动选择可用端口，账号切换重启时继续运行；重复启动唤醒现有窗口。`dev:dual`、`dev:multi` 和 `start-multi.bat` 已删除；历史双开资料目录保留，不迁移、不删除账号数据。中心服务仍独立启动。
+
 ```bash
 npm install        # 安装依赖（postinstall 自动按 Electron 版本重编 better-sqlite3）
 npm run dev        # 开发模式（界面热更新；主进程改动需重启）

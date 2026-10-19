@@ -11,6 +11,7 @@ import { agentMessages, agentFacts } from "../../db/schema/agent";
 import { chat as llmChat } from "../ai.service";
 import { recallWorkBlock } from "./working-memory";
 import type { ChatMsg } from "./harness";
+import { navigatorVisibleContext, navigatorContextRowVisible, navigatorContextEpoch, navigatorContextCurrent } from '../../adapters/navigator-context.adapter';
 
 /** 每次请求携带的历史条数上限（system 除外），防上下文膨胀 */
 export const HISTORY_LIMIT = 30;
@@ -22,10 +23,11 @@ const FACT_RECALL_LIMIT = 12;
  * 摘要与事实都以「系统注入」前缀的 user 消息承载（与既有摘要口径一致）。
  */
 export async function loadConversation(convId: string): Promise<ChatMsg[]> {
-  const rows = getDb().select().from(agentMessages)
+  const epoch = navigatorContextEpoch();
+  const rows = navigatorVisibleContext(convId,getDb().select().from(agentMessages)
     .where(eq(agentMessages.conversationId, convId))
     .orderBy(asc(agentMessages.id)).all()
-    .filter(r => r.role === "user" || r.role === "assistant");   // error 卡片只给人看，不进模型
+    .filter(r => r.role === "user" || r.role === "assistant"));   // error 卡片只给人看，不进模型
   // 注入块：会话工作台（结构化真数据，主）在前 + 过渡期保留瘦事实（尚未迁移到工作台的工具）在后。
   // 工作台缺表时 recallWorkBlock 自带 try/catch 返回 []，不影响既有行为（见闭环规范 §5.3）。
   const inject = [...recallWorkBlock(convId), ...recallFactBlock(convId)];
@@ -36,6 +38,7 @@ export async function loadConversation(convId: string): Promise<ChatMsg[]> {
   const dropped = rows.slice(0, rows.length - HISTORY_LIMIT);
   const recent = rows.slice(-HISTORY_LIMIT).map(r => ({ role: r.role as "user" | "assistant", content: r.content }));
   const summary = await summarizeEarlier(dropped);
+  if (!navigatorContextCurrent(epoch)) return [];
   return [
     { role: "user", content: `【系统注入·此前对话摘要（${dropped.length} 条已压缩，不必再提）】\n${summary}` },
     ...inject,
@@ -45,10 +48,10 @@ export async function loadConversation(convId: string): Promise<ChatMsg[]> {
 
 /** 已查事实注入块：没有就不出声（短对话零噪音） */
 function recallFactBlock(convId: string): ChatMsg[] {
-  const facts = getDb().select().from(agentFacts)
+  const facts = navigatorVisibleContext(convId,getDb().select().from(agentFacts)
     .where(eq(agentFacts.conversationId, convId))
     .orderBy(desc(agentFacts.id)).limit(FACT_RECALL_LIMIT).all()
-    .reverse();   // 旧 → 新
+    .reverse());   // 旧 → 新
   if (!facts.length) return [];
   const lines = facts.map(f => `· ${f.toolName}：${f.fact}`).join("\n");
   return [{
@@ -59,6 +62,7 @@ function recallFactBlock(convId: string): ChatMsg[] {
 
 /** 写一条工具事实（记忆写入口；只记成功调用，失败不值得记） */
 export function rememberToolFact(conversationId: string, toolName: string, fact: string): void {
+  if (!navigatorContextRowVisible(conversationId,{toolName,fact,createdAt:new Date().toISOString()})) return;
   const text = fact.trim().slice(0, 120);
   if (!text) return;
   try {

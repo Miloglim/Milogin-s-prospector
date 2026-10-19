@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, Statistic, Row, Col, Table, Tag, App as AntApp } from "antd";
+import { Alert, Card, Statistic, Row, Col, Table, Tag, App as AntApp } from "antd";
 import {
   UserOutlined, SendOutlined, MessageOutlined, WarningOutlined, DollarOutlined,
 } from "@ant-design/icons";
@@ -33,7 +33,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export function Dashboard() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => window.api.invoke("dashboard:stats") as Promise<{
       success: boolean; data?: DashboardStats; error?: string;
@@ -45,13 +45,14 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {(error || data?.success === false) && <Alert type="error" message={error?.message || data?.error || "统计暂不可用"} />}
       {/* 统计卡片 */}
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
             <Statistic
               title="联系人总数"
-              value={stats?.totalContacts || 0}
+              value={stats?.totalContacts ?? "—"}
               prefix={<UserOutlined />}
               loading={isLoading}
             />
@@ -135,7 +136,7 @@ interface ReminderContact {
 }
 
 function TodayTasks() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["crm", "reminders"],
     queryFn: () => window.api.invoke("crm:checkReminders") as Promise<{
       success: boolean; data?: { due: ReminderContact[]; overdue: ReminderContact[] };

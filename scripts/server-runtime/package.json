@@ -1,0 +1,11 @@
+{
+  "name": "milogin-center-runtime",
+  "private": true,
+  "version": "0.52.0-alpha.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "pg": "8.23.1"
+  }
+}

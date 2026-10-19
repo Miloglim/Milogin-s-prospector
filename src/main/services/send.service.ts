@@ -1,3 +1,5 @@
+import type { CenterContactRef } from '../../shared/online-crm';
+import { getCenterSendPort, resolveCenterSendContacts, type CenterSendContact } from './center-send.service';
 import * as crypto from "crypto";
 const nanoid = () => crypto.randomUUID().slice(0, 12);
 import { getDb } from "../db";
@@ -25,8 +27,9 @@ import { assembleEmail, type Lang, type ClientType, type Stage } from "./sentenc
 
 export interface SendItem {
   id: string; companyName: string; companyId: number;
+  centerScope?: string;
   campaignId?: string;    // 归属开发任务（队列运行情况挂在任务卡片背后；旧模式入队不带）
-  recipients: Array<{ contactId: number; email: string; name: string }>;
+  recipients: Array<{ contactId: number; email: string; name: string; centerReference?: CenterContactRef }>;
   accountId: number;
   subject: string;   // 渲染后的主题（小，提前渲染）
   tplBody: string;   // 正文模板快照（含变量/随机词，发送时组装）
@@ -265,8 +268,16 @@ export function setPushFn(fn: (c: string, d: unknown) => void) { pushFn = fn; }
 // 发送进度同时喂建议流热更新（debounce 在总线里，逐收件人推送不会导致逐次重算）
 function push(c: string, d: unknown) { try { pushFn?.(c, d); } catch { /* */ } if (c === EVENTS.SEND_PROGRESS) nudgeSuggestions(); }
 
-let sendBccFn: ((item: SendItem & { body: string }) => Promise<Result<{ messageId: string | null }>>) | null = null;
-export function setSendBccFn(fn: (item: SendItem & { body: string }) => Promise<Result<{ messageId: string | null }>>) { sendBccFn = fn; }
+export interface SendConfirmation { messageId: string | null; accepted?: string[]; rejected?: string[] }
+function acceptedRecipients(recipients: SendItem['recipients'], confirmation: SendConfirmation): SendItem['recipients'] {
+  if (confirmation.accepted === undefined) return recipients; // Legacy mocks and verified non-SMTP providers confirm the full request.
+  const accepted = new Set(confirmation.accepted.map(email => email.trim().toLowerCase()));
+  return recipients.filter(recipient => accepted.has(recipient.email.trim().toLowerCase()));
+}
+let sendBccFn: ((item: SendItem & { body: string }) => Promise<Result<SendConfirmation>>) | null = null;
+let sendNetworkAllowed: () => boolean = () => true;
+export function setSendNetworkAllowed(reader: () => boolean): void { sendNetworkAllowed = reader; }
+export function setSendBccFn(fn: (item: SendItem & { body: string }) => Promise<Result<SendConfirmation>>) { sendBccFn = fn; }
 
 export interface SendTestInput {
   to: string;
@@ -274,6 +285,7 @@ export interface SendTestInput {
   subject?: string;
   body?: string;
   contactId?: number;
+  centerReference?: CenterContactRef;
 }
 
 function renderTestText(template: string, values: Record<string, string>): string {
@@ -281,17 +293,25 @@ function renderTestText(template: string, values: Record<string, string>): strin
 }
 
 /** 测试或 CRM 快速发信：联系人查询和变量渲染属于发送用例，不能留在 IPC 层。 */
-export async function sendTestMessage(input: SendTestInput): Promise<Result<{ messageId: string | null }>> {
+export async function sendTestMessage(input: SendTestInput): Promise<Result<SendConfirmation>> {
   if (!input.to.trim()) return failResult("收件人必填");
   if (!Number.isInteger(input.accountId) || input.accountId <= 0) return failResult("发件账号必填");
   if (!sendBccFn) return failResult("发送适配器未配置");
-  if (input.contactId && loadConfig().test.dryRun) {
+  if ((input.centerReference || input.contactId) && loadConfig().test.dryRun) {
     Log.info("send.dryRun", `CRM 快速发信 → ${input.to}：测试模式，跳过真实发送`);
     return okResult({ messageId: null });
   }
 
   let firstName = "Test", lastName = "User", name = "Test User", company = "ACME Corp", companyId = 0, contactId = 0;
-  if (input.contactId) {
+  let center: CenterSendContact | undefined;
+  if (input.centerReference) {
+    const resolved = resolveCenterSendContacts([input.centerReference]);
+    if (!resolved.success) return failResult(resolved.error);
+    center = resolved.data[0]!;
+    firstName = center.firstName || ''; lastName = center.lastName || '';
+    name = [firstName, lastName].filter(Boolean).join(' ') || center.email;
+    contactId = center.id; company = center.companyName; companyId = center.companyId || 0;
+  } else if (input.contactId) {
     const contact = getDb().select().from(contacts).where(eq(contacts.id, input.contactId)).get();
     if (contact) {
       firstName = contact.firstName || firstName; lastName = contact.lastName || lastName;
@@ -304,11 +324,28 @@ export async function sendTestMessage(input: SendTestInput): Promise<Result<{ me
     }
   }
   const values = { firstName, lastName, company, email: input.to };
-  return sendBccFn({
-    id: "crm", companyName: company, companyId, recipients: [{ contactId, email: input.to, name }],
+  const item: SendItem & { body: string } = {
+    id: nanoid(), companyName: company, companyId, centerScope: center?.centerScope, recipients: [{ contactId, email: input.to, name, centerReference: center?.centerReference }],
     accountId: input.accountId, subject: renderTestText(input.subject || "Test", values),
     body: renderTestText(input.body || "Test email from Prospector.", values), status: "sending", tplBody: "", contactVars: { email: input.to },
-  });
+  };
+  const port = getCenterSendPort();
+  if (center) {
+    if (!sendNetworkAllowed()) return failResult('中心暂时不可用，无法发送分配线索邮件。');
+    if (!port) return failResult('中心联系人发送尚未就绪');
+    const authority = await port.authorize(item);
+    if (!authority.success) return failResult(authority.error);
+    if (port !== getCenterSendPort() || !sendNetworkAllowed()) return failResult('账号状态已变化，请重新发送');
+  }
+  const result = await sendBccFn(item);
+  if (result.success && center && port) {
+    if (!acceptedRecipients(item.recipients, result.data).length) return failResult("收件人未被邮件服务器接受，未记录发送成功");
+    try {
+      const recorded = await port.record({ ...item, messageId: result.data.messageId, occurredAt: new Date().toISOString(), advanceSendStage: false });
+      if (!recorded.success) { Log.error('send.centerReceipt', recorded.error); return failResult('邮件已提交，但记录未保存，请勿重复发送', recorded.error); }
+    } catch (err) { Log.error('send.centerReceipt', String(err)); return failResult('邮件已提交，但记录未保存，请勿重复发送', err); }
+  }
+  return result;
 }
 
 // ── 可中断延迟 ──
@@ -350,7 +387,17 @@ export function resumeDelay() {
 
 // ── 时间桶计算 ──
 
-export function getTimeBuckets(): Result<TimeBucket[]> {
+export function getTimeBuckets(legacy = false): Result<TimeBucket[]> {
+  const port = !legacy ? getCenterSendPort() : null;
+  if (port) {
+    const rows = port.contacts(); if (!rows.success) return failResult(rows.error);
+    const stats = port.stats(); if (!stats.success) return failResult(stats.error);
+    const never = new Set(stats.data.neverIds);
+    return okResult(BUCKET_DEFS.map(b => {
+      const selected = rows.data.filter(c => (c.status || (never.has(c.id) ? 'never' : 'reached')) === b.key);
+      return { key: b.key, label: b.label, description: b.desc, contacts: selected.map(c => ({ id: c.id })), count: selected.length };
+    }));
+  }
   const db = getDb();
   const allContacts = db.select().from(contacts).all();
 
@@ -394,7 +441,15 @@ const STAGE_BUCKET_DEFS = [
   { key: "f4", label: "F4", desc: "已发4封及以上" },
 ];
 
-export function getStageBuckets(): Result<TimeBucket[]> {
+export function getStageBuckets(legacy = false): Result<TimeBucket[]> {
+  const port = !legacy ? getCenterSendPort() : null;
+  if (port) {
+    const rows = port.contacts(); if (!rows.success) return failResult(rows.error);
+    return okResult(STAGE_BUCKET_DEFS.map(b => {
+      const selected = rows.data.filter(c => c.status !== 'reached' && (c.stage || 'cold') === b.key);
+      return { key: b.key, label: b.label, description: b.desc, contacts: selected.map(c => ({ id: c.id })), count: selected.length };
+    }));
+  }
   const db = getDb();
   const allContacts = db.select().from(contacts).all();
   const buckets = new Map<string, ContactRow[]>();
@@ -424,7 +479,15 @@ const SEND_TIME_BUCKET_DEFS = [
   { key: "older", label: "更早", desc: "超过10天前发送" },
 ];
 
-export function getSendTimeBuckets(): Result<TimeBucket[]> {
+export function getSendTimeBuckets(legacy = false): Result<TimeBucket[]> {
+  const port = !legacy ? getCenterSendPort() : null;
+  if (port) {
+    const stats = port.stats(); if (!stats.success) return failResult(stats.error);
+    return okResult(SEND_TIME_BUCKET_DEFS.map(b => {
+      const selected = stats.data.lastSent.filter(c => c.label === b.label);
+      return { key: b.key, label: b.label, description: b.desc, contacts: selected.map(c => ({ id: c.id })), count: selected.length };
+    }));
+  }
   const db = getDb();
   const allContacts = db.select().from(contacts).all();
   const now = Date.now();
@@ -493,6 +556,8 @@ function lastSentBucketLabel(lastAt: string): string {
 }
 
 export function getPickerStats(): Result<PickerStats> {
+  const port = getCenterSendPort();
+  if (port) return port.stats();
   const db = getDb();
   const neverRows = db.select({ id: contacts.id }).from(contacts)
     .where(dsql`(contacts.status IS NULL OR contacts.status = '') AND NOT EXISTS (
@@ -695,10 +760,17 @@ function pickTemplate(tpls: SendTemplate[], contact: ContactRow): SendTemplate {
 // ── 构建队列（按公司合并 BCC + 渲染模板，每组随机选模板）──
 
 /** 解析本次发信的联系人 id 集合：contactIds 直选优先（新选人表格路径），否则按分桶 key 展开（兼容旧路径） */
+function isCenterItem(item: Pick<SendItem, 'recipients' | 'centerScope'>): boolean {
+  return Boolean(item.centerScope || item.recipients.some(r => r.centerReference));
+}
+function persistedScope(value: string | null): string | undefined {
+  try { const data = JSON.parse(value || '{}'); return typeof data.__centerScope === 'string' ? data.__centerScope : undefined; }
+  catch { return undefined; /* Legacy invalid template variables carry no scope. */ }
+}
 function resolveSelectedIds(bucketKeys: string[], contactIds?: number[]): Set<number> {
   if (contactIds && contactIds.length > 0) return new Set(contactIds);
   const ids = new Set<number>();
-  for (const br of [getTimeBuckets(), getStageBuckets(), getSendTimeBuckets()]) {
+  for (const br of [getTimeBuckets(true), getStageBuckets(true), getSendTimeBuckets(true)]) {
     if (!br.success) continue;
     for (const b of br.data) {
       if (bucketKeys.includes(b.key)) for (const c of b.contacts) ids.add(c.id);
@@ -707,21 +779,23 @@ function resolveSelectedIds(bucketKeys: string[], contactIds?: number[]): Set<nu
   return ids;
 }
 
-export function buildQueue(bucketKeys: string[], templates?: SendTemplate[], contactIds?: number[]): Result<SendItem[]> {
+export function buildQueue(bucketKeys: string[], templates?: SendTemplate[], contactIds?: number[], centerRefs?: CenterContactRef[]): Result<SendItem[]> {
   // 三个维度（状态/阶段/发送时间）收集选中联系人 id —— 桶查询只返回 id，避免传输完整联系人；contactIds 直选时跳过桶展开
-  const selectedIds = resolveSelectedIds(bucketKeys, contactIds);
+  const centerRows = centerRefs !== undefined ? resolveCenterSendContacts(centerRefs) : undefined;
+  if (centerRows && !centerRows.success) return failResult(centerRows.error);
+  const selectedIds = centerRows?.success ? new Set(centerRows.data.map(c => c.id)) : resolveSelectedIds(bucketKeys, contactIds);
   if (selectedIds.size === 0) return failResult("没有选中的联系人");
 
   // 用 id 一次查完整联系人（供模板渲染）。已触达/已回复照常入队（界面计数提示，不在此拦截）
-  const selectedRows = getDb().select().from(contacts).where(inArray(contacts.id, [...selectedIds])).all();
-  const affinity = lastSentAccountMap([...selectedIds]);
+  const selectedRows = centerRows?.success ? centerRows.data : getDb().select().from(contacts).where(inArray(contacts.id, [...selectedIds])).all();
+  const affinity = centerRows ? getCenterSendPort()!.lastAccounts([...selectedIds]) : lastSentAccountMap([...selectedIds]);
   const { kept: validRows, removed: badEmails } = filterValidEmails(selectedRows);
   if (badEmails > 0) Log.warn("send.filter", `buildQueue 剔除 ${badEmails} 个无效邮箱联系人`);
   const valid = new Map(validRows.map(c => [c.id, c]));
 
   const companyGroups = new Map<string, ContactRow[]>();
   for (const c of valid.values()) {
-    const k = `c_${c.companyId || 0}`;
+    const k = `c_${c.companyId || 0}_${(c as Partial<CenterSendContact>).centerScope || "legacy"}`;
     if (!companyGroups.has(k)) companyGroups.set(k, []);
     companyGroups.get(k)!.push(c);
   }
@@ -730,7 +804,7 @@ export function buildQueue(bucketKeys: string[], templates?: SendTemplate[], con
   const companyMap = new Map<number, string>();
   const companyCountryMap = new Map<number, string>();
   if (valid.size > 0) {
-    const companyRows = getDb().select().from(companies).all();
+    const companyRows = centerRows?.success ? centerRows.data.map(c => ({ id: c.companyId || 0, name: c.companyName, country: c.country })) : getDb().select().from(companies).all();
     for (const comp of companyRows) {
       companyMap.set(comp.id, comp.name);
       if (comp.country) companyCountryMap.set(comp.id, comp.country);
@@ -784,8 +858,8 @@ export function buildQueue(bucketKeys: string[], templates?: SendTemplate[], con
 
         items.push({
           id: nanoid(), companyName: companyName || `#${first.companyId || "N/A"}`,
-          companyId: first.companyId || 0,
-          recipients: chunk.map(c => ({ contactId: c.id, email: c.email, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email })),
+          companyId: first.companyId || 0, centerScope: (first as Partial<CenterSendContact>).centerScope,
+          recipients: chunk.map(c => ({ contactId: c.id, centerReference: (c as Partial<CenterSendContact>).centerReference, email: c.email, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email })),
           subject: subj, tplBody: t.body, contactVars, tplName: t.name,
           country: companyCountryMap.get(first.companyId || 0) || first.country || undefined,
           language: first.language || undefined,
@@ -822,26 +896,28 @@ export function previewSentence(lang: string, clientType: string, stage: string)
 }
 
 /** 自适应模式：无模板时用组件句库组装（按公司 BCC 分组，每组随机组装） */
-export function buildAdaptiveQueue(bucketKeys: string[], contactIds?: number[]): Result<SendItem[]> {
-  const selectedIds = resolveSelectedIds(bucketKeys, contactIds);
+export function buildAdaptiveQueue(bucketKeys: string[], contactIds?: number[], centerRefs?: CenterContactRef[]): Result<SendItem[]> {
+  const centerRows = centerRefs !== undefined ? resolveCenterSendContacts(centerRefs) : undefined;
+  if (centerRows && !centerRows.success) return failResult(centerRows.error);
+  const selectedIds = centerRows?.success ? new Set(centerRows.data.map(c => c.id)) : resolveSelectedIds(bucketKeys, contactIds);
   if (selectedIds.size === 0) return failResult("没有选中的联系人");
 
   // 已触达/已回复照常入队（资格闸已解除，界面只做计数提示）
-  const selectedRows = getDb().select().from(contacts).where(inArray(contacts.id, [...selectedIds])).all();
-  const affinity = lastSentAccountMap([...selectedIds]);
+  const selectedRows = centerRows?.success ? centerRows.data : getDb().select().from(contacts).where(inArray(contacts.id, [...selectedIds])).all();
+  const affinity = centerRows ? getCenterSendPort()!.lastAccounts([...selectedIds]) : lastSentAccountMap([...selectedIds]);
   const { kept: validRows, removed: badEmails } = filterValidEmails(selectedRows);
   if (badEmails > 0) Log.warn("send.filter", `buildAdaptiveQueue 剔除 ${badEmails} 个无效邮箱联系人`);
 
   const companyGroups = new Map<string, ContactRow[]>();
   for (const c of validRows) {
-    const k = `c_${c.companyId || 0}`;
+    const k = `c_${c.companyId || 0}_${(c as Partial<CenterSendContact>).centerScope || "legacy"}`;
     if (!companyGroups.has(k)) companyGroups.set(k, []);
     companyGroups.get(k)!.push(c);
   }
 
   const companyMap = new Map<number, string>();
   const companyCountryMap = new Map<number, string>();
-  for (const comp of getDb().select().from(companies).all()) {
+  for (const comp of (centerRows?.success ? centerRows.data.map(c => ({ id: c.companyId || 0, name: c.companyName, country: c.country })) : getDb().select().from(companies).all())) {
     companyMap.set(comp.id, comp.name);
     if (comp.country) companyCountryMap.set(comp.id, comp.country);
   }
@@ -884,8 +960,8 @@ export function buildAdaptiveQueue(bucketKeys: string[], contactIds?: number[]):
         const chunk = bucket.rows.slice(s, s + groupSize);
         items.push({
           id: nanoid(), companyName: companyName || `#${first.companyId || "N/A"}`,
-          companyId: first.companyId || 0,
-          recipients: chunk.map(c => ({ contactId: c.id, email: c.email, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email })),
+          companyId: first.companyId || 0, centerScope: (first as Partial<CenterSendContact>).centerScope,
+          recipients: chunk.map(c => ({ contactId: c.id, centerReference: (c as Partial<CenterSendContact>).centerReference, email: c.email, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email })),
           subject: assembled.subject, tplBody: assembled.body,
           contactVars: { firstName: first.firstName, lastName: first.lastName, company: companyName, email: first.email, title: first.title, phone: first.phone },
           tplName: `预设句库·${l}·${ct}`,
@@ -1015,6 +1091,7 @@ function appendToBatch(items: SendItem[]): void {
  *  （不入本批、deferredContactIds 回传调用方顺延）；只有无历史的新组才进轮换池。
  *  返回 { batchId, queued(组), queuedCount(封), dropped(组), deferredContactIds(缓发联系人) }。 */
 export async function startQueue(items: SendItem[], autoStart = true, opts?: { accountIds?: number[]; append?: boolean }): Promise<Result<{ batchId: string; queued: number; queuedCount: number; dropped: number; deferredContactIds: number[] }>> {
+  if (!sendNetworkAllowed() && items.some(isCenterItem)) return failResult('中心暂时不可用，无法创建分配线索发送队列。');
   if (state.isRunning && !opts?.append) return failResult("已有发送任务运行中");
   if (items.length === 0) return failResult("没有待发送项");
 
@@ -1035,13 +1112,13 @@ export async function startQueue(items: SendItem[], autoStart = true, opts?: { a
   // ── 运行中追加（多任务同批次并行）：引擎忙时不再整批拒绝，新任务组合进当前批次 ──
   // 亲和分配/轮换照常（不换人发纪律不变）；DB 追加行（不清旧队）；主调度每轮合并 pendingAppends 并开新流。
   if (state.isRunning && opts?.append) {
-    const affinity = lastSentAccountMap(items.flatMap(it => it.recipients.map(r => r.contactId)));
+    const affinity = lastSentAccountMap(items.filter(it => !isCenterItem(it)).flatMap(it => it.recipients.map(r => r.contactId)));
     const activeIds = new Set(accounts.map(a => a.id));
     const circuitIds = circuitAccountIds();
     const fixedPool = (opts?.accountIds?.length ?? 0) > 0;
     const runItems: SendItem[] = [];
     for (const it of items) {
-      const p = pickAffinityAccount(it.recipients, affinity, activeIds, circuitIds, fixedPool);
+      const p = pickAffinityAccount(it.recipients, isCenterItem(it) ? (getCenterSendPort()?.lastAccounts(it.recipients.map(r => r.contactId)) ?? new Map()) : affinity, activeIds, circuitIds, fixedPool);
       if (p.deferred) continue; // 亲和缓发：不追加（任务侧触点回退会处理）
       runItems.push(p.accountId ? { ...it, accountId: p.accountId } : { ...it, accountId: 0 });
     }
@@ -1068,7 +1145,7 @@ export async function startQueue(items: SendItem[], autoStart = true, opts?: { a
           companyName: it.companyName, companyId: it.companyId,
           recipients: JSON.stringify(it.recipients),
           accountId: it.accountId, accountEmail: acctEmail,
-          subject: it.subject, tplBody: it.tplBody, contactVars: JSON.stringify(it.contactVars),
+          subject: it.subject, tplBody: it.tplBody, contactVars: JSON.stringify({ ...it.contactVars, __centerScope: it.centerScope }),
           tplName: it.tplName || null,
           country: it.country || null, language: it.language || null,
           cc: it.cc || null,
@@ -1100,14 +1177,14 @@ export async function startQueue(items: SendItem[], autoStart = true, opts?: { a
   // ② 亲和分配（不换人发）：历史账号熔断中的组缓发——不入本批、不占配额，
   //    deferredContactIds 回传（任务扫描器据此顺延次日）。指定账号池（fixed 策略）内不缓发：
   //    池外亲和账号视同无历史，交由轮换。
-  const affinity = lastSentAccountMap(items.flatMap(it => it.recipients.map(r => r.contactId)));
+  const affinity = lastSentAccountMap(items.filter(it => !isCenterItem(it)).flatMap(it => it.recipients.map(r => r.contactId)));
   const activeIds = new Set(accounts.map(a => a.id));
   const circuitIds = circuitAccountIds();
   const fixedPool = (opts?.accountIds?.length ?? 0) > 0;
   const deferredContactIds = new Set<number>();
   const runItems: SendItem[] = [];
   for (const it of items) {
-    const p = pickAffinityAccount(it.recipients, affinity, activeIds, circuitIds, fixedPool);
+    const p = pickAffinityAccount(it.recipients, isCenterItem(it) ? (getCenterSendPort()?.lastAccounts(it.recipients.map(r => r.contactId)) ?? new Map()) : affinity, activeIds, circuitIds, fixedPool);
     if (p.deferred) {
       for (const r of it.recipients) deferredContactIds.add(r.contactId);
       continue;
@@ -1124,9 +1201,12 @@ export async function startQueue(items: SendItem[], autoStart = true, opts?: { a
 
   // ③ 公司交错 + 新组轮换：交错只管发送顺序（同公司相邻组被拉开）；
   //    亲和组已带历史账号（同上判据），无历史的新组按序轮换 — 相邻新组不同号不变量保持。
+  const previousQueue = queues;
+  const previousState = state;
+  const previousHydrated = stateHydrated;
+  const previousAbort = abortFlag;
   queues = new Map();
   abortFlag = false;
-  saveRunningBatch(null);   // 清旧批次标志（autoStart=true 时下面重新写入）；两步式入队不写标志 → 重启不会误自动启动
   const rotIds = [...activeIds];
   const shuffled = interleaveCompanies(runItems);
   const ordered: Array<SendItem & { seq: number }> = [];
@@ -1172,7 +1252,7 @@ export async function startQueue(items: SendItem[], autoStart = true, opts?: { a
           companyName: item.companyName, companyId: item.companyId,
           recipients: JSON.stringify(item.recipients),
           accountId: aid, accountEmail: acctEmail,
-          subject: item.subject, tplBody: item.tplBody, contactVars: JSON.stringify(item.contactVars),
+          subject: item.subject, tplBody: item.tplBody, contactVars: JSON.stringify({ ...item.contactVars, __centerScope: item.centerScope }),
           tplName: item.tplName || null,
           country: item.country || null, language: item.language || null,
           cc: item.cc || null,
@@ -1191,8 +1271,14 @@ export async function startQueue(items: SendItem[], autoStart = true, opts?: { a
     })();
     saveDatabase();
   } catch (err) {
-    Log.warn("send.queuePersist", `写入发送队列表失败: ${err instanceof Error ? err.message : String(err)}`);
+    queues = previousQueue;
+    state = previousState;
+    stateHydrated = previousHydrated;
+    abortFlag = previousAbort;
+    Log.error("send.queuePersist", `写入发送队列表失败: ${err instanceof Error ? err.message : String(err)}`);
+    return failResult("发送队列保存失败，未启动发送，请检查本地存储后重试", err);
   }
+  saveRunningBatch(null);   // 持久化成功后才清旧批次标志；两步式入队不会在重启后自动启动。
 
   if (!autoStart) {
     Log.info("send.enqueue", `批次 ${batchId}: ${kept.length} 组已入队，等待用户在队列页手动开始`);
@@ -1214,9 +1300,9 @@ export interface EnqueueResult {
   deferredContactIds: number[]; // 亲和缓发（历史发信账号熔断中，本批未入队）的联系人
 }
 
-export async function startSend(bucketKeys: string[], templates?: SendTemplate[], autoStart = true, contactIds?: number[]): Promise<Result<EnqueueResult>> {
+export async function startSend(bucketKeys: string[], templates?: SendTemplate[], autoStart = true, contactIds?: number[], centerRefs?: CenterContactRef[]): Promise<Result<EnqueueResult>> {
   Log.debug("send.start", `buckets=${bucketKeys.join(",")} templates=${templates?.length || 0} autoStart=${autoStart} directIds=${contactIds?.length || 0}`);
-  const qr = templates && templates.length > 0 ? buildQueue(bucketKeys, templates, contactIds) : buildAdaptiveQueue(bucketKeys, contactIds);
+  const qr = templates && templates.length > 0 ? buildQueue(bucketKeys, templates, contactIds, centerRefs) : buildAdaptiveQueue(bucketKeys, contactIds, centerRefs);
   if (!qr.success) return failResult(qr.error);
   return startQueue(qr.data, autoStart);
 }
@@ -1224,8 +1310,10 @@ export async function startSend(bucketKeys: string[], templates?: SendTemplate[]
 /** 动态更新：按选中的客户跟进联系人 + 手动内容组装队列。
  *  sendMode="individual"（v6.1 用户拍板）：每个联系人单独一封，收件人走 To —— 像人工手发；
  *  缺省 bcc：同公司亲和桶合并一封，收件人走 BCC 互不可见。 */
-export function buildDynamicQueue(contactIds: number[], subject: string, body: string, cc?: string, sendMode?: "individual" | "bcc"): Result<SendItem[]> {
-  const rows = getDb().select().from(contacts).where(inArray(contacts.id, contactIds)).all();
+export function buildDynamicQueue(contactIds: number[], subject: string, body: string, cc?: string, sendMode?: "individual" | "bcc", centerRefs?: CenterContactRef[]): Result<SendItem[]> {
+  const centerRows = centerRefs !== undefined ? resolveCenterSendContacts(centerRefs) : undefined;
+  if (centerRows && !centerRows.success) return failResult(centerRows.error);
+  const rows = centerRows?.success ? centerRows.data : getDb().select().from(contacts).where(inArray(contacts.id, contactIds)).all();
   if (rows.length === 0) return failResult("没有选中的联系人");
 
   // 过滤无效邮箱（一个坏地址整组被拒收）
@@ -1235,19 +1323,19 @@ export function buildDynamicQueue(contactIds: number[], subject: string, body: s
 
   const companyGroups = new Map<string, ContactRow[]>();
   for (const c of validRows) {
-    const k = `c_${c.companyId || 0}`;
+    const k = `c_${c.companyId || 0}_${(c as Partial<CenterSendContact>).centerScope || "legacy"}`;
     if (!companyGroups.has(k)) companyGroups.set(k, []);
     companyGroups.get(k)!.push(c);
   }
 
   const companyMap = new Map<number, string>();
   const companyCountryMap = new Map<number, string>();
-  for (const comp of getDb().select().from(companies).all()) {
+  for (const comp of (centerRows?.success ? centerRows.data.map(c => ({ id: c.companyId || 0, name: c.companyName, country: c.country })) : getDb().select().from(companies).all())) {
     companyMap.set(comp.id, comp.name);
     if (comp.country) companyCountryMap.set(comp.id, comp.country);
   }
 
-  const affinity = lastSentAccountMap(validRows.map(c => c.id));
+  const affinity = centerRows ? getCenterSendPort()!.lastAccounts(validRows.map(c => c.id)) : lastSentAccountMap(validRows.map(c => c.id));
   const activeSet = new Set(selectableAccounts().map(a => a.id));
   const groupSize = Math.max(1, loadConfig().schedule?.groupSize || 20);
   const items: SendItem[] = [];
@@ -1276,8 +1364,8 @@ export function buildDynamicQueue(contactIds: number[], subject: string, body: s
         };
         items.push({
           id: nanoid(), companyName: companyName || `#${c.companyId || "N/A"}`,
-          companyId: c.companyId || 0,
-          recipients: [{ contactId: c.id, email: c.email, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email }],
+          companyId: c.companyId || 0, centerScope: (c as Partial<CenterSendContact>).centerScope,
+          recipients: [{ contactId: c.id, centerReference: (c as Partial<CenterSendContact>).centerReference, email: c.email, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email }],
           subject: renderTemplate(subject, vars), tplBody: body,
           contactVars: vars, tplName: "动态更新",
           country: companyCountryMap.get(c.companyId || 0) || c.country || undefined,
@@ -1309,8 +1397,8 @@ export function buildDynamicQueue(contactIds: number[], subject: string, body: s
         const chunk = bucket.rows.slice(s, s + groupSize);
         items.push({
           id: nanoid(), companyName: companyName || `#${first.companyId || "N/A"}`,
-          companyId: first.companyId || 0,
-          recipients: chunk.map(c => ({ contactId: c.id, email: c.email, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email })),
+          companyId: first.companyId || 0, centerScope: (first as Partial<CenterSendContact>).centerScope,
+          recipients: chunk.map(c => ({ contactId: c.id, centerReference: (c as Partial<CenterSendContact>).centerReference, email: c.email, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email })),
           subject: subj, tplBody: body,
           contactVars: dynVars,
           tplName: "动态更新",
@@ -1325,8 +1413,8 @@ export function buildDynamicQueue(contactIds: number[], subject: string, body: s
   return okResult(items);
 }
 
-export async function startDynamicSend(contactIds: number[], subject: string, body: string, autoStart = true, cc?: string, sendMode?: "individual" | "bcc"): Promise<Result<EnqueueResult>> {
-  const qr = buildDynamicQueue(contactIds, subject, body, cc, sendMode);
+export async function startDynamicSend(contactIds: number[], subject: string, body: string, autoStart = true, cc?: string, sendMode?: "individual" | "bcc", centerRefs?: CenterContactRef[]): Promise<Result<EnqueueResult>> {
+  const qr = buildDynamicQueue(contactIds, subject, body, cc, sendMode, centerRefs);
   if (!qr.success) return failResult(qr.error);
   return startQueue(qr.data, autoStart);
 }
@@ -1400,7 +1488,11 @@ async function runBatchLoop(): Promise<void> {
       if (it.accountId !== aid || it.status !== "pending") continue;
       it.status = "failed"; it.errorKind = "blocked";
       it.error = `账号 ${acctEmails.get(aid) || aid} 熔断，本组未发送（账号恢复后由任务扫描自动重排）`;
-      for (const rc of it.recipients) touched.add(rc.contactId);
+      for (const rc of it.recipients) {
+        if (isCenterItem(it)) {
+          if (it.campaignId) void import('./campaign.service').then(cm => cm.onCampaignSendFailed(rc.contactId, rc.centerReference, it.campaignId)).catch(err => Log.error('send.centerCampaign', String(err)));
+        } else touched.add(rc.contactId);
+      }
       try { getDb().update(sendQueue).set({ status: "failed", error: it.error, errorKind: "blocked" }).where(eq(sendQueue.id, it.id)).run(); } catch { /* */ }
     }
     // 无任何健康账号（全熔断/停用）：剩余组不再硬跑逐个判死，整批标 blocked 等人处理
@@ -1457,6 +1549,14 @@ async function runBatchLoop(): Promise<void> {
       if (loopGen !== myGen || !state.isRunning || abortFlag) { releaseAccount(accountId); return; }
     }
 
+    if (isCenterItem(item) && !sendNetworkAllowed()) {
+      // 中心线索等待中心恢复；本地线索继续走本机 SMTP。
+      await sleep(1000);
+      if (item.campaignId) releaseAccount(accountId);
+      i--; // Keep the item pending until an explicit online resume.
+      continue;
+    }
+
     try {
       item.status = "sending"; // 内存标记：tripAccount 只摘 pending，发送中组不被跨流误伤
       state.currentItem = { ...item, status: "sending" };
@@ -1473,8 +1573,54 @@ async function runBatchLoop(): Promise<void> {
         // 发送前按模板现场组装正文（随机词每组重新随机）
         const body = renderTemplate(item.tplBody, item.contactVars);
         const sendItem = { ...item, body };
-        const r = await sendBccFn(sendItem);
-        if (r.success) {
+        const center = isCenterItem(item);
+        const sendingDb = getDb();
+        const port = getCenterSendPort();
+        if (center) {
+          let authority: Result<void>;
+          try { authority = port ? await port.authorize(item) : failResult('中心联系人发送尚未就绪'); }
+          catch (err) { authority = failResult(String(err)); }
+          if (!authority.success || port !== getCenterSendPort() || !sendNetworkAllowed() || loopGen !== myGen) {
+            item.status = 'failed'; item.errorKind = 'blocked'; item.error = authority.success ? '账号状态已变化，发送已暂停' : authority.error;
+            sendingDb.update(sendQueue).set({ status: 'failed', errorKind: 'blocked', error: item.error }).where(eq(sendQueue.id, item.id)).run();
+            if (loopGen === myGen) { saveDatabase(); pauseSend(); } continue;
+          }
+        }
+        // Durable in-flight marker must precede SMTP; a crash cannot imply safe retry.
+        sendingDb.update(sendQueue).set({ status: 'sending' }).where(eq(sendQueue.id, item.id)).run();
+        saveDatabase();
+        let r: Result<SendConfirmation>;
+        try { r = await sendBccFn(sendItem); }
+        catch (err) { r = failResult(err instanceof Error ? err.message : String(err)); }
+        if (center) {
+          const confirmedRecipients = r.success ? acceptedRecipients(item.recipients, r.data) : [];
+          if (r.success && confirmedRecipients.length) {
+            const partialAcceptance = confirmedRecipients.length !== item.recipients.length;
+            if (partialAcceptance) item.error = '仅 ' + confirmedRecipients.length + '/' + item.recipients.length + ' 位收件人被服务器接受；未接受者未记录发送成功';
+            item.status = 'sent'; item.sentAt = new Date().toISOString(); if (loopGen === myGen) state.sentCount++;
+            try {
+              sendingDb.update(sendQueue).set({ status: 'sent', sentAt: item.sentAt, error: item.error }).where(eq(sendQueue.id, item.id)).run();
+              if (loopGen === myGen) { saveDatabase(); recordQuotaSend(confirmedRecipients.length); }
+            } catch (err) { Log.error('send.centerQueueReceipt', String(err)); /* The captured port must still receive the accepted proof. */ }
+            let synced: Result<void>;
+            try { synced = await port!.record({ ...sendItem, recipients: confirmedRecipients, messageId: r.data.messageId, occurredAt: item.sentAt, advanceSendStage: true }); }
+            catch (err) { synced = failResult(String(err)); }
+            if (!synced.success) {
+              item.error = '邮件已发出，记录待同步';
+              sendingDb.update(sendQueue).set({ error: item.error }).where(eq(sendQueue.id, item.id)).run();
+              Log.error('send.centerReceipt', synced.error); if (loopGen === myGen) { saveDatabase(); pauseSend(); }
+            }
+            for (const rc of (loopGen === myGen ? confirmedRecipients : [])) {
+              if (item.campaignId) void import('./campaign.service').then(cm => cm.onCampaignSendSent(rc.contactId, rc.centerReference, item.campaignId)).catch(err => Log.error('send.centerCampaign', String(err)));
+            }
+            const account = loopGen === myGen ? state.accountStats.find(x => x.accountId === accountId) : undefined; if (account) account.sent++;
+          } else {
+            item.status = 'failed'; item.errorKind = 'blocked'; item.error = '发送结果未确认，请核实后重新安排';
+            sendingDb.update(sendQueue).set({ status: 'failed', errorKind: 'blocked', error: item.error }).where(eq(sendQueue.id, item.id)).run();
+            Log.error('send.centerUnknown', r.success ? 'SMTP未接受任何目标收件人' : r.error); if (loopGen === myGen) { saveDatabase(); pauseSend(); }
+          }
+          if (loopGen !== myGen) return;
+        } else if (r.success) {
           const messageId = r.data?.messageId || null;
           item.status = "sent"; item.sentAt = new Date().toISOString(); state.sentCount++; failsByAccount.set(accountId, 0);
           // P1-2: 成功即清零持久化熔断计数。sender_block 熔断不由 SMTP 成功解（只有一键解除/24h 过期），
@@ -1668,7 +1814,9 @@ export function pauseSend(reason: "user" | "sender_block" = "user"): Result<void
   if (reason === "sender_block") push(EVENTS.SEND_PROGRESS, state);
   return okResult(undefined);
 }
-export function resumeSend(): Result<void> { state.isPaused = false; state.pausedReason = null; resumeDelay(); return okResult(undefined); }
+export function resumeSend(): Result<void> {
+  state.isPaused = false; state.pausedReason = null; resumeDelay(); return okResult(undefined);
+}
 
 /** 账号熔断态在批次内的真实上报（sender_block 触发时把该账号的卡标红，不让它继续显示"绿着"） */
 export function markAccountCircuitOpen(accountId: number): void {
@@ -1718,7 +1866,7 @@ export function getQueueItems(): Result<Array<Omit<SendItem, "tplBody" | "contac
         subject: item.subject, tplName: item.tplName,
         country: item.country, language: item.language,
         status: item.status, error: item.error, sentAt: item.sentAt,
-        seq: item.seq, cc: item.cc, sendMode: item.sendMode,
+        seq: item.seq, cc: item.cc, sendMode: item.sendMode, centerScope: item.centerScope, campaignId: item.campaignId, errorKind: item.errorKind,
         accountEmail: emailMap.get(aid) || `#${aid}`,
       });
     }
@@ -1736,11 +1884,14 @@ export function getQueueItems(): Result<Array<Omit<SendItem, "tplBody" | "contac
     // 修正：sending → pending（进程已死，不可能还在发送中）
     for (const r of rows) {
       if (r.status === "sending") {
-        try { getDb().update(sendQueue).set({ status: "pending" }).where(eq(sendQueue.id, r.id)).run(); } catch { /* */ }
+        const center = persistedScope(r.contactVars) || (() => { try { return JSON.parse(r.recipients).some((rc: SendItem['recipients'][number]) => rc.centerReference); } catch { return false; } })();
+        const patch = center ? { status: 'failed', errorKind: 'blocked', error: '发送结果未确认，请核实后重新安排' } : { status: 'pending' };
+        getDb().update(sendQueue).set(patch).where(eq(sendQueue.id, r.id)).run();
+        Object.assign(r, patch); saveDatabase();
       }
     }
     items = rows.map(r => ({
-      id: r.id, companyName: r.companyName || "", companyId: r.companyId || 0,
+      id: r.id, companyName: r.companyName || "", companyId: r.companyId || 0, centerScope: persistedScope(r.contactVars), campaignId: r.campaignId || undefined, errorKind: (r.errorKind as SendItem["errorKind"]) || undefined,
       recipients: (() => { try { return JSON.parse(r.recipients); } catch { return []; } })(),
       accountId: r.accountId, accountEmail: r.accountEmail || emailMap.get(r.accountId) || "",
       subject: r.subject || "",
@@ -1788,7 +1939,7 @@ export function resumeQueue(requestedBatchId?: string): Result<{ batchId: string
       const recipients = (() => { try { return JSON.parse(r.recipients); } catch { return []; } })();
       const contactVars = (() => { try { return JSON.parse(r.contactVars || "{}"); } catch { return {}; } })();
       items.push({
-        id: r.id, companyName: r.companyName || "", companyId: r.companyId || 0,
+        id: r.id, companyName: r.companyName || "", companyId: r.companyId || 0, centerScope: persistedScope(r.contactVars), campaignId: r.campaignId || undefined, errorKind: (r.errorKind as SendItem["errorKind"]) || undefined,
         recipients, accountId: r.accountId,
         subject: r.subject || "", tplBody: r.tplBody || "", contactVars,
         tplName: r.tplName || undefined,
@@ -1868,6 +2019,7 @@ export function resumeQueue(requestedBatchId?: string): Result<{ batchId: string
 }
 
 export function cleanupSendEngine() {
+  loopGen++; // Account shutdown invalidates old asynchronous callbacks.
   state.isRunning = false; abortFlag = true;
   if (delayTimer) clearTimeout(delayTimer); Log.info("send.cleanup", "引擎已清理");
 }

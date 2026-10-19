@@ -5,11 +5,13 @@
 //  · send/inbox 侧的进度与止损钩子反向调本服务，用惰性 require 避免循环依赖；
 //  · 资格闸已按用户要求解除：已触达/已回复可入队（发不发由用户圈名单决定），
 //    界面只在人数计数处提示包含多少位已触达/已回复。
+import type { CenterContactRef } from "../../shared/online-crm";
+import { resolveCenterSendContacts, type CenterSendContact, type CenterSendItem } from "./center-send.service";
 import * as crypto from "crypto";
 import { and, eq, inArray, lte, ne, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { sendCampaigns, sendCampaignTargets, contacts, templates, emailAccounts, sendQueue } from "../db/schema";
-import { buildDynamicQueue, getSendStatus, getQuotaStatus, normalizeLang, type SendItem } from "./send.service";
+import { buildDynamicQueue, getSendStatus, getQuotaStatus, normalizeLang, type SendItem, type EnqueueResult } from "./send.service";
 import { assembleEmail, type Stage } from "./sentence-library";
 import { isCircuitOpen } from "./sender-block.service";
 import { Log } from "../logger";
@@ -41,6 +43,7 @@ export interface CampaignSchedule {
 export interface CreateCampaignInput {
   name: string;
   contactIds: number[];
+  centerContactRefs?: CenterContactRef[];
   /** 触点计划按数组顺序执行：第 1 项=首信（立即），之后每项在上封发出 delayDays 天后发 */
   touches: CampaignTouch[];
   autoSend?: boolean;
@@ -117,13 +120,16 @@ function normalizeSchedule(schedule?: CampaignSchedule): CampaignSchedule {
 
 // ── 创建（名单定格，所见即所发）──────────────────────────────────
 /** 创建前预览：与 createCampaign 同一判据（已触达/已回复照常入队），供确认卡展示「命中/包含已触达回复/样本名单」 */
-export function previewCampaign(contactIds: number[]): Result<{
+export function previewCampaign(contactIds: number[], centerRefs?: CenterContactRef[]): Result<{
   total: number; eligible: number; excluded: number; reachedReplied: number;
   sample: Array<{ id: number; name: string; email: string }>;
 }> {
   const ids = [...new Set((contactIds ?? []).map(Number).filter(n => Number.isInteger(n) && n > 0))];
   if (!ids.length) return failResult("名单为空");
-  const rows = getDb().select({
+  const resolved = centerRefs !== undefined ? resolveCenterSendContacts(centerRefs) : null;
+  if (resolved && !resolved.success) return failResult(resolved.error);
+  if (resolved?.success && (resolved.data.length !== ids.length || resolved.data.some(row => !ids.includes(row.id)))) return failResult("中心名单与引用不一致");
+  const rows = resolved?.success ? resolved.data : getDb().select({
     id: contacts.id, status: contacts.status,
     firstName: contacts.firstName, lastName: contacts.lastName, email: contacts.email,
   }).from(contacts).where(inArray(contacts.id, ids)).all();
@@ -144,7 +150,7 @@ export function previewCampaign(contactIds: number[]): Result<{
 
 /** 创建/草稿编辑共用的校验与构建（名单资格闸 + 计划/账号/时段规范化） */
 function buildCampaignCore(input: CreateCampaignInput): Result<{
-  name: string; touches: CampaignTouch[]; eligible: number[]; excluded: number;
+  name: string; touches: CampaignTouch[]; eligible: number[]; excluded: number; centerRows?: CenterSendContact[];
   accountPolicy: CampaignAccountPolicy; schedule: CampaignSchedule; sendMode: "individual" | "bcc";
 }> {
   const name = input.name?.trim();
@@ -160,7 +166,10 @@ function buildCampaignCore(input: CreateCampaignInput): Result<{
 
   // 名单对账（资格闸已解除）：只剔除已不在库的联系人；已触达/已回复照常入队，
   // 界面在人数计数处提示包含多少位（发不发由用户圈名单决定）
-  const rows = getDb().select({ id: contacts.id })
+  const resolved = input.centerContactRefs !== undefined ? resolveCenterSendContacts(input.centerContactRefs) : null;
+  if (resolved && !resolved.success) return failResult(resolved.error);
+  if (resolved?.success && (resolved.data.length !== ids.length || resolved.data.some(r => !ids.includes(r.id)))) return failResult("中心名单与引用不一致");
+  const rows = resolved?.success ? resolved.data : getDb().select({ id: contacts.id })
     .from(contacts).where(inArray(contacts.id, ids)).all();
   const found = new Set(rows.map(r => r.id));
   const eligible = ids.filter(id => found.has(id));
@@ -168,14 +177,15 @@ function buildCampaignCore(input: CreateCampaignInput): Result<{
   if (!eligible.length) {
     return failResult("名单里的联系人都已不在库，无可发对象");
   }
-  return okResult({ name, touches, eligible, excluded, accountPolicy: acctRes.data, schedule,
+  return okResult({ name, touches, eligible, excluded, centerRows: resolved?.success ? resolved.data : undefined, accountPolicy: acctRes.data, schedule,
     sendMode: input.sendMode === "bcc" ? "bcc" : "individual" });
 }
 
 export function createCampaign(input: CreateCampaignInput): Result<{ id: string; eligible: number; excluded: number }> {
+  if (input.startNow !== false && !campaignNetworkAllowed()) return failResult('当前离线，无法启动发送任务。');
   const core = buildCampaignCore(input);
   if (!core.success) return failResult(core.error);
-  const { name, touches, eligible, excluded, accountPolicy, schedule, sendMode } = core.data;
+  const { name, touches, eligible, excluded, centerRows, accountPolicy, schedule, sendMode } = core.data;
 
   const id = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const isDraft = input.startNow === false;
@@ -194,10 +204,45 @@ export function createCampaign(input: CreateCampaignInput): Result<{ id: string;
   // 草稿的 nextTouchAt=null（启动时才计时）；运行中=立即到期，下个扫描周期入队
   const t0 = isDraft ? null : nowIso();
   getDb().insert(sendCampaignTargets).values(eligible.map(cid => ({
-    campaignId: id, contactId: cid, status: "pending", round: 0, nextTouchAt: t0, updatedAt: nowIso(),
+    campaignId: id, contactId: cid, centerReferenceJson: centerRows ? JSON.stringify({ reference: centerRows.find(r => r.id === cid)!.centerReference, scope: centerRows.find(r => r.id === cid)!.centerScope }) : null, status: "pending", round: 0, nextTouchAt: t0, updatedAt: nowIso(),
   }))).run();
   Log.info("campaign.create", `任务 ${id}「${name}」：名单 ${eligible.length} 人（排除 ${excluded}），${touches.length} 触点，${isDraft ? "草稿" : "运行"}，autoSend=${input.autoSend !== false}，账号=${accountPolicy.mode}`);
+  if (!isDraft) automaticSchedulingAllowed = true;
   return okResult({ id, eligible: eligible.length, excluded });
+}
+
+/** Attach a prepared manual queue to the existing task UI, without scheduling or sending. */
+export async function enqueuePreparedCampaign(
+  input: CreateCampaignInput, items: SendItem[], enqueue: (items: SendItem[]) => Promise<Result<EnqueueResult>>,
+): Promise<Result<EnqueueResult & { campaignId?: string }>> {
+  if (!campaignNetworkAllowed()) return failResult('当前离线，无法创建发送队列。');
+  const db = getDb();
+  const created = db.transaction(() => {
+    const result = createCampaign({ ...input, startNow: false, autoSend: false });
+    if (result.success) {
+      db.update(sendCampaigns).set({ status: 'running' }).where(eq(sendCampaigns.id, result.data.id)).run();
+      db.update(sendCampaignTargets).set({ status: 'queued', nextTouchAt: null }).where(eq(sendCampaignTargets.campaignId, result.data.id)).run();
+    }
+    return result;
+  });
+  if (!created.success) return created;
+  const campaignId = created.data.id;
+  const result = await enqueue(items.map(item => ({ ...item, campaignId })));
+  // Use captured DB even if a different account became active while awaiting the receipt.
+  if (!result.success || result.data.queuedCount === 0) {
+    db.transaction(() => {
+      db.delete(sendCampaignTargets).where(eq(sendCampaignTargets.campaignId, campaignId)).run();
+      db.delete(sendCampaigns).where(eq(sendCampaigns.id, campaignId)).run();
+    });
+    return result;
+  }
+  const persisted = db.select({ recipients: sendQueue.recipients }).from(sendQueue).where(eq(sendQueue.campaignId, campaignId)).all();
+  const queuedIds = new Set(persisted.flatMap(row => (JSON.parse(row.recipients) as SendItem['recipients']).map(recipient => recipient.contactId)));
+  const targets = db.select().from(sendCampaignTargets).where(eq(sendCampaignTargets.campaignId, campaignId)).all();
+  for (const target of targets) if (!queuedIds.has(target.contactId)) {
+    db.update(sendCampaignTargets).set({ status: 'skipped', nextTouchAt: null }).where(eq(sendCampaignTargets.id, target.id)).run();
+  }
+  return okResult({ ...result.data, campaignId });
 }
 
 /** 草稿编辑（发送中心向导）：仅 draft 态可改，名单与计划全量替换（草稿从未排触点，无在途状态可保） */
@@ -207,7 +252,7 @@ export function updateCampaignDraft(id: string, input: CreateCampaignInput): Res
   if (c.status !== "draft") return failResult("只有草稿可以编辑");
   const core = buildCampaignCore(input);
   if (!core.success) return failResult(core.error);
-  const { name, touches, eligible, excluded, accountPolicy, schedule, sendMode } = core.data;
+  const { name, touches, eligible, excluded, centerRows, accountPolicy, schedule, sendMode } = core.data;
 
   getDb().update(sendCampaigns).set({
     name, touchPlanJson: JSON.stringify(touches),
@@ -221,7 +266,7 @@ export function updateCampaignDraft(id: string, input: CreateCampaignInput): Res
   }).where(eq(sendCampaigns.id, id)).run();
   getDb().delete(sendCampaignTargets).where(eq(sendCampaignTargets.campaignId, id)).run();
   getDb().insert(sendCampaignTargets).values(eligible.map(cid => ({
-    campaignId: id, contactId: cid, status: "pending", round: 0, nextTouchAt: null, updatedAt: nowIso(),
+    campaignId: id, contactId: cid, centerReferenceJson: centerRows ? JSON.stringify({ reference: centerRows.find(r => r.id === cid)!.centerReference, scope: centerRows.find(r => r.id === cid)!.centerScope }) : null, status: "pending", round: 0, nextTouchAt: null, updatedAt: nowIso(),
   }))).run();
   Log.info("campaign.updateDraft", `草稿 ${id}「${name}」已更新：${eligible.length} 人 × ${touches.length} 轮`);
   return okResult({ eligible: eligible.length, excluded });
@@ -229,6 +274,7 @@ export function updateCampaignDraft(id: string, input: CreateCampaignInput): Res
 
 // ── 生命周期控制（Phase B 工具与发送中心按钮共用）──────────────────
 export function setCampaignStatus(id: string, status: "running" | "paused" | "stopped"): Result<void> {
+  if (status === 'running' && !campaignNetworkAllowed()) return failResult('当前离线，无法恢复发送任务。');
   const c = getDb().select().from(sendCampaigns).where(eq(sendCampaigns.id, id)).get();
   if (!c) return failResult(`任务不存在: ${id}`);
   // 草稿 → running = 启动：待发触点从现在开始计时（首信下个扫描周期入队）
@@ -245,16 +291,17 @@ export function setCampaignStatus(id: string, status: "running" | "paused" | "st
       .where(and(eq(sendCampaignTargets.campaignId, id), inArray(sendCampaignTargets.status, ["pending", "queued"]))).run();
   }
   Log.info("campaign.status", `任务 ${id} → ${status}`);
+  if (status === 'running') automaticSchedulingAllowed = true;
   return okResult(undefined);
 }
 
 // ── 发送结果回调（send.service 成功/失败路径惰性调用）──────────────
 /** 一封真实发出（SMTP 确认）→ 该联系人名下 queued 目标推进一轮 */
-export function onCampaignSendSent(contactId: number): void {
+export function onCampaignSendSent(contactId: number, centerReference?: CenterContactRef, campaignId?: string): void {
   try {
     const db = getDb();
     const targets = db.select().from(sendCampaignTargets)
-      .where(and(eq(sendCampaignTargets.contactId, contactId), eq(sendCampaignTargets.status, "queued"))).all();
+      .where(and(eq(sendCampaignTargets.contactId, contactId), targetIdentity(centerReference, campaignId), eq(sendCampaignTargets.status, "queued"))).all();
     for (const t of targets) {
       const c = db.select().from(sendCampaigns).where(eq(sendCampaigns.id, t.campaignId)).get();
       if (!c || c.status === "stopped") { markTarget(t.id, "skipped", null); continue; }
@@ -266,45 +313,70 @@ export function onCampaignSendSent(contactId: number): void {
         markTarget(t.id, "pending", plusDays(plan[nextRound]!.delayDays), nextRound, nowIso());   // nextRound<plan.length 已判
       }
     }
-    refreshCampaignDone(contactId);
+    refreshCampaignDone(contactId, centerReference, campaignId);
   } catch (err) {
     Log.warn("campaign.progress", `推进失败 contact=${contactId}: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
 /** 一封最终失败（重试耗尽）→ 目标回到待发，明天再试（不无声丢触点） */
-export function onCampaignSendFailed(contactId: number): void {
+export function onCampaignSendFailed(contactId: number, centerReference?: CenterContactRef, campaignId?: string): void {
   try {
     const db = getDb();
     const targets = db.select().from(sendCampaignTargets)
-      .where(and(eq(sendCampaignTargets.contactId, contactId), eq(sendCampaignTargets.status, "queued"))).all();
+      .where(and(eq(sendCampaignTargets.contactId, contactId), targetIdentity(centerReference, campaignId), eq(sendCampaignTargets.status, "queued"))).all();
     for (const t of targets) markTarget(t.id, "pending", plusDays(1), t.round, t.lastSentAt);
   } catch { /* 失败回退不阻塞发送主流程 */ }
 }
 
 /** 联系人信号止损（inbox 分类钩子）：回复/退订/bounce 止损，OOO 顺延 3 天 */
-export function onContactSignal(contactId: number, kind: "replied" | "bounce" | "autoreply"): void {
+export function onContactSignal(contactId: number, kind: "replied" | "bounce" | "autoreply", centerReference?: CenterContactRef, centerScope?: string): void {
   try {
     const db = getDb();
     if (kind === "autoreply") {
       // OOO 不止损：待发触点顺延 3 天（"暂缓"语义落进调度）
       db.update(sendCampaignTargets)
         .set({ nextTouchAt: plusDays(3), updatedAt: nowIso() })
-        .where(and(eq(sendCampaignTargets.contactId, contactId), eq(sendCampaignTargets.status, "pending"))).run();
+        .where(and(eq(sendCampaignTargets.contactId, contactId), signalIdentity(centerReference, centerScope), eq(sendCampaignTargets.status, "pending"))).run();
       return;
     }
     const to = kind === "replied" ? "replied" : "bounced";
     db.update(sendCampaignTargets)
       .set({ status: to, nextTouchAt: null, updatedAt: nowIso() })
-      .where(and(eq(sendCampaignTargets.contactId, contactId), inArray(sendCampaignTargets.status, ["pending", "queued"]))).run();
-    refreshCampaignDone(contactId);
+      .where(and(eq(sendCampaignTargets.contactId, contactId), signalIdentity(centerReference, centerScope), inArray(sendCampaignTargets.status, ["pending", "queued"]))).run();
+    refreshCampaignDone(contactId, centerReference, undefined, centerScope);
     if (kind === "replied") Log.info("campaign.stoploss", `联系人 ${contactId} 已回复 → 名单内待发跟进全部止损`);
-  } catch { /* 止损失败不阻塞收信主流程 */ }
+  } catch (error) {
+    Log.error("campaign.stoploss", "联系人信号止损失败", error instanceof Error ? error.stack : undefined);
+    if (centerReference || centerScope) throw error;
+    // Historical local inbox processing remains nonblocking.
+  }
 }
 
 // ── 调度扫描：到期触点 → 组队列（引擎侧硬闸在此）────────────────────
+let campaignNetworkAllowed: () => boolean = () => true;
+let automaticSchedulingAllowed = true;
+export function suspendAutomaticCampaignScheduling(): void {
+  automaticSchedulingAllowed = false;
+  try {
+    getDb().update(sendCampaigns).set({ status: 'paused', updatedAt: nowIso() })
+      .where(eq(sendCampaigns.status, 'running')).run();
+  } catch (error) {
+    Log.error('campaign.offline', '离线任务暂停写入失败，自动调度保持关闭', error instanceof Error ? error.stack : undefined);
+  }
+}
+/** A loss of authorization/connectivity latches automatic sending off for this process. */
+export function setCampaignNetworkAllowed(reader: () => boolean): void {
+  campaignNetworkAllowed = () => {
+    const allowed = reader();
+    if (!allowed && automaticSchedulingAllowed) suspendAutomaticCampaignScheduling();
+    return allowed;
+  };
+  automaticSchedulingAllowed = campaignNetworkAllowed();
+}
+
 export async function scanDueCampaigns(): Promise<void> {
-  if (!enqueueFn) return;   // transport 未装配（如单测未注入）就不动
+  if (!enqueueFn || !campaignNetworkAllowed()) return;   // Offline never starts a new task.
   try {
     const db = getDb();
     // 引擎忙（含暂停）：本轮跳过不空转——扫描器每 10 分钟再来，引擎空了自然接上
@@ -317,7 +389,7 @@ export async function scanDueCampaigns(): Promise<void> {
     // 成功回调会推进目标并刷新 updated_at，所以这里仍是 queued 且 24h 未动 = 回调确实没来。
     db.update(sendCampaignTargets)
       .set({ status: "pending", nextTouchAt: plusDays(1), updatedAt: nowIso() })
-      .where(and(eq(sendCampaignTargets.status, "queued"), lte(sendCampaignTargets.updatedAt, plusDays(-1)))).run();
+      .where(and(eq(sendCampaignTargets.status, "queued"), targetIdentity(), lte(sendCampaignTargets.updatedAt, plusDays(-1)))).run();
     const due = db.select({
       t: sendCampaignTargets,
       cLanguage: contacts.language,
@@ -325,7 +397,7 @@ export async function scanDueCampaigns(): Promise<void> {
       companyName: contacts.lastName,
       email: contacts.email,
     }).from(sendCampaignTargets)
-      .innerJoin(contacts, eq(contacts.id, sendCampaignTargets.contactId))
+      .leftJoin(contacts, and(eq(contacts.id, sendCampaignTargets.contactId), targetIdentity()))
       .innerJoin(sendCampaigns, eq(sendCampaigns.id, sendCampaignTargets.campaignId))
       .where(and(
         eq(sendCampaignTargets.status, "pending"),
@@ -374,6 +446,14 @@ export async function scanDueCampaigns(): Promise<void> {
       let cappedOut = 0;
       for (const row of list) {
         const t = row.t;
+        let centerRow: CenterSendContact | undefined;
+        if (t.centerReferenceJson) {
+          const stored = parseCenterTarget(t.centerReferenceJson);
+          if (!stored) { Log.warn("campaign.scan", `中心名单引用无效 target=${t.id}`); continue; }
+          const resolved = resolveCenterSendContacts([stored.reference]);
+          if (!resolved.success || resolved.data[0]?.centerScope !== stored.scope) { Log.warn("campaign.scan", `中心名单授权不可用 target=${t.id}`); continue; }
+          centerRow = resolved.data[0];
+        } else if (row.email === null) continue;
         const step = plan[t.round];
         if (!step) { markTarget(t.id, "sent", null, t.round); continue; }   // 计划走完兜底
         // 单日放行上限：本轮该任务放够了 → 余下触点顺延次日继续（定时器语义）
@@ -391,18 +471,18 @@ export async function scanDueCampaigns(): Promise<void> {
         }
         // 冷却：该联系人在任何任务里已有"已入队未发"的触点 → 本轮跳过顺延（防重复打扰）
         const inflight = db.select({ n: sql<number>`count(*)` }).from(sendCampaignTargets)
-          .where(and(eq(sendCampaignTargets.contactId, t.contactId), eq(sendCampaignTargets.status, "queued")))
+          .where(and(eq(sendCampaignTargets.contactId, t.contactId), t.centerReferenceJson ? eq(sendCampaignTargets.centerReferenceJson, t.centerReferenceJson) : targetIdentity(), eq(sendCampaignTargets.status, "queued")))
           .get()?.n ?? 0;
         if (inflight > 0) { markTarget(t.id, "pending", plusDays(1), t.round, t.lastSentAt); continue; }
         // 内容按轮次模式解析：fixed=快照 / userTpl=用户模板(缺了句库兜底) / adaptive=匹配范围内随机一条 / system=句库 / 缺省=旧混合行为
-        const content = resolveTouchContent(step, row.cLanguage, row.cClientType);
+        const content = resolveTouchContent(step, centerRow?.language ?? row.cLanguage, centerRow?.clientType ?? row.cClientType);
         if (!content) {
           Log.warn("campaign.scan", `任务 ${campaignId} 内容缺失 contact=${t.contactId}（round=${t.round} mode=${step.mode ?? "auto"}），顺延 1 天`);
           markTarget(t.id, "pending", plusDays(1), t.round, t.lastSentAt);
           continue;
         }
         // buildDynamicQueue 自按联系人变量渲染 subject/body；sendMode 随任务（单发 To / 合并 BCC）、cc 随 fixed 快照
-        const qr = buildDynamicQueue([t.contactId], content.subject, content.body, content.cc, c.sendMode === "bcc" ? "bcc" : "individual");
+        const qr = buildDynamicQueue([t.contactId], content.subject, content.body, content.cc, c.sendMode === "bcc" ? "bcc" : "individual", centerRow ? [centerRow.centerReference] : undefined);
         if (!qr.success || !qr.data.length) {
           Log.warn("campaign.scan", `任务 ${campaignId} 组装失败 contact=${t.contactId}: ${qr.success ? "空" : qr.error}`);
           markTarget(t.id, "pending", plusDays(1), t.round, t.lastSentAt);
@@ -448,8 +528,15 @@ export async function scanDueCampaigns(): Promise<void> {
 let schedTimer: ReturnType<typeof setInterval> | null = null;
 export function startCampaignScheduler(intervalMs = 10 * 60 * 1000): void {
   if (schedTimer) return;
-  schedTimer = setInterval(() => { void scanDueCampaigns(); }, intervalMs);
+  schedTimer = setInterval(() => {
+    if (campaignNetworkAllowed() && automaticSchedulingAllowed) void scanDueCampaigns();
+  }, intervalMs);
   Log.info("campaign.sched", `发信任务调度器已启动（每 ${Math.round(intervalMs / 60000)} 分钟扫描到期触点）`);
+}
+
+export function stopCampaignScheduler(): void {
+  if (schedTimer) clearInterval(schedTimer);
+  schedTimer = null;
 }
 
 // ── 查询（agent status 工具与发送中心任务区共用）──────────────────
@@ -515,7 +602,7 @@ export function getCampaignOverview(): CampaignOverviewItem[] {
 
 export function getCampaignDetail(id: string): Result<{
   campaign: CampaignOverviewItem | null;
-  targets: Array<{ contactId: number; name: string; email: string; status: string; round: number; nextTouchAt: string | null; lastSentAt: string | null }>;
+  targets: Array<{ contactId: number; centerReference?: CenterContactRef; name: string; email: string; status: string; round: number; nextTouchAt: string | null; lastSentAt: string | null }>;
   /** 该任务在发送队列里的组（运行情况：点开卡片看），按创建时间倒序 */
   queue: Array<{ id: string; companyName: string; recipientCount: number; status: string; error: string | null; sentAt: string | null; accountEmail: string | null }>;
   /** 原始配置（草稿编辑预填：触点计划/账号策略/调度覆盖），任务不存在时为 null */
@@ -532,12 +619,12 @@ export function getCampaignDetail(id: string): Result<{
   if (!c) return failResult(`任务不存在: ${id}`);
   const overview = getCampaignOverview().find(x => x.id === id) ?? null;
   const targets = db.select({
-    contactId: sendCampaignTargets.contactId, status: sendCampaignTargets.status,
+    centerReferenceJson: sendCampaignTargets.centerReferenceJson, contactId: sendCampaignTargets.contactId, status: sendCampaignTargets.status,
     round: sendCampaignTargets.round, nextTouchAt: sendCampaignTargets.nextTouchAt,
     lastSentAt: sendCampaignTargets.lastSentAt,
     firstName: contacts.firstName, lastName: contacts.lastName, email: contacts.email,
   }).from(sendCampaignTargets)
-    .leftJoin(contacts, eq(contacts.id, sendCampaignTargets.contactId))
+    .leftJoin(contacts, and(eq(contacts.id, sendCampaignTargets.contactId), targetIdentity()))
     .where(eq(sendCampaignTargets.campaignId, id)).all();
   const queueRows = db.select({
     id: sendQueue.id, companyName: sendQueue.companyName, recipients: sendQueue.recipients,
@@ -546,12 +633,16 @@ export function getCampaignDetail(id: string): Result<{
   }).from(sendQueue).where(eq(sendQueue.campaignId, id)).all();
   return okResult({
     campaign: overview,
-    targets: targets.map(t => ({
-      contactId: t.contactId, status: t.status, round: t.round,
+    targets: targets.map(t => {
+      const stored = t.centerReferenceJson ? parseCenterTarget(t.centerReferenceJson) : null;
+      const resolved = stored ? resolveCenterSendContacts([stored.reference]) : null;
+      const row = resolved?.success && resolved.data[0]?.centerScope === stored?.scope ? resolved.data[0] : undefined;
+      return ({
+      contactId: t.contactId, ...(stored ? { centerReference: stored.reference } : {}), status: t.status, round: t.round,
       nextTouchAt: t.nextTouchAt, lastSentAt: t.lastSentAt,
-      name: [t.firstName, t.lastName].filter(Boolean).join(" ") || t.email || "",
-      email: t.email ?? "",
-    })),
+      name: [row?.firstName ?? t.firstName, row?.lastName ?? t.lastName].filter(Boolean).join(" ") || row?.email || t.email || "",
+      email: row?.email ?? t.email ?? "",
+    }); }),
     queue: queueRows
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
       .map(q => ({
@@ -636,10 +727,10 @@ function markTarget(id: number, status: string, nextTouchAt: string | null, roun
     .where(eq(sendCampaignTargets.id, id)).run();
 }
 /** 该联系人名下全部目标终态 → 任务收尾 done（fixed 轮内容快照随即清空：新周期不许盲发旧内容） */
-function refreshCampaignDone(contactId: number): void {
+function refreshCampaignDone(contactId: number, centerReference?: CenterContactRef, campaignId?: string, centerScope?: string): void {
   const db = getDb();
   const rows = db.select({ campaignId: sendCampaignTargets.campaignId, status: sendCampaignTargets.status })
-    .from(sendCampaignTargets).where(eq(sendCampaignTargets.contactId, contactId)).all();
+    .from(sendCampaignTargets).where(and(eq(sendCampaignTargets.contactId, contactId), centerScope ? signalIdentity(centerReference, centerScope) : targetIdentity(centerReference, campaignId))).all();
   const ids = [...new Set(rows.map(r => r.campaignId))];
   for (const cid of ids) {
     const remaining = db.select({ n: sql<number>`count(*)` }).from(sendCampaignTargets)
@@ -670,6 +761,7 @@ function clearFixedContent(json: string): string | null {
 /** 完结任务再启动新周期：退信/退订保持终态（再发只会再退），其余触点重置待发（round 0、立即到期）。
  *  fixed 轮快照已随上周期完结清空 → 转回草稿让用户先补新内容，绝不盲发旧内容。 */
 export function restartCampaign(id: string): Result<{ reset: number }> {
+  if (!campaignNetworkAllowed()) return failResult('当前离线，无法再启动发送任务。');
   const db = getDb();
   const c = db.select().from(sendCampaigns).where(eq(sendCampaigns.id, id)).get();
   if (!c) return failResult(`任务不存在: ${id}`);
@@ -688,6 +780,7 @@ export function restartCampaign(id: string): Result<{ reset: number }> {
     .set({ status: "pending", round: 0, nextTouchAt: nowIso(), lastSentAt: null, updatedAt: nowIso() })
     .where(and(eq(sendCampaignTargets.campaignId, id), inArray(sendCampaignTargets.status, ["sent", "replied", "skipped"]))).run();
   db.update(sendCampaigns).set({ status: "running", updatedAt: nowIso() }).where(eq(sendCampaigns.id, id)).run();
+  automaticSchedulingAllowed = true;
   Log.info("campaign.restart", `任务 ${id}「${c.name}」再启动新周期：重置 ${resetN} 触点（退信/退订保持终态）`);
   return okResult({ reset: resetN });
 }
@@ -725,4 +818,42 @@ function pickCampaignTemplate(
   const pool = sameLang.length ? sameLang : rows;
   if (adaptive && pool.length > 1) return pool[Math.floor(Math.random() * pool.length)]!;
   return pool[0]!;
+}
+
+function parseCenterTarget(json: string): { reference: CenterContactRef; scope: string } | null {
+  try {
+    const value = JSON.parse(json);
+    return value?.reference && Number.isSafeInteger(value.reference.contactId) && typeof value.reference.customerId === "string" && typeof value.scope === "string" ? value : null;
+  } catch { /* Corrupt center identity stays blocked. */ return null; }
+}
+function targetIdentity(reference?: CenterContactRef, campaignId?: string) {
+  if (!reference) return sql`${sendCampaignTargets.centerReferenceJson} IS NULL${campaignId ? sql` AND ${sendCampaignTargets.campaignId} = ${campaignId}` : sql``}`;
+  if (!campaignId) return sql`0 = 1`;
+  return sql`${sendCampaignTargets.campaignId} = ${campaignId} AND json_extract(${sendCampaignTargets.centerReferenceJson}, '$.reference.contactId') = ${reference.contactId} AND json_extract(${sendCampaignTargets.centerReferenceJson}, '$.reference.customerId') = ${reference.customerId}`;
+}
+
+function signalIdentity(reference?: CenterContactRef, scope?: string) {
+  if (!reference && !scope) return targetIdentity();
+  if (!reference || !scope) return sql`0 = 1`;
+  return sql`json_extract(${sendCampaignTargets.centerReferenceJson}, '$.reference.contactId') = ${reference.contactId} AND json_extract(${sendCampaignTargets.centerReferenceJson}, '$.reference.customerId') = ${reference.customerId} AND json_extract(${sendCampaignTargets.centerReferenceJson}, '$.scope') = ${scope}`;
+}
+
+/** Recheck the campaign ledger after live authorization, immediately before SMTP. Manual sends bypass campaign stoploss. */
+export function canSendCenterCampaignItem(item: CenterSendItem): Result<void> {
+  if (!item.campaignId) return okResult(undefined);
+  const db = getDb();
+  const campaign = db.select().from(sendCampaigns).where(eq(sendCampaigns.id, item.campaignId)).get();
+  if (!campaign || campaign.status !== "running") return failResult("发送任务已暂停或结束");
+  if (!item.centerScope || !item.recipients.length) return failResult("中心发送任务引用缺失");
+  for (const recipient of item.recipients) {
+    if (!recipient.centerReference || recipient.contactId !== recipient.centerReference.contactId) return failResult("中心发送任务引用不一致");
+    const target = db.select({ id: sendCampaignTargets.id }).from(sendCampaignTargets).where(and(
+      eq(sendCampaignTargets.campaignId, item.campaignId),
+      eq(sendCampaignTargets.contactId, recipient.contactId),
+      eq(sendCampaignTargets.status, "queued"),
+      signalIdentity(recipient.centerReference, item.centerScope),
+    )).get();
+    if (!target) return failResult("联系人已停止本轮任务发送");
+  }
+  return okResult(undefined);
 }

@@ -29,7 +29,7 @@ describe("extra.preferredPorts 双形态解析（看板写的是 JSON 字符串�
   });
 });
 
-// 本文件不接库：knownPod 认证要求「台账真有其港」，无库环境下一律认不出（宁缺毋滥）。
+// 本文件不接库：knownPod 只使用维护的纯港口词表，不借离线报价认证港名。
 // 「脏段 → 标准港名」的完整链路断言在 tests/unit/rate-update-push.test.ts（带镜像夹具）。
 describe("来信标签行的尾巴不混进港口（parseEmailInquiry 抓整行，偏好层再收紧）", () => {
   it("第一个逗号/分号前 + 柜型数量词前截断", () => {
@@ -41,9 +41,10 @@ describe("来信标签行的尾巴不混进港口（parseEmailInquiry 抓整行�
     expect(cleanPortSegment(null)).toBeNull();
   });
 
-  it("没库时一律认不出（不把脏字符串当港口偏好）", () => {
-    expect(normalizePodName({ pod: "Santos - BRSSZ (Santos, SP)", podCode: null })).toBeNull();
-    expect(normalizePodName({ pod: null, podCode: "BRSSZ" })).toBeNull();
+  it("纯词表认证标准港与LOCODE，不依赖价格库；未知词与脏字符串仍拒绝", () => {
+    expect(normalizePodName({ pod: "Santos - BRSSZ (Santos, SP)", podCode: null })).toBe("SANTOS");
+    expect(normalizePodName({ pod: null, podCode: "BRSSZ" })).toBe("SANTOS");
+    expect(normalizePodName({ pod: "UNKNOWN HARBOR XYZ", podCode: null })).toBeNull();
     expect(normalizePodName({ pod: "", podCode: null })).toBeNull();
     expect(normalizePodName({ pod: null, podCode: null })).toBeNull();
   });

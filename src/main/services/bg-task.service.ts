@@ -34,6 +34,12 @@ export interface BgTask {
 
 const tasks = new Map<string, BgTask>();
 const cancelFlags = new Map<string, boolean>();
+let bgTaskNetworkAllowed: () => boolean = () => true;
+export function setBgTaskNetworkAllowed(reader: () => boolean): void { bgTaskNetworkAllowed = reader; }
+/** Cooperative stop: an already dispatched external call may finish; no subsequent stage starts. */
+export function cancelAll(): void {
+  for (const [id, task] of tasks) if (task.state === 'running') cancelFlags.set(id, true);
+}
 
 /** 项间间隔：给搜索/模型端点喘口气，也让人眼看得到进度在动 */
 const STEP_DELAY_MS = 2_000;
@@ -96,11 +102,12 @@ function pruneFinished(): void {
 }
 
 /** 单家背调：与 company_backcheck 工具同源（搜索 → 报告生成） */
-async function runOneBackcheck(c: { name: string; country?: string }): Promise<Result<{ note: string; report: BackcheckReport }>> {
+async function runOneBackcheck(c: { name: string; country?: string }, canContinue: () => boolean): Promise<Result<{ note: string; report: BackcheckReport }>> {
   const hits = await searchCompany(c.country ? `${c.name} ${c.country}` : c.name);
   if (!hits.success || !hits.data.length) {
     return failResult(hits.success ? "没有搜到该公司的公开信息" : (hits.error ?? "搜索失败"));
   }
+  if (!canContinue()) return failResult('当前离线，后台任务已停止。');
   const rep = await generateBackcheckReport({ companyName: c.name, country: c.country }, hits.data);
   if (!rep.success) return failResult(rep.error ?? "报告生成失败");
   return okResult({ note: `评级 ${rep.data.rating}/5`, report: rep.data });
@@ -165,6 +172,7 @@ export function startTask(
   push: (channel: string, data: unknown) => void,
   input: { conversationId: string; kind: BgTaskKind; companies?: Array<{ name: string; country?: string }>; messageIds?: number[] },
 ): Result<{ taskId: string; title: string; total: number }> {
+  if (!bgTaskNetworkAllowed()) return failResult('当前离线，无法启动后台任务。');
   const isEmail = input.kind === "email_summary";
   const companies = isEmail ? [] : (input.companies ?? []);
   const messageIds = isEmail ? (input.messageIds ?? []) : [];
@@ -204,9 +212,10 @@ export function startTask(
   Log.info("agent.bgtask", `启动 ${id.slice(0, 8)} ${task.title} conv=${task.conversationId.slice(0, 8)}`);
 
   void (async () => {
+    const canContinue = () => !cancelFlags.get(id) && bgTaskNetworkAllowed();
     const results: Array<{ ok: boolean; name: string; text: string }> = [];
     for (let i = 0; i < targets.length; i++) {
-      if (cancelFlags.get(id)) {
+      if (!canContinue()) {
         task.state = "cancelled";
         task.finishedAt = nowIso();
         emit();
@@ -221,7 +230,7 @@ export function startTask(
       let note = "";
       let text = "";
       if (task.kind === "backcheck") {
-        const r = await runOneBackcheck({ name: target.name ?? "", country: target.country });
+        const r = await runOneBackcheck({ name: target.name ?? "", country: target.country }, canContinue);
         if (r.success) { ok = true; note = r.data.note; text = formatBackcheckMd(r.data.report); }
         else note = r.error ?? "失败";
       } else if (task.kind === "draft") {
@@ -246,7 +255,7 @@ export function startTask(
       if (i < targets.length - 1) await new Promise(res => setTimeout(res, STEP_DELAY_MS));
     }
     const okCount = results.filter(r => r.ok).length;
-    task.state = okCount === 0 ? "failed" : "done";
+    task.state = !canContinue() ? "cancelled" : okCount === 0 ? "failed" : "done";
     task.finishedAt = nowIso();
     task.artifact = buildSummary(task, results);
     emit();

@@ -10,7 +10,7 @@ import { okResult, type Result } from "../errors";
 import { Log } from "../logger";
 import { checkReminders, type ReminderContact } from "./crm.service";
 import { getSendStatus, getQueueItems } from "./send.service";
-import { ratesDiff, type RatesDiff } from "./rate-sync.service";
+import { type RatesDiff } from "./rate-sync.service";
 import { internalDomains } from "./inbox.service";
 
 // ── 新对话「行动建议」信息流（docs/suggestion-feed-spec.md）──────────
@@ -551,7 +551,8 @@ export function ctxContactId(ctx?: string): number | undefined {
 /** 组装一次完整 feed（gather 全是本地毫秒级查询；任何一块失败只让候选变少） */
 export function feed(ctx?: string, rotate = 0): SuggestionFeed {
   const now = Date.now();
-  const diff = ratesDiff();
+  // 历史镜像差价不再用于建议流，实时查询需当前用户主动授权。
+  const diff = null as RatesDiff | null;
   const tokens = [...new Set([
     ...(diff?.priceDrops.map(x => x.podRaw) ?? []),
     ...(diff?.addedPods.map(x => x.podRaw) ?? []),

@@ -18,6 +18,8 @@ import { toolLabelMap, toolFollowUpMap } from "./agent/manifest";
 import { reflectOnNumbers, selfCorrectNumbers } from "./agent/reflector";
 import { readLocalBodyHtml, htmlToText } from "./inbox.service";
 import { composeEmailNote } from "./agent/email-context";
+import { navigatorVisibleContext, navigatorContextEpoch, navigatorContextCurrent, onNavigatorContextReset, navigatorContextRowVisible } from '../adapters/navigator-context.adapter';
+import { invalidateCache } from './agent/tool-cache';
 
 type TurnOutcomeUsage = TurnOutcome["usage"];
 import { executeAction, dropActionsForConversation } from "./agent/actions";
@@ -38,6 +40,21 @@ interface RuntimeState {
 }
 
 const runtime = new Map<string, RuntimeState>();
+const resumedControllers = new Set<AbortController>();
+onNavigatorContextReset(() => {
+  invalidateCache();
+  stopAll();
+});
+
+/** Loss of center connectivity aborts current turns and invalidates queued approvals/actions. */
+export function stopAll(): void {
+  for (const [conversationId,state] of runtime) {
+    state.abort?.abort();
+    rejectPendingFor(conversationId);
+    dropActionsForConversation(conversationId);
+  }
+  for (const controller of resumedControllers) controller.abort();
+}
 
 // ── 本次运行的 token 累计（端点回 usage 才计，不猜数）──
 export interface TokenTotals { requests: number; input: number; output: number; cached: number; turns: number }
@@ -209,6 +226,7 @@ export async function chat(push: PushFn, input: ChatInput): Promise<Result<{ con
   appendMessage(conversationId, "user", text);
 
   const state = rt;
+  const contextEpoch = navigatorContextEpoch();
 
   // 异步流式回合（不阻塞 IPC 返回）
   void (async () => {
@@ -228,7 +246,7 @@ export async function chat(push: PushFn, input: ChatInput): Promise<Result<{ con
     };
     armIdle();
     /** 带心跳的推送器：任何产出都算"还在干活" */
-    const touchPush: PushFn = (channel, data) => { armIdle(); push(channel, data); };
+    const touchPush: PushFn = (channel, data) => { if (!navigatorContextCurrent(contextEpoch)) return; armIdle(); push(channel, data); };
     const cfg = getProviderConfig();
     Log.debug("agent.chat", `回合开始 conv=${conversationId.slice(0, 8)} model=${cfg.model || "（未填）"}`);
     try {
@@ -244,6 +262,7 @@ export async function chat(push: PushFn, input: ChatInput): Promise<Result<{ con
           conversationId, push: touchPush, signal: state.abort.signal,
           contextNote: resolveContextNote(input.context),
         });
+        if (!navigatorContextCurrent(contextEpoch)) return;
         if (outcome.kind === "approval") { outcomeUsage = outcome.usage; return; } // 写操作等人工确认；续跑收尾在 resolveApprovalRequest
         answer = outcome.text;
         toolOutputs = outcome.toolOutputs ?? [];
@@ -264,22 +283,25 @@ export async function chat(push: PushFn, input: ChatInput): Promise<Result<{ con
         if (bad.length) {
           Log.warn("agent.reflect", `conv=${conversationId.slice(0, 8)} 数量回溯不过（${bad.join("、")}），尝试自纠`);
           const fixed = await selfCorrectNumbers(answer, bad, toolOutputs);
+          if (!navigatorContextCurrent(contextEpoch)) return;
           if (fixed && reflectOnNumbers(fixed, toolOutputs, [text]).length === 0) {
             // 自纠成功：落库与推送各留一份终稿；推送只发一行更正说明，不整篇重发
             answer = fixed;
             const delta = `\n\n（已按工具数据更正正文中的：${bad.slice(0, 3).join("、")}。）`;
-            push(EVENTS.AGENT_CHUNK, { conversationId, delta });
+            touchPush(EVENTS.AGENT_CHUNK, { conversationId, delta });
             Log.info("agent.reflect", `conv=${conversationId.slice(0, 8)} 自纠成功，正文已替换`);
           } else {
             const delta = `\n\n（注：正文中「${bad.slice(0, 3).join("、")}」等数量未能与工具数据核对一致，请以工具结果卡为准。）`;
             answer += delta;
-            push(EVENTS.AGENT_CHUNK, { conversationId, delta });
+            touchPush(EVENTS.AGENT_CHUNK, { conversationId, delta });
           }
         }
       }
+      if (!navigatorContextCurrent(contextEpoch)) return;
       if (answer) appendMessage(conversationId, "assistant", answer);
       push(EVENTS.AGENT_DONE, { conversationId, messageId, stopped: state.abort.signal.aborted, usage: outcomeUsage, ...(cappedFlag ? { capped: true } : {}) });
     } catch (err: unknown) {
+      if (!navigatorContextCurrent(contextEpoch)) return;
       const aborted = (err as { name?: string })?.name === "AbortError";
       if (timedOut) {
         // 看门狗触发：明确告诉用户是端点卡住被强制中断，而非正常"停止"
@@ -334,15 +356,18 @@ export async function resolveApprovalRequest(push: PushFn, input: ApprovalInput)
   if (!cfg.configured) return failResult("未配置模型端点：请到「设置 → 模型与端点」配置并启用一个端点");
   // 续跑同样用静默计时保护（有产出就续命，只掐真挂起）+ 异常显式推送，避免 rejected promise 被吞、UI 永远等待
   const ac = new AbortController();
+  const contextEpoch = navigatorContextEpoch();
+  resumedControllers.add(ac);
   let resumeIdle: ReturnType<typeof setTimeout> | undefined;
   const armResume = () => { clearTimeout(resumeIdle); resumeIdle = setTimeout(() => ac.abort(), TURN_IDLE_LIMIT_MS); };
   armResume();
-  const touchPush: PushFn = (channel, data) => { armResume(); push(channel, data); };
+  const touchPush: PushFn = (channel, data) => { if (!navigatorContextCurrent(contextEpoch)) return; armResume(); push(channel, data); };
   try {
     const outcome = await resolveApproval(approvalId, !!input.approved, {
       baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: cfg.wireApi,
       history: [], conversationId: "", push: touchPush, signal: ac.signal,
     });
+    if (!navigatorContextCurrent(contextEpoch)) return failResult('Navigator 身份已改变，旧回合已中断');
     if (outcome.kind === "approval") return okResult({ resumed: false });
     if (outcome.text) appendMessage(outcome.conversationId, "assistant", outcome.text);
     if (outcome.usage) {
@@ -352,11 +377,13 @@ export async function resolveApprovalRequest(push: PushFn, input: ApprovalInput)
     push(EVENTS.AGENT_DONE, { conversationId: outcome.conversationId, messageId: "", stopped: false, usage: outcome.usage, ...(outcome.capped ? { capped: true } : {}) });
     return okResult({ resumed: true });
   } catch (err: unknown) {
+    if (!navigatorContextCurrent(contextEpoch)) return failResult('Navigator 身份已改变，旧回合已中断');
     const msg = err instanceof Error ? err.message : String(err);
     Log.error("agent.approval", "续跑失败", err instanceof Error ? (err.stack ?? msg) : msg);
     push(EVENTS.AGENT_ERROR, { conversationId: "", message: ac.signal.aborted ? "续跑超时，已中断" : `续跑失败: ${msg}` });
     return failResult(msg);
   } finally {
+    resumedControllers.delete(ac);
     clearTimeout(resumeIdle);
   }
 }
@@ -447,13 +474,13 @@ function tsOf(s: string): number {
 export function getMessages(conversationId: string): Result<MessageDto[]> {
   if (!conversationId) return failResult("参数错误: conversationId 必填");
   const db = getDb();
-  const rows = db.select().from(agentMessages)
+  const rows = navigatorVisibleContext(conversationId,db.select().from(agentMessages)
     .where(eq(agentMessages.conversationId, conversationId))
-    .orderBy(asc(agentMessages.id)).all();
+    .orderBy(asc(agentMessages.id)).all());
   // 工具过程回放：审计表按会话整取（与消息流按时间交织，页面切回后过程卡/产物卡/失败卡仍在）
-  const calls = db.select().from(agentToolCalls)
+  const calls = navigatorVisibleContext(conversationId,db.select().from(agentToolCalls)
     .where(eq(agentToolCalls.conversationId, conversationId))
-    .orderBy(asc(agentToolCalls.id)).all();
+    .orderBy(asc(agentToolCalls.id)).all());
   const merged: Array<MessageDto & { _t: number }> = [
     ...rows.map(r => ({ role: r.role, content: r.content, createdAt: r.createdAt, _t: tsOf(r.createdAt) })),
     ...calls.map(c => ({
@@ -516,7 +543,7 @@ export interface ToolCallLog {
 export function listToolCalls(limit = 100): Result<ToolCallLog[]> {
   const rows = getDb().select().from(agentToolCalls)
     .orderBy(desc(agentToolCalls.id)).limit(Math.min(Math.max(limit, 1), 300)).all();
-  return okResult(rows.map(r => ({
+  return okResult(rows.filter(r => navigatorContextRowVisible(r.conversationId,r)).map(r => ({
     id: r.id,
     conversationId: r.conversationId,
     toolName: r.toolName,

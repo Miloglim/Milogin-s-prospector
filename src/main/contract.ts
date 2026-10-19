@@ -1,3 +1,4 @@
+import { ONLINE_CHANNELS } from '../shared/online-crm';
 const PREFIX = {
   CONTACTS:  "contacts",
   COMPANIES: "companies",
@@ -26,6 +27,7 @@ function chan(domain: string, action: string): string {
 }
 
 export const IPC = {
+  ONLINE: ONLINE_CHANNELS,
   SEARCH: { GLOBAL: chan(PREFIX.SEARCH, "global") },
   CONTACTS: {
     LIST:      chan(PREFIX.CONTACTS, "list"),
@@ -199,11 +201,16 @@ export const IPC = {
     TOOL_META: chan(PREFIX.AGENT, "toolMeta"),
   },
   RATES: {
-    /** 从快照文件全量刷新本地运价镜像 */
+    NAVIGATOR_STATUS: chan(PREFIX.RATES, "navigatorStatus"),
+    NAVIGATOR_LOGIN: chan(PREFIX.RATES, "navigatorLogin"),
+    NAVIGATOR_LOGOUT: chan(PREFIX.RATES, "navigatorLogout"),
+    IMAGE: chan(PREFIX.RATES, "image"),
+    OPTIONS: chan(PREFIX.RATES, "options"),
+    /** 退役兼容通道：明确失败，不启动镜像同步 */
     SYNC:   chan(PREFIX.RATES, "sync"),
-    /** 条件查价（航线/船司/目的港/柜型） */
+    /** 当前 Navigator 用户身份下实时条件查价 */
     LIST:   chan(PREFIX.RATES, "list"),
-    /** 镜像统计（总数/有效数/最近同步/快照新鲜度） */
+    /** Navigator 授权状态，返回 NavigatorResult<NavigatorStatus> */
     STATUS: chan(PREFIX.RATES, "status"),
     /** 在系统浏览器打开公司电脑 board_server 的台账工作台 */
     OPEN_BOARD: chan(PREFIX.RATES, "openBoard"),
@@ -243,6 +250,7 @@ export const IPC = {
     OPEN_PATH:        chan(PREFIX.SYSTEM, "openPath"),
     /** 开机自启开关（新手向导用，Windows 登录项） */
     SET_AUTO_LAUNCH:  chan(PREFIX.SYSTEM, "setAutoLaunch"),
+    RESTART_CONFIRM:  chan(PREFIX.SYSTEM, "restartConfirm"),
   },
   UPDATE: {
     CHECK:        chan(PREFIX.UPDATE, "check"),

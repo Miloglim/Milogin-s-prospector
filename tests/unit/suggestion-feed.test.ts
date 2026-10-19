@@ -406,9 +406,8 @@ describe("feed 集成（真 SQL 口径）", () => {
     }).run();
     const f = feed();
     const drop = f.items.find(i => i.key.startsWith("intel-drop"))!;
-    expect(drop.text).toContain("可以给 Juan Garcia 同步");
-    expect(drop.href).toBe("#/customers?view=board&ratepush=1");
-    expect(drop.prompt).toContain("入队不等于发送");
+    // 旧镜像降价资讯缺少当前用户授权，不再进入产品建议流。
+    expect(drop).toBeUndefined();
   });
 
   it("dismiss：点过的 chip 当天不再出，隔天自动失效", () => {

@@ -1,6 +1,11 @@
-﻿// ── Agent Harness 工具层 · 发送域（从 tools.ts 拆分）────────────────
+import { getAgentContactPort } from "../../agent-contact.service";
+import { readAgentReminders } from "../../agent-crm-tools.service";
+import { captureAgentRecipients, runAgentSendOnce, type AgentRecipients } from "../../agent-send.service";
+import { contactName as centerContactName } from "../../../core/agent-contact";
+// ── Agent Harness 工具层 · 发送域（从 tools.ts 拆分）────────────────
 // 工具：generate_draft / queue_status / reminders_due / accounts_status / list_templates /
 //       send_queue_add / campaign_create / campaign_status / campaign_control。
+import { requireNavigatorAuthorization, navigatorAuthorizationEpoch } from "../../../adapters/navigator-auth.adapter";
 import { z } from "zod";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../db";
@@ -8,22 +13,22 @@ import { contacts } from "../../../db/schema/contacts";
 import { companies } from "../../../db/schema/companies";
 import { inboxMessages } from "../../../db/schema/inbox";
 import { emailAccounts } from "../../../db/schema/accounts";
-import { getSendStatus, getQueueItems, startDynamicSend, buildAdaptiveQueue, startQueue } from "../../send.service";
-import { previewCampaign, createCampaign, getCampaignOverview, getCampaignDetail, setCampaignStatus, restartCampaign, scanDueCampaigns, type CampaignTouch, type CampaignSchedule } from "../../campaign.service";
+import { getSendStatus, getQueueItems, startDynamicSend, buildDynamicQueue, buildAdaptiveQueue, startQueue, isValidEmail } from "../../send.service";
+import { previewCampaign, createCampaign, enqueuePreparedCampaign, getCampaignOverview, getCampaignDetail, setCampaignStatus, restartCampaign, scanDueCampaigns, type CampaignTouch, type CampaignSchedule } from "../../campaign.service";
 import { upsertTemplate, listTemplates as listTemplatesSvc } from "../../template.service";
 import { getBody, htmlToText } from "../../inbox.service";
 import { checkReminders } from "../../crm.service";
 import { generateEmailDraft, generateEmailReply, type BackcheckReport } from "../../ai.service";
 import { parseDraft } from "../parser";
-import { rememberWork, fingerprint, listWork } from "../working-memory";
+import { rememberWork, fingerprint } from "../working-memory";
 import { lookupIdempotent, rememberResult, forget } from "../idempotency";
 import { invalidateCache } from "../tool-cache";
 import { registerAction } from "../actions";
 import { okResult, failResult, type Result } from "../../../errors";
 import { isCircuitOpen, countRecentBlocks } from "../../sender-block.service";
-import { parseEmailInquiry, pickRatesForEmail } from "../email-parse";
+import { parseEmailInquiry } from "../email-parse";
 import { lookupReplyRates, podQueryWord, customerQuoteTable } from "../reply-rates";
-import { readIdentity } from "../identity";
+import { identityForMailbox, readIdentity } from "../identity";
 import { pickTarget, candidatesText, pickByEmail } from "./contacts";
 import {
   gate, cachedRead, finishRead, okOut, failOut, audit, optStr, optInt, optBool, toIds,
@@ -81,7 +86,13 @@ export const campaignStatusSchema = z.object({
 export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof generateDraftSchema>): Promise<string> {
   const note = gate(ctx, "generate_draft");
   if (note) return note;
-  const sender = readIdentity();
+  let center: AgentRecipients | undefined;
+  if (getAgentContactPort()) {
+    const captured = captureAgentRecipients(args.messageId ? {} : args, true);
+    if (!captured.success) return failOut("bad_recipient", captured.error);
+    center = captured.data;
+  }
+  let sender = readIdentity();
   let companyName: string, contactName: string, lang: string, tplName: string;
   let draftContactId: number | null;
   let replySubject: string | null = null;
@@ -90,6 +101,7 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
   let inquiryNoRates = false;     // 是询价邮件但工作台与台账都没匹配价 → 出稿后说明查无当期价
   let quoteTableAttached = false; // 客户报价表（英文十一列）是否已随草稿生成
   let r: Result<string>;
+  let protectedEpoch: number | undefined;
   if (args.messageId) {
     // —— 回信模式（docs/agent-draft-reply-spec.md）：针对来信逐条应答 ——
     const row = getDb().select().from(inboxMessages).where(eq(inboxMessages.id, args.messageId)).get();
@@ -97,15 +109,36 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
       audit(ctx, "generate_draft", "read", args, undefined, "auto", `邮件 #${args.messageId} 不存在`);
       return failOut("not_found", `邮件 #${args.messageId} 不存在，先 inbox_search 拿 id`);
     }
+    if (Number.isInteger(row.accountId) && row.accountId > 0) {
+      try {
+        const mailbox = getDb().select({ email: emailAccounts.email, displayName: emailAccounts.displayName })
+          .from(emailAccounts).where(eq(emailAccounts.id, row.accountId)).get();
+        if (mailbox) {
+          sender = identityForMailbox(mailbox, sender);
+        }
+      } catch {
+        // 旧测试夹具或未完成迁移的本地库可能尚未建 email_accounts，继续使用默认身份起草。
+      }
+    }
     const bodyR = await getBody(args.messageId);
+    if (center && !center.active()) return failOut("UNAUTHORIZED", "账号或权限已变化，请重新生成草稿");
     const bodyText = (bodyR.success ? htmlToText(bodyR.data) : (row.bodyPreview || "")).slice(0, 4000);
     if (!bodyText.trim()) {
       audit(ctx, "generate_draft", "read", args, undefined, "auto", "来信正文为空");
       return failOut("empty_body", "该邮件没有可用正文，无法据以起草回复；可先 email_read_full 确认");
     }
     // 收件人：来信关联联系人优先，否则 fromEmail 精确匹配；都不中不阻塞出稿（actions 少一个入队而已）
-    const linked = row.matchedContactId ? pickTarget({ contactId: row.matchedContactId }) : null;
-    const rep = linked && linked.ok ? linked.person : pickByEmail(row.fromEmail);
+    const linked = !center && row.matchedContactId ? pickTarget({ contactId: row.matchedContactId }) : null;
+    let rep = center ? null : linked && linked.ok ? linked.person : pickByEmail(row.fromEmail);
+    if (center) {
+      // Legacy mail FK is a different ID domain. Only exact authorized sender email may bind a reply.
+      const found = captureAgentRecipients({ contact: row.fromEmail });
+      if (found.success) {
+        center = found.data;
+        const recipient = center.rows[0]!;
+        rep = { id: recipient.contactId, name: centerContactName(recipient), company: recipient.companyName, email: recipient.email ?? "" };
+      }
+    }
     companyName = args.companyName || rep?.company || row.fromName || row.fromEmail;
     contactName = args.contactName || rep?.name || row.fromName || row.fromEmail;
     draftContactId = rep?.id ?? null;
@@ -114,18 +147,29 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
     lang = langOk || "EN";
     // 闭环：解析来信询价要素 + 从会话工作台拉此前查到的匹配真价，据真数据起草（灭掉占位编造）
     const inq = parseEmailInquiry(bodyText);
-    const matched = pickRatesForEmail(inq, listWork(ctx.conversationId, "rates", 8));
+    const needsRates = !!(inq.pod || inq.container || inq.pol);
+    if (needsRates) {
+      const auth = await requireNavigatorAuthorization();
+      if (!auth.ok) return failOut("navigator_login_required", auth.error || "请先登录运价台账后再生成报价回复");
+      protectedEpoch = navigatorAuthorizationEpoch();
+    }
+    // 报价回复始终取实时价，历史工作台只作为会话历史，不是授权后的报价来源。
     // 工作台没有匹配价 → 工具自己查一次台账（一轮就出带真价的草稿）。
     // 旧行为是返回 notice 叫模型「先 quote_search 再重调本工具」，弱模型实测不照做，
     // 询价信的回信就只剩「报价稍后补」。规范 docs/agent-draft-reply-spec.md §询价信回信
-    const selfRates = matched ? null : lookupReplyRates(inq);
-    const replyRates = matched?.rows ?? selfRates?.rows ?? null;
+    let selfRates: Awaited<ReturnType<typeof lookupReplyRates>> = null;
+    try { selfRates = needsRates ? await lookupReplyRates(inq) : null; }
+    catch { return failOut("navigator_query_failed", "实时台账查询未完成，请检查账号状态和连接后重试"); }
+    if (protectedEpoch !== undefined && protectedEpoch !== navigatorAuthorizationEpoch())
+      return failOut("navigator_identity_changed", "账号状态已变化，请重新生成报价回复");
+    if (center && !center.active()) return failOut("UNAUTHORIZED", "账号或权限已变化，请重新生成草稿");
+    const replyRates = selfRates?.rows ?? null;
     ratesAttached = replyRates?.length ?? 0;
     ratesSelfQueried = !!selfRates;
     inquiryNoRates = !!(inq.pod || inq.container || inq.pol) && ratesAttached === 0;
     // 客户报价表（英文十一列）：有真价就随草稿一起出，模型只负责原样嵌入。
     // POD 用归一后的标准港名（航线级行也展开到该港；多港粘连只留目标港）。
-    const tablePod = selfRates?.pod ?? podQueryWord(inq) ?? (typeof matched?.pod === "string" ? matched.pod : null);
+    const tablePod = selfRates?.pod ?? podQueryWord(inq);
     // 出表优先用台账原始行（目免/船期/有效期原文齐全）；工作台来的只有精简行也能出
     const quoteTable = replyRates?.length ? customerQuoteTable(selfRates?.dtos ?? replyRates, tablePod, inq) : "";
     quoteTableAttached = !!quoteTable;
@@ -140,8 +184,9 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
     tplName = `${companyName} · AI 回信`.slice(0, 60);
   } else {
     // —— 开发信模式：收件人可由 contact/contactId 任一定位；定位到就用档案补全姓名与公司 ——
-    const target = args.contactId || args.contact ? pickTarget(args) : null;
-    const person = target && target.ok ? target.person : null;
+    const target = !center && (args.contactId || args.contact) ? pickTarget(args) : null;
+    const recipient = center?.rows[0];
+    const person = recipient ? { id: recipient.contactId, name: centerContactName(recipient), company: recipient.companyName } : target && target.ok ? target.person : null;
     if (target && !target.ok) {
       audit(ctx, "generate_draft", "read", args, undefined, "auto", "未定位到收件人");
       return failOut(target.why, target.why === "ambiguous"
@@ -151,7 +196,8 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
     companyName = args.companyName || person?.company || person?.name || "客户";
     contactName = args.contactName || person?.name || companyName;
     draftContactId = person?.id ?? args.contactId ?? null;
-    lang = (["EN", "ES", "PT"].includes((args.language ?? "EN").toUpperCase()) ? args.language!.toUpperCase() : "EN");
+    const requestedLanguage = (args.language ?? recipient?.language ?? "EN").toUpperCase();
+    lang = ["EN", "ES", "PT"].includes(requestedLanguage) ? requestedLanguage : "EN";
     r = await generateEmailDraft({
       language: lang as "EN" | "ES" | "PT",
       companyName,
@@ -161,6 +207,10 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
     });
     tplName = `${companyName} · AI 开发信`.slice(0, 60);
   }
+  // LLM 回来前账号可能已经切换；旧账号的报价绝不能再登记动作或写进新上下文。
+  if (center && !center.active()) return failOut("UNAUTHORIZED", "账号或权限已变化，请重新生成草稿");
+  if (protectedEpoch !== undefined && protectedEpoch !== navigatorAuthorizationEpoch())
+    return failOut("navigator_identity_changed", "账号状态已变化，请重新生成报价回复");
   if (!r.success) {
     audit(ctx, "generate_draft", "read", args, undefined, "auto", r.error);
     return failOut("generate_failed", `草稿生成失败：${r.error}`);
@@ -172,6 +222,7 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
   const actions: AnyAction[] = [
     registerAction({
       conversationId: ctx.conversationId, toolName: "generate_draft",
+      active: center?.active,
       label: "存入素材库",
       confirm: `把这封草稿存进素材库，以后在发送中心可直接复用`,
       detail: `名称「${tplName}」，语言 ${lang}`,
@@ -182,6 +233,12 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
       ],
       target: { label: "查看素材库", href: "#/templates" },
       run: async () => {
+        if (protectedEpoch !== undefined) {
+          const auth = await requireNavigatorAuthorization();
+          if (!auth.ok || protectedEpoch !== navigatorAuthorizationEpoch())
+            return failResult("账号状态已变化，请重新生成报价回复");
+        }
+        if (center && !center.active()) return failResult("账号或权限已变化，请重新生成草稿");
         const t = await upsertTemplate({ name: tplName, language: lang, subject, body, category: "ai-draft" });
         return t.success ? okResult(`已存入素材库：${t.data.name}`) : failResult(t.error);
       },
@@ -191,6 +248,7 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
     actions.push(registerAction({
       conversationId: ctx.conversationId, toolName: "generate_draft",
       label: "入队发给这位联系人",
+      active: center?.active,
       confirm: `把这封信加入发送队列，收件人 #${draftContactId} ${contactName}`,
       detail: "入队 ≠ 发送：队列建好后不会自动开始，仍要你在「发送中心」点「开始」",
       diff: [
@@ -199,7 +257,14 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
       ],
       target: { label: "去发送中心", href: "#/campaigns" },
       run: async () => {
-        const s = await startDynamicSend([draftContactId], subject, body, false);
+        if (protectedEpoch !== undefined) {
+          const auth = await requireNavigatorAuthorization();
+          if (!auth.ok || protectedEpoch !== navigatorAuthorizationEpoch())
+            return failResult("账号状态已变化，请重新生成报价回复");
+        }
+        const s = center
+          ? await enqueueCenterDraft(center, ctx.conversationId, subject, body)
+          : await startDynamicSend([draftContactId], subject, body, false);
         return s.success
           ? okResult(`已入队 ${s.data.queuedCount} 封（批次 ${s.data.batchId.slice(0, 8)}），等待你在发送中心点开始`)
           : failResult(s.error);
@@ -212,7 +277,8 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
     refId: args.messageId ? `msg-${args.messageId}` : `to-${draftContactId ?? companyName}`,
     toolName: "generate_draft",
     contextLine: `草稿 致 ${companyName}「${subject}」${lang}${ratesAttached ? `，已引用真价 ${ratesAttached} 条` : ""}`,
-    payload: { subject, bodyExcerpt: body.slice(0, 2000), language: lang, contactId: draftContactId, ratesAttached, messageId: args.messageId ?? null },
+    payload: { subject, bodyExcerpt: body.slice(0, 2000), language: lang, contactId: draftContactId, ratesAttached, messageId: args.messageId ?? null,
+      ...(center ? { centerScope: center.scope, centerContactRefs: center.refs } : {}) },
   });
   // 正文只放一份（subject/body）：整条结果受推送上限约束，重复字段会挤掉 actions
   const out = {
@@ -222,7 +288,7 @@ export async function execGenerateDraft(ctx: ToolCtx, args: z.infer<typeof gener
     ...(inquiryNoRates ? {
       notice: "这封是询价邮件，但会话工作台与台账里都没有匹配到的当期运价（工具已按来信的起运港/目的港/柜型自查过一次）。"
         + "草稿走「报价稍后补」话术、不编数字。要给用户交代，就说台账暂无该航线当期报价，"
-        + "并给两条出口：去运价页手动同步一次台账，或联网调研当前市场行情（market_research）。",
+        + "并给两条出口：去运价页核对筛选条件，或联网调研当前市场行情（market_research）。",
     } : {}),
   };
   audit(ctx, "generate_draft", "read", args,
@@ -251,6 +317,18 @@ export async function execQueueStatus(ctx: ToolCtx, args: Record<string, never>)
 }
 
 export async function execRemindersDue(ctx: ToolCtx, args: Record<string, never>): Promise<string> {
+  const center = getAgentContactPort();
+  if (center) {
+    const gateNote = gate(ctx, "reminders_due");
+    if (gateNote) return gateNote;
+    const before = center.snapshot();
+    if (!before.ok) return failOut(before.error.code, before.error.message);
+    const result = await readAgentReminders(center);
+    if (!before.data.active()) return failOut("UNAUTHORIZED", "账号或权限已变化");
+    if (!result.ok) return failOut(result.error.code, result.error.message);
+    audit(ctx, "reminders_due", "read", {}, result.data, "auto");
+    return okOut({ ...result.data, notice: result.data.partial ? "清单未读取完整，不代表全部到期任务。" : "按当前权限返回中心跟进任务；任务编号不是联系人编号。" });
+  }
   const cached = cachedRead(ctx, "reminders_due", {});
   if (cached) return cached;
   const r = checkReminders();
@@ -384,9 +462,39 @@ export async function execListTemplates(ctx: ToolCtx, args: z.infer<typeof listT
   }));
 }
 
+function enqueueCenterDraft(center: AgentRecipients, conversationId: string, subject: string, body: string, usePreset = false): ReturnType<typeof startDynamicSend> {
+  return runAgentSendOnce(center, conversationId, "enqueue", { subject, body, usePreset }, async () => {
+    if (center.rows.some(row => !isValidEmail(row.email ?? ""))) return failResult("所选联系人中有无效邮箱，请先修正");
+    // Do not replace a pending batch behind the user's back.
+    const existing = getQueueItems();
+    if (!existing.success) return failResult(existing.error);
+    if (existing.data.some(item => item.status === "pending")) return failResult("发送中心还有待发送队列，请先处理该队列");
+    const ids = center.refs.map(ref => ref.contactId);
+    const queue = usePreset ? buildAdaptiveQueue([], ids, center.refs) : buildDynamicQueue(ids, subject, body, undefined, undefined, center.refs);
+    if (!queue.success) return queue;
+    return enqueuePreparedCampaign({
+      name: (subject || "AI 开发信").slice(0, 60), contactIds: ids, centerContactRefs: center.refs,
+      touches: [{ stage: "initial", delayDays: 0, mode: "fixed", content: { subject: queue.data[0]?.subject ?? subject, body: queue.data[0]?.tplBody ?? body } }],
+      autoSend: false,
+    }, queue.data, items => startQueue(items, false));
+  });
+}
+
 export async function execSendQueueAdd(ctx: ToolCtx, args: z.infer<typeof sendQueueAddSchema>): Promise<string> {
   const gateNote = gate(ctx, "send_queue_add");
   if (gateNote) return gateNote;
+  if (getAgentContactPort()) {
+    const captured = captureAgentRecipients(args);
+    if (!captured.success) return failOut("bad_recipient", captured.error);
+    if (!args.usePreset && (!args.subject?.trim() || !args.body?.trim())) return failOut("missing_content", "缺少主题或正文");
+    const center = captured.data;
+    const result = await enqueueCenterDraft(center, ctx.conversationId, args.subject ?? "", args.body ?? "", args.usePreset === true);
+    if (!center.active()) return failOut("UNAUTHORIZED", "账号或权限已变化，请重新操作");
+    audit(ctx, "send_queue_add", "write", args, result.success ? result.data : undefined, "approved", result.success ? undefined : result.error);
+    if (!result.success) return failOut("enqueue_failed", result.error);
+    invalidateCache("send_queue_add");
+    return okOut({ ...result.data, notice: result.data.queuedCount > 0 ? "队列已建立，请到发送中心核对后开始发送。" : "本次未入队，请核对限额及缓发名单。" });
+  }
   const dup = lookupIdempotent(ctx, "send_queue_add", args);
   if (dup) return dup;
   // 收件人：id 列表优先，否则用 contact 定位（少一步 = 弱模型少一次掉链子）
@@ -443,6 +551,15 @@ export async function execSendQueueAdd(ctx: ToolCtx, args: z.infer<typeof sendQu
 export async function execCampaignCreate(ctx: ToolCtx, args: z.infer<typeof campaignCreateSchema>): Promise<string> {
   const gateNote = gate(ctx, "campaign_create");
   if (gateNote) return gateNote;
+  let center: AgentRecipients | undefined;
+  if (getAgentContactPort()) {
+    const captured = captureAgentRecipients(args);
+    if (!captured.success) return failOut("bad_recipient", captured.error);
+    center = captured.data;
+    const valid = center.validate();
+    if (!valid.success) return failOut("bad_recipient", valid.error);
+    if (center.rows.some(row => !isValidEmail(row.email ?? ""))) return failOut("bad_recipient", "所选联系人中有无效邮箱，请先修正");
+  }
   // 触点入参 → service 形态（mode/fixed 内容快照透传；与向导同一判据提前校验，别等确认卡点下去才报错）
   const touches: CampaignTouch[] = args.touches.map(t => ({
     stage: t.stage,
@@ -464,7 +581,8 @@ export async function execCampaignCreate(ctx: ToolCtx, args: z.infer<typeof camp
     ...(ws !== undefined && we !== undefined ? { windowStartHour: ws, windowEndHour: we } : {}),
     ...(cap && cap > 0 ? { dailyGroupCap: cap } : {}),
   };
-  const pv = previewCampaign(args.contactIds);
+  const contactIds = center ? center.refs.map(ref => ref.contactId) : [...args.contactIds];
+  const pv = previewCampaign(contactIds, center?.refs);
   if (!pv.success) return failOut("bad_list", pv.error);
   const { eligible, excluded, total, sample, reachedReplied } = pv.data;
   if (eligible === 0) {
@@ -486,9 +604,10 @@ export async function execCampaignCreate(ctx: ToolCtx, args: z.infer<typeof camp
     sample,
     actions: [registerAction({
       conversationId: ctx.conversationId, toolName: "campaign_create",
+      active: center?.active,
       label: `创建发信任务（${eligible} 人 × ${args.touches.length} 轮）`,
       confirm: `为 ${eligible} 位联系人创建发信任务「${name}」${rrNote}：${planSummary}，内容=${contentSrc}${winNote}${capNote}。后续触点${autoSend ? "自动发送（无人值守）" : "入队待你在发送中心手动开始"}。`,
-      detail: "客户回复后自动止损；发信账号智能轮换遵循「谁发过的客户还由谁发」（不换人发），新客户才轮换",
+      detail: center ? "先保存为草稿，请到发送中心核对并启动。客户回复后停止后续触点。" : "客户回复后自动止损；发信账号智能轮换遵循「谁发过的客户还由谁发」（不换人发），新客户才轮换",
       diff: [
         { field: "targets", label: "收件人", from: "—", to: sample.map(s => `#${s.id} ${s.name}`).join("、") + (eligible > sample.length ? ` 等 ${eligible} 人` : "") },
         { field: "plan", label: "触点计划", from: "—", to: planSummary },
@@ -501,7 +620,14 @@ export async function execCampaignCreate(ctx: ToolCtx, args: z.infer<typeof camp
       ],
       target: { label: "去发送中心", href: "#/campaigns" },
       run: async () => {
-        const r = createCampaign({ name, contactIds: args.contactIds, touches, autoSend, ...(schedule ? { schedule } : {}) });
+        const input = { name, contactIds, touches, autoSend, ...(schedule ? { schedule } : {}) };
+        if (center) {
+          const captured = center;
+          const r = await runAgentSendOnce(captured, ctx.conversationId, "campaign", input, async () =>
+            createCampaign({ ...input, centerContactRefs: captured.refs, startNow: false }));
+          return r.success ? okResult(`任务 ${r.data.id} 已保存为草稿，请到发送中心核对并启动。`) : r;
+        }
+        const r = createCampaign(input);
         if (!r.success) return failResult(r.error);
         await scanDueCampaigns();   // 首触点立即入队（不等下个扫描周期）
         return okResult(`任务 ${r.data.id} 已创建：${r.data.eligible} 人入列（排除 ${r.data.excluded}），首信已入队列${autoSend ? "并自动开始" : "，等你在发送中心点开始"}。后续触点按计划自动跟进，客户回复即止损。`);

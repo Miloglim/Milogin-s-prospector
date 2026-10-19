@@ -11,6 +11,11 @@ import * as schema from "../../src/main/db/schema";
 
 type Driz = ReturnType<typeof drizzle<typeof schema>>;
 const h = { db: null as unknown as Driz };
+// Storage behavior tests run inside a current authorized grant; privacy is tested separately.
+vi.mock('../../src/main/adapters/navigator-context.adapter', () => ({
+  navigatorVisibleContext: (_id:string, rows:unknown[]) => rows,
+  navigatorContextRowVisible: () => true,
+}));
 
 vi.mock("../../src/main/db", () => ({
   getDb: () => h.db,

@@ -1,5 +1,6 @@
 import { invalidateDomain } from "../../lib/cacheDeps";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useRouterState } from "@tanstack/react-router";
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { Card, Tag, Button, Tabs, Input, Select, message, Empty, Timeline, DatePicker, Modal, Popconfirm, Tooltip, Checkbox } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { HtmlText } from "../../components/RichTextEditor";
@@ -11,12 +12,13 @@ import {
   DeleteOutlined, PlusOutlined, SendOutlined, EnvironmentOutlined, CopyOutlined, SwapOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { ONLINE_LIMITS } from '../../../shared/online-crm';
 
 // ══════════════════════════════════════════════════════════════
 // 类型 & 常量（沿用旧 PE）
 // ══════════════════════════════════════════════════════════════
 
-interface PipelineContact {
+export interface PipelineContact {
   id: number; email: string; firstName: string | null; lastName: string | null;
   title: string | null; phone: string | null; linkedinUrl: string | null;
   companyName: string | null; companyId: number | null;
@@ -31,7 +33,8 @@ interface PipelineContact {
   stageChangedAt: string | null;
 }
 
-interface StageData { key: string; label: string; color: string; contacts: PipelineContact[]; }
+export interface StageData { key: string; label: string; color: string; contacts: PipelineContact[]; }
+export interface PipelineDataPort { key: string; list(): Promise<{ success: boolean; data?: StageData[]; error?: string }>; renderDetail(id: number | null, close: () => void): ReactNode; }
 
 const STAGES = [
   { key: "reaching", label: "触达中", color: "#ff9800" },
@@ -82,7 +85,8 @@ function followAgeClass(contact: PipelineContact): string {
 // 主组件
 // ══════════════════════════════════════════════════════════════
 
-export function CrmPipeline() {
+export function CrmPipeline({ dataPort }: { dataPort?: PipelineDataPort } = {}) {
+  const location = useRouterState({ select: s => s.location });
   const qc = useQueryClient();
   const [detailId, setDetailId] = useState<number | null>(null);
   const [currentTab, setCurrentTab] = useState("info");
@@ -95,10 +99,13 @@ export function CrmPipeline() {
   const [ratePushOpen, setRatePushOpen] = useState(false);
   const pendingDetailRef = useRef<number | null>(null);
   useEffect(() => {
+    if (dataPort) return;
+    if (location.pathname !== "/customers") return;
     const rawHash = window.location.hash;
     const qs = rawHash.includes("?") ? rawHash.split("?")[1] : "";
     if (!qs) return;
     const sp = new URLSearchParams(qs);
+    if (sp.get("view") && sp.get("view") !== "board") return;
     if (sp.get("ratepush")) setRatePushOpen(true);
     const detailStr = sp.get("detail");
     if (!detailStr) {
@@ -113,7 +120,7 @@ export function CrmPipeline() {
       setDetailId(id);
     }
     window.location.hash = rawHash.split("?")[0]!;
-  }, []);
+  }, [location.pathname, location.searchStr]);
   const [emailPopup, setEmailPopup] = useState<{
     id?: number; fromEmail: string; subject: string | null; receivedAt: string; bodyPreview: string | null;
   } | null>(null);
@@ -132,9 +139,10 @@ export function CrmPipeline() {
   const [sendPreview, setSendPreview] = useState<{ subject: string; body: string } | null>(null);
   const [sendSending, setSendSending] = useState(false);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["crm", "pipeline"],
-    queryFn: () => window.api.invoke("crm:listPipeline") as Promise<{ success: boolean; data?: StageData[] }>,
+  const { data, isLoading, error: listError } = useQuery({
+    queryKey: [dataPort ? 'center-contacts' : "crm", "pipeline", dataPort?.key],
+    queryFn: () => dataPort ? dataPort.list() : window.api.invoke("crm:listPipeline") as Promise<{ success: boolean; data?: StageData[]; error?: string }>,
+    refetchInterval: dataPort ? ONLINE_LIMITS.pollMs : false,
   });
 
   const { data: detail, isLoading: detailLoading } = useQuery({
@@ -147,7 +155,7 @@ export function CrmPipeline() {
         timeline: Array<{ id?: number | null; type: string; direction?: string; fromEmail?: string | null; subject: string | null; bodyPreview: string | null; createdAt: string }>;
       };
     }>,
-    enabled: !!detailId,
+    enabled: !!detailId && !dataPort,
   });
 
   // 来信推断的港口偏好（只在打开「偏好设置」时拉一次；方案引擎与运价更新推送同一口径）
@@ -156,7 +164,7 @@ export function CrmPipeline() {
     queryFn: () => window.api.invoke("rateUpdate:ports", detailId) as Promise<{
       success: boolean; data?: Array<{ pod: string; pol: string | null; container: string | null; score: number; sources: string[]; lastSeenAt: string | null; hits: number }>;
     }>,
-    enabled: !!detailId && currentTab === "prefs",
+    enabled: !!detailId && currentTab === "prefs" && !dataPort,
   });
 
   const setStageMut = useMutation({
@@ -219,10 +227,12 @@ export function CrmPipeline() {
   const { data: templatesData } = useQuery({
     queryKey: ["templates"],
     queryFn: () => window.api.invoke("templates:list") as Promise<{ success: boolean; data?: Array<{ id: number; name: string; subject: string; body: string }> }>,
+    enabled: !dataPort,
   });
   const { data: accountsData } = useQuery({
     queryKey: ["accounts"],
     queryFn: () => window.api.invoke("accounts:list") as Promise<{ success: boolean; data?: Array<{ id: number; email: string }> }>,
+    enabled: !dataPort,
   });
   const templates = templatesData?.success ? templatesData.data || [] : [];
   const accounts = accountsData?.success ? accountsData.data || [] : [];
@@ -427,6 +437,7 @@ export function CrmPipeline() {
     >
       {/* ═══ 左侧看板 ═══ */}
       <div className="flex-1 overflow-y-auto pb-4 space-y-1">
+        {(listError || data?.success === false) && <div role="alert" className="text-xs text-red-500 p-2 bg-red-50 rounded">{data?.error || (listError instanceof Error ? listError.message : '看板加载失败，请稍后重试')}</div>}
         {/* 分类筛选 — 国家 / 跟进人：下拉多选（选项再多也只占一行） */}
         <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-3 py-1.5 flex items-center gap-2">
           <span className="text-[10px] text-gray-400 flex-shrink-0">筛选</span>
@@ -529,7 +540,8 @@ export function CrmPipeline() {
       {/* ═══ 右侧详情：常驻浮层卡片（position: fixed）═══
           钉在视口右侧：滚动时位置不变、永远浮在列表上层；
           上下贴边定位 → 高度天然随窗口伸缩，宽度 clamp 按视口比例自适应，内容超出走卡片内部滚动。 */}
-      {detailId && (
+      {dataPort && dataPort.renderDetail(detailId, () => setDetailId(null))}
+      {!dataPort && detailId && (
         <div
           className="fixed z-30 bg-white border border-gray-200 rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.16)] flex flex-col overflow-hidden"
           style={{ top: 44, right: 36, bottom: 28, width: "clamp(300px, 30vw, 460px)" }}
@@ -1009,7 +1021,7 @@ export function CrmPipeline() {
       <RateUpdatePanel
         open={ratePushOpen}
         onClose={() => setRatePushOpen(false)}
-        contactIds={selectedIds.size > 0 ? [...selectedIds] : undefined}
+        contactIds={selectedIds.size > 0 ? [...selectedIds] : dataPort ? stages.flatMap(stage => visibleOf(stage.contacts).map(row => row.id)) : undefined}
       />
     </div>
   );

@@ -30,6 +30,19 @@ vi.mock("../../src/main/config", async (importOriginal) => {
   return { ...actual, APP_ROOT: TMP, DB_PATH: path.join(TMP, "prospector.db") };
 });
 
+// 实时已授权 API 的内存 fixture，验证既有筛选与清洗语义。
+vi.mock("../../src/main/adapters/navigator-quotes.adapter", async () => {
+  const fixture = await import("../../src/main/services/rate-sync.service");
+  return { listQuotes: async (...a: Parameters<typeof fixture.listQuotes>) => fixture.listQuotes(...a),
+    countQuotes: async (...a: Parameters<typeof fixture.countQuotes>) => fixture.countQuotes(...a),
+    listQuoteRaws: async (...a: Parameters<typeof fixture.listQuoteRaws>) => fixture.listQuoteRaws(...a),
+    listSpaces: async (...a: Parameters<typeof fixture.listSpaces>) => fixture.listSpaces(...a) };
+});
+vi.mock("../../src/main/adapters/navigator-auth.adapter", () => ({
+  requireNavigatorAuthorization: async () => ({ ok: true, data: { authenticated: true } }),
+  navigatorAuthorizationEpoch: () => 1, onNavigatorIdentityChanged: () => () => {}, navigatorHasAuthorization: () => true,
+}));
+
 const { stripLaneTag, mapRemoteRow, mapRemoteSpace, listQuotes, countQuotes, listSpaces, quoteOptions } =
   await import("../../src/main/services/rate-sync.service");
 const { buildHarnessTools } = await import("../../src/main/services/agent/tools");
@@ -134,13 +147,13 @@ describe("L2/L3：查不到 ≠ 没有", () => {
       notice: string; mirror?: { rows: number; reachable: boolean };
     };
     expect(out.empty).toBe(true);
-    expect(out.candidates?.lanes.map(l => l.v)).toContain("地东");
-    expect(out.candidates?.pods.map(p => p.v)).toContain("ISTANBUL 伊斯坦布尔(土耳其)");
-    expect(out.notice).toContain("再查一次");
+    expect(out.candidates).toBeUndefined();
+    expect(out.notice).toContain("实时台账未命中");
+    expect(out.notice).toContain("核对港名");
     expect(out.notice).not.toContain("暂无该航线");
     // 空结果不许进读缓存：同一参数第二次调用要真跑，才走得到定论口径
     const again = JSON.parse(await call(T("quote_search"), { q: "波德港不存在XYZ" })) as { notice: string };
-    expect(again.notice).not.toBe(out.notice);
+    expect(again.notice).toBe(out.notice);
   });
 
   it("第二轮仍没命中 → 按镜像事实定论（台账连不上就说「没跟上真源」，两条出口都在）", async () => {
@@ -149,12 +162,12 @@ describe("L2/L3：查不到 ≠ 没有", () => {
       notice: string; mirror: { rows: number; reachable: boolean; remoteHost: string };
       actions?: Array<{ kind: string; label: string }>;
     };
-    expect(out.mirror.reachable).toBe(false);            // 测试环境里真源必然连不上
-    expect(out.mirror.rows).toBe(3);
-    expect(out.notice).toContain("两轮都没命中");
-    expect(out.notice).toContain("镜像没跟上");
-    expect(out.notice).toContain("不要说成");
-    expect(out.actions?.map(a => a.label)).toEqual(["去运价页同步镜像", "联网查市场行情"]);
+    expect(out.mirror).toBeUndefined(); //            // 测试环境里真源必然连不上
+
+    expect(out.notice).toContain("实时台账未命中");
+    expect(out.notice).not.toContain("镜像");
+    expect(out.notice).toContain("不能扩大");
+    expect(out.actions?.map(a => a.label)).toEqual(["去运价页核对筛选", "联网查市场行情"]);
   });
 
   it("命中时口径不变：条数、固定格式指令，并同批附带相关舱位", async () => {

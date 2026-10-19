@@ -1,4 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { setAgentContactPort } from "../../src/main/services/agent-contact.service";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import initSqlJs, { type Database as SqlJsDatabase } from "sql.js";
 import { drizzle } from "drizzle-orm/sql-js";
 import * as path from "path";
@@ -71,6 +72,17 @@ vi.mock("../../src/main/services/send.service", async (importOriginal) => {
     getSendStatus: () => ({ success: true, data: { isRunning: queueState.running } }),
   };
 });
+
+// 已授权 API 的测试替身复用内存 fixture；产品代码不再读取离线镜像。
+vi.mock("../../src/main/adapters/navigator-quotes.adapter", async () => {
+  const fixture = await import("../../src/main/services/rate-sync.service");
+  return { listQuotes: async (...a: Parameters<typeof fixture.listQuotes>) => fixture.listQuotes(...a),
+    countQuotes: async (...a: Parameters<typeof fixture.countQuotes>) => fixture.countQuotes(...a) };
+});
+vi.mock("../../src/main/adapters/navigator-auth.adapter", () => ({
+  requireNavigatorAuthorization: async () => ({ ok: true, data: { authenticated: true } }),
+  navigatorAuthorizationEpoch: () => 1, onNavigatorIdentityChanged: () => () => {}, navigatorHasAuthorization: () => true,
+}));
 
 const {
   buildRateUpdatePlan, planView, enqueueRateUpdatePlan, pendingPlanRateUpdate, clearPendingPlans, portForCountry, stageKeys,
@@ -155,13 +167,13 @@ function freshDb(): void {
 
 let SQLLIB: Awaited<ReturnType<typeof initSqlJs>>;
 
-const plan = (opts = {}) => {
-  const r = buildRateUpdatePlan(opts);
+const plan = async (opts = {}) => {
+  const r = await buildRateUpdatePlan(opts);
   if (!r.success) throw new Error(`方案没建成：${r.error}`);
   return r.data;
 };
-const view = (opts = {}) => planView(plan(opts)) as ReturnType<typeof planView>;
-const groupOf = (v: ReturnType<typeof view>, pod: string, lang: string) =>
+const view = async (opts = {}) => planView(await plan(opts)) as ReturnType<typeof planView>;
+const groupOf = (v: Awaited<ReturnType<typeof view>>, pod: string, lang: string) =>
   v.groups.find(g => g.pod === pod && g.language === lang);
 
 beforeAll(async () => {
@@ -183,16 +195,16 @@ beforeEach(() => {
   clearPendingPlans();
 });
 
-describe("范围两分：跟进看板 vs 联系人库（此前混为一谈导致「找不到客户」）", () => {
-  it("默认只圈看板：已触达 ∪ 已回复；退信与冷客户都不进", () => {
-    const v = view();
+describe("范围两分：跟进看板 vs 联系人库（此前混为一谈导致「找不到客户」）", async () => {
+  it("默认只圈看板：已触达 ∪ 已回复；退信与冷客户都不进", async () => {
+    const v = await view();
     expect(v.scope.scope).toBe("board");
     expect(v.totals.customers).toBe(7);                          // 9 位里剔掉 bounced 与冷客户 Nina
     expect(groupOf(v, "SANTOS", "EN")?.customers).toBe(2);       // Juan + Cleo（已回复一起推）
   });
 
-  it("scope=contacts 才圈冷客户，并按所在国家的当期代表港兜底", () => {
-    const v = view({ scope: "contacts" });
+  it("scope=contacts 才圈冷客户，并按所在国家的当期代表港兜底", async () => {
+    const v = await view({ scope: "contacts" });
     expect(v.totals.customers).toBe(8);
     const rio = groupOf(v, "RIO DE JANEIRO", "EN");
     expect(rio).toMatchObject({ customers: 1, basis: "country", quotes: 1, minUsd: 3450 });
@@ -200,8 +212,8 @@ describe("范围两分：跟进看板 vs 联系人库（此前混为一谈导致
     expect(rio?.subject).toContain("RIO DE JANEIRO (Brazil)");
   });
 
-  it("country 收窄：说「巴西客户」就只圈巴西的，不用绕去 search_contacts", () => {
-    const v = view({ scope: "contacts", country: "巴西" });
+  it("country 收窄：说「巴西客户」就只圈巴西的，不用绕去 search_contacts", async () => {
+    const v = await view({ scope: "contacts", country: "巴西" });
     expect(v.totals.customers).toBe(1);
     expect(v.groups.map(g => g.pod)).toEqual(["RIO DE JANEIRO"]);
     expect(v.groups[0]?.basis).toBe("country");
@@ -210,8 +222,8 @@ describe("范围两分：跟进看板 vs 联系人库（此前混为一谈导致
     expect(body).not.toMatch(/[一-鿿]/);                          // 中文国名绝不进客户邮件
   });
 
-  it("看板里没有该国客户 → 空方案带原因与建议范围（不再是失败，也不许被说成权限问题）", () => {
-    const r = buildRateUpdatePlan({ country: "巴西" });         // Nina 是冷客户，不在看板
+  it("看板里没有该国客户 → 空方案带原因与建议范围（不再是失败，也不许被说成权限问题）", async () => {
+    const r = await buildRateUpdatePlan({ country: "巴西" });         // Nina 是冷客户，不在看板
     expect(r.success).toBe(true);
     if (!r.success) return;
     expect(r.data.groups.length).toBe(0);
@@ -219,35 +231,35 @@ describe("范围两分：跟进看板 vs 联系人库（此前混为一谈导致
     expect(r.data.suggestScope).toBe("contacts");
   });
 
-  it("statuses 显式圈状态：只要「已触达」就不含已回复的那位", () => {
-    const v = view({ statuses: ["reached"] });
+  it("statuses 显式圈状态：只要「已触达」就不含已回复的那位", async () => {
+    const v = await view({ statuses: ["reached"] });
     expect(groupOf(v, "SANTOS", "EN")?.customers).toBe(1);       // 只剩 Juan（Cleo 是 replied）
   });
 
-  it("stages 传歪了不整单失败：回落到默认圈人（只排已流失），并如实记没按阶段筛", () => {
-    const r = buildRateUpdatePlan({ stages: ['["reaching"', "quotin", "拼错的值"] });
+  it("stages 传歪了不整单失败：回落到默认圈人（只排已流失），并如实记没按阶段筛", async () => {
+    const r = await buildRateUpdatePlan({ stages: ['["reaching"', "quotin", "拼错的值"] });
     expect(r.success).toBe(true);
     if (!r.success) return;
     expect(r.data.groups.length).toBeGreaterThan(0);
     expect(r.data.scope.stages).toEqual([]);                      // 没有有效的阶段条件 = 不按阶段筛
   });
 
-  it("显式点名阶段时按清单比对（只有 quoting 那列）", () => {
-    const v = view({ stages: ["quoting"] });
+  it("显式点名阶段时按清单比对（只有 quoting 那列）", async () => {
+    const v = await view({ stages: ["quoting"] });
     expect(v.totals.customers).toBe(2);                           // Juan + Pedro
     expect(v.scope.stages).toEqual(["quoting"]);
   });
 });
 
-describe("阶段清单的初始化兜底（app 里那次全员筛空的根因）", () => {
-  it("跨模块 STAGES 拿不到时必须退回字面量清单，绝不能变空表", () => {
+describe("阶段清单的初始化兜底（app 里那次全员筛空的根因）", async () => {
+  it("跨模块 STAGES 拿不到时必须退回字面量清单，绝不能变空表", async () => {
     expect(stageKeys([])).toEqual(["reaching", "quoting", "trial", "cooperating", "lost", "other"]);
     expect(stageKeys([{ key: "" }, { key: "quoting" }])).toEqual(["quoting"]);
     expect(stageKeys().length).toBeGreaterThanOrEqual(6);
   });
 });
 
-describe("参数误用的纠偏（模型会把国家名塞进 port）", () => {
+describe("参数误用的纠偏（模型会把国家名塞进 port）", async () => {
   const call = async (args: unknown, conversationId = "ru-fix") => {
     const ctx = { conversationId, counts: new Map<string, number>(), failures: new Map<string, number>() };
     const T = Object.fromEntries(
@@ -279,30 +291,30 @@ describe("参数误用的纠偏（模型会把国家名塞进 port）", () => {
   });
 });
 
-describe("港口偏好：脏值不成组，没偏好才走国家兜底", () => {
-  it("来信里的整句/邮件标题不再被当成目的港（假港会挤掉真客户名额）", () => {
-    const v = view();
+describe("港口偏好：脏值不成组，没偏好才走国家兜底", async () => {
+  it("来信里的整句/邮件标题不再被当成目的港（假港会挤掉真客户名额）", async () => {
+    const v = await view();
     expect(v.groups.some(g => /QUICK|AVAILABLE|UPDATE/i.test(g.pod))).toBe(false);
     // Liu 的信没有 POD 标签行（散文式提港）→ 认不出港 → 如实 no_port
     expect(v.uncovered.find(u => u.contactId === 4)?.reason).toBe("no_port");
   });
 
-  it("台账里真有的港才认；同一客户两个港只进一组", () => {
-    const v = view();
+  it("台账里真有的港才认；同一客户两个港只进一组", async () => {
+    const v = await view();
     expect(groupOf(v, "SANTOS", "EN")?.customers).toBe(2);
     expect(v.groups.some(g => g.pod === "MANZANILLO")).toBe(false);   // 台账里没这个港的行 → 不建组
   });
 
-  it("人工登记的港当期无有效价 → 进未覆盖，绝不拿别的港价凑", () => {
-    const v = view();
+  it("人工登记的港当期无有效价 → 进未覆盖，绝不拿别的港价凑", async () => {
+    const v = await view();
     const sato = v.uncovered.find(x => x.contactId === 5);
     expect(sato?.reason).toBe("no_live_rate");
     expect(sato?.detail).toContain("BUENAVENTURA");
     expect(v.groups.some(g => g.pod === "BUENAVENTURA")).toBe(false);
   });
 
-  it("同港不同语言分两组；西语组正文是西语、全表零汉字、占位符留给发送时逐人渲染", () => {
-    const v = view();
+  it("同港不同语言分两组；西语组正文是西语、全表零汉字、占位符留给发送时逐人渲染", async () => {
+    const v = await view();
     expect(groupOf(v, "SANTOS", "ES")?.customers).toBe(1);
     const es = pendingPlanRateUpdate(v.planId)?.groups.find(g => g.key === "SANTOS|ES");
     expect(es?.bodyHtml).toContain("Estimado/a");
@@ -310,15 +322,15 @@ describe("港口偏好：脏值不成组，没偏好才走国家兜底", () => {
     expect(es?.bodyHtml).toContain("{{firstName}}");
   });
 
-  it("国家代表港：从当期有效行抽英文港名，认不出的国家返回 null", () => {
-    expect(portForCountry("巴西")).toMatchObject({ pod: "RIO DE JANEIRO" });
-    expect(portForCountry("不存在国")).toBeNull();
+  it("国家代表港：从当期有效行抽英文港名，认不出的国家返回 null", async () => {
+    expect(await portForCountry("巴西")).toMatchObject({ pod: "RIO DE JANEIRO" });
+    expect(await portForCountry("不存在国")).toBeNull();
   });
 });
 
-describe("航线级（区域基本港）价必须如实标注", () => {
-  it("VERACRUZ 当期只有航线级行 → 组标 laneLevel，正文写清是基本港适用价", () => {
-    const v = view();
+describe("航线级（区域基本港）价必须如实标注", async () => {
+  it("VERACRUZ 当期只有航线级行 → 组标 laneLevel，正文写清是基本港适用价", async () => {
+    const v = await view();
     expect(groupOf(v, "VERACRUZ", "EN")).toMatchObject({ laneLevel: true, quotes: 1, minUsd: 2600 });
     const p = pendingPlanRateUpdate(v.planId);
     const g = p?.groups.find(x => x.key === "VERACRUZ|EN");
@@ -346,9 +358,9 @@ describe("航线级（区域基本港）价必须如实标注", () => {
   });
 });
 
-describe("可引用事实与对外表（同批次清洗行）", () => {
-  it("facts 与对外表同源；内部备注判丢、溯源列不出现", () => {
-    const v = view();
+describe("可引用事实与对外表（同批次清洗行）", async () => {
+  it("facts 与对外表同源；内部备注判丢、溯源列不出现", async () => {
+    const v = await view();
     const santos = groupOf(v, "SANTOS", "EN");
     expect(santos?.facts.length).toBeGreaterThan(0);
     const raw = {
@@ -372,27 +384,27 @@ describe("可引用事实与对外表（同批次清洗行）", () => {
     expect(cartagena?.bodyHtml).toContain("Best regards");
   });
 
-  it("降价标签只来自镜像 diff：命中才带，命不中不提降价", () => {
-    const p = plan();
+  it("旧镜像 diff 不再能生成降价承诺", async () => {
+    const p = await plan();
     const s = p.groups.find(g => g.pod === "SANTOS" && g.language === "EN");
-    expect(s?.drop).toMatchObject({ oldUsd: 3600, newUsd: 3200, pct: 11 });
-    expect(s?.subject).toMatch(/^Price drop ·/);
-    expect(s?.bodyHtml).toContain("have come down about 11%");
+    expect(s?.drop).toBeNull();
+    expect(s?.subject).not.toMatch(/^Price drop ·/);
+    expect(s?.bodyHtml).not.toContain("have come down about 11%");
     const c = p.groups.find(g => g.pod === "CARTAGENA");
     expect(c?.drop).toBeNull();
     expect(c?.bodyHtml ?? "").not.toContain("come down");
   });
 
-  it("未覆盖名单按原因如实给数，不静默丢人", () => {
-    const v = view();
+  it("未覆盖名单按原因如实给数，不静默丢人", async () => {
+    const v = await view();
     expect(v.totals.uncoveredTotal).toBe(2);
     expect(v.uncovered.map(u => u.reason).sort()).toEqual(["no_live_rate", "no_port"]);
   });
 });
 
-describe("入队：只入队不发送，且必须先解决队列占用", () => {
+describe("入队：只入队不发送，且必须先解决队列占用", async () => {
   it("方案入队走 buildDynamicQueue → startQueue(autoStart=false)，组标签带展示名；一人一组一封", async () => {
-    const v = view();
+    const v = await view();
     const r = await enqueueRateUpdatePlan(v.planId);
     expect(r.success).toBe(true);
     if (!r.success || r.data.occupied) return;
@@ -406,7 +418,7 @@ describe("入队：只入队不发送，且必须先解决队列占用", () => {
 
   it("队列里还有未发送批次 → 默认拒绝（startQueue 会清空全表，不能静默覆盖）", async () => {
     queueState.pendingGroups = 3;
-    const r = await enqueueRateUpdatePlan(view().planId);
+    const r = await enqueueRateUpdatePlan((await view()).planId);
     expect(r.success).toBe(true);
     if (!r.success) return;
     expect(r.data).toEqual({ occupied: true, pendingGroups: 3 });
@@ -415,7 +427,7 @@ describe("入队：只入队不发送，且必须先解决队列占用", () => {
 
   it("引擎正在发送时绝对不让插队", async () => {
     queueState.running = true;
-    const r = await enqueueRateUpdatePlan(view().planId);
+    const r = await enqueueRateUpdatePlan((await view()).planId);
     expect(r.success).toBe(false);
     expect(r.success ? "" : r.error).toContain("正在运行");
     expect(startCalls.length).toBe(0);
@@ -423,7 +435,7 @@ describe("入队：只入队不发送，且必须先解决队列占用", () => {
 
   it("同意覆盖后才入队；方案用过即作废，防同份重复入队", async () => {
     queueState.pendingGroups = 2;
-    const planId = plan().id;
+    const planId = (await plan()).id;
     const first = await enqueueRateUpdatePlan(planId, undefined, true);
     expect(first.success && !first.data.occupied).toBe(true);
     expect(startCalls.length).toBe(1);
@@ -432,13 +444,29 @@ describe("入队：只入队不发送，且必须先解决队列占用", () => {
   });
 
   it("groupKeys 只入队选中的组；未知组当面报错并列出可选键", async () => {
-    const planId = plan().id;
+    const planId = (await plan()).id;
     const one = await enqueueRateUpdatePlan(planId, ["CARTAGENA|EN"]);
     expect(one.success && !one.data.occupied).toBe(true);
     if (!one.success || one.data.occupied) return;
     expect(one.data.enqueue.groups).toBe(1);
-    const bad = await enqueueRateUpdatePlan(plan().id, ["NOSUCH|EN"]);
+    const bad = await enqueueRateUpdatePlan((await plan()).id, ["NOSUCH|EN"]);
     expect(bad.success ? "" : bad.error).toContain("未知分组");
     expect(bad.success ? "" : bad.error).toContain("SANTOS|EN");
   });
+});
+
+
+describe('center rate-update recipients', () => {
+ afterEach(() => setAgentContactPort(null));
+ it('uses center stage, company and manual ports instead of a same-numbered local contact, and rejects revoked preview', async () => {
+  let active = true;
+  const row = {contactId:1,customerId:'center-id',email:'buyer@center.invalid',firstName:'CenterBuyer',lastName:null,companyId:100,companyName:'CenterCompany',country:'Brazil',language:'EN',tags:[],extra:{preferredPorts:[{pol:'Ningbo',pod:'SANTOS'}]},touchStatus:'contacted',relationshipStage:'quoting',canFollowup:true};
+  setAgentContactPort({snapshot:()=>({ok:true,data:{scope:'center-test',active:()=>active,contacts:[row]}})} as never);
+  const result = await buildRateUpdatePlan({stages:['quoting']});
+  expect(result.success).toBe(true); if(!result.success) return;
+  expect(result.data.totals.customers).toBe(1);
+  expect(result.data.groups[0]?.customers[0]).toMatchObject({name:'CenterBuyer',company:'CenterCompany',email:row.email});
+  active=false;
+  expect(pendingPlanRateUpdate(result.data.id)).toBeNull();
+ });
 });

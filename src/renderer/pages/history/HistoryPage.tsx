@@ -100,7 +100,7 @@ export function HistoryPage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="prospector-table-page history-table-page">
       <Card size="small">
         <div className="flex gap-3 flex-wrap">
           <Input
@@ -123,19 +123,20 @@ export function HistoryPage() {
       </Card>
 
       <Tabs
+        className="history-table-tabs"
         size="small"
         items={[
           {
             key: "history", label: `发送历史 (${histRows.length})`,
             children: (
-              <Card size="small">
+              <Card size="small" className="history-table-card">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs text-gray-400">共 {histRows.length} 条记录</span>
                   <Popconfirm title="清空所有发送历史？此操作不可恢复，仪表盘「已发送」计数也会清零" okText="清空" okType="danger" cancelText="取消" onConfirm={() => clearMut.mutate()}>
                     <Button size="small" danger icon={<DeleteOutlined />} loading={clearMut.isPending}>清空发送历史</Button>
                   </Popconfirm>
                 </div>
-                <Table dataSource={histRows} columns={historyColumns} rowKey="id"
+                <Table className="prospector-page-table history-table" dataSource={histRows} columns={historyColumns} rowKey="id"
                   loading={histLoading} size="small" pagination={{ pageSize: 50, showSizeChanger: false }} />
               </Card>
             ),
@@ -143,8 +144,8 @@ export function HistoryPage() {
           {
             key: "bounce", label: `退信日志 (${bounceRows.length})`,
             children: (
-              <Card size="small">
-                <Table dataSource={bounceRows} columns={bounceColumns} rowKey="id"
+              <Card size="small" className="history-table-card">
+                <Table className="prospector-page-table history-table" dataSource={bounceRows} columns={bounceColumns} rowKey="id"
                   loading={bounceLoading} size="small" pagination={{ pageSize: 50, showSizeChanger: false }} />
               </Card>
             ),

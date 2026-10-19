@@ -34,7 +34,7 @@ export default defineConfig({
     // 这些都不进模块图、也不需要 HMR，让 dev 服务器忽略它们。打包版无此监视器，本就不受影响。
     server: {
       watch: {
-        ignored: ["**/.env", "**/.env.*", "**/data/**", "**/send/**", "**/logs/**", "**/ai/providers.json"],
+        ignored: ["**/.env", "**/.env.*", "**/data/**", "**/send/**", "**/logs/**", "**/ai/providers.json", "**/.work/**"],
       },
     },
     build: {

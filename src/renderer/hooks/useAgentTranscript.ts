@@ -175,6 +175,7 @@ let activeKey = NEW_KEY;
 /** 组件首次挂载的那次 navigate 必须真走一遍（带 ctx、装历史），不能被「同键早退」吃掉 */
 let navigated = false;
 let listening = false;
+const sessionListeners: Array<() => void> = [];
 let runningIds: string[] = [];
 const loadTokens = new Map<string, number>();
 
@@ -450,12 +451,36 @@ function ensureListening(): void {
   if (listening) return;
   listening = true;
   void ensureToolMeta();   // 工具中文名/追问引导：注册表派生，幂等拉取
-  window.api.on("agent:chunk", d => onChunk(d as ChunkEv));
-  window.api.on("agent:done", d => onDone(d as DoneEv));
-  window.api.on("agent:error", d => onErrorEv(d as ErrorEv));
-  window.api.on("agent:toolCall", d => onToolCall(d as ToolEv));
-  window.api.on("agent:plan", d => onPlan(d as PlanEv));
-  window.api.on("agent:approval", d => onApproval(d as ApprovalEv));
+  sessionListeners.push(window.api.on("agent:chunk", d => onChunk(d as ChunkEv)));
+  sessionListeners.push(window.api.on("agent:done", d => onDone(d as DoneEv)));
+  sessionListeners.push(window.api.on("agent:error", d => onErrorEv(d as ErrorEv)));
+  sessionListeners.push(window.api.on("agent:toolCall", d => onToolCall(d as ToolEv)));
+  sessionListeners.push(window.api.on("agent:plan", d => onPlan(d as PlanEv)));
+  sessionListeners.push(window.api.on("agent:approval", d => onApproval(d as ApprovalEv)));
+  sessionListeners.push(window.api.on("navigator:identityChanged", () => {
+    // Cached conversations can contain prices. The main process masks history
+    // from previous grants; invalidate pending history loads before reloading.
+    for (const key of entries.keys()) loadTokens.set(key, (loadTokens.get(key) ?? 0) + 1);
+    const keys = [...entries.keys()];
+    entries.clear();
+    lru.splice(0);
+    activeKey = NEW_KEY;
+    ensureEntry(NEW_KEY);
+    for (const key of keys) notifyConv(key);
+    notifyShell();
+  }));
+}
+
+/** User switching drops both private transcript memory and old stream subscriptions. */
+export function clearSessionTranscript(): void {
+  for (const off of sessionListeners.splice(0)) off();
+  listening = false;
+  for (const key of entries.keys()) loadTokens.set(key, (loadTokens.get(key) ?? 0) + 1);
+  const keys = [...entries.keys()];
+  entries.clear(); lru.splice(0); activeKey = NEW_KEY; navigated = false; runningIds = [];
+  ensureEntry(NEW_KEY);
+  for (const key of keys) notifyConv(key);
+  notifyShell();
 }
 
 // ── DB 历史 → messages ──────────────────────────────────

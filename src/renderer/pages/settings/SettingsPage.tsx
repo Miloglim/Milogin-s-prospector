@@ -10,6 +10,8 @@ import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined, Downlo
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { toolLabelText, useToolMetaVersion } from "../../lib/tool-meta";
 import { CONVS_CHANGED } from "../../lib/agent-route";
+import type { NavigatorResult, NavigatorStatus } from "../../../shared/navigator";
+import { DEFAULT_MAIL_SERVERS } from "../../../shared/mail-defaults";
 
 interface EmailAccount {
   id: number; email: string; provider: string;
@@ -52,6 +54,7 @@ const SECTIONS = [
   { id: "sec-crm", label: "客户跟进" },
   { id: "sec-data", label: "数据" },
   { id: "sec-advanced", label: "高级" },
+  { id: "sec-about", label: "关于" },
 ];
 
 // ── 内联编辑行（点击变输入，自动保存）──
@@ -282,27 +285,46 @@ function KbDispatchCard() {
   );
 }
 
-// ── 运价台账：只读公司局域网接口；同步失败时保留已下载的镜像 ──
+// ── 运价台账：用户授权后实时查询 ──
 function RatesSourceCard() {
-  const { data: st } = useQuery({
-    queryKey: ["rates", "status"],
-    queryFn: () => window.api.invoke("rates:status") as Promise<{
-      success: boolean;
-      data?: { remoteHost: string; total: number; lastSyncAt: string | null; lastError: string | null };
-    }>,
+  const qc = useQueryClient();
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { data: config } = useQuery({
+    queryKey: ["rates", "config"],
+    queryFn: () => window.api.invoke("system:getConfig") as Promise<{ success: boolean; data?: { rates?: { url?: string } } }>,
   });
+  useEffect(() => { if (config?.success) setUrl(config.data?.rates?.url || ""); }, [config]);
+  const { data: st } = useQuery({
+    queryKey: ["rates", "navigatorStatus"],
+    queryFn: () => window.api.invoke("rates:navigatorStatus") as Promise<NavigatorResult<NavigatorStatus>>,
+  });
+  const save = async () => {
+    setBusy(true);
+    try {
+      const result = await window.api.invoke("system:updateConfig", { rates: { url: url.trim() } }) as { success: boolean; error?: string };
+      if (!result.success) { message.error(result.error || "地址保存失败"); return; }
+      message.success("Navigator 地址已保存", 2);
+      await qc.invalidateQueries({ queryKey: ["rates"] });
+    } catch { message.error("地址保存失败，请检查应用连接", 2); }
+    finally { setBusy(false); }
+  };
 
   return (
     <SettingCard icon="" title="运价台账"
-      status={st?.success
-        ? <Tag color={st.data?.lastError ? "orange" : "green"}>镜像 {st.data?.total ?? 0} 条</Tag>
-        : <Tag>状态未知</Tag>}>
+      status={st?.ok
+        ? <Tag color={st.data?.authenticated ? "green" : "orange"}>{st.data?.authenticated ? "已登录" : "未登录"}</Tag>
+        : <Tag color={st ? "orange" : undefined}>{st ? "连接待配置" : "检查中"}</Tag>}>
       <div className="text-[11px] text-gray-400 mb-2">
-        只从公司局域网运价库同步；连接失败时保留上次已下载的数据。地址变更由本机环境变量 RATES_REMOTE_URL 配置。
+        使用 Navigator 账号授权后实时查价，查询记录归属当前账号。私有局域网 IP 支持 HTTP，公网地址使用 HTTPS。
+      </div>
+      <div className="flex items-center gap-2">
+        <Input size="small" aria-label="Navigator 服务地址" placeholder="http://192.168.190.244:8795" value={url} onChange={e => setUrl(e.target.value)} onPressEnter={() => { if (url.trim()) void save(); }} />
+        <Button size="small" loading={busy} disabled={!url.trim()} onClick={() => void save()}>保存地址</Button>
       </div>
       <div className="mt-2 text-[11px] text-gray-400">
-        局域网地址：{st?.data?.remoteHost || "—"}
-        {st?.data?.lastSyncAt ? ` · 上次同步 ${new Date(st.data.lastSyncAt).toLocaleString("zh-CN")}` : ""}
+        {st?.ok ? `当前服务：${st.data?.baseUrl || "—"}` : st?.error}
+        {st?.data?.user ? ` · ${st.data.user.display_name || st.data.user.name}` : ""}
       </div>
     </SettingCard>
   );
@@ -1046,6 +1068,7 @@ function ProviderCard() {
 }
 
 export function SettingsPage() {
+  const { data: appVersion } = useQuery({ queryKey: ['app-version'], queryFn: () => window.api.invoke('system:appVersion') as Promise<{ success: boolean; data?: string }> });
   const [addOpen, setAddOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<EmailAccount | null>(null);
   const [testingId, setTestingId] = useState<number | null>(null);
@@ -1301,7 +1324,7 @@ export function SettingsPage() {
           <SettingCard icon="" title={`发信账号 · ${accounts.length}`}
             status={<Space size={6}>
               <button onClick={() => setAccountsOpen(o => !o)} className="text-[11px] text-gray-400 hover:text-gray-600">{accountsOpen ? "收起" : "管理"}</button>
-              <Button size="small" onClick={() => { setEditingAccount(null); form.resetFields(); setAddOpen(true); }}>+ 添加账号</Button>
+              <Button size="small" onClick={() => { setEditingAccount(null); form.setFieldsValue({ smtpHost: DEFAULT_MAIL_SERVERS.smtpHost, smtpPort: DEFAULT_MAIL_SERVERS.smtpPort, imapHost: DEFAULT_MAIL_SERVERS.imapHost, imapPort: DEFAULT_MAIL_SERVERS.imapPort }); setAddOpen(true); }}>+ 添加账号</Button>
             </Space>}
           >
             {accountsOpen ? (
@@ -1330,13 +1353,6 @@ export function SettingsPage() {
                 重置: {new Date(new Date((config as any).sendQuota.firstSendAt).getTime() + 86400000).toLocaleTimeString("zh-CN")}
               </div>
             )}
-          </SettingCard>
-
-          {/* 发件人名称 = 也是助手自称：注入每轮对话，客户收件箱可见 */}
-          <SettingCard icon="" title="发件人名称">
-            <SettingRow label="发件人名称" value={config?.fromName || ""}
-              onSave={v => saveConfigMut.mutate({ fromName: String(v) })}
-              placeholder="收件人看到的发件人名称" hint="账号名优先" />
           </SettingCard>
 
           {/* 发送规则 */}
@@ -1564,6 +1580,16 @@ export function SettingsPage() {
             </div>
           </SettingCard>
         </div>
+        <div id="sec-about" className="settings-section">
+          <div className="text-[13px] font-bold mb-3 text-gray-800">关于</div>
+          <SettingCard title="Milogin’s Prospector">
+            <div className="flex justify-between py-3 text-xs text-gray-500"><span>版本</span><span
+              onMouseDown={event => { if (event.shiftKey && event.button === 0) window.dispatchEvent(new Event("open-onboarding")); }}
+              onClick={event => { if (event.shiftKey) window.dispatchEvent(new Event("open-onboarding")); }}
+              style={{ cursor: "default" }}
+            >{appVersion?.success ? `v${appVersion.data}` : '—'}</span></div>
+          </SettingCard>
+        </div>
       </div>
 
       {/* 右侧浮动导航轨道 */}
@@ -1580,7 +1606,8 @@ export function SettingsPage() {
       </nav>
 
       {/* 新增/编辑账号弹窗 */}
-      <Modal title={editingAccount ? "编辑发信账号" : "发信账号"} open={addOpen} width={460}
+      <Modal title={editingAccount ? "编辑发信账号" : "发信账号"} open={addOpen} width={520}
+        styles={{ body: { overflow: "hidden" } }}
         onCancel={() => { setAddOpen(false); setEditingAccount(null); form.resetFields(); }}
         onOk={async () => {
           const values = await form.validateFields();
@@ -1596,23 +1623,25 @@ export function SettingsPage() {
         }}
         confirmLoading={upsertMut.isPending}
       >
-        <Form form={form} layout="vertical" size="small">
-          <Form.Item name="displayName" label="账号名称"><Input placeholder="主账号、备用" /></Form.Item>
-          <Form.Item name="smtpHost" label="服务器地址" rules={[{ required: true }]}><Input placeholder="smtp.example.com" /></Form.Item>
-          <div className="grid grid-cols-2 gap-3">
-            <Form.Item name="smtpPort" label="端口" rules={[{ required: true }]} initialValue={465}><InputNumber min={1} max={65535} style={{ width: "100%" }} /></Form.Item>
-            <Form.Item name="email" label="邮箱地址" rules={[{ required: true, type: "email" }]}><Input placeholder="your@email.com" /></Form.Item>
-          </div>
+        <Form form={form} layout="vertical" size="small" className="settings-account-form">
+          <Form.Item name="displayName" label="发件人名称"><Input placeholder="客户收到的名称，如 Zayne Jin" /></Form.Item>
+          <Form.Item name="email" label="邮箱地址" rules={[{ required: true, type: "email" }]}><Input placeholder="your@email.com" /></Form.Item>
           <Form.Item name="password" label="密码 / 授权码"
             rules={editingAccount ? [] : [{ required: true, message: "新增时密码必填" }]}>
-            <Input.Password placeholder={editingAccount ? "留空则不变" : ""} />
+            <Input.Password placeholder={editingAccount ? "留空则不变；第三方登录填授权码" : "密码或第三方登录授权码"} />
           </Form.Item>
-          <Form.Item name="imapHost" label="IMAP 服务器（留空则仅发信）"><Input placeholder="如 imap.mxhichina.com" /></Form.Item>
-          <Form.Item name="imapPort" label="IMAP 端口"><InputNumber min={1} max={65535} style={{ width: "100%" }} placeholder="993" /></Form.Item>
-          <Form.Item name="signature" label="HTML 签名">
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="smtpHost" label="SMTP 服务器地址" rules={[{ required: true }]}><Input placeholder={DEFAULT_MAIL_SERVERS.smtpHost} /></Form.Item>
+            <Form.Item name="smtpPort" label="SMTP 端口" rules={[{ required: true }]}><InputNumber min={1} max={65535} style={{ width: "100%" }} /></Form.Item>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="imapHost" label="IMAP 服务器"><Input placeholder={DEFAULT_MAIL_SERVERS.imapHost} /></Form.Item>
+            <Form.Item name="imapPort" label="IMAP 端口"><InputNumber min={1} max={65535} style={{ width: "100%" }} placeholder={String(DEFAULT_MAIL_SERVERS.imapPort)} /></Form.Item>
+          </div>
+          <Form.Item name="signature" label="账号签名">
             <RichTextEditor
               placeholder="粘贴签名（支持富文本格式与图片）"
-              style={{ maxHeight: 160, overflowY: "auto", border: "1px solid #d9d9d9", borderRadius: 6, padding: 8 }}
+              style={{ height: 200, maxHeight: 200, overflowY: "auto", border: "1px solid #d9d9d9", borderRadius: 6, padding: 8 }}
             />
           </Form.Item>
         </Form>

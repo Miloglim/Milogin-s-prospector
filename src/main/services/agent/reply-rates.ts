@@ -8,7 +8,9 @@
 // 原则对齐运价线：抽不到目的港就不查（宁可不报价，不可报错价）。
 // 规范：docs/agent-draft-reply-spec.md §询价信回信
 
-import { listQuotes, countQuotes, normalizeContainer, type QuoteDto } from "../rate-sync.service";
+import { randomUUID } from "crypto";
+import { listQuotes, countQuotes } from "../../adapters/navigator-quotes.adapter";
+import { normalizeContainer, type QuoteDto } from "../rate-sync.service";
 import { resolveQueryPod, podRawExpansion } from "../rates-standard";
 import { cleanQuoteRow, pivotQuotes, customerQuoteMarkdown, polExpansion, type CleanQuote, type QuoteRowRaw } from "../rates-clean";
 import type { EmailInquiry, RateRow, RatesPayload } from "./email-parse";
@@ -71,16 +73,15 @@ export function podQueryWord(inq: Pick<EmailInquiry, "pod" | "podCode">): string
  * 不另写一套匹配逻辑。排序 = 起运港对得上的优先，其次价低在前。
  * 抽不到目的港 → 返回 null（不查、不猜）。
  */
-export function lookupReplyRates(inq: EmailInquiry, limit = 12): ReplyRates | null {
+export async function lookupReplyRates(inq: EmailInquiry, limit = 12, queryId = randomUUID()): Promise<ReplyRates | null> {
   const pod = podQueryWord(inq);
   if (!pod) return null;
   const container = normalizeContainer(inq.container) ?? undefined;
   // 不用 terms（跨字段 AND 语义）：脏词一旦进 AND 就把整批结果掐死；pod + podRaw 展开已够
   const filters = { pod, podExtra: podRawExpansion(pod), container, includeExpired: false, limit };
-  // 附带查询不得打挂起草：老库缺表/列变更等异常一律按「没查到价」处理（回信仍可成稿，只是不报价）
-  let r: ReturnType<typeof listQuotes>;
-  try { r = listQuotes(filters); } catch { return null; }
-  if (!r.success) return null;
+  // API 故障与零命中必须区分，不能把未获授权或不可达说成没有报价。
+  const r = await listQuotes(filters, queryId);
+  if (!r.success) throw new Error(r.error);
   const accept = mirrorPolSet(inq);
   const rank = (q: QuoteDto) => (accept && q.pol && accept.some(a => q.pol!.includes(a)) ? 0 : 1);
   const rows = [...r.data].sort((a, b) =>
@@ -89,7 +90,7 @@ export function lookupReplyRates(inq: EmailInquiry, limit = 12): ReplyRates | nu
     pod,
     lane: rows[0]?.lane ?? null,
     container: container ?? null,
-    total: countQuotes(filters),
+    total: await countQuotes(filters, queryId),
     rows: rows.map(toRateRow),
     dtos: rows,
     polAligned: !!accept && rows.some(q => rank(q) === 0),

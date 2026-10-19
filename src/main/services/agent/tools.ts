@@ -133,7 +133,7 @@ export function buildHarnessTools(ctx: ToolCtx) {
   });
   const remindersDue = tool({
     name: "reminders_due",
-    description: "查询到期与已逾期的跟进提醒（CRM 今日待跟进清单）。只回答「今天/最近该跟进谁」这类清单问题；要看某个人具体资料请用 search_contacts。，返回联系人 id/姓名/公司/提醒时间/跟进备注。用户问「今天该跟进谁」「有哪些到期提醒」「哪些客户 overdue 了」时必须先调用本工具。",
+    description: "查询今天到期和已逾期的跟进任务。中心模式返回当前权限可见的客户级任务、负责人、taskId和customerId；这些编号不是联系人编号，不得直接用于发送或联系人修改。partial=true表示清单不完整。需要联系人时再调用search_contacts确认，不自动生成或发送邮件。",
     parameters: z.object({}),
     execute: (args) => execRemindersDue(ctx, args),
   });
@@ -169,7 +169,7 @@ export function buildHarnessTools(ctx: ToolCtx) {
   });
   const importContactsTool = tool({
     name: "import_contacts",
-    description: "把用户提供的客户信息批量导入本地联系人库。用户粘贴任意格式（名单/表格/邮件签名/一段话）时，先把每条整理成 contacts（姓名/邮箱/公司/国家/职位/电话/阶段/备注）再调用本工具；绝不要反问用户「用 CSV 还是 JSON」。邮箱是去重与写入的键：无效邮箱跳过、库里已存在的邮箱不会被覆盖（只提示疑似已存在）。写操作，执行前请用户确认；被拒绝则不写。完成后给一句结论并询问是否按公司/国家汇总、或挑几位进开发信。",
+    description: "把用户提供的客户信息导入当前账号的CRM。每次最多200位；整理成contacts，邮箱和公司名称必填，不猜缺失资料。中心根据账号身份确定线索来源，按回执分别报告新增、重复、冲突、无效；不得将冲突说成已导入。备注保留在导入来源中，不自动生成跟进记录。写操作须用户确认。",
     parameters: importContactsSchema,
     execute: (args) => execImportContacts(ctx, args),
   });
@@ -187,7 +187,7 @@ export function buildHarnessTools(ctx: ToolCtx) {
   });
   const campaignCreate = tool({
     name: "campaign_create",
-    description: "创建发信任务：对一批联系人按触点计划自动跟进——首信发出后隔 N 天自动发下一轮，客户回复/退订/bounce 自动止损，计划走完自动收尾。流程：先 search_contacts 按结构化筛选圈人 → 把命中 id 传给 contactIds → 本工具出预览与确认卡，用户点确认才建档。内容来源：默认用户模板库（机械变量替换），也可 mode=adaptive 同阶段模板随机轮换、mode=system 用内置句库、mode=fixed 传定死内容。schedule 可设发送时段与单日上限（定时器式周期发送，超出顺延次日）。单封/临时批量发信不要用本工具（那是 send_queue_add）。",
+    description: "创建发信任务：对一批联系人按触点计划自动跟进——首信发出后隔 N 天自动发下一轮，客户回复/退订/bounce 自动止损，计划走完自动收尾。流程：先 search_contacts 按结构化筛选圈人 → 把命中 id 传给 contactIds → 本工具出预览与确认卡，用户点确认才建档。中心联系人任务先保存为草稿，由用户到发送中心核对并启动，创建成功不代表已入队或外发。内容来源：默认用户模板库（机械变量替换），也可 mode=adaptive 同阶段模板随机轮换、mode=system 用内置句库、mode=fixed 传定死内容。schedule 可设发送时段与单日上限（定时器式周期发送，超出顺延次日）。单封/临时批量发信不要用本工具（那是 send_queue_add）。",
     parameters: campaignCreateSchema,
     execute: (args) => execCampaignCreate(ctx, args),
   });

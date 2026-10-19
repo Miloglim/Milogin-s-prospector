@@ -1,64 +1,38 @@
-# 运价库远程源规范（多端局域网读取）
+# 运价库远程源规范（Navigator 用户授权查询）
 
-日期：2026-09-28　状态：已实现（局域网唯一来源）
+日期：2026-10-10。代码已实现并进行隔离联调；现有局域网 HTTP 服务已加载新授权接口，真实账号登录尚未验收。本规范取代旧版匿名全量镜像方案。
 
-背景：钉钉权限只在公司电脑（千问办公心跳拉取 → 写库 → manual_server :8795 局域网 HTTP），
-Prospector 及分发给同事的副本都没有钉钉权限。运价数据的获取统一改为：
-**Prospector 从远程 HTTP 服务拉取 → 归一化 → 本地镜像**，本地镜像仍是全部查询路径
-（RateBoard / quote_search）的唯一读源——下游零改动。
+## 数据与身份链路
 
-## 1. 数据流
+钉钉自动采集 → Navigator 校验、人工放行 → Prospector 用户在系统浏览器登录 Navigator 并授权 → Prospector 主进程带短期只读令牌查价 → 运价页或 AI 展示。采集流程不改为手动导入。
 
-```
-钉钉台账(公司电脑心跳) → manual_server :8795 → Prospector sync() ─┬─ rate_quotes 镜像（运价）
-                                                                  └─ space_records 镜像（舱位）
-                                              ├─ RateBoard
-                                              └─ quote_search（查价时同批附带相关舱位）
-```
+- 唯一业务真源是 Navigator。运价页、AI 查价、回信报价和定向报价计划不读旧本地运价镜像；连接失败明确报错，不用旧价格替代。
+- Navigator 使用现有账号体系与当前账号权限。Prospector 不保存用户密码，不建立另一份账号数据库；浏览器登录态用于取得只读设备授权，并不直接复制浏览器 cookie。
+- 不再启动 `startAutoSync`；旧 `rates:sync` 返回退役说明。历史本地表保留，不能作为在线价格依据。
 
-- **本地镜像语义不变**：归一化柜型/有效期、全量刷新、includeExpired 过滤全部照旧。
-- **定时节奏**：启动后 5 秒首拉 + 每 `RATES_REMOTE_MINUTES` 分钟轮询（**默认 240 分钟 = 4 小时**），
-  外加手动「同步运价库」按钮；数据新鲜度上限 = 心跳入库节奏。
+## 授权契约
 
-## 2. 远程接口约定（manual_server 侧）
+共用 `client_id=prospector`。授权码 + PKCE S256，回调严格为 `http://127.0.0.1:<动态端口>/navigator/callback`。完整接口与状态码见 Navigator 的 `docs/prospector-user-query-contract.md` 和本项目 `docs/IPC契约.md`。
 
-- `GET /api/rates?status=当前生效&limit=500&offset=0` → `{ok, total, rows}`，rows 为全字段行
-  （消息原文/有效期/来源群）。只拉取当前状态，**过期与否再由本地镜像的
-  valid_to 判断**，与 quote_search 口径一致。
-- 分页拉全量（安全上限 20000 行）；`content_key` 作稳定键。
+- access 仅在主进程内存；refresh 用 Electron safeStorage 加密保存，并绑定来源地址。令牌、授权码和密码不经过渲染端或日志。
+- 访问、刷新和查询均验证当前账号；停用、强制改密码或安全版本变化立即失效。刷新轮换并拒绝旧令牌；退出撤销本设备授权。
+- 身份 epoch 用于拒绝旧账号的在途结果；凭据写入串行，旧刷新失败不能擦除新账号凭据。
+- 退出、切换或进程重启后，过去含报价的 AI 上下文不跨授权回放。持久历史不删除；普通会话可继续读取。当前页面结果和截图缓存清除。
 
-## 3. 字段映射（别名容错，纯函数可单测）
+## 查询与来源
 
-远程行字段名与本地 schema 不完全一致，按别名取值：
-`container_type|container_raw|container → containerRaw`、`price_usd|freight_usd|ocean_usd → oceanUsd`、
-`pod_raw|pod → podRaw`；其余（pol/lane/carrier/free_days/shortfall(_fee)/note/source_group/
-sender/msg_time/image_name/record_id）同名直取。数值容忍字符串带千分位。
-- **柜型归一 / 有效期解析复用现有 `normalizeContainer` / `parseValidity`**；
-  远程若已给 `valid_from/valid_to` 则直采，缺了才本地解析。
-- `record_id` 缺失按 `remote-{offset+序号}` 兜底。
+`GET /api/rates`、`GET /api/space` 和授权图片接口，只接受只读设备授权；管理员浏览器 cookie 混入也不能提升权限。
 
-## 4. 局域网源与配置（2026-09-28）
+- 过滤和计数在 Navigator 执行，分页共享查询标识。数组参数 `terms/lanes/podExtra/polExtra` 为 JSON 数组；返回实际行与服务端 total。
+- 每次用户主动查价生成一个 `query_id` UUID；分页、重试和附带舱位复用此 ID。Navigator 按用户加 ID 去重，来源固定为 Prospector，客户端不能伪造用户或来源。
+- 运价按价格升序、空价最后，再分页；已被覆盖记录不能成为当前报价，即使有效期未到。有效期和舱位时效条件独立处理。
+- 复用既有纯映射和清洗器，保留消息原文、来源群、发送人、有效期、价格及柜型。查询时刻不能冒充入库时刻。缺失目的港的异常响应应失败，不能偷偷丢行造成条数与表格不一致。
+- 截图名称仅为 basename；主进程授权取图片，页面收到 data URI。AI 不使用无鉴权裸图片 URL。
 
-- **只读真源**：本机运行的运价库 `manual_server.py`（`0.0.0.0:8795`），此机器当前局域网地址为 `http://192.168.190.244:8795`。2026-09-28 只读探测：当前生效运价 247 条、当前有效舱位 43 条；这是时点数据，不是固定业务数量。旧 `8788` 服务及公网镜像已废弃，不参与运行时选源，也不提供故障回退。
-- **地址优先级**：仅接受 HTTP 本机/私有 IPv4 地址；`RATES_REMOTE_URL` 环境变量 > 历史 `config.rates.url`（仅局域网 URL）> 内置 `LAN_BASE`。旧版 `config.rates.source=remote` 被忽略；公网 URL 被忽略。局域网 IP 变化时在本机调整已有的地址配置，不需要密钥。
-- **同步行为**：局域网直连，避免通用代理拦截内网 IP。启动后 5 秒首拉 + 每 4 小时轮询，手动“同步运价库”也走同一地址。接口缺少 `rows` 数组或请求失败时保留旧镜像，不会读取废弃源；两张镜像仍分别处理成败。
-- **字段契约**：统一记录的运价来自 `price_usd`；老接口的 `freight_usd/ocean_usd` 只作字段兼容。`content_key` 为稳定键；保留 `message_text`、`status`、`etd` 供本地清洗和溯源。
-- **设置页**：只展示局域网地址、镜像条数和最近同步时间；无公网切换。离线建表层保持退役，两张表由 `rates-clean` 从镜像计算。
+## 配置与部署
 
-## 5. UI（RateBoard / 仪表盘运价卡）
+来源为 `RATES_REMOTE_URL` 或 `config.rates.url`；按用户明确决定，私有 IP / 本机地址允许 HTTP，现有 `http://192.168.190.244:8795` 直接使用；公网 HTTP 和任意 HTTP 域名拒绝，公网使用 HTTPS。HTTP 不加密，不回退旧公网服务。
 
-- 来源状态：显示「局域网库 {host} · 上次同步时间」；同步异常时给红标 + lastError 摘要。
-- 同步按钮改名「同步运价库」。快照相关文案全部移除。
-- 连接失败提示（手动同步时）：一句话指因（公司电脑开机/服务启动/同一局域网），细节进日志。
+Navigator 支持原生 TLS 证书和私钥配置；证书、私钥或其他敏感值由管理员手动写在机器上的配置或环境变量，不能粘贴到 Agent 对话。客户端不关闭证书校验，服务端不信任任意 `X-Forwarded-Proto`。
 
-## 6. 安全与边界
-
-- 拉取失败不动本地镜像（先全量拉完、后删旧插新）；失败保留上次同步的数据并报错。
-- 单条远程行字段残缺（无目的港等）跳过，不阻塞整批。
-- **两张镜像各自独立成败**：运价拉不到 = 整体失败（界面提示）；舱位拉不到或返回 0 行 = 只记日志、
-  保留旧 `space_records`，不阻断运价刷新——舱位是附带信息，不该拖垮主链路。
-- **两表 status 字面量不同**：运价「当前生效 / 已被覆盖」，舱位「当前有效 / 已被覆盖」。
-  舱位带 `status=当前有效` 拉不到任何行时，退回不带 status 再拉一次、在本地剔掉「已被覆盖」，
-  防服务端字面量变更把舱位镜像清空。
-- 联动清理：快照链路死代码（SNAPSHOT_PATH / dws 字段表 / cellText / parseSnapshot）已删；
-  `data/rates-snapshot.json` 不再被读取，可留可删。
+上线按服务端先、客户端后；双方先部署到隔离环境验收登录、查价、记录、刷新、退出与停用账号。当前实现没有重启生产服务、发布安装包或修改另一台电脑的工作区。

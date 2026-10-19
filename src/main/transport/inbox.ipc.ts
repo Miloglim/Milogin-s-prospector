@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow } from "electron";
+import type { InboxListRequest } from "../../shared/inbox";
 import { IPC } from "../contract";
 import * as InboxService from "../services/inbox.service";
 import { todayMailBrief } from "../services/mail-brief.service";
@@ -23,8 +24,9 @@ function createRendererPush() {
   };
 }
 
-export function registerInboxIPC() {
+export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
   const pushToRenderer = createRendererPush();
+  InboxService.setInboxNetworkAllowed(networkAllowed);
   InboxService.setImapFetchFn(doFetch);
   InboxService.setImapFetchBodyFn(fetchBody);
   InboxService.setInboxPushFn(pushToRenderer);
@@ -32,11 +34,13 @@ export function registerInboxIPC() {
   setNetPushFn(pushToRenderer);
   InboxService.startAutoFetch();
   // 智能发信任务（docs/smart-send-spec.md）：注入队列入口 + 启动到期触点调度器
-  CampaignService.setCampaignQueueFn((items, autoStart, opts) => SendService.startQueue(items, autoStart, opts));
+  CampaignService.setCampaignNetworkAllowed(networkAllowed);
+  CampaignService.setCampaignQueueFn(async (items, autoStart, opts) => networkAllowed()
+    ? SendService.startQueue(items, autoStart, opts) : failResult('当前离线，无法启动发送任务。'));
   CampaignService.startCampaignScheduler();
 
-  ipcMain.handle(IPC.INBOX.LIST, async () => {
-    return InboxService.listInbox();
+  ipcMain.handle(IPC.INBOX.LIST, async (_e, request?: InboxListRequest) => {
+    return InboxService.listInbox(request);
   });
   ipcMain.handle(IPC.INBOX.FETCH, async (_e, accountId?: number) => {
     return InboxService.refreshInbox(accountId);
@@ -74,4 +78,11 @@ export function registerInboxIPC() {
 
 export function cleanupInboxIPC() {
   InboxService.stopAutoFetch();
+}
+
+/** Suspend future automatic sends when the center becomes unavailable; in-flight SMTP may finish. */
+export function suspendLocalNetworkWork(): void {
+  CampaignService.suspendAutomaticCampaignScheduling();
+  const status = SendService.getSendStatus();
+  if (status.success && status.data.isRunning) SendService.pauseSend();
 }

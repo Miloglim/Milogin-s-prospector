@@ -2,7 +2,7 @@
 /* 不覆盖程序标题栏（36px）：从标题栏下方起全屏，内容居中区与主界面一致 */
 .ob-root {
   position: fixed; top: 36px; left: 0; right: 0; bottom: 0; z-index: 99990;
-  background: #ffffff;
+  background: radial-gradient(ellipse at 24% 28%, rgba(220,228,238,.3), transparent 48%), radial-gradient(ellipse at 78% 72%, rgba(237,231,221,.24), transparent 46%), #fff;
   display: flex; flex-direction: column;
   overflow-y: auto;
   opacity: 0; transition: opacity 0.6s cubic-bezier(0.33, 1, 0.68, 1);
@@ -48,7 +48,7 @@
 }
 
 .ob-h2 {
-  font-size: 24px; font-weight: 350; margin: 0 0 6px; color: #1a1a1a;
+  font-size: 24px; font-weight: 700; margin: 0 0 6px; color: #1a1a1a;
   letter-spacing: -0.3px; display: inline-block;
 }
 .ob-h2.done {
@@ -103,7 +103,7 @@
 /* 表单 */
 .ob-form { text-align: left; margin-bottom: 24px; }
 .ob-field { margin-bottom: 14px; }
-.ob-field label { display: block; font-size: 12px; font-weight: 400; color: #1a1a1a; margin-bottom: 5px; }
+.ob-field label { display: block; font-size: 12px; font-weight: 600; color: #1a1a1a; margin-bottom: 5px; }
 .ob-field input, .ob-field select {
   width: 100%; font-size: 13px; padding: 10px 12px; box-sizing: border-box;
   border: 1px solid #e0e0e0; border-radius: 4px;
@@ -121,6 +121,15 @@
 .ob-inline { display: flex; gap: 10px; }
 .ob-inline > div { flex: 1; }
 .ob-error { font-size: 12px; color: #c62828; text-align: center; margin: -8px 0 12px; }
+.ob-advanced { margin: 2px 0 18px; border-top: 1px solid #ededed; }
+.ob-advanced summary { padding: 11px 0 7px; color: #333; font-size: 12px; font-weight: 600; cursor: pointer; list-style-position: outside; transition: color .18s ease; }
+.ob-advanced summary::marker { color: #00a990; }
+.ob-advanced summary:hover { color: #008f7d; }
+.ob-advanced-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .28s cubic-bezier(.33,1,.68,1), opacity .18s ease; }
+.ob-advanced[open] .ob-advanced-body { grid-template-rows: 1fr; opacity: 1; }
+.ob-advanced-inner { min-height: 0; overflow: hidden; transform: translateY(-5px); transition: transform .28s cubic-bezier(.33,1,.68,1); }
+.ob-advanced[open] .ob-advanced-inner { transform: translateY(0); }
+.ob-advanced[open] summary { margin-bottom: 4px; }
 
 /* 按钮区 */
 .ob-actions { display: flex; justify-content: center; align-items: center; gap: 10px; }

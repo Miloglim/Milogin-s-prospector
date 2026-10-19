@@ -2,7 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { --app-titlebar-height: 36px; }
+:root { --app-titlebar-height: 36px; --brand-accent: #00bfa5; }
+
+/* Account menu uses the scoped dark brand theme; the profile retains page tokens. */
+.account-menu-popup { width: 248px; max-width: calc(100vw - 24px); }
+.account-menu-popup .ant-dropdown-menu { padding: 6px; border: 1px solid rgba(255,255,255,.09); box-shadow: 0 12px 36px rgba(0,0,0,.3); }
+.account-menu-popup .ant-dropdown-menu-item { min-height: 36px; padding: 8px 10px; font-size: 13px; }
+.account-menu-popup .ant-dropdown-menu-item-disabled { cursor: default; }
+.account-menu-identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 3px 0; }
+.account-menu-identity strong { color: #eee; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu-identity span { color: #a8a8a8; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-profile-layout { display: grid; grid-template-columns: minmax(0,1fr) 250px; gap: 24px; align-items: start; }
+.account-profile-main { display: grid; gap: 16px; min-width: 0; }
+.account-profile-main .ant-card-body { padding: 20px; }
+.account-profile-main .ant-descriptions-item-content { overflow-wrap: anywhere; }
+.account-profile-identity .ant-card-body { padding: 24px 20px; }
+.account-profile-face { display: grid; justify-items: center; gap: 12px; text-align: center; }
+.account-profile-name { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; max-width: 100%; }
+.account-profile-growth { margin-top: 24px; padding-top: 20px; border-top: 1px solid; }
+.account-profile-label { margin-bottom: 8px; font-size: 12px; }
+.account-profile-level { font-size: 24px; font-weight: 600; }
+.account-profile-pending { min-height: 40px; display: flex; align-items: center; font-size: 18px; }
+@media (max-width: 760px) {
+  .account-profile-layout { grid-template-columns: minmax(0,1fr); gap: 16px; }
+  .account-profile-identity { grid-row: 1; }
+}
 
 body {
   margin: 0;
@@ -55,9 +79,164 @@ body {
   background-clip: padding-box;
 }
 
-/* 自定义标题栏 — 无边框窗口 */
-.titlebar-drag { -webkit-app-region: drag; z-index: 1100; position: relative; }
+/* 自定义标题栏 — 无边框窗口。尺寸由壳层统一控制，页面抽屉只需避开这一行。 */
+.app-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+.app-titlebar {
+  box-sizing: border-box; height: var(--app-titlebar-height); min-height: var(--app-titlebar-height);
+  display: flex; align-items: center; justify-content: space-between; flex: 0 0 var(--app-titlebar-height);
+  background: #1a1a1a; border-bottom: 1px solid rgba(128,128,128,.25);
+  user-select: none; overflow: hidden; z-index: 1100;
+}
+.app-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.app-titlebar-spacer { flex: 1 1 auto; height: 100%; }
+.app-window-controls { display: flex; flex: 0 0 auto; height: 100%; }
+.titlebar-drag { -webkit-app-region: drag; position: relative; }
 .titlebar-nodrag { -webkit-app-region: no-drag; }
+
+/* 普通抽屉和遮罩从标题栏下方开始，标题栏始终可见且可操作。 */
+.app-drawer-below-titlebar .ant-drawer-content-wrapper {
+  top: var(--app-titlebar-height);
+  height: calc(100% - var(--app-titlebar-height));
+}
+.app-drawer-below-titlebar .ant-drawer-mask {
+  top: var(--app-titlebar-height);
+}
+
+/* 以表格为主内容的页面：工具栏占固定高度，表格占满剩余工作区。 */
+.prospector-table-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--app-titlebar-height) - 32px);
+  min-height: calc(100vh - var(--app-titlebar-height) - 32px);
+  min-width: 0;
+  box-sizing: border-box;
+}
+.prospector-table-page > .prospector-page-table {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.prospector-page-table {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.prospector-page-table .ant-spin-nested-loading,
+.prospector-page-table .ant-spin-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.prospector-page-table .ant-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+.prospector-page-table .ant-table-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.prospector-page-table .ant-table-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto !important;
+}
+.prospector-page-table .ant-table-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto !important;
+}
+/* 表格滚动条保留命中区，但默认隐去视觉轨道；只有实际滚动对应方向时才显现。 */
+.prospector-page-table .ant-table-content,
+.prospector-page-table .ant-table-body {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.prospector-page-table .ant-table-content::-webkit-scrollbar,
+.prospector-page-table .ant-table-body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.prospector-page-table .ant-table-content::-webkit-scrollbar-track,
+.prospector-page-table .ant-table-body::-webkit-scrollbar-track {
+  background: transparent;
+  background-color: transparent;
+}
+.prospector-page-table .ant-table-content::-webkit-scrollbar-thumb,
+.prospector-page-table .ant-table-body::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  transition: background-color .15s ease;
+}
+.prospector-page-table .ant-table-content.is-scrolling-x::-webkit-scrollbar-thumb,
+.prospector-page-table .ant-table-body.is-scrolling-x::-webkit-scrollbar-thumb {
+  background-color: #c9cdd2;
+}
+.prospector-page-table .ant-table-content.is-scrolling-x::-webkit-scrollbar-thumb:vertical,
+.prospector-page-table .ant-table-body.is-scrolling-x::-webkit-scrollbar-thumb:vertical,
+.prospector-page-table .ant-table-content.is-scrolling-y::-webkit-scrollbar-thumb:horizontal,
+.prospector-page-table .ant-table-body.is-scrolling-y::-webkit-scrollbar-thumb:horizontal {
+  background-color: transparent;
+}
+.prospector-page-table .ant-table-content.is-scrolling-y::-webkit-scrollbar-thumb,
+.prospector-page-table .ant-table-body.is-scrolling-y::-webkit-scrollbar-thumb {
+  background-color: #c9cdd2;
+}
+.prospector-page-table .ant-table-cell-fix-right {
+  background: #fff;
+  z-index: 2;
+}
+.prospector-page-table .ant-table-thead .ant-table-cell-fix-right {
+  z-index: 3;
+}
+.history-table-tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.history-table-tabs > .ant-tabs-content-holder,
+.history-table-tabs .ant-tabs-content,
+.history-table-tabs .ant-tabs-tabpane {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.history-table-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.history-table-card .ant-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.template-table-page > .ant-tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.template-table-page > .ant-tabs > .ant-tabs-content-holder,
+.template-table-page > .ant-tabs .ant-tabs-content,
+.template-table-page > .ant-tabs .ant-tabs-tabpane {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.template-table-page .template-list-pane,
+.template-table-page .template-list-pane > .prospector-page-table {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.template-table-page .template-list-pane { flex: 1 1 auto; }
 
 /* 暗色侧边栏菜单覆盖 */
 .ant-menu-dark { background: #1a1a1a !important; }
@@ -195,6 +374,32 @@ body {
 .ant-table-row-selected > .ant-table-cell-fix-right,
 .ant-table-row-selected > .ant-table-cell-fix-left {
   background: #fafafa !important;
+}
+
+/* 共享表格标准：以客户联系人表为基准，保证所有业务表格的密度一致。 */
+.ant-table-container {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ant-table-thead > tr > th {
+  padding: 8px 10px !important;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 500;
+}
+.ant-table-tbody > tr > td {
+  height: 42px;
+  padding: 4px 10px !important;
+  font-size: 12px;
+}
+.ant-table-placeholder > td {
+  min-height: 96px;
+  padding: 24px 10px !important;
+  text-align: center;
+}
+.ant-table-placeholder:hover > td {
+  background: inherit !important;
 }
 /* 禁用按钮不改变指针、不变色 */
 .ant-btn[disabled], .ant-btn-disabled { cursor: default !important; pointer-events: none !important; }
@@ -478,3 +683,21 @@ body {
 .picker-compact .ant-table-tbody > tr.row-in-campaign > td span { color: #b2b6bd !important; }
 /* 「已在任务」标签保持紫色，别被上面的压灰吃掉 */
 .picker-compact .ant-table-tbody > tr.row-in-campaign .ant-tag-purple { color: #722ed1 !important; }
+
+/* 搜索结果使用当前主题的交互色，整行可点击。 */
+.global-search-hit:hover { background: var(--search-hit-hover) !important; }
+.global-search-hit:focus-visible { outline: 2px solid var(--search-hit-focus); outline-offset: -2px; }
+.settings-account-form .ant-form-item { margin-bottom: 8px; }
+.settings-account-form .ant-form-item-label { padding-bottom: 3px; }
+.settings-account-form .ant-form-item-explain { font-size: 11px; }
+
+.contact-columns-options .ant-checkbox-wrapper {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  margin-inline-start: 0;
+  line-height: 18px;
+}
+.contact-columns-options .ant-checkbox { margin-inline-end: 5px; }
+.contact-columns-options .ant-checkbox-inner { width: 13px; height: 13px; }
+.contact-columns-options .ant-checkbox-inner::after { width: 4px; height: 7px; }

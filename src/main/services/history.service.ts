@@ -6,6 +6,7 @@ import { emailAccounts } from "../db/schema/accounts";
 import { sql, eq, and, type SQL } from "drizzle-orm";
 import { okResult, type Result } from "../errors";
 import { Log } from "../logger";
+import { getCenterSendPort } from './center-send.service';
 
 export interface SendHistoryRow {
   id: number;
@@ -58,18 +59,22 @@ export function listHistory(filters?: HistoryFilters): Result<SendHistoryRow[]> 
   q = q.where(and(...conds)) as typeof q;
 
   const rows = q.orderBy(sql`${interactions.createdAt} DESC`).limit(limit).all();
-  return okResult(rows);
+  const central = getCenterSendPort()?.history?.();
+  if(central&&!central.success)return central;
+  const centerRows=central?.data.filter(row=>(!filters?.accountId||row.accountId===filters.accountId)&&(!filters?.q||[row.email,row.companyName].some(value=>value?.toLowerCase().includes(filters.q!.trim().toLowerCase()))))??[];
+  return okResult([...rows,...centerRows].sort((a,b)=>b.sentAt.localeCompare(a.sentAt)).slice(0,limit));
 }
 
 /** 清空发送历史（interactions type=sent）— 返回删除数量 */
 export function clearHistory(): Result<number> {
   Log.debug("history.clear", "");
+  const center = getCenterSendPort()?.clearHistory?.();if(center&&!center.success)return center;
   const db = getDb();
   const count = db.select({ n: sql<number>`count(*)` }).from(interactions).where(eq(interactions.type, "sent")).get()?.n || 0;
   db.delete(interactions).where(eq(interactions.type, "sent")).run();
   saveDatabase();
   Log.info("history.clear", `已清除 ${count} 条发送历史`);
-  return okResult(count);
+  return okResult(count+(center?.data??0));
 }
 
 /** 有发送记录的日期列表（倒序） — 用于历史页日期筛选 */
@@ -81,5 +86,6 @@ export function getSendDates(): Result<string[]> {
     .orderBy(sql`substr(${interactions.createdAt}, 1, 10) DESC`)
     .limit(90)
     .all();
-  return okResult(rows.map(r => r.day));
+  const central = getCenterSendPort()?.history?.();if(central&&!central.success)return central;
+  return okResult([...new Set([...rows.map(r=>r.day),...(central?.data.map(r=>r.sentAt.slice(0,10))??[])])].sort().reverse().slice(0,90));
 }

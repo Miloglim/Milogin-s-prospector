@@ -1,5 +1,6 @@
 import { invalidateDomain } from "../../lib/cacheDeps";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Button, message, Modal, Tooltip, Progress, notification, Dropdown, Select } from "antd";
 
 // (Button etc. used in sub-components)
@@ -11,6 +12,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { askAssistant } from "../../lib/ask-ai";
 import { DiamondLogo } from "../../components/DiamondLogo";
 import { STATUS_META, CRM_STAGES } from "../../components/ContactDetail";
+import { useOptionalIdentity } from '../../IdentityContext';
+import { ONLINE_CHANNELS, centerContactDisplayStatus, type CenterContactRef, type CenterContactDetail, type ContactTouchStatus, type CustomerStage } from '../../../shared/online-crm';
+import { centerInvoke } from '../customers/centerContactPort';
+
+interface MatchedContact { id: number; email: string; company: string; centerReference?: CenterContactRef }
+interface MatchContactRow { id: number; email: string; companyName: string | null; centerReference?: CenterContactRef }
+const CENTER_STATUS: Record<string, ContactTouchStatus> = { reached: 'contacted', replied: 'replied', '': 'uncontacted' };
+function openMatchedContact(contact: { id: number; centerReference?: CenterContactRef }): void {
+  const reference = contact.centerReference;
+  window.location.hash = reference
+    ? `#/customers?view=table&centerContact=${reference.contactId}&centerCustomer=${encodeURIComponent(reference.customerId)}`
+    : `#/customers?view=table&detail=${contact.id}`;
+}
 
 interface InboxItem {
   id: number; fromEmail: string; fromName: string | null;
@@ -23,6 +37,7 @@ interface InboxItem {
   _accountEmail?: string | null;
   _contactStatus?: string | null;
   _contactTags?: string | null;
+  _centerContact?: CenterContactRef | null;
 }
 
 const TYPE: Record<string, { label: string; dot: string }> = {
@@ -75,7 +90,18 @@ function guessName(fromName: string | null): { firstName: string; lastName: stri
 }
 
 export function InboxList() {
+  const identity = useOptionalIdentity();
+  const offline = identity?.status === 'offline';
+  const actorScope = JSON.stringify([identity?.baseUrl, identity?.identity?.userId]);
+  const currentActorScope = useRef(actorScope);
+  currentActorScope.current = actorScope;
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const location = useRouterState({ select: s => s.location });
+  const routeParams = new URLSearchParams(location.searchStr);
+  const rawDetail = Number(routeParams.get("detail"));
+  const routeDetail = location.pathname === "/inbox" && Number.isSafeInteger(rawDetail) && rawDetail > 0 ? rawDetail : null;
+  const [includeId, setIncludeId] = useState<number | null>(null);
   const [sid, setSid] = useState<number | null>(null);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -86,8 +112,8 @@ export function InboxList() {
 
   // 联系人库（选中邮件后才加载）
   const { data: contactsData, isLoading: contactsLoading } = useQuery({
-    queryKey: ["contacts", "match"],
-    queryFn: () => window.api.invoke("contacts:listForMatch") as Promise<{ success: boolean; data?: { id: number; email: string; companyName: string | null }[] }>,
+    queryKey: ["contacts", "match", identity?.baseUrl, identity?.identity?.userId],
+    queryFn: () => window.api.invoke("contacts:listForMatch") as Promise<{ success: boolean; data?: MatchContactRow[] }>,
     enabled: sid !== null,
   });
 
@@ -106,8 +132,8 @@ export function InboxList() {
   const [senderFilter, setSenderFilter] = useState<string | null>(null); // 选中的发信人邮箱
 
   const { data, isLoading } = useQuery({
-    queryKey: ["inbox"],
-    queryFn: () => window.api.invoke("inbox:list") as Promise<{ success: boolean; data?: InboxItem[]; error?: string }>,
+    queryKey: ["inbox", includeId],
+    queryFn: () => window.api.invoke("inbox:list", includeId ? { includeId } : undefined) as Promise<{ success: boolean; data?: InboxItem[]; error?: string }>,
   });
 
   const [fetching, setFetching] = useState(false);
@@ -140,8 +166,12 @@ export function InboxList() {
   }, [qc]);
 
   const classMut = useMutation({
-    mutationFn: (p: { id: number; classification: string }) => window.api.invoke("inbox:classify", p),
-    onSuccess: () => invalidateDomain(qc, "inbox"),
+    mutationFn: async (p: { id: number; classification: string }) => {
+      const result=await window.api.invoke("inbox:classify",p) as {success:boolean;error?:string};
+      if (!result?.success) throw new Error(result?.error || '分类修改失败');
+      return result;
+    },
+    onSettled: () => invalidateDomain(qc, "inbox", "contacts"),
   });
   const readMut = useMutation({
     mutationFn: (ids: number[]) => Promise.all(ids.map(id => window.api.invoke("inbox:markRead", id))),
@@ -161,23 +191,41 @@ export function InboxList() {
     },
   });
 
-  // 收件箱详情栏「状态/标签」点击覆盖：走 contacts:upsert（与联系人详情保存同链路）。
-  // 传库内原 email + id 定位，避免 upsert 误判成改邮箱；状态联动（改状态清标签、设标签推进管线）由后端统一处理
+  // Status/stage selections follow the explicit center reference; legacy IDs use their original local-only path.
   const overwriteMut = useMutation({
-    mutationFn: (p: { id: number; email: string; field: "status" | "tags"; value: string | null }) =>
-      window.api.invoke("contacts:upsert", {
+    mutationFn: async (p: { id: number; email: string; centerReference?: CenterContactRef; field: "status" | "tags"; value: string | null }) => {
+      if (p.centerReference) {
+        if (offline) return { success: false, error: '当前离线，无法修改中心联系人' };
+        const loaded = await centerInvoke<CenterContactDetail>(ONLINE_CHANNELS.CONTACT_DETAIL, p.centerReference);
+        if (currentActorScope.current !== actorScope) return { success: false, error: '账号已切换，请重新操作' };
+        if (!loaded.ok) return { success: false, error: loaded.error.message };
+        const current = loaded.data;
+        const allowed = p.field === 'tags' ? current.permissions?.canChangeStage ?? current.canFollowup : current.canFollowup;
+        if (!allowed || p.field === 'status' && !(p.value === null || p.value === '' || p.value in CENTER_STATUS)) return { success: false, error: '当前联系人不可修改' };
+        const common = { ...p.centerReference, expectedVersion: current.contact.contactVersion ?? current.contact.customerVersion, idempotencyKey: crypto.randomUUID() };
+        // Mail classifications are immutable mail facts, never contact status patches.
+        const result = await centerInvoke<CenterContactDetail>(ONLINE_CHANNELS.CONTACT_FOLLOWUP, p.field === 'tags'
+          ? { ...common, method: 'note', note: `设置跟进阶段：${CRM_STAGES.find(item => item.key === p.value)?.label || '清除'}`, stage: (p.value || 'cold') as CustomerStage }
+          : { ...common, method: 'other', note: `设置联系人状态：${STATUS_META[p.value || '']?.label || '清除'}`, contactStatus: CENTER_STATUS[p.value || ''] });
+        return result.ok ? { success: true } : { success: false, error: result.error.message };
+      }
+      return window.api.invoke("contacts:upsert", {
         id: p.id,
         email: p.email,
         ...(p.field === "status"
           ? { status: p.value ?? "" }
           : { tags: p.value ? JSON.stringify([p.value]) : null }),
-      }) as Promise<{ success: boolean; error?: string }>,
+      }) as Promise<{ success: boolean; error?: string }>;
+    },
     onSuccess: (r: unknown) => {
       const rr = r as { success: boolean; error?: string };
       if (rr?.success) message.success("已更新");
       else message.error(rr?.error || "更新失败");
       void invalidateDomain(qc, "inbox", "contacts");
+      void qc.invalidateQueries({ queryKey: ['center-contacts'] });
+      void qc.invalidateQueries({ queryKey: ['center-contact-detail'] });
     },
+    onError: error => message.error(error instanceof Error ? error.message : '更新失败'),
   });
 
   // 被退联系人同源数据（规范 docs/bounce-multi-match-spec.md）：
@@ -189,13 +237,14 @@ export function InboxList() {
   const bounceStats = bounceStatsData?.success ? bounceStatsData.data : undefined;
   const { data: bounceMatchesData } = useQuery({
     queryKey: ["inbox", "bounceMatches", sid],
-    queryFn: () => window.api.invoke("inbox:bounceMatches", sid) as Promise<{ success: boolean; data?: Array<{ id: number; email: string; companyName: string | null }> }>,
+    queryFn: () => window.api.invoke("inbox:bounceMatches", sid) as Promise<{ success: boolean; data?: MatchContactRow[] }>,
     enabled: !!sid,
   });
   const bounceMatches = bounceMatchesData?.success ? bounceMatchesData.data || [] : [];
 
   /** 删除单个联系人（详情两栏共用：被退栏 / 正文提及栏）；级联与孤儿公司清理在主进程 */
-  const confirmDeleteContact = (c: { id: number; email: string }) => {
+  const confirmDeleteContact = (c: { id: number; email: string; centerReference?: CenterContactRef }) => {
+    if (c.centerReference) { message.info('中心联系人删除暂未开放'); return; }
     Modal.confirm({
       title: `删除联系人 ${c.email}？`,
       content: "其往来记录一并删除，此操作不可撤销。",
@@ -239,7 +288,7 @@ export function InboxList() {
   }
   // 退信页：已匹配联系人的排最前（能一键删除的先看到）。sort 是稳定的，组内仍按时间倒序
   if (filter === "bounce") {
-    items = [...items].sort((a, b) => (b.matchedContactId ? 1 : 0) - (a.matchedContactId ? 1 : 0));
+    items = [...items].sort((a, b) => (b.matchedContactId || b._centerContact ? 1 : 0) - (a.matchedContactId || a._centerContact ? 1 : 0));
   }
   const sel_ = items.find(i => i.id === sid) || null;
 
@@ -254,22 +303,30 @@ export function InboxList() {
 
   // 邮箱匹配 — 参照旧 PE _extractBodyContacts（memo 化，避免每次渲染重复正则处理大正文）
   const { matchedContacts, unmatchedEmails, senderContact, matchReady } = useMemo(() => {
-    const matched: { email: string; company: string; id: number }[] = [];
+    const matched: MatchedContact[] = [];
     const unmatched: string[] = [];
-    let sender: { company: string; id: number; email: string } | null = null;
+    let sender: MatchedContact | null = null;
     const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     const ready = !!(body && contactsData?.success);
     if (ready) {
       const contacts = contactsData!.data || [];
-      const idx: Record<string, { company: string; id: number; email: string }> = {};
+      const idx: Record<string, MatchedContact> = {};
+      const ambiguous = new Set<string>();
       for (const c of contacts) {
-        if (c.email) idx[c.email.toLowerCase().trim()] = { company: c.companyName || "", id: c.id, email: c.email };
+        if (!c.email) continue;
+        const key = c.email.toLowerCase().trim();
+        if (ambiguous.has(key)) continue;
+        const previous = idx[key]?.centerReference;
+        if (previous && c.centerReference && (previous.contactId !== c.centerReference.contactId || previous.customerId !== c.centerReference.customerId)) {
+          delete idx[key]; ambiguous.add(key); continue;
+        }
+        idx[key] = { company: c.companyName || "", id: c.id, email: c.email, centerReference: c.centerReference };
       }
       // ① 发件人
       if (sel_) {
         const sk = sel_.fromEmail.toLowerCase().trim();
         const sc = idx[sk];
-        if (sc) { sender = sc; matched.push({ email: sel_.fromEmail, company: sc.company, id: sc.id }); }
+        if (sc) { sender = sc; matched.push({ ...sc, email: sel_.fromEmail }); }
         else unmatched.push(sel_.fromEmail);
       }
       // ② 正文：剥 HTML 标签 + 拼接 raw 原文，跟旧 PE 一样
@@ -286,12 +343,18 @@ export function InboxList() {
         if (seen.has(key)) continue;
         seen.add(key);
         const c = idx[key];
-        if (c) matched.push({ email: em, company: c.company, id: c.id });
+        if (c) matched.push({ ...c, email: em });
         else unmatched.push(em);
       }
     }
     return { matchedContacts: matched, unmatchedEmails: unmatched, senderContact: sender, matchReady: ready };
   }, [body, contactsData, sel_]);
+  const senderReference = senderContact?.centerReference;
+  const senderDetail = useQuery({
+    queryKey: ['center-contact-detail', identity?.baseUrl, identity?.identity?.userId, senderReference?.customerId, senderReference?.contactId],
+    enabled: !!senderReference,
+    queryFn: () => centerInvoke<CenterContactDetail>(ONLINE_CHANNELS.CONTACT_DETAIL, senderReference),
+  });
 
   // 正文 iframe 文档（memo 化，避免每次渲染重新拼接大字符串触发 iframe 重载）
   const bodyDoc = useMemo(() => {
@@ -307,7 +370,10 @@ export function InboxList() {
       "</style><script>var z=1;document.addEventListener('wheel',function(e){if(e.ctrlKey){e.preventDefault();z*=e.deltaY<0?1.1:0.9;z=Math.min(3,Math.max(0.3,z));document.body.style.zoom=z}},{passive:false})</script></head><body>" + body + "</body></html>";
   }, [body]);
 
-  useEffect(() => { setSid(null); setSel(new Set()); setLast(null); }, [filter]);
+  useEffect(() => {
+    if (routeDetail) return; // 深链切回全部分类时，不能清掉正在定位的目标。
+    setSid(null); setSel(new Set()); setLast(null);
+  }, [filter]);
 
   // 测量列表容器高度
   useEffect(() => {
@@ -327,19 +393,23 @@ export function InboxList() {
 
   // 选中邮件 → 加载正文 + 量高度（优先前端缓存，切回已看邮件秒开）
   useEffect(() => {
-    if (!sid) { setBody(null); return; }
+    let active = true;
+    if (!sid) { setBody(null); setBl(false); return; }
     const cached = bodyCache.current.get(sid);
     if (cached !== undefined) {
       setBody(cached);
+      setBl(false);
       return;
     }
     setBl(true);
+    setBody(null);
     window.api.invoke("inbox:getBody", sid).then((r: unknown) => {
       const rr = r as { success: boolean; data?: string };
       const html = rr?.success ? rr.data || null : null;
       bodyCache.current.set(sid, html);
-      setBody(html);
-    }).catch(() => setBody(null)).finally(() => setBl(false));
+      if (active) setBody(html);
+    }).catch(() => { if (active) setBody(null); }).finally(() => { if (active) setBl(false); });
+    return () => { active = false; };
   }, [sid, bodyCache]);
 
 
@@ -355,6 +425,9 @@ export function InboxList() {
         message.info(`拉取到 ${pp.count} 封新邮件${detail ? `：${detail}` : ""}`);
       }
       // App 的全局监听统一刷新数据，这里仅负责新邮件提示。
+      void qc.invalidateQueries({ queryKey: ['contacts', 'match'] });
+      void qc.invalidateQueries({ queryKey: ['center-contacts'] });
+      void qc.invalidateQueries({ queryKey: ['center-contact-detail'] });
     });
     return off;
   }, [qc]);
@@ -370,23 +443,38 @@ export function InboxList() {
 
   // 从联系人/CRM跳转来 → 自动搜索邮箱
   useEffect(() => {
-    const rawHash = window.location.hash;
-    const qs = rawHash.includes("?") ? rawHash.split("?")[1] : "";
+    if (location.pathname !== "/inbox") return;
+    const qs = location.searchStr;
     if (!qs) return;
     const sp = new URLSearchParams(qs);
     const detail = Number(sp.get("detail"));
-    if (Number.isInteger(detail) && detail > 0) {
-      setSid(detail); setSel(new Set([detail])); setFilter("all"); setSearch("");
-      window.location.hash = rawHash.split("?")[0]!;
+    if (Number.isSafeInteger(detail) && detail > 0) {
+      setIncludeId(detail); setSid(detail); setSel(new Set([detail])); setLast(detail);
+      setFilter("all"); setSearch(""); setView("flat"); setSenderFilter(null);
       return;
     }
     const q = sp.get("search");
     if (q) {
       setSearch(q);
-      const base = rawHash.split("?")[0]!;
-      window.location.hash = base;
+      setFilter("all"); setView("flat"); setSenderFilter(null);
+      void navigate({ to: "/inbox", search: {}, replace: true });
     }
-  }, []);
+  }, [location.pathname, location.searchStr, navigate]);
+
+  useEffect(() => {
+    if (!routeDetail || includeId !== routeDetail || isLoading || !data) return;
+    if (!data.success) { message.error(data.error || "邮件加载失败"); return; }
+    if (filter !== "all" || view !== "flat" || search || senderFilter) return;
+    const index = items.findIndex(i => i.id === routeDetail);
+    if (index < 0) {
+      message.warning("该邮件已删除或无法找到"); setSid(null); setSel(new Set());
+    } else {
+      const top = index * ROW_H;
+      if (listRef.current) listRef.current.scrollTop = top;
+      setScrollTop(top);
+    }
+    void navigate({ to: "/inbox", search: {}, replace: true });
+  }, [routeDetail, includeId, isLoading, data, filter, view, search, senderFilter, navigate]);
 
   const click = useCallback((e: React.MouseEvent, item: InboxItem) => {
     const id = item.id;
@@ -417,8 +505,16 @@ export function InboxList() {
     Modal.confirm({ title: `删除 ${sel.size} 封？`, okText: "删除", okType: "danger", cancelText: "取消", onOk: () => delMut.mutate([...sel]) });
   };
   const batchType = async (t: string) => {
-    for (const id of sel) await classMut.mutateAsync({ id, classification: t });
-    message.success(`已标为 ${TYPE[t]?.label || t}`);
+    const startedScope=actorScope;
+    try {
+      for (const id of sel) {
+        if(currentActorScope.current!==startedScope)return;
+        await classMut.mutateAsync({id,classification:t});
+      }
+      if(currentActorScope.current===startedScope)message.success(`已标为 ${TYPE[t]?.label || t}`);
+    } catch(error) {
+      if(currentActorScope.current===startedScope)message.error(error instanceof Error?error.message:'分类修改失败');
+    }
   };
 
   // ── 键盘选择层（实测缺口：选择只有鼠标三件套，Ctrl+A 被浏览器抢去「全选文字」，看着像坏了）──
@@ -501,7 +597,7 @@ export function InboxList() {
 
         {/* 顶部 */}
         <div style={{ padding: "7px 10px 5px", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <button onClick={doFetch} disabled={fetching} className="btn"
+          <button onClick={doFetch} disabled={fetching || offline} className="btn"
             style={{ padding: "2px 7px", fontSize: 10, gap: 3, borderRadius: 5, lineHeight: "16px" }}>
             <ReloadOutlined className={fetching ? "animate-spin" : ""} style={{ fontSize: 11 }} /> 刷新
           </button>
@@ -694,11 +790,11 @@ export function InboxList() {
                       {/* 已匹配 + 联系人状态（始终显示） */}
                       {(() => {
                         const tags = (() => { try { const t = JSON.parse(i._contactTags || "[]"); return Array.isArray(t) ? t : []; } catch { return []; } })();
-                        const hasAny = i.matchedContactId || i._contactStatus || tags.length > 0;
+                        const hasAny = i.matchedContactId || i._centerContact || i._contactStatus || tags.length > 0;
                         if (!hasAny) return null;
                         return (
                           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, color: "#bbb", marginTop: 1 }}>
-                            {i.matchedContactId && <span>已匹配</span>}
+                            {(i.matchedContactId || i._centerContact) && <span>已匹配</span>}
                             {i._contactStatus && (
                               <>
                                 <span style={{
@@ -788,7 +884,7 @@ export function InboxList() {
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
                     <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>关联</span>
                     <span
-                      onClick={() => { window.location.hash = `#/customers?view=table&detail=${senderContact.id}`; }}
+                      onClick={() => openMatchedContact(senderContact)}
                       style={{ color: "#1565c0", fontWeight: 500, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "2px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                       title="点击打开联系人详情"
                     >{senderContact.company || "已匹配联系人"}</span>
@@ -797,8 +893,9 @@ export function InboxList() {
               </div>
               {/* 状态 + 标签 一行两栏 — 已匹配联系人时可点击下拉覆盖（写回联系人库） */}
               {sel_ && (() => {
-                const status = (sel_ as InboxItem & { _contactStatus?: string })._contactStatus || null;
-                const rawTags = (sel_ as InboxItem & { _contactTags?: string })._contactTags || "[]";
+                const center = senderDetail.data?.ok ? senderDetail.data.data : undefined;
+                const status = center ? centerContactDisplayStatus(center.contact) : sel_._contactStatus ?? null;
+                const rawTags = center ? JSON.stringify(center.contact.relationshipStage && center.contact.relationshipStage !== 'cold' ? [center.contact.relationshipStage] : center.contact.tags) : sel_._contactTags || "[]";
                 const tags: string[] = (() => { try { const t = JSON.parse(rawTags); return Array.isArray(t) ? t : []; } catch { return []; } })();
                 const statusMeta = STATUS_META as Record<string, { label: string; color: string }>;
                 const statusLabel = (s: string) => statusMeta[s]?.label || s;
@@ -807,25 +904,27 @@ export function InboxList() {
                 };
                 const statusItems = [
                   { key: "__clear__", label: <span style={{ color: "#999" }}>清除状态</span> },
-                  ...Object.entries(statusMeta).map(([k, m]) => ({ key: k, label: m.label })),
+                  ...Object.entries(statusMeta).filter(([key]) => !senderReference || key in CENTER_STATUS).map(([k, m]) => ({ key: k, label: m.label })),
                 ];
                 const tagItems = [
                   { key: "__clear__", label: <span style={{ color: "#999" }}>清除标签</span> },
                   ...CRM_STAGES.map(s => ({ key: s.key, label: s.label })),
                 ];
-                const editable = !!senderContact;
+                const editable = !!senderContact && !offline && !overwriteMut.isPending;
+                const statusEditable = editable && (!senderReference || !!center?.canFollowup);
+                const stageEditable = editable && (!senderReference || !!(center?.permissions?.canChangeStage ?? center?.canFollowup));
                 const pick = (field: "status" | "tags", key: string) => {
                   if (!senderContact) return;
                   const value = key === "__clear__" ? null : key;
                   if (field === "status" && (value ?? "") === (status || "")) return;
                   if (field === "tags" && (value === null ? tags.length === 0 : tags[0] === value)) return;
-                  overwriteMut.mutate({ id: senderContact.id, email: senderContact.email, field, value });
+                  overwriteMut.mutate({ id: senderContact.id, email: senderContact.email, centerReference: senderContact.centerReference, field, value });
                 };
                 return (
                   <div style={{ display: "flex", borderBottom: "1px solid #f5f5f5" }}>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
                       <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>状态</span>
-                      {editable ? (
+                      {statusEditable ? (
                         <Dropdown menu={{ items: statusItems, onClick: ({ key }) => pick("status", key) }} trigger={["click"]} placement="bottomLeft">
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", borderBottom: "1px dashed #d0d5dd", padding: "0 2px", userSelect: "none" }} title="点击修改状态">
                             {status && <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusDot[status] || "#ccc" }} />}
@@ -841,7 +940,7 @@ export function InboxList() {
                     </div>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
                       <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>标签</span>
-                      {editable ? (
+                      {stageEditable ? (
                         <Dropdown menu={{ items: tagItems, onClick: ({ key }) => pick("tags", key) }} trigger={["click"]} placement="bottomLeft">
                           <span style={{ fontSize: 11, color: tags.length > 0 ? "#555" : "#ccc", cursor: "pointer", borderBottom: "1px dashed #d0d5dd", padding: "0 2px", userSelect: "none", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="点击修改标签">
                             {tags.length > 0 ? tags.join(", ") : "—"}
@@ -866,7 +965,7 @@ export function InboxList() {
                     {bounceMatches.map(c => (
                       <div key={`bm-${c.id}`} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0", fontSize: 11 }}>
                         <span
-                          onClick={() => { window.location.hash = `#/customers?view=table&detail=${c.id}`; }}
+                          onClick={() => openMatchedContact(c)}
                           style={{ color: "#1565c0", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "2px" }}
                           title="点击打开联系人详情"
                         >{c.email}</span>
@@ -875,7 +974,7 @@ export function InboxList() {
                         <DeleteOutlined
                           style={{ fontSize: 11, color: "#ccc", cursor: "pointer", marginLeft: 4 }}
                           title="删除该联系人"
-                          onClick={(e) => { e.stopPropagation(); confirmDeleteContact({ id: c.id, email: c.email }); }}
+                          onClick={(e) => { e.stopPropagation(); confirmDeleteContact(c); }}
                         />
                       </div>
                     ))}
@@ -895,7 +994,7 @@ export function InboxList() {
                         {others.map((c, i) => (
                           <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0", fontSize: 11 }}>
                             <span
-                              onClick={() => { window.location.hash = `#/customers?view=table&detail=${c.id}`; }}
+                              onClick={() => openMatchedContact(c)}
                               style={{ color: "#1565c0", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "2px" }}
                               title="点击打开联系人详情"
                             >{c.email}</span>
@@ -904,7 +1003,7 @@ export function InboxList() {
                             <DeleteOutlined
                               style={{ fontSize: 11, color: "#ccc", cursor: "pointer", marginLeft: 4 }}
                               title="删除该联系人"
-                              onClick={(e) => { e.stopPropagation(); confirmDeleteContact({ id: c.id, email: c.email }); }}
+                              onClick={(e) => { e.stopPropagation(); confirmDeleteContact(c); }}
                             />
                           </div>
                         ))}
@@ -1014,4 +1113,3 @@ export function InboxList() {
     </div>
   );
 }
-

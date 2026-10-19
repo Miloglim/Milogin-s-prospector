@@ -1,7 +1,6 @@
 import { ipcMain } from "electron";
 import { IPC } from "../contract";
 import * as CrmService from "../services/crm.service";
-import { Log } from "../logger";
 import { failResult } from "../errors";
 
 export function registerCrmIPC() {

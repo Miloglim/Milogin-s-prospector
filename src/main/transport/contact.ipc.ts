@@ -3,6 +3,7 @@ import { IPC } from "../contract";
 import * as svc from "../services/contact.service";
 import { Log } from "../logger";
 import { failResult } from "../errors";
+import { listInboxCenterMatchContacts } from '../services/inbox.service';
 
 export function registerContactIPC() {
   ipcMain.handle(IPC.CONTACTS.GET_BY_ID, async (_e, id: number) => {
@@ -17,7 +18,7 @@ export function registerContactIPC() {
   });
 
   ipcMain.handle(IPC.CONTACTS.LIST_FOR_MATCH, async () => {
-    return svc.listContactsForMatch();
+    return await listInboxCenterMatchContacts() ?? svc.listContactsForMatch();
   });
 
   ipcMain.handle(IPC.CONTACTS.UPSERT, async (_e, input) => {

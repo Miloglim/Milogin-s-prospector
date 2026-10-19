@@ -8,3 +8,12 @@ export function normalizeCrmThresholds(crm?: { silentOverdueDays?: unknown; warn
   const warnDays = Math.min(valid(crm?.warnDays) ? crm.warnDays : DEFAULT_CRM_WARN_DAYS, overdueDays);
   return { overdueDays, warnDays };
 }
+
+const DAY_MS = 86_400_000;
+/** Contact silence never resets on an unrelated edit or a stage-only note. */
+export function contactFollowupAge(lastAt: string | null, now: number, crm?: { silentOverdueDays?: unknown; warnDays?: unknown }) {
+  const thresholds = normalizeCrmThresholds(crm);
+  const timestamp = lastAt ? Date.parse(lastAt) : NaN;
+  const staleDays = Number.isFinite(timestamp) ? Math.max(0, Math.floor((now - timestamp) / DAY_MS)) : null;
+  return { ...thresholds, staleDays, overdue: staleDays !== null && staleDays > thresholds.overdueDays };
+}

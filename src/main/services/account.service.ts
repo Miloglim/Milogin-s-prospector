@@ -167,7 +167,7 @@ export async function listAccounts(): Promise<Result<AccountProjection[]>> {
 }
 
 export async function upsertAccount(
-  input: InsertEmailAccountRow & { password?: string; id?: number }
+  input: InsertEmailAccountRow & { password?: string; id?: number; validateConnection?: boolean }
 ): Promise<Result<AccountProjection>> {
   const isEdit = !!input.id;
   Log.debug("account.upsert", `email=${input.email} isEdit=${isEdit}`);
@@ -177,7 +177,7 @@ export async function upsertAccount(
 
   let receiveVerified = false;
   // ponytail: 编辑模式无密码 → 跳过验证，保留原密码；有密码 → 重新验证+加密
-  if (!isEdit || input.password) {
+  if ((!isEdit || input.password) && input.validateConnection !== false) {
     const pass = input.password!;
     const smtpResult = await validateSmtp(input.smtpHost, input.smtpPort || 587, input.email, pass);
     if (!smtpResult.ok) return failResult(`SMTP 连接失败: ${smtpResult.error}`);

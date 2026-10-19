@@ -1,13 +1,16 @@
-import { createRootRoute, createRoute, createRouter, createHashHistory, Outlet } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, createHashHistory, Outlet, redirect } from "@tanstack/react-router";
 import { AppLayout } from "./components/layout/AppLayout";
 import { Dashboard } from "./pages/dashboard/Dashboard";
 import { AssistantPage } from "./pages/assistant/AssistantPage";
-import { CustomersPage } from "./pages/customers/CustomersPage";
+import { LegacyCustomersPage } from "./pages/customers/LegacyCustomersPage";
 import { InboxList } from "./pages/inbox/InboxList";
 import { RateBoard } from "./pages/rates/RateBoard";
 import { SendCenter } from "./pages/campaigns/SendCenter";
 import { TemplateList } from "./pages/templates/TemplateList";
 import { SettingsPage } from "./pages/settings/SettingsPage";
+import { AccountProfilePage } from './pages/settings/AccountProfilePage';
+
+import { MessagesPage } from './pages/messages/MessagesPage';
 
 const rootRoute = createRootRoute({
   component: () => <AppLayout />,
@@ -28,7 +31,14 @@ const assistantRoute = createRoute({
 const customersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/customers",
-  component: CustomersPage,
+  component: LegacyCustomersPage,
+  validateSearch: (search: Record<string, unknown>) => ({ customerId: typeof search.customerId === 'string' ? search.customerId : undefined, taskId: typeof search.taskId === 'string' ? search.taskId : undefined, opportunityId: typeof search.opportunityId === 'string' ? search.opportunityId : undefined }),
+});
+
+const onlineCustomersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/customers-online",
+  beforeLoad: () => { throw redirect({ to: '/customers' }); },
 });
 
 const inboxRoute = createRoute({
@@ -62,9 +72,14 @@ const settingsRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
+  createRoute({ getParentRoute: () => rootRoute, path: '/customers-preview', beforeLoad: () => { throw redirect({ to: '/customers' }); } }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/messages', component: MessagesPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountProfilePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/online', beforeLoad: () => { throw redirect({ to: '/customers-online' }); } }),
   dashboardRoute,
   assistantRoute,
   customersRoute,
+  onlineCustomersRoute,
   inboxRoute,
   ratesRoute,
   campaignsRoute,
@@ -88,7 +103,7 @@ export const router = createRouter({ routeTree, history: createHashHistory() });
  *  队列页查询回到 loading 态闪「正在发送」转圈，而真正的发送一直在主进程后台跑着。 */
 export const KEEPALIVE_ROUTE_COMPONENTS: Record<string, React.ComponentType> = {
   "/campaigns": SendCenter,
-  "/customers": CustomersPage,
+  "/customers": LegacyCustomersPage,
 };
 
 declare module "@tanstack/react-router" {

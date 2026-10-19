@@ -1,3 +1,5 @@
+import { getAgentContactPort } from "../services/agent-contact.service";
+import { contactRef } from "../../../server/services/contact-assignments";
 import { ipcMain } from "electron";
 import { IPC } from "../contract";
 import * as Ai from "../services/ai.service";
@@ -6,6 +8,7 @@ import * as NetProxy from "../net-proxy";
 import { getBackcheckReport, saveBackcheck } from "../services/company.service";
 import { failResult } from "../errors";
 import { Log } from "../logger";
+import { canSendToContact } from '../core/contact-permissions';
 
 export function registerAiIPC() {
   // 配置状态
@@ -19,14 +22,22 @@ export function registerAiIPC() {
     return Ai.setApiKey(input.name as Ai.ApiKeyName, input.value ?? "");
   });
 
-  // 公司背调：先搜索，再生成报告，自动存 companies.backcheckData
+  // Center research returns a report only; writing a shared company is a separate authorized command.
   ipcMain.handle(IPC.AI.BACKCHECK, async (_e, input: Ai.BackcheckInput) => {
     if (!input?.companyName?.trim()) return failResult("请填写公司名");
+    const center = input.centerReference ? getAgentContactPort()?.snapshot() : undefined;
+    if (input.centerReference && (!contactRef(input.centerReference).ok || !center?.ok || !center.data.active() || !center.data.contacts.some(row => row.contactId === input.centerReference!.contactId && row.customerId === input.centerReference!.customerId))) return failResult('中心联系人不存在或会话已变化');
+    const centerContact=center?.ok?center.data.contacts.find(row=>row.contactId===input.centerReference!.contactId&&row.customerId===input.centerReference!.customerId):undefined;
+    if(centerContact&&!canSendToContact(centerContact)&&centerContact.canEdit!==true)return failResult('当前没有该联系人的开发权限');
     Log.debug("ai.backcheck", input.companyName);
     const hits = await Ai.searchCompany(input.companyName + (input.website ? " " + input.website : ""));
     if (!hits.success) return hits;
     const report = await Ai.generateBackcheckReport(input, hits.data);
     if (!report.success) return report;
+    if (center?.ok) {
+      if (!center.data.active()) return failResult('账号或权限已变化');
+      return {success:true as const,data:{report:report.data,companyId:centerContact!.companyId}};
+    }
     const saved = await saveBackcheck({
       name: input.companyName.trim(),
       domain: input.website ? input.website.replace(/^https?:\/\//, "").replace(/\/.*$/, "") : undefined,

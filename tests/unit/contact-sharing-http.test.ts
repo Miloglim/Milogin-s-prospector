@@ -1,0 +1,12 @@
+import {describe,it,expect,vi} from 'vitest';
+import {createServer} from 'node:http';
+import {once} from 'node:events';
+import {createContactSharingHandler} from '../../server/transport/contact-sharing-http';
+import type {ContactSharingService} from '../../server/services/contact-sharing';
+const id='00000000-0000-0000-0000-000000000001';
+async function serve(work:(base:string,service:ContactSharingService)=>Promise<void>){const service={shares:vi.fn(async()=>({ok:true,data:{items:[],total:0}})),shareMembers:vi.fn(async()=>({ok:true,data:[]})),createShare:vi.fn(async()=>({ok:true,data:{}})),decideShare:vi.fn(async()=>({ok:true,data:{}})),updateShare:vi.fn(async()=>({ok:true,data:{}}))} as unknown as ContactSharingService;const handler=createContactSharingHandler(service),server=createServer((req,res)=>void handler(req,res));server.listen(0,'127.0.0.1');await once(server,'listening');try{await work(`http://127.0.0.1:${(server.address() as {port:number}).port}`,service);}finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}}
+describe('contact sharing HTTP contract',()=>{
+ it('maps minimal member directory and typed pagination',()=>serve(async(base,s)=>{await fetch(base+'/api/crm/contact-shares/members');expect(s.shareMembers).toHaveBeenCalled();await fetch(base+'/api/crm/contact-shares?view=incoming&limit=20&offset=0');expect(s.shares).toHaveBeenCalledWith('',{view:'incoming',limit:20,offset:0});}));
+ it('rejects duplicate query keys and path/body identity mismatch',()=>serve(async(base,s)=>{const duplicate=await fetch(base+'/api/crm/contact-shares?view=incoming&view=outgoing');expect((await duplicate.json()).ok).toBe(false);expect(s.shares).not.toHaveBeenCalled();const mismatch=await fetch(base+`/api/crm/contact-shares/${id}/accept`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({shareId:'different'})});expect((await mismatch.json()).ok).toBe(false);expect(s.decideShare).not.toHaveBeenCalled();}));
+ it('uses separate update and revoke actions without owner mutation',()=>serve(async(base,s)=>{await fetch(base+`/api/crm/contact-shares/${id}/update`,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});expect(s.updateShare).toHaveBeenCalledWith('',{shareId:id});await fetch(base+`/api/crm/contact-shares/${id}/revoke`,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});expect(s.decideShare).toHaveBeenCalledWith('','revoke',{shareId:id});}));
+});

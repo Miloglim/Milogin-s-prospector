@@ -101,6 +101,53 @@ beforeAll(async () => {
 });
 
 describe("中断批次启动确认", () => {
+  it('continues local SMTP after the center connection drops', async () => {
+    await restartWith({ rows: [{ id: 'first', status: 'pending' }, { id: 'second', status: 'pending' }] });
+    (h.cfg.test as { dryRun: boolean }).dryRun = false;
+    let online = true;
+    const smtp = vi.fn(async () => {
+      online = false;
+      return { success: true as const, data: { messageId: 'synthetic-inflight' } };
+    });
+    S.setSendBccFn(smtp);
+    S.setSendNetworkAllowed(() => online);
+    vi.useFakeTimers();
+    try {
+      expect(S.resumeQueue()).toMatchObject({ success: true });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(smtp).toHaveBeenCalledTimes(2);
+      expect(S.getSendStatus()).toMatchObject({ success: true, data: { isPaused: false } });
+    } finally {
+      S.cancelSend();
+      await vi.advanceTimersByTimeAsync(1000);
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+  it('center offline does not block local SMTP or local queue recovery', async () => {
+    await restartWith({ rows: [{ id: 'offline-pending', status: 'pending' }] });
+    const smtp = vi.fn(async () => ({ success: true as const, data: { messageId: null } }));
+    S.setSendBccFn(smtp);
+    S.setSendNetworkAllowed(() => false);
+    vi.useFakeTimers();
+    try {
+      expect(S.resumeQueue()).toMatchObject({ success: true });
+      expect(S.resumeSend()).toMatchObject({ success: true });
+      expect(await S.sendTestMessage({ to: 'synthetic@example.test', accountId: 1 })).toMatchObject({ success: true });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(smtp).toHaveBeenCalled();
+      expect(await S.startQueue([{
+        id: 'center-offline', companyName: 'Center', companyId: 1, centerScope: 'shared',
+        recipients: [{ contactId: 1, email: 'center@example.test', name: 'Center', centerReference: { contactId: 1, customerId: 'c-1' } }],
+        accountId: 1, subject: 'Center', tplBody: 'Center', contactVars: {}, status: 'pending',
+      }], true)).toMatchObject({ success: false });
+    } finally {
+      S.cancelSend();
+      await vi.advanceTimersByTimeAsync(1000);
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
   it("退出时批次在跑：启动只认领标记，不自动发送", async () => {
     await restartWith({
       rows: [{ id: "g1", status: "sent" }, { id: "g2", status: "pending" }],

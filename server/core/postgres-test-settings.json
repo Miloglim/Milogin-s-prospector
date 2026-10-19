@@ -1,0 +1,7 @@
+{
+  "marker": "prospector-crm-isolated-v1",
+  "host": "127.0.0.1",
+  "port": 55843,
+  "database": "prospector_crm_test",
+  "connection_timeout_seconds": 5
+}

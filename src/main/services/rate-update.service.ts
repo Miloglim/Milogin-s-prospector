@@ -1,3 +1,7 @@
+import { canSendToContact } from '../core/contact-permissions';
+import { getAgentContactPort } from './agent-contact.service';
+import { captureAgentRecipients, type AgentRecipients } from './agent-send.service';
+import { centerContactDisplayStatus, type CenterContact } from '../../shared/online-crm';
 // ── 定向运价更新推送（跟进看板客户 × 港口偏好 → 分组方案 → 入队）────────────
 // 规范：docs/rate-update-push-spec.md
 // 职责边界：本文件只做「聚合 → 选价 → 成文 → 入队」这一段。
@@ -15,13 +19,14 @@ import { Log } from "../logger";
 import { okResult, failResult, type Result } from "../errors";
 import { normalizeLang, buildDynamicQueue, startQueue, getQueueItems, getSendStatus, type SendItem, type EnqueueResult } from "./send.service";
 import type { Lang } from "./sentence-library";
-import { deriveCustomerPorts, normalizePodName, plausiblePortToken, type CustomerPorts, type PortPref, type PortSource } from "./customer-ports";
+import { deriveCustomerPorts, manualPodName, plausiblePortToken, type CustomerPorts, type PortPref, type PortSource } from "./customer-ports";
 import { lookupReplyRates, customerCleanQuotes, type ReplyRates } from "./agent/reply-rates";
 import type { EmailInquiry } from "./agent/email-parse";
 import { customerQuoteHtml, customerQuoteRows, cleanPod, type CleanQuote } from "./rates-clean";
-import { listQuotes } from "./rate-sync.service";
+import { listQuotes } from "../adapters/navigator-quotes.adapter";
+import { requireNavigatorAuthorization, navigatorAuthorizationEpoch } from "../adapters/navigator-auth.adapter";
 import { STAGES } from "./crm.service";
-import { ratesDiff, parseFlexDate, type RatesDiff } from "./rate-sync.service";
+import { parseFlexDate, type RatesDiff } from "./rate-sync.service";
 import { podToken } from "./suggestion.service";
 // 国家别名表已下沉 country-alias.ts（本文件内部仍用；对外经下方 `export ... from` 原样转出口）
 import { COUNTRY_ALIAS, countryMatchWords } from "./country-alias";
@@ -268,7 +273,7 @@ const PLACEHOLDER_EMAIL = /no\.email|noreply|no-reply|example\.com|test@|@test|n
 
 function scopeContacts(o: {
   scope: "board" | "contacts"; includeReplied: boolean; stages: string[]; stagesExplicit?: boolean;
-  statuses?: string[]; country?: string | null; ids?: number[]; maxContacts: number;
+  statuses?: string[]; country?: string | null; ids?: number[]; maxContacts: number; center?: CenterContact[];
 }): ScopeRow[] {
   const select = {
     id: contacts.id, email: contacts.email, firstName: contacts.firstName, lastName: contacts.lastName,
@@ -280,9 +285,9 @@ function scopeContacts(o: {
   const statuses = o.statuses?.length
     ? o.statuses
     : o.scope === "contacts" ? ["", "reached", "replied"] : (o.includeReplied ? ["reached", "replied"] : ["reached"]);
-  const rows = db.select(select).from(contacts)
+  const rows = o.center ? o.center.filter(row => canSendToContact(row) && statuses.includes(centerContactDisplayStatus(row)) && (o.scope !== 'board' || ['contacted','replied'].includes(row.touchStatus))).map(row => ({ ...row, id:row.contactId, email:row.email ?? '', status:centerContactDisplayStatus(row), tags:JSON.stringify([row.relationshipStage === 'cold' ? 'reaching' : row.relationshipStage ?? 'reaching']) })) : db.select(select).from(contacts)
     .where(inArray(dsql`coalesce(${contacts.status}, '')`, statuses)).all();
-  const want = o.ids?.length ? new Set(o.ids) : null;
+  const want = o.ids !== undefined ? new Set(o.ids) : null;
   const countryProbe = o.country?.trim().toLowerCase() ?? "";
   const countryWords = countryProbe ? countryMatchWords(countryProbe) : [];
   return rows.filter(r => {
@@ -312,13 +317,12 @@ export { looksLikeCountry, countryMatchWords, matchCountryInText } from "./count
  * 「SANTOS 桑托斯(巴西)」）→ 过形态闸门（拒句子/邮件标题那类脏值）→ 条数多的优先、并列取价低的。
  * 一个都没命中就返回 null，由上层如实记 no_port —— 绝不编一个港口出来。
  */
-export function portForCountry(country: string): { pod: string; lane: string | null; rows: number } | null {
+export async function portForCountry(country: string, queryId = crypto.randomUUID()): Promise<{ pod: string; lane: string | null; rows: number } | null> {
   const words = countryMatchWords(country);
   const byPod = new Map<string, { n: number; min: number | null; lane: string | null }>();
   for (const w of words) {
-    let r: ReturnType<typeof listQuotes>;
-    try { r = listQuotes({ terms: [w], includeExpired: false, limit: 300 }); } catch { continue; }
-    if (!r.success) continue;
+    const r = await listQuotes({ terms: [w], includeExpired: false, limit: 300 }, queryId);
+    if (!r.success) throw new Error(r.error);
     for (const q of r.data) {
       const pods = cleanPod(q.podRaw).pods;
       const pod = (pods[0] ?? "").trim().toUpperCase();
@@ -420,7 +424,11 @@ export const MAX_QUOTES_PER_GROUP = 30;
  * 三条都落空才记 no_port —— 不再因为「没登记偏好」就一整批推不出去。
  * 未覆盖的人一律列出来并给原因，不静默丢人（对齐「标注必须=实给」）。
  */
-export function buildRateUpdatePlan(opts: RateUpdateOpts = {}): Result<RateUpdatePlan> {
+export async function buildRateUpdatePlan(opts: RateUpdateOpts = {}): Promise<Result<RateUpdatePlan>> {
+  const auth = await requireNavigatorAuthorization();
+  if (!auth.ok) return failResult(auth.error || "请先登录运价台账");
+  const epoch = navigatorAuthorizationEpoch();
+  const queryId = crypto.randomUUID();
   const scopeMode: "board" | "contacts" = opts.scope === "contacts" ? "contacts" : "board";
   // 排除「已流失」不依赖任何清单（直接看 tags）；用户显式点名阶段时才按清单比对
   const explicitStages = (opts.stages ?? []).filter(s => stageKeys().includes(s) && s !== "lost");
@@ -438,13 +446,15 @@ export function buildRateUpdatePlan(opts: RateUpdateOpts = {}): Result<RateUpdat
     maxContacts: clampInt(opts.maxContacts, 1, 1000, 300),
   };
   const now = opts.now ?? new Date();
-  const portFilter = opts.port?.trim() ? normalizePodName({ pod: opts.port, podCode: null }) : null;
+  const portFilter = opts.port?.trim() ? manualPodName(opts.port) : null;
   if (opts.port?.trim() && !portFilter) return failResult(`「${opts.port.trim()}」在台账里不是可识别的目的港，先确认港名或按航线查`);
 
+  const snapshot = getAgentContactPort()?.snapshot();
+  if (snapshot && (!snapshot.ok || !snapshot.data.active())) return failResult(snapshot.ok ? '账号或权限已变化' : snapshot.error.message);
   const rows = scopeContacts({
     scope: o.scope, includeReplied: o.includeReplied, stages: o.stages, stagesExplicit: o.stagesExplicit,
     statuses: o.statuses,
-    country: o.country, ids: opts.contactIds, maxContacts: o.maxContacts,
+    country: o.country, ids: opts.contactIds, maxContacts: o.maxContacts, center:snapshot?.ok ? snapshot.data.contacts : undefined,
   });
   const scopeLabel = o.scope === "contacts"
     ? `联系人库${o.country ? `里的「${o.country}」客户` : ""}` : `跟进看板（已触达${o.includeReplied ? "/已回复" : ""}）${o.country ? `里的「${o.country}」客户` : ""}`;
@@ -469,17 +479,19 @@ export function buildRateUpdatePlan(opts: RateUpdateOpts = {}): Result<RateUpdat
       suggest,
     );
   }
-  const names = companyNameMap();
+  const recipients = snapshot ? captureAgentRecipients({contactIds:rows.map(row => row.id)}) : null;
+  if (recipients && !recipients.success) return recipients;
+  const names = snapshot?.ok ? new Map(snapshot.data.contacts.map(row => [row.companyId, row.companyName])) : companyNameMap();
   const derived = deriveCustomerPorts(rows.map(r => r.id), { days: o.days, maxContacts: o.maxContacts, now });
   const portsById = new Map<number, CustomerPorts>(derived.map(d => [d.contactId, d]));
 
   /** 同国只查一次代表港（巴西→当期报价最多的那个港），查不到如实 null */
   const countryPortCache = new Map<string, { pod: string; lane: string | null; rows: number } | null>();
-  const countryPort = (country: string | null): { pod: string; lane: string | null; rows: number } | null => {
+  const countryPort = async (country: string | null): Promise<{ pod: string; lane: string | null; rows: number } | null> => {
     const key = (country ?? "").trim().toLowerCase();
     if (!key) return null;
     if (countryPortCache.has(key)) return countryPortCache.get(key) ?? null;
-    const hit = portForCountry(key);
+    const hit = await portForCountry(key, queryId);
     countryPortCache.set(key, hit);
     return hit;
   };
@@ -505,7 +517,9 @@ export function buildRateUpdatePlan(opts: RateUpdateOpts = {}): Result<RateUpdat
     let countryEn: string | null = null;
     if (!pref && !portFilter) {
       // 没有港口偏好 → 按他所在国家的当期代表港兜底（用户口径：「巴西客户就报巴西方向的运价」）
-      const fallback = countryPort(r.country ?? o.country);
+      let fallback: Awaited<ReturnType<typeof countryPort>>;
+      try { fallback = await countryPort(r.country ?? o.country); }
+      catch { return failResult("实时台账查询未完成，请检查账号状态和连接后重试"); }
       if (fallback) {
         const synthetic: PortPref = {
           pod: fallback.pod, pol: null, container: cp?.prefs[0]?.container ?? null,
@@ -571,12 +585,13 @@ export function buildRateUpdatePlan(opts: RateUpdateOpts = {}): Result<RateUpdat
     };
     const container = topOf(b.containers) ?? prefSample.container ?? null;
     let reply: ReplyRates | null = null;
-    try { reply = lookupReplyRates(prefToInquiry(prefSample, container)); } catch { reply = null; }
+    try { reply = await lookupReplyRates(prefToInquiry(prefSample, container), o.quotesPerGroup, queryId); }
+    catch { return failResult("实时台账查询未完成，请检查账号状态和连接后重试"); }
     const dtos = reply?.dtos ?? [];
     if (!dtos.length) {
       // 台账当期无价 → 这组一个人都不发（宁缺毋滥，绝不拿别的港价凑）
       for (const c of b.customers) {
-        uncovered.push({ contactId: c.id, name: c.name, reason: "no_live_rate", detail: `镜像里 ${b.pod} 当前无有效报价` });
+        uncovered.push({ contactId: c.id, name: c.name, reason: "no_live_rate", detail: `实时台账里 ${b.pod} 当前无有效报价` });
       }
       continue;
     }
@@ -587,7 +602,7 @@ export function buildRateUpdatePlan(opts: RateUpdateOpts = {}): Result<RateUpdat
     const quotes = customerCleanQuotes(limited, b.pod);
     if (!quotes.length) {
       for (const c of b.customers) {
-        uncovered.push({ contactId: c.id, name: c.name, reason: "no_live_rate", detail: `镜像里 ${b.pod} 报价行清洗后为空` });
+        uncovered.push({ contactId: c.id, name: c.name, reason: "no_live_rate", detail: `实时台账里 ${b.pod} 报价行清洗后为空` });
       }
       continue;
     }
@@ -634,13 +649,16 @@ export function buildRateUpdatePlan(opts: RateUpdateOpts = {}): Result<RateUpdat
       ? `圈到 ${rows.length} 位客户，但她们的偏好港与国家方向在台账当期都没有有效价` : "圈到客户了但没有任何港口当期有有效报价"),
     suggestScope: null,
   };
-  rememberPlan(plan);
+  if (epoch !== navigatorAuthorizationEpoch()) return failResult("账号状态已变化，请重新生成方案");
+  if (recipients?.success && !recipients.data.active()) return failResult('账号或权限已变化，请重新生成方案');
+  rememberPlan(plan, recipients?.success ? recipients.data : undefined);
   Log.debug("rateUpdate.plan", `${plan.id}: ${rows.length} 人 → ${groups.length} 组/${covered} 人，未覆盖 ${uncovered.length}`);
   return okResult(plan);
 }
 
 function safeDiff(): RatesDiff | null {
-  try { return ratesDiff(); } catch { return null; }
+  // 离线镜像差价没有当前用户授权与实时依据，不能写入邮件话术。
+  return null;
 }
 
 function topOf(counts: Map<string, number>): string | null {
@@ -660,9 +678,9 @@ function pickPref(prefs: PortPref[], portFilter: string | null): PortPref | null
 
 const PLAN_TTL_MS = 30 * 60_000;
 const PLAN_MAX = 20;
-const plans = new Map<string, { plan: RateUpdatePlan; at: number }>();
+const plans = new Map<string, { plan: RateUpdatePlan; at: number; epoch: number; recipients?: AgentRecipients }>();
 
-function rememberPlan(plan: RateUpdatePlan): void {
+function rememberPlan(plan: RateUpdatePlan, recipients?: AgentRecipients): void {
   const cutoff = Date.now() - PLAN_TTL_MS;
   for (const [id, v] of plans) if (v.at < cutoff) plans.delete(id);
   while (plans.size >= PLAN_MAX) {
@@ -670,12 +688,14 @@ function rememberPlan(plan: RateUpdatePlan): void {
     if (oldest === undefined) break;
     plans.delete(oldest);
   }
-  plans.set(plan.id, { plan, at: Date.now() });
+  plans.set(plan.id, { plan, at: Date.now(), epoch: navigatorAuthorizationEpoch(), recipients });
 }
 
 export function pendingPlanRateUpdate(planId: string): RateUpdatePlan | null {
   const hit = plans.get(planId);
   if (!hit) return null;
+  if (hit.recipients && !hit.recipients.active() || getAgentContactPort() && !hit.recipients) { plans.delete(planId); return null; }
+  if (hit.epoch !== navigatorAuthorizationEpoch()) { plans.delete(planId); return null; }
   if (Date.now() - hit.at > PLAN_TTL_MS) { plans.delete(planId); return null; }
   return hit.plan;
 }
@@ -701,6 +721,8 @@ export function pendingQueueGroups(): number {
 export async function enqueueRateUpdatePlan(
   planId: string, groupKeys?: string[], overwrite = false,
 ): Promise<Result<RateUpdateEnqueue>> {
+  const auth = await requireNavigatorAuthorization();
+  if (!auth.ok) return failResult(auth.error || "请先登录运价台账");
   const plan = pendingPlanRateUpdate(planId);
   if (!plan) return failResult("方案已过期或不存在，请重新生成方案（rate_update_plan）");
   const unknown = groupKeys?.filter(k => !plan.groups.some(g => g.key === k));
@@ -716,9 +738,11 @@ export async function enqueueRateUpdatePlan(
   if (occupied === -1) return failResult("有发送任务正在运行，等它跑完再入队（避免打断当前批次）");
   if (occupied > 0 && !overwrite) return okResult({ occupied: true, pendingGroups: occupied });
 
+  const recipients = plans.get(planId)?.recipients;
+  if (recipients) { const valid = recipients.validate(); if (!valid.success) return valid; }
   const items: SendItem[] = [];
   for (const g of selected) {
-    const qr = buildDynamicQueue(g.customers.map(c => c.id), g.subject, g.bodyHtml);
+    const qr = buildDynamicQueue(g.customers.map(c => c.id), g.subject, g.bodyHtml, undefined, undefined, recipients ? recipients.refs.filter(ref => g.customers.some(customer => customer.id === ref.contactId)) : undefined);
     if (!qr.success) {
       Log.warn("rateUpdate.build", `${g.key} 组装失败：${qr.error}`);
       continue;

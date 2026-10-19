@@ -1,10 +1,10 @@
 {
   "name": "prospecting-email",
-  "version": "0.9.1-alpha.1",
+  "version": "0.53.1-alpha.1",
   "description": "Milogin's Outreacher — 货代行业客户开发工具",
   "main": "./dist/main/index.js",
   "scripts": {
-    "dev": "set NODE_OPTIONS= && chcp 65001 >nul && electron-vite dev",
+    "dev": "node scripts/dev-single.mjs",
     "build": "electron-vite build",
     "pack": "electron-vite build && electron-builder --win",
     "typecheck": "tsc --noEmit",
@@ -14,7 +14,21 @@
     "eval:agent": "set AGENT_EVAL=live&& vitest run tests/eval",
     "check": "node scripts/check.mjs",
     "test:architecture": "node --test scripts/check.test.mjs",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "crm:pg:start": "node scripts/crm-postgres.mjs start",
+    "crm:pg:status": "node scripts/crm-postgres.mjs status",
+    "crm:pg:stop": "node scripts/crm-postgres.mjs stop",
+    "crm:pg:build": "tsc -p tsconfig.server.json",
+    "crm:pg:check": "npm run crm:pg:build && node dist-server/cli.js",
+    "crm:pg:test": "node scripts/crm-postgres.mjs test",
+    "crm:admin:build": "tsc -p tsconfig.admin.json && node scripts/build-admin.mjs",
+    "crm:online:start": "npm run crm:admin:build && npm run crm:pg:build && node scripts/online-server.mjs start --test",
+    "crm:online:status": "node scripts/online-server.mjs status",
+    "crm:online:stop": "node scripts/online-server.mjs stop",
+    "crm:online:test": "npm run crm:admin:build && npm run crm:pg:build && node scripts/online-server.mjs test",
+    "crm:production:start": "node scripts/production-server.mjs start",
+    "crm:production:status": "node scripts/production-server.mjs status",
+    "crm:production:stop": "node scripts/production-server.mjs stop"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.0",
@@ -33,6 +47,7 @@
     "mailparser": "^3.9.14",
     "nodemailer": "^9.0.3",
     "openai": "^7.8.0",
+    "pg": "8.23.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-markdown": "^10.1.0",
@@ -50,6 +65,7 @@
     "@types/mailparser": "^3.4.6",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",
+    "@types/pg": "8.23.1",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@types/sql.js": "^1.4.11",
@@ -81,7 +97,8 @@
       "target": "nsis",
       "icon": "build/icon.ico",
       "artifactName": "${name}-setup-${version}.${ext}",
-      "sign": null
+      "sign": null,
+      "signAndEditExecutable": false
     },
     "electronDownload": {
       "mirror": "https://npmmirror.com/mirrors/electron/"

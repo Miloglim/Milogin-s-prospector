@@ -35,6 +35,20 @@ vi.mock("../../src/main/config", async (importOriginal) => {
 // 标准化参考层已退役（规范 docs/rates-answer-chain-spec.md §5-4）：两张表现在只有一个来源——
 // 镜像行经 rates-clean 清洗透视。这里不再打桩 rates-standard，只锁结果。
 
+// 实时已授权 API 的内存 fixture，验证既有筛选与清洗语义。
+vi.mock("../../src/main/adapters/navigator-quotes.adapter", async () => {
+  const fixture = await import("../../src/main/services/rate-sync.service");
+  return { listQuotes: async (...a: Parameters<typeof fixture.listQuotes>) => fixture.listQuotes(...a),
+    countQuotes: async (...a: Parameters<typeof fixture.countQuotes>) => fixture.countQuotes(...a),
+    listQuoteRaws: async (...a: Parameters<typeof fixture.listQuoteRaws>) => fixture.listQuoteRaws(...a),
+    listSpaces: async (...a: Parameters<typeof fixture.listSpaces>) => fixture.listSpaces(...a) };
+});
+const authState = vi.hoisted(() => ({ authenticated: true, epoch: 1 }));
+vi.mock("../../src/main/adapters/navigator-auth.adapter", () => ({
+  requireNavigatorAuthorization: async () => authState.authenticated ? ({ ok: true, data: { authenticated: true } }) : ({ ok: false, error: "请登录" }),
+  navigatorAuthorizationEpoch: () => authState.epoch, onNavigatorIdentityChanged: () => () => {}, navigatorHasAuthorization: () => true,
+}));
+
 const { buildHarnessTools } = await import("../../src/main/services/agent/tools");
 
 let SQLLIB: Awaited<ReturnType<typeof initSqlJs>>;
@@ -90,6 +104,7 @@ describe("quote_search 两表同源与两段查询（规范 rates-answer-chain-s
     if (!SQLLIB) SQLLIB = await initSqlJs({ locateFile: f => path.resolve(process.cwd(), "node_modules/sql.js/dist", f) });
   });
   beforeEach(() => {
+    authState.authenticated = true;
     freshDb();
     ctx.counts.clear(); ctx.failures.clear();
     toolByName = Object.fromEntries((buildHarnessTools(ctx) as unknown as ToolLike[]).map(t => [t.name ?? "", t]));
@@ -190,5 +205,16 @@ describe("quote_search 两表同源与两段查询（规范 rates-answer-chain-s
     expect(r.count).toBeLessThanOrEqual(50);
     expect(((r.quotes ?? []) as unknown[]).length).toBeLessThanOrEqual(20);
   });
+  it("authorization is checked before a previously successful quote can be reused", async () => {
+    const first = await run({ pod: "SANTOS" });
+    expect(first.total).toBeGreaterThan(0);
+    authState.authenticated = false;
+    const denied = JSON.parse(await call(T("quote_search"), { pod: "SANTOS" }));
+    expect(denied.ok).toBe(false);
+    expect(denied.error.code).toBe("navigator_login_required");
+    expect(denied.quotes).toBeUndefined();
+    expect(denied.userTable).toBeUndefined();
+  });
+
 });
 

@@ -1,6 +1,7 @@
 export type SearchKind = "email" | "note" | "contact";
 export interface SearchRequest { query: string; limit?: number }
 export interface SearchHit {
+  dataSource?: 'center'; customerId?: string;
   kind: SearchKind; sourceId: number; contactId: number | null; title: string; snippet: string;
 }
 export interface GlobalSearchData {

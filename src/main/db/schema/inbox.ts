@@ -25,6 +25,16 @@ export const inboxMessages = sqliteTable("inbox_messages", {
 
 export type InboxMessageRow = typeof inboxMessages.$inferSelect;
 export type InsertInboxMessageRow = typeof inboxMessages.$inferInsert;
+/** Durable manual classification intent; payload captures source metadata before async matching. */
+export const inboxClassificationChanges = sqliteTable('inbox_classification_changes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  changeKey: text('change_key').notNull().unique(),
+  centerScope: text('center_scope').notNull(),
+  messageId: integer('message_id').notNull(),
+  sourceJson: text('source_json').notNull(),
+  status: text('status').notNull().default('pending'),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
 
 /**
  * 退信 ↔ 被退联系人（多对多，规范：docs/bounce-multi-match-spec.md）。

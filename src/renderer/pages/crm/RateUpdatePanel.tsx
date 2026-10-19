@@ -67,7 +67,7 @@ export function RateUpdatePanel({ open, onClose, defaultStages, contactIds }: {
     const a: Record<string, unknown> = { scope: range };
     if (countryKey) a.country = countryKey;
     if (range === "board" && defaultStages?.length) a.stages = defaultStages;
-    if (contactIds?.length) a.contactIds = contactIds;
+    if (contactIds !== undefined) a.contactIds = contactIds;
     return a;
   };
 
@@ -128,6 +128,7 @@ export function RateUpdatePanel({ open, onClose, defaultStages, contactIds }: {
 
   return (
     <Drawer
+      rootClassName="app-drawer-below-titlebar"
       open={open}
       onClose={onClose}
       width={960}

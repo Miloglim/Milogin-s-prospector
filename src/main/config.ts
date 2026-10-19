@@ -5,6 +5,8 @@ import { Log } from "./logger";
 import { DEFAULT_CRM_OVERDUE_DAYS, DEFAULT_CRM_WARN_DAYS, normalizeCrmThresholds, MAX_CRM_THRESHOLD_DAYS } from "../shared/crm";
 import { okResult, failResult, type Result } from "./errors";
 import { nudge } from "./services/suggestion-bus";
+import { validateNavigatorBase, NavigatorConfigurationError } from "./services/navigator-auth.service";
+import { developerProfileRoot } from "./adapters/desktop-local-scope.adapter";
 
 // ponytail: process.resourcesPath 是 Electron 扩展，Node 类型不含它
 
@@ -14,15 +16,20 @@ function getAppRoot(): string {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { app } = require("electron");
+    const developerRoot = developerProfileRoot(process.env.PROSPECTOR_DEV_PROFILE, app.isPackaged);
+    if (developerRoot) return developerRoot;
     return app.isPackaged
       ? app.getPath("userData")
       : path.resolve(__dirname, "..", "..");
   } catch {
+    // Node tests do not have Electron; the explicit profile still scopes their files.
+    const developerRoot = developerProfileRoot(process.env.PROSPECTOR_DEV_PROFILE, false);
+    if (developerRoot) return developerRoot;
     return path.resolve(__dirname, "..", "..");
   }
 }
 
-export const APP_ROOT = getAppRoot();
+export let APP_ROOT = getAppRoot();
 
 /** 资源根目录 */
 export function getResourcesRoot(): string {
@@ -38,10 +45,21 @@ export function getResourcesRoot(): string {
 }
 
 /** 数据库路径 */
-export const DB_PATH = path.join(APP_ROOT, "data", "prospector.db");
+export let DB_PATH = path.join(APP_ROOT, "data", "prospector.db");
 
 /** send/config.json 路径 */
-const CONFIG_PATH = path.join(APP_ROOT, "send", "config.json");
+let CONFIG_PATH = path.join(APP_ROOT, "send", "config.json");
+let accountRootSelected = false;
+/** Startup selects one verified account directory before loading personal services.
+ * Changing accounts requires process restart; loaded services never change roots. */
+export function selectAccountRoot(root: string): void {
+  if (!path.isAbsolute(root)) throw new Error('账号资料路径必须为绝对路径');
+  if (accountRootSelected && root !== APP_ROOT) throw new Error('切换账号必须重启本地服务');
+  APP_ROOT = root;
+  DB_PATH = path.join(root, 'data', 'prospector.db');
+  CONFIG_PATH = path.join(root, 'send', 'config.json');
+  accountRootSelected = true;
+}
 
 export interface SendSchedule {
   /** 时间窗口 */
@@ -71,7 +89,7 @@ export interface RuntimeConfig {
   runningBatch?: { batchId: string; startedAt: string } | null;
   /** 异常退出时由启动阶段转存的批次；保留到用户明确恢复成功，供发送中心持续提示。 */
   interruptedBatch?: { batchId: string; startedAt: string } | null;
-  /** 全局默认发件人名称（账号 displayName 优先；亦为助手自称与落款） */
+  /** 无法确定具体邮箱账号时使用的默认发信人名称；实际账号 displayName 优先 */
   fromName: string;
   schedule: SendSchedule;
   /** 测试模式（发信测试用） */
@@ -95,7 +113,7 @@ export interface RuntimeConfig {
   /** 预设句库自定义主题（key = `${clientType}.${lang}`，如 direct.EN） */
   sentenceSubjects?: Record<string, string>;
   /**
-   * 运价台账只读局域网地址。url 可覆盖内置局域网地址，RATES_REMOTE_URL 环境变量优先。
+   * Navigator 用户授权服务地址，无内置默认值；RATES_REMOTE_URL 环境变量优先。
    * source 为旧版存量配置，保留读取兼容但不参与选源（公网镜像已废弃）。
    */
   rates?: { source?: "lan" | "remote"; url?: string };
@@ -114,7 +132,7 @@ const DEFAULT_CONFIG: RuntimeConfig = {
   fromName: "",
   schedule: DEFAULT_SCHEDULE,
   test: { email: "", company: "", enabled: false, dryRun: false },
-  // 台账只走局域网；历史 source 值不再影响选源。
+  // 用户配置 Navigator 服务地址；历史 source 值不再影响选源。
   rates: {},
   crm: {
     silentOverdueDays: DEFAULT_CRM_OVERDUE_DAYS,
@@ -188,6 +206,14 @@ export function updateRuntimeConfig(input: unknown): Result<void> {
   if (!input || typeof input !== "object" || Array.isArray(input)) return failResult("配置参数错误");
   try {
     const partial = input as Partial<RuntimeConfig>;
+    if (partial.rates?.url !== undefined) {
+      if (typeof partial.rates.url !== "string") return failResult("Navigator 地址必须是网址");
+      try { partial.rates.url = validateNavigatorBase(partial.rates.url, true); }
+      catch (error) {
+        if (error instanceof NavigatorConfigurationError) return failResult(error.message);
+        throw error;
+      }
+    }
     for (const value of [partial.crm?.silentOverdueDays, partial.crm?.warnDays]) {
       if (value !== undefined && (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > MAX_CRM_THRESHOLD_DAYS)) return failResult("跟进阈值须为 1–365 的整数");
     }
@@ -195,6 +221,7 @@ export function updateRuntimeConfig(input: unknown): Result<void> {
     const crm = { ...current.crm, ...partial.crm, followupDays: { ...current.crm.followupDays, ...partial.crm?.followupDays } };
     if ((crm.warnDays ?? DEFAULT_CRM_WARN_DAYS) > (crm.silentOverdueDays ?? DEFAULT_CRM_OVERDUE_DAYS)) return failResult("预警天数不能大于逾期天数");
     saveConfig({ ...current, ...partial, crm,
+      rates: { ...current.rates, ...partial.rates },
       schedule: { ...DEFAULT_SCHEDULE, ...current.schedule, ...partial.schedule },
       sentenceSubjects: { ...current.sentenceSubjects, ...partial.sentenceSubjects },
     });

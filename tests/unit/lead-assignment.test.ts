@@ -1,0 +1,10 @@
+import {describe,it,expect,vi} from 'vitest';
+import {randomUUID} from 'node:crypto';
+import {createLeadService} from '../../server/services/leads';
+import type {LeadRepository} from '../../server/core/leads';
+const token='a'.repeat(43),hash='test-hash';
+describe('assignment validation boundary',()=>{
+ it('rejects unknown fields, duplicate/excess recipients and invalid versions before storage',async()=>{const assign=vi.fn(),service=createLeadService({assign} as unknown as LeadRepository,{hash:()=>hash,create:()=>token});const command={customerId:randomUUID(),expectedVersion:1,idempotencyKey:'test',salesUserId:randomUUID(),notifyUserIds:[]};for(const input of [{...command,expectedVersion:0},{...command,notifyUserIds:[command.salesUserId,command.salesUserId]},{...command,notifyUserIds:Array.from({length:21},()=>randomUUID())},{...command,salesUserId:'bad'},{...command,ownerUserId:randomUUID()}])expect(await service.assign(token,input)).toMatchObject({error:{code:'INVALID_INPUT'}});expect(assign).not.toHaveBeenCalled();});
+ it('hashes valid session and passes the exact recipient list through',async()=>{const assign=vi.fn().mockResolvedValue({ok:true,data:{}}),service=createLeadService({assign} as unknown as LeadRepository,{hash:()=>hash,create:()=>token});const command={customerId:randomUUID(),expectedVersion:1,idempotencyKey:'test',salesUserId:randomUUID(),notifyUserIds:[randomUUID()]};expect((await service.assign(token,command)).ok).toBe(true);expect(assign).toHaveBeenCalledWith(hash,command);expect(await service.assign('bad',command)).toMatchObject({error:{code:'UNAUTHORIZED'}});expect(assign).toHaveBeenCalledTimes(1);});
+ it('bounds member pages before storage',async()=>{const members=vi.fn(),service=createLeadService({members} as unknown as LeadRepository,{hash:()=>hash,create:()=>token});for(const q of [{search:'',limit:0,offset:0},{search:'',limit:101,offset:0},{search:'',limit:10,offset:-1},{search:'',limit:10,offset:0.1}])expect((await service.members(token,q)).ok).toBe(false);expect(members).not.toHaveBeenCalled();});
+});

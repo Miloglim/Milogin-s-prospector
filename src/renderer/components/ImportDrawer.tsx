@@ -1,15 +1,32 @@
+import {LEAD_IMPORT_FIELDS} from '../../../server/core/lead-import-fields';
 import { invalidateDomain } from "../lib/cacheDeps";
-import { useState, useRef } from "react";
+import { useState, useRef, useContext } from "react";
 import { Drawer, Tabs, Upload, Input, Button, Table, Select, message, Tag, Space } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
-import { useQueryClient } from "@tanstack/react-query";
+import { QueryClientContext } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
+import { ONLINE_LIMITS, type ImportFileContent } from "../../shared/online-crm";
 
 const { TextArea } = Input;
 const { Dragger } = Upload;
+const FILE_ENCODING_CHUNK = 0x8000;
+
+/** Center preview decodes original CSV bytes; local legacy import keeps its text contract. */
+export async function readImportFile(file: File, center: boolean): Promise<ImportFileContent> {
+  if (file.size > ONLINE_LIMITS.fileBytes) throw new Error('文件超过 10 MiB');
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  if (!['csv', 'xls', 'xlsx'].includes(extension ?? '')) throw new Error('请选择 CSV / XLSX 文件');
+  const type = extension === 'csv' ? 'csv' : 'xlsx';
+  if (type === 'csv' && !center) return { type, data: await file.text() };
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.length > ONLINE_LIMITS.fileBytes) throw new Error('文件超过 10 MiB');
+  const parts: string[] = [];
+  for (let index = 0; index < bytes.length; index += FILE_ENCODING_CHUNK) parts.push(String.fromCharCode(...bytes.subarray(index, index + FILE_ENCODING_CHUNK)));
+  return { type, data: btoa(parts.join('')), ...(center ? { encoding: 'base64' as const } : {}) };
+}
 
 // 字段别名指南 — 匹配旧 PE 的 guide-alias-grid（自 ImportPage 移植，两处合一）
-const FIELD_ALIASES: { field: string; icon: string; codes: string[] }[] = [
+const LEGACY_FIELD_ALIASES: { field: string; icon: string; codes: string[] }[] = [
   { field: "邮箱", icon: "✉️", codes: ["邮箱", "邮箱地址", "邮件", "收件人", "email", "e-mail", "to"] },
   { field: "公司名", icon: "🏢", codes: ["公司", "公司名称", "公司全称", "公司名", "客户名称", "客户", "company"] },
   { field: "联系人", icon: "👤", codes: ["姓名", "姓名 | 职位", "姓名职位", "联系人", "contact"] },
@@ -17,15 +34,20 @@ const FIELD_ALIASES: { field: string; icon: string; codes: string[] }[] = [
   { field: "姓", icon: "👤", codes: ["姓", "lastname", "last_name"] },
   { field: "职位", icon: "💼", codes: ["职位", "职务", "title", "position"] },
   { field: "电话", icon: "📞", codes: ["电话", "手机", "phone", "tel", "mobile"] },
+  { field: "WhatsApp", icon: "💬", codes: ["WhatsApp", "Whats App", "whatsapp", "WA"] },
   { field: "国家", icon: "🌐", codes: ["国家", "country"] },
-  { field: "品类", icon: "🏷️", codes: ["品类", "行业", "分类", "category", "industry"] },
+  { field: "业务类型", icon: "🏷️", codes: ["业务类型", "品类", "行业", "分类", "businessType", "category", "industry"] },
   { field: "网站", icon: "🔗", codes: ["网站", "网址", "官网", "website", "url"] },
   { field: "LinkedIn", icon: "🔗", codes: ["linkedin", "领英"] },
+  { field: "一级来源", icon: "🏷️", codes: ["一级来源", "来源一级", "sourceLevel1"] },
+  { field: "二级来源", icon: "🏷️", codes: ["二级来源", "来源二级", "sourceLevel2"] },
   { field: "跟进人", icon: "✅", codes: ["跟进人", "负责人", "assignee", "owner"] },
   { field: "对接人", icon: "👥", codes: ["对接人", "contact_person"] },
   { field: "阶段", icon: "🚩", codes: ["阶段", "stage"] },
-  { field: "客户类型", icon: "🚩", codes: ["客户类型", "类型", "type", "client_type", "clienttype"] },
+  { field: "客户类型（代理/直客）", icon: "🚩", codes: ["客户类型", "联系人类型", "类型", "type", "client_type", "clienttype"] },
 ];
+
+const FIELD_ALIASES = LEAD_IMPORT_FIELDS.map(field=>({field:field.label,icon:'',codes:[...field.aliases],group:field.group,hint:'hint' in field?field.hint:undefined}));
 
 const FIELD_OPTIONS = [
   { value: "", label: "— 忽略 —" },
@@ -37,11 +59,12 @@ const FIELD_OPTIONS = [
   { value: "phone", label: "电话" },
   { value: "country", label: "国家/语言" },
   { value: "stage", label: "发送阶段" },
-  { value: "clientType", label: "客户类型" },
+  { value: "clientType", label: "客户类型（代理/直客）" },
   { value: "assignee", label: "负责人" },
 ];
+const CENTER_FIELD_OPTIONS = [{value:'',label:'— 忽略 —'},...LEAD_IMPORT_FIELDS.map(field=>({value:field.key,label:field.label}))];
 
-interface PreviewData {
+export interface PreviewData {
   headers: string[];
   previewRows: string[][];
   totalRows: number;
@@ -51,8 +74,12 @@ interface PreviewData {
 
 type Step = "input" | "preview";
 
-export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const qc = useQueryClient();
+export interface ImportDrawerPort {
+  preview(input:ImportFileContent):Promise<{success:boolean;data?:PreviewData;error?:string}>;
+  execute(input:ImportFileContent & {mapping:Record<string,string>}):Promise<{success:boolean;data?:{imported:number;skipped:number};error?:string}>;
+}
+export function ImportDrawer({ open, onClose, port, disabled = false }: { open: boolean; onClose: () => void; port?:ImportDrawerPort; disabled?: boolean }) {
+  const qc = useContext(QueryClientContext);
   const [step, setStep] = useState<Step>("input");
   const [inputTab, setInputTab] = useState<string>("file");
   const [pasteText, setPasteText] = useState("");
@@ -61,7 +88,7 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   // 缓存原始数据，execute 时重新送后端解析全部行
-  const rawDataRef = useRef<{ type: "csv" | "xlsx" | "tsv"; data: string } | null>(null);
+  const rawDataRef = useRef<ImportFileContent | null>(null);
 
   const reset = () => {
     setStep("input");
@@ -82,25 +109,9 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
   const processFile = async (file: File) => {
     setLoading(true);
     try {
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      const type: "csv" | "xlsx" = (ext === "csv") ? "csv" : "xlsx";
-
-      let data = "";
-      if (type === "xlsx") {
-        const buf = await file.arrayBuffer();
-        const bytes = new Uint8Array(buf);
-        const CHUNK = 0x8000;
-        const parts: string[] = [];
-        for (let i = 0; i < bytes.length; i += CHUNK)
-          parts.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
-        data = btoa(parts.join(""));
-      } else {
-        data = await file.text();
-      }
-
-      rawDataRef.current = { type, data };
-
-      const r = await window.api.invoke("contacts:import", { mode: "preview", type, data }) as {
+      const content = await readImportFile(file, !!port);
+      rawDataRef.current = content;
+      const r = await (port ? port.preview(content) : window.api.invoke("contacts:import", { mode: "preview", ...content })) as {
         success: boolean; data?: PreviewData; error?: string;
       };
       if (r.success && r.data) {
@@ -124,9 +135,9 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
     try {
       rawDataRef.current = { type: "tsv", data: pasteText };
 
-      const r = await window.api.invoke("contacts:import", {
+      const r = await (port ? port.preview({type:"tsv",data:pasteText}) : window.api.invoke("contacts:import", {
         mode: "preview", type: "tsv", data: pasteText,
-      }) as { success: boolean; data?: PreviewData; error?: string };
+      })) as { success: boolean; data?: PreviewData; error?: string };
       if (r.success && r.data) {
         setPreview(r.data);
         setMapping(r.data.suggestedMapping);
@@ -143,17 +154,17 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
 
   // 确认导入 — 重新送原始数据 + 最终 mapping
   const executeImport = async () => {
+    if (disabled) { message.error('导入需要连接服务器'); return; }
     if (!rawDataRef.current) return;
     setImporting(true);
     try {
-      const { type, data } = rawDataRef.current;
-      const r = await window.api.invoke("contacts:import", {
-        mode: "execute", type, data, mapping,
-      }) as { success: boolean; data?: { imported: number; skipped: number }; error?: string };
+      const r = await (port ? port.execute({...rawDataRef.current,mapping}) : window.api.invoke("contacts:import", {
+        mode: "execute", ...rawDataRef.current, mapping,
+      })) as { success: boolean; data?: { imported: number; skipped: number }; error?: string };
 
       if (r.success && r.data) {
         message.success(`导入 ${r.data.imported} 条，跳过 ${r.data.skipped} 条（重复）`);
-        void invalidateDomain(qc, "contacts");
+        if (!port && qc) void invalidateDomain(qc, "contacts");
         handleClose();
       } else {
         message.error(r.error || "导入失败");
@@ -173,7 +184,8 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
             size="small"
             value={mapping[h] || ""}
             onChange={(v) => setMapping(prev => ({ ...prev, [h]: v }))}
-            options={FIELD_OPTIONS}
+            aria-label={`映射 ${h}`}
+            options={port ? CENTER_FIELD_OPTIONS : FIELD_OPTIONS}
             className="w-24"
             popupMatchSelectWidth={false}
           />
@@ -201,9 +213,10 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
   const dupCount = preview?.duplicateEmails.length || 0;
   const newCount = preview ? preview.totalRows - dupCount : 0;
   const emailMapped = preview?.headers.some(h => mapping[h] === "email");
+  const readyToImport = port ? Object.values(mapping).includes('companyName') && ['email','name','firstName','lastName','phone','whatsapp'].some(field=>Object.values(mapping).includes(field)) : emailMapped;
 
   return (
-    <Drawer title="导入联系人" open={open} onClose={handleClose}
+    <Drawer rootClassName="app-drawer-below-titlebar" title="导入联系人" open={open} onClose={handleClose}
       width={step === "input" ? 560 : Math.max(800, (preview?.headers.length || 5) * 130 + 48)}
     >
       {step === "input" && (
@@ -253,20 +266,22 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
         {/* 字段识别指南（自 ImportPage 移植） */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <p className="text-xs font-semibold text-gray-500 mb-3">字段识别说明</p>
-          <p className="text-[11px] text-gray-400 mb-4">
+          <p className="text-[11px] text-gray-400 mb-3">
             程序读取 Excel/CSV 的<strong>第一行作为表头</strong>，通过匹配列名自动识别字段。中英文列名均可，忽略大小写与空格。
-            未匹配的列保留在「额外信息」中。
+            {port ? '其他列保留为导入原始记录。' : '未匹配的列保留在「额外信息」中。'}
           </p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-            {FIELD_ALIASES.map((fa) => (
-              <div key={fa.field} className="flex items-start gap-2 text-[11px]">
-                <span className="text-gray-500 whitespace-nowrap min-w-[56px]">{fa.icon} {fa.field}</span>
-                <span className="text-gray-400">
-                  {fa.codes.map(c => <code key={c} className="text-[10px] bg-gray-100 px-1 py-0.5 rounded mr-1">{c}</code>)}
-                </span>
-              </div>
-            ))}
-          </div>
+          {(port ? [
+            {title:'公司资料',fields:FIELD_ALIASES.filter(field=>field.group==='company')},
+            {title:'联系人与线索来源',fields:FIELD_ALIASES.filter(field=>field.group==='contact')},
+          ] : [{title:'',fields:LEGACY_FIELD_ALIASES}]).map(group=><section key={group.title} className="mt-4 first:mt-0">
+            {group.title && <h3 className="mb-2 border-b border-gray-100 pb-2 text-xs font-medium text-gray-700">{group.title}</h3>}
+            <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
+              {group.fields.map(fa=><div key={fa.field} className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-2 border-b border-gray-100/80 py-2 text-[11px]">
+                <span className="pt-0.5 font-medium leading-5 text-gray-600">{fa.field}{'hint' in fa && fa.hint ? <small className="block font-normal text-gray-400">{String(fa.hint)}</small> : null}</span>
+                <span className="flex min-w-0 flex-wrap gap-1">{fa.codes.map(code=><code key={code} className="rounded bg-gray-50 px-1.5 py-0.5 text-[10px] leading-4 text-gray-500">{code}</code>)}</span>
+              </div>)}
+            </div>
+          </section>)}
         </div>
         </div>
       )}
@@ -275,9 +290,9 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
         <div className="space-y-4">
           <div className="flex items-center gap-3 text-xs flex-wrap">
             <Tag color="blue">共 {preview.totalRows} 行</Tag>
-            <Tag color="green">新增 {newCount} 条</Tag>
+            <Tag color="green">{port ? "待处理" : "新增"} {newCount} 条</Tag>
             {dupCount > 0 && <Tag color="orange">重复 {dupCount} 条（跳过）</Tag>}
-            {!emailMapped && <Tag color="red">未映射邮箱列</Tag>}
+            {!readyToImport && <Tag color="red">{port ? "请选择公司及联系人姓名或联系方式" : "未映射邮箱列"}</Tag>}
           </div>
 
           {preview.previewRows.length < preview.totalRows && (
@@ -300,7 +315,7 @@ export function ImportDrawer({ open, onClose }: { open: boolean; onClose: () => 
             <Button size="small" onClick={() => setStep("input")}>返回</Button>
             <Button type="primary" size="small"
               loading={importing}
-              disabled={!emailMapped}
+              disabled={!readyToImport || disabled}
               onClick={executeImport}>
               确认导入 {newCount} 条
             </Button>

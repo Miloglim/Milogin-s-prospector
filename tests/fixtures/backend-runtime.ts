@@ -1,3 +1,6 @@
+import { setAgentContactPort } from "../../src/main/services/agent-contact.service";
+import { getStats } from "../../src/main/services/dashboard.service";
+import type { CenterContact } from "../../src/shared/online-crm";
 import { strict as assert } from "node:assert";
 import { initDatabase, runMigrations, getRawDb, getDb, closeDatabase } from "../../src/main/db";
 import { searchGlobal, indexEmailBody } from "../../src/main/services/search.service";
@@ -36,6 +39,19 @@ async function run() {
   assert.equal(search("Rotterdam").email.length, 1); // 改标签/主题不丢完整正文
   db.exec("UPDATE interactions SET body_preview='Hamburg note' WHERE id=1");
   assert.equal(search("Hamburg").note.length, 1); assert.equal(search("Santos").note.length, 0);
+  const centerRow = { contactId: 99, customerId: 'center-customer', email: 'center@example.invalid', firstName: 'CenterOnly', lastName: null, companyName: 'Center Ltd', tags: [], extra: {}, touchStatus: 'contacted', relationshipStage: 'quoting', lastFollowupNote: 'Center followup needle' } as unknown as CenterContact;
+  const centerPort = { snapshot: () => ({ ok: true as const, data: { scope: 'fixture', active: () => true, contacts: [centerRow] } }) };
+  setAgentContactPort(centerPort as never);
+  const centerStats = getStats(); assert.ok(centerStats.success);
+  assert.equal(centerStats.data.totalContacts, 1, 'dashboard must count authorized center rows, not old SQLite rows');
+  assert.equal(centerStats.data.pipelineSummary.quoting, 1);
+  assert.equal(search('CenterOnly').contact.length, 1, 'center contacts must be searchable');
+  assert.equal(search('Santos').contact.length, 0, 'must not leak legacy contacts into center search');
+  assert.equal(search('followup needle').note.length, 1);
+  assert.equal(search('CenterOnly').contact[0]!.customerId, 'center-customer');
+  setAgentContactPort({ snapshot: () => ({ ok: false, error: { code: 'UNAVAILABLE', message: '同步中' } }) } as never);
+  assert.equal(getStats().success, false); assert.equal(searchGlobal({query:'Santos'}).success, false);
+  setAgentContactPort(null);
   const before = listPipeline(); assert.ok(before.success); const beforeContact = before.data.flatMap(s => s.contacts)[0]!;
   assert.ok((await setStage(1, "quoting")).success);
   const after = listPipeline(); const detail = getDetail(1); assert.ok(after.success); assert.ok(detail.success);
@@ -88,6 +104,21 @@ async function run() {
   await new Promise<void>(resolve => setImmediate(resolve));
   assert.equal((db.prepare("SELECT title FROM contacts WHERE id=2").get() as { title: string }).title, "Operations Manager");
   assert.equal(search("Rotterdam").email.length, 1);
+  // 全局搜索可命中超出常规分类上限的邮件：只附带目标，不取消列表上限。
+  const historicalId = 9000;
+  const overLimitMailCount = 501;
+  const missingMailId = 999999;
+  db.prepare("INSERT INTO inbox_messages(id,account_id,from_email,classification,received_at) VALUES(?,1,'history@example.test','other','1990-01-01')").run(historicalId);
+  const insertMail = db.prepare("INSERT INTO inbox_messages(account_id,from_email,classification,received_at) VALUES(1,'recent@example.test','other','2026-10-10')");
+  db.transaction(() => { for (let i = 0; i < overLimitMailCount; i++) insertMail.run(); })();
+  const normalList = Inbox.listInbox(); assert.ok(normalList.success);
+  assert.ok(!normalList.data.some(r => r.id === historicalId));
+  const linkedList = Inbox.listInbox({ includeId: historicalId }); assert.ok(linkedList.success);
+  assert.equal(linkedList.data.filter(r => r.id === historicalId).length, 1);
+  assert.equal(linkedList.data.length, normalList.data.length + 1);
+  assert.equal(Inbox.listInbox({ includeId: -1 }).success, false);
+  const deletedList = Inbox.listInbox({ includeId: missingMailId }); assert.ok(deletedList.success);
+  assert.equal(deletedList.data.length, normalList.data.length);
   const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all() as { name: string }[];
   assert.ok(indexes.some(i => i.name === "idx_interactions_contact_id")); assert.ok(indexes.some(i => i.name === "idx_inbox_matched"));
   db.exec(fs.readFileSync(process.env.BACKEND_ROLLBACK_SQL!, "utf8"));

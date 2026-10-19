@@ -4,7 +4,7 @@ import { Button, Modal, Form, Input, Rate, Tag, message, Empty, Alert } from "an
 import { SafetyCertificateOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-interface BackcheckReport {
+export interface BackcheckReport {
   summary: string;
   importActivity: string;
   categories: string[];
@@ -14,7 +14,7 @@ interface BackcheckReport {
   sources: Array<{ title: string; url: string }>;
 }
 
-interface CompanyRow {
+export interface CompanyRow {
   id: number;
   name: string;
   domain: string | null;
@@ -22,7 +22,7 @@ interface CompanyRow {
 }
 
 /** 联系人详情里的"公司背调"卡片 */
-export function CompanyBackcheck({ companyId }: { companyId: number | null }) {
+export function CompanyBackcheck({ companyId, centerCompany, run }: { companyId: number | null; centerCompany?: CompanyRow; run?: (input: {companyName:string;website?:string;country?:string}) => Promise<{success:boolean;error?:string}> }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
@@ -34,10 +34,10 @@ export function CompanyBackcheck({ companyId }: { companyId: number | null }) {
     queryFn: () => window.api.invoke("companies:getById", companyId) as Promise<{
       success: boolean; data?: CompanyRow; error?: string;
     }>,
-    enabled: !!companyId && companyId > 0,
+    enabled: !centerCompany && !!companyId && companyId > 0,
   });
 
-  const company = companyData?.success ? companyData.data : null;
+  const company = centerCompany ?? (companyData?.success ? companyData.data : null);
   let report: BackcheckReport | null = null;
   if (company?.backcheckData) {
     try { report = JSON.parse(company.backcheckData) as BackcheckReport; } catch { /* 坏 JSON 忽略 */ }
@@ -47,6 +47,11 @@ export function CompanyBackcheck({ companyId }: { companyId: number | null }) {
     const v = await form.validateFields();
     setRunning(true);
     try {
+      if (run) {
+        const result = await run(v);
+        if (result.success) { message.success('背调完成'); setOpen(false); form.resetFields(); } else message.error(result.error || '背调失败');
+        return;
+      }
       const r = await window.api.invoke("ai:backcheck", {
         companyName: v.companyName, website: v.website, country: v.country,
       }) as { success: boolean; data?: { report: BackcheckReport; companyId: number }; error?: string };
@@ -73,6 +78,7 @@ export function CompanyBackcheck({ companyId }: { companyId: number | null }) {
           <SafetyCertificateOutlined /> 公司背调
         </span>
         <Button size="small" type={report ? "default" : "primary"} icon={<ThunderboltOutlined />}
+          disabled={!!centerCompany && !run}
           loading={running}
           onClick={() => {
             form.setFieldsValue({
@@ -135,7 +141,7 @@ export function CompanyBackcheck({ companyId }: { companyId: number | null }) {
         width={420}
       >
         <Alert type="info" showIcon className="mb-3"
-          message="搜索公司资料 + AI 生成中文背调报告，报告自动保存到该公司" />
+          message="搜索公司资料并生成背调报告" />
         <Form form={form} layout="vertical" size="small">
           <Form.Item name="companyName" label="公司名" rules={[{ required: true }]}>
             <Input placeholder="如 ABC Logistics" />

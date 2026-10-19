@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DotPattern } from "@/components/ui/dot-pattern";
-import { cn } from "@/lib/utils";
 import "./OnboardingWizard.css";
+import { DEFAULT_MAIL_SERVERS } from "../../shared/mail-defaults";
 
 // ── 新手向导（复刻旧 PE OOBE：全屏覆盖 + 步骤滑入 + 完成页 Logo/渐变字 + 毛玻璃退出 + 可拖拽教程卡）──
 // 触发：启动后无 SMTP 账号自动弹出；点过「跳过」或走完向导后不再自动弹（config.general.onboarding）；
@@ -18,8 +17,8 @@ interface FormState {
 }
 
 const INITIAL: FormState = {
-  smtpHost: "smtp.mxhichina.com", smtpPort: "465", user: "", pass: "",
-  imapHost: "imap.mxhichina.com", imapPort: "993",
+  smtpHost: DEFAULT_MAIL_SERVERS.smtpHost, smtpPort: String(DEFAULT_MAIL_SERVERS.smtpPort), user: "", pass: "",
+  imapHost: DEFAULT_MAIL_SERVERS.imapHost, imapPort: String(DEFAULT_MAIL_SERVERS.imapPort),
   fromName: "",
   closeAction: "tray", autoLaunch: false,
 };
@@ -41,14 +40,14 @@ const STEP_ICONS = [
 
 const STEP_TITLES = ["添加您的邮箱", "您的署名", "通用设置"];
 const STEP_DESCS = [
-  "配置 SMTP 服务器以发送开发信",
+  "",
   "用于程序身份识别，也是客户在收件箱看到的名字",
   "选择程序的默认行为",
 ];
 
 type Phase = "closed" | "opening" | "open" | "hiding" | "finishing" | "fadeout";
 
-export function OnboardingWizard() {
+export function OnboardingWizard({ autoCheck = true, prefillEmail = "", openSignal = 0 }: { autoCheck?: boolean; prefillEmail?: string; openSignal?: number }) {
   const [phase, setPhase] = useState<Phase>("closed");
   const [step, setStep] = useState(0);            // 0..3 表单步，4=完成页
   const [back, setBack] = useState(false);         // 步骤动画方向
@@ -74,7 +73,7 @@ export function OnboardingWizard() {
 
   // 启动检测 + Shift+版本号强制重开
   useEffect(() => {
-    const open = () => { setStep(0); setBack(false); setForm(INITIAL); setErrs(new Set()); setServerErr(""); setPhase("opening"); };
+    const open = () => { setStep(0); setBack(false); setForm({ ...INITIAL, user: prefillEmail }); setErrs(new Set()); setServerErr(""); setPhase("opening"); };
     const check = async () => {
       // 两条并发查：串行会让「该不该弹」多等一个 IPC 往返
       const [r, cfg] = await Promise.all([
@@ -86,10 +85,15 @@ export function OnboardingWizard() {
       if (cfg?.success && cfg.data?.general?.onboarding) return;
       if (r?.success && (r.data?.length ?? 0) === 0) later(300, open);
     };
-    void check();
+    if (autoCheck) void check();
     window.addEventListener("open-onboarding", open);
     return () => window.removeEventListener("open-onboarding", open);
-  }, []);
+  }, [autoCheck, prefillEmail]);
+  useEffect(() => {
+    if (openSignal > 0) {
+      setStep(0); setBack(false); setForm({ ...INITIAL, user: prefillEmail }); setErrs(new Set()); setServerErr(""); setPhase("opening");
+    }
+  }, [openSignal, prefillEmail]);
 
   /** 把「向导已处置」写进配置（general 是整体覆盖，照向导里其他写法的模式先读再并） */
   const markOnboarded = useCallback(async (kind: "skipped" | "done") => {
@@ -126,7 +130,8 @@ export function OnboardingWizard() {
       // 旧版同款隐藏调试口：按住 Shift 点「下一步」跳过必填校验
       // （字段齐全仍照常保存；不全则跳过保存直接进下一步，真错误不吞）
       const required: Array<[keyof FormState, string]> = [
-        ["smtpHost", "SMTP 服务器"], ["user", "邮箱地址"], ["pass", "密码"],
+        ["smtpHost", "SMTP 服务器"], ["user", "邮箱地址"],
+        ...(!prefillEmail ? [["pass", "密码"] as [keyof FormState, string]] : []),
       ];
       const complete = required.every(([k]) => String(form[k]).trim());
       if (!complete && !shiftHeld.current) {
@@ -139,7 +144,8 @@ export function OnboardingWizard() {
         email: form.user, smtpHost: form.smtpHost, smtpPort: parseInt(form.smtpPort) || 465,
         imapHost: form.imapHost || undefined,
         imapPort: form.imapHost ? (parseInt(form.imapPort) || 993) : undefined,
-        password: form.pass,
+        ...(form.pass ? { password: form.pass } : {}),
+        validateConnection: false,
       }) as IpcResult<unknown>;
       setSaving(false);
       if (!r?.success) { setServerErr(r?.error || "账号保存失败"); return; }
@@ -174,47 +180,46 @@ export function OnboardingWizard() {
     <>
       {phase !== "closed" && (
         <div className={rootCls}>
-          {/* 第一屏专属：shadcn 点阵背景（中心围绕卡片径向淡出） */}
-          {step === 0 && (
-            <DotPattern
-              width={20} height={20} cr={1.3}
-              className={cn("[mask-image:radial-gradient(560px_circle_at_50%_42%,white,transparent)]")}
-            />
-          )}
-
           <div className="ob-card">
             {step < 3 ? (
               <div key={step} className={back ? "ob-step back" : "ob-step"}>
                 <div className="ob-icon">{STEP_ICONS[step]}</div>
                 <h2 className="ob-h2">{STEP_TITLES[step]}</h2>
-                <p className="ob-desc">{STEP_DESCS[step]}</p>
+                {STEP_DESCS[step] && <p className="ob-desc">{STEP_DESCS[step]}</p>}
 
                 <div className="ob-form">
                   {step === 0 && (<>
-                    <div className="ob-inline" style={{ display: "flex", gap: 10 }}>
-                      <div style={{ flex: 2 }}>
-                        <Field label="SMTP 服务器（默认阿里云邮箱，其他邮箱请修改）" err={errs.has("smtpHost")} placeholder={errs.has("smtpHost") ? "请填写 SMTP 服务器" : "smtp.mxhichina.com"}
-                          value={form.smtpHost} onChange={v => set("smtpHost", v)} />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <Field label="端口" err={errs.has("smtpPort")} placeholder="465" value={form.smtpPort} onChange={v => set("smtpPort", v)} />
-                      </div>
-                    </div>
                     <Field label="邮箱地址" err={errs.has("user")} placeholder={errs.has("user") ? "请填写邮箱地址" : "your@email.com"}
                       value={form.user} onChange={v => set("user", v)} />
-                    <Field label="密码或授权码" err={errs.has("pass")} placeholder={errs.has("pass") ? "请填写密码" : "邮箱密码或服务商授权码"} type="password"
-                      value={form.pass} onChange={v => set("pass", v)} />
-                    <div className="ob-inline" style={{ display: "flex", gap: 10 }}>
-                      <div style={{ flex: 2 }}>
-                        <Field label="IMAP 服务器（选填；默认阿里云，留空则不收信）" placeholder="imap.mxhichina.com" value={form.imapHost} onChange={v => set("imapHost", v)} />
+                    {!prefillEmail && <Field label="密码或授权码" err={errs.has("pass")} placeholder={errs.has("pass") ? "请填写密码" : "邮箱密码或服务商授权码"} type="password"
+                      value={form.pass} onChange={v => set("pass", v)} />}
+                    <details className="ob-advanced">
+                      <summary>高级设置</summary>
+                      <div className="ob-advanced-body">
+                        <div className="ob-advanced-inner">
+                          <div className="ob-inline" style={{ display: "flex", gap: 10 }}>
+                            <div style={{ flex: 2 }}>
+                              <Field label="SMTP 服务器" err={errs.has("smtpHost")} placeholder={errs.has("smtpHost") ? "请填写 SMTP 服务器" : "smtp.mxhichina.com"}
+                                value={form.smtpHost} onChange={v => set("smtpHost", v)} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <Field label="SMTP 端口" err={errs.has("smtpPort")} placeholder="465" value={form.smtpPort} onChange={v => set("smtpPort", v)} />
+                            </div>
+                          </div>
+                          <div className="ob-inline" style={{ display: "flex", gap: 10 }}>
+                            <div style={{ flex: 2 }}>
+                              <Field label="IMAP 服务器" placeholder="imap.mxhichina.com" value={form.imapHost} onChange={v => set("imapHost", v)} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <Field label="IMAP 端口" placeholder="993" value={form.imapPort} onChange={v => set("imapPort", v)} />
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <Field label="IMAP 端口" placeholder="993" value={form.imapPort} onChange={v => set("imapPort", v)} />
-                      </div>
-                    </div>
+                    </details>
                   </>)}
                   {step === 1 && (
-                    <Field label="发件人名称" placeholder="如 Zayne Jin" value={form.fromName} onChange={v => set("fromName", v)} />
+                    <Field label="默认发信人名称" placeholder="未指定邮箱账号时使用，如 Zayne Jin" value={form.fromName} onChange={v => set("fromName", v)} />
                   )}
                   {step === 2 && (<>
                     <div className="ob-field">

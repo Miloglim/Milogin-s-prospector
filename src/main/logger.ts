@@ -8,7 +8,8 @@ function resolveLogFile(): string | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { app } = require("electron");
-    const root = app.isPackaged ? app.getPath("userData") : path.resolve(__dirname, "..", "..");
+    const profile = !app.isPackaged && process.env.PROSPECTOR_DEV_PROFILE;
+    const root = app.isPackaged ? app.getPath("userData") : profile && path.isAbsolute(profile) ? path.resolve(profile) : path.resolve(__dirname, "..", "..");
     return path.join(root, "logs", "app.log");
   } catch {
     return null;

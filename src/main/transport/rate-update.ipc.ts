@@ -1,6 +1,7 @@
 // ── 定向运价更新推送 IPC（跟进看板「运价更新」抽屉的唯一后端入口）──────────
 // 与 agent 工具走的是同一个 service（rate-update.service.ts）：会话里跑的方案和抽屉里跑的方案必须一模一样。
 // 红线：这里没有任何"开始发送"的通道 —— ENQUEUE 只入队，发送由人在发送中心点开始（见规范 §8）。
+import { requireNavigatorAuthorization } from "../adapters/navigator-auth.adapter";
 import { ipcMain } from "electron";
 import { IPC } from "../contract";
 import {
@@ -12,14 +13,16 @@ import { okResult, failResult, type Result } from "../errors";
 
 export function registerRateUpdateIPC() {
   // 生成方案（纯读，不写库；结果留在主进程 pending store，界面只拿投影）
-  ipcMain.handle(IPC.RATE_UPDATE.PLAN, (_e, opts?: RateUpdateOpts) => {
-    const r = buildRateUpdatePlan(opts ?? {});
+  ipcMain.handle(IPC.RATE_UPDATE.PLAN, async (_e, opts?: RateUpdateOpts) => {
+    const r = await buildRateUpdatePlan(opts ?? {});
     if (!r.success) return failResult(r.error);
     return okResult(planView(r.data));
   });
 
   // 单组预览：正文 HTML + 客户明细（列表投影刻意不带正文，避免大包过 IPC 把界面卡住）
-  ipcMain.handle(IPC.RATE_UPDATE.GROUP_BODY, (_e, planId: string, groupKey: string): Result<unknown> => {
+  ipcMain.handle(IPC.RATE_UPDATE.GROUP_BODY, async (_e, planId: string, groupKey: string): Promise<Result<unknown>> => {
+    const auth = await requireNavigatorAuthorization();
+    if (!auth.ok) return failResult(auth.error || "请先登录运价台账");
     const plan = planId ? pendingPlanRateUpdate(planId) : null;
     if (!plan) return failResult("方案已过期，请重新生成");
     const g = plan.groups.find(x => x.key === groupKey);

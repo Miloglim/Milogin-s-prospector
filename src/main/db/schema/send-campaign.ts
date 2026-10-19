@@ -41,6 +41,7 @@ export const sendCampaignTargets = sqliteTable("send_campaign_targets", {
   id:          integer("id").primaryKey({ autoIncrement: true }),
   campaignId:  text("campaign_id").notNull(),
   contactId:   integer("contact_id").notNull(),
+  centerReferenceJson: text("center_reference_json"),
   status:      text("status").notNull().default("pending"),
   round:       integer("round").notNull().default(0),   // 已完成的触点轮次
   nextTouchAt: text("next_touch_at"),                   // 下一触点到期时间（ISO）；空=无待发

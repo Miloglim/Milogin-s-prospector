@@ -134,7 +134,13 @@ describe("报价截图字段容错", () => {
     expect(mapRemoteRow(row, "i-2")!.imageName).toBe("a.png");
   });
 
-  it("字符串数组与旧字段优先级：image_url > image_name > image_file > images", () => {
+  it("prefers resolved server files over media ids and multiple raw references", () => {
+    expect(mapRemoteRow({ pod: "X", image_file: "@media-one,@media-two", images: [
+      { name: "@missing", missing: true, file: null },
+      { name: "@media-one", file: "media-one_800_600.jpg", url: "/images/media-one_800_600.jpg", missing: false },
+    ] }, "i-resolved")!.imageName).toBe("media-one_800_600.jpg");
+  });
+  it("字符串数组与旧字段优先级：image_url > image_name > image_file > unresolved images", () => {
     expect(mapRemoteRow({ pod: "X", images: ["z.png"] }, "i-3")!.imageName).toBe("z.png");
     expect(mapRemoteRow({ pod: "X", image_url: "u.png", image_file: "f.png" }, "i-4")!.imageName).toBe("u.png");
     expect(mapRemoteRow({ pod: "X", image_name: "n.png", image_file: "f.png" }, "i-5")!.imageName).toBe("n.png");

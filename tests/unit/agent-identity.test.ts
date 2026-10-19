@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const cfg = { fromName: "" };
 vi.mock("../../src/main/config", () => ({ loadConfig: () => cfg }));
 
-const { readIdentity, identityBlock } = await import("../../src/main/services/agent/identity");
+const { readIdentity, identityBlock, identityForMailbox } = await import("../../src/main/services/agent/identity");
 
 beforeEach(() => { cfg.fromName = ""; });
 
@@ -46,5 +46,18 @@ describe("助手身份注入", () => {
   it("readIdentity 去空格", () => {
     cfg.fromName = "  Zayne  ";
     expect(readIdentity().fromName).toBe("Zayne");
+  });
+
+  it("已确定邮箱账号时使用账号发信身份，并保留稳定邮箱键", () => {
+    cfg.fromName = "全局默认";
+    const identity = identityForMailbox({ email: "sales@example.com", displayName: "Sales Team" });
+    expect(identity.selfName).toBe("Sales Team");
+    expect(identity.email).toBe("sales@example.com");
+    expect(identityBlock(identity)).toContain("当前发信邮箱：sales@example.com");
+  });
+
+  it("账号没有 displayName 时回退全局默认名", () => {
+    cfg.fromName = "全局默认";
+    expect(identityForMailbox({ email: "sales@example.com", displayName: null }).selfName).toBe("全局默认");
   });
 });

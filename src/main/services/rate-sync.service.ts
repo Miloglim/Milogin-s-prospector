@@ -186,14 +186,25 @@ function pick(row: Record<string, unknown>, keys: string[]): string | null {
 
 /**
  * 报价截图的文件名（或完整 URL）。真源这个字段换过名字：image_url / image_name / image_file /
- * images[0].name 都出现过——只认前两个会把带图的行全丢成 null（实测公网台账 500 行里
- * 341 行有 image_file，而 image_url 恒为 null）。images[] 里还带 missing 标记，
- * 那是服务端在说「文件不在我这」，属于部署问题，这里照样收下文件名：等图补齐链接就活了。
+ * images[].name 都出现过。服务端解析出的 file/url 优先于原始 mediaId 或多图列表；
+ * 旧接口未提供解析结果时仍兼容原始字段，缺失文件交由读图接口明确报告。
  */
+export interface QuoteFilters { match?: "web"; route?: string; ctype?: string }
+
 export function pickImageName(row: Record<string, unknown>): string | null {
+  const list = row.images;
+  if (Array.isArray(list)) {
+    for (const it of list) {
+      if (it && typeof it === "object") {
+        const resolved = it as Record<string, unknown>;
+        if (resolved.missing === true) continue;
+        const name = rText(resolved.file) ?? rText(resolved.url);
+        if (name) return name;
+      }
+    }
+  }
   const flat = pick(row, ["image_url", "image_name", "image_file"]);
   if (flat) return flat;
-  const list = row.images;
   if (Array.isArray(list)) {
     for (const it of list) {
       if (typeof it === "string") { const s = it.trim(); if (s) return s; continue; }

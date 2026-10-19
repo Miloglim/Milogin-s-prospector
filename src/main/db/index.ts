@@ -5,6 +5,8 @@ import { DB_PATH } from "../config";
 import { Log } from "../logger";
 import { migrateTagsValue } from "./tags-migrate";
 import { BASE_SCHEMA_SQL } from "./schema-sql";
+import { CENTER_SEND_AUTHORIZATION_DDL, CENTER_SEND_RECEIPT_DDL } from '../core/center-send-storage';
+import { MAIL_CLASSIFICATION_CHANGES_DDL } from '../core/mail-classification-storage';
 import { installSearchIndex, searchLatin } from "./search-index";
 import * as path from "path";
 import * as fs from "fs";
@@ -335,6 +337,12 @@ export function runMigrations(): void {
     }
   });
 
+  step('v0.39-center-send-target-reference', () => {
+    if (!tableCols('send_campaign_targets').includes('center_reference_json')) raw.exec('ALTER TABLE send_campaign_targets ADD COLUMN center_reference_json TEXT');
+  });
+  step('v0.39-center-send-receipts', () => raw.exec(CENTER_SEND_RECEIPT_DDL));
+  step('v0.47-inbox-classification-changes',()=>raw.exec(MAIL_CLASSIFICATION_CHANGES_DDL));
+  step('v0.48-center-send-authorizations', () => raw.exec(CENTER_SEND_AUTHORIZATION_DDL));
   step("v0.9-search-fts5", () => raw.transaction(() => installSearchIndex(raw))());
   Log.info("db.migrations", `${statements.length} 条建表语句已执行`);
 }

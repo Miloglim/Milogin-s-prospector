@@ -1,16 +1,20 @@
 import { invalidateDomain } from "../../lib/cacheDeps";
+import { useRouterState } from "@tanstack/react-router";
 import { useState, useEffect, useRef, type ReactNode, type ComponentRef } from "react";
-import { Table, Button, Input, Space, Drawer, Tag, message, Form, Select, Popover, Checkbox, Modal, Dropdown } from "antd";
-import { PlusOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, ImportOutlined, PartitionOutlined, MailOutlined, ExportOutlined } from "@ant-design/icons";
+import { createPortal } from "react-dom";
+import { Table, Button, Input, Space, Drawer, Tag, message, Form, Select, Popover, Checkbox, Modal } from "antd";
+import { PlusOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, ImportOutlined, PartitionOutlined, MailOutlined, ExportOutlined, MoreOutlined, LeftOutlined } from "@ant-design/icons";
 import type { TableColumnsType } from "antd";
 import { useQueryClient } from "@tanstack/react-query";
-import { useContacts, useUpsertContact, useDeleteContact, type Contact } from "../../hooks/useContacts";
+import { useContacts, useUpsertContact, useDeleteContact, type Contact, type ContactDataPort } from "../../hooks/useContacts";
 import { ContactDetailDrawer, CLIENT_TYPE, STATUS_META, STAGE_META, CRM_STAGES, COUNTRIES } from "../../components/ContactDetail";
-import { ImportDrawer } from "../../components/ImportDrawer";
+import { ImportDrawer, type ImportDrawerPort } from "../../components/ImportDrawer";
 
 /* ---------- 可配置列定义 ---------- */
 const COLS_KEY = "contacts-cols";
-const DEFAULT_COLS = ["name", "email", "companyName", "clientType", "status", "stage", "title", "source"];
+const CENTER_COLS_KEY = "contacts-cols-lead-fields";
+const LOCAL_DEFAULT_COLS = ["name", "email", "companyName", "clientType", "status", "relationshipStage", "stage", "title", "source"];
+const DEFAULT_COLS = ["companyName", "country", "clientType", "name", "title", "phone", "whatsapp", "email", "sourceLevel1", "sourceLevel2", "status", "relationshipStage", "stage"];
 
 interface ColDef { key: string; title: string; width?: number; render: (c: Contact) => ReactNode; }
 
@@ -26,46 +30,69 @@ const parseTags = (s: string | null): string[] => {
   if (!s) return [];
   try { const a = JSON.parse(s); return Array.isArray(a) ? a.map(String) : []; } catch { return []; }
 };
+const inCrm = (contact: Contact) => contact.dataSource === 'center' ? ['contacted', 'replied'].includes(contact.touchStatus ?? '') : contact.status === 'reached';
+const TOUCH_STATUS_META: Record<string, { label: string; color: string }> = {
+  uncontacted: { label: '未触达', color: 'default' },
+  contacted: { label: '已触达', color: 'blue' },
+  replied: { label: '已回复', color: 'green' },
+  unreachable: { label: '无法联系', color: 'red' },
+};
 
 const COLUMN_DEFS: ColDef[] = [
   {
-    key: "name", title: "姓名", width: 120,
+    key: "name", title: "联系人姓名", width: 120,
     render: (c) => {
       const name = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email.split("@")[0];
-      return <span className="text-xs font-medium text-gray-800 block truncate" title={name}>{name}</span>;
+      return <span className="text-xs font-medium text-gray-800 block truncate" title={name}>{name}{c.isShared && <Tag className="text-[10px] my-0 ml-1 leading-none">协作</Tag>}</span>;
     },
   },
   {
     key: "email", title: "邮箱", width: 200,
     render: (c) => <span className="text-xs font-mono text-blue-600 block truncate" title={c.email}>{c.email}</span>,
   },
-  { key: "companyName", title: "公司", width: 140, render: (c) => <Muted v={c.companyName} /> },
-  { key: "title", title: "职位", width: 120, render: (c) => <Muted v={c.title} /> },
+  { key: "firstName", title: "名", width: 100, render: (c) => <Muted v={c.firstName} /> },
+  { key: "lastName", title: "姓", width: 100, render: (c) => <Muted v={c.lastName} /> },
+  { key: "companyName", title: "公司名", width: 140, render: (c) => <Muted v={c.companyName} /> },
+  { key: "businessType", title: "业务类型", width: 110, render: (c) => <Muted v={c.businessType} /> },
+  { key: "website", title: "网站", width: 150, render: (c) => <Muted v={c.website} /> },
+  { key: "title", title: "职位 / Title", width: 120, render: (c) => <Muted v={c.title} /> },
   {
-    key: "clientType", title: "类型", width: 70,
+    key: "clientType", title: "客户类型", width: 88,
     render: (c) => {
       const m = c.clientType ? CLIENT_TYPE[c.clientType] : null;
       return m ? <Tag color={m.color} className="text-[10px] my-0 leading-none py-0.5 px-1.5">{m.label}</Tag> : <Dash />;
     },
   },
   {
-    key: "status", title: "状态", width: 80,
+    key: "status", title: "联系状态", width: 88,
     render: (c) => {
-      const m = STATUS_META[c.status || ""];
+      const m = c.dataSource === 'center' ? TOUCH_STATUS_META[c.touchStatus ?? ''] : STATUS_META[c.status || ""];
       return m ? <Tag color={m.color} className="text-[10px] my-0 leading-none py-0.5 px-1.5">{m.label}</Tag> : <Dash />;
     },
   },
   {
-    key: "stage", title: "阶段", width: 80,
+    key: "stage", title: "发送阶段", width: 80,
     render: (c) => {
       const m = STAGE_META[c.stage || ""];
       return m ? <Tag color={m.color} className="text-[10px] my-0 leading-none py-0.5 px-1.5">{m.label}</Tag> : <Dash />;
     },
   },
-  { key: "phone", title: "电话", width: 130, render: (c) => <Muted v={c.phone} /> },
-  { key: "country", title: "国家", width: 70, render: (c) => <Muted v={c.country} /> },
   {
-    key: "source", title: "来源", width: 70,
+    key: "relationshipStage", title: "客户阶段", width: 88,
+    render: (c) => {
+      const m = CRM_STAGES.find(stage => stage.key === c.relationshipStage);
+      return m ? <Tag color={m.color} className="text-[10px] my-0 leading-none py-0.5 px-1.5">{m.label}</Tag> : <Dash />;
+    },
+  },
+  { key: "phone", title: "电话", width: 130, render: (c) => <Muted v={c.phone} /> },
+  { key: "whatsapp", title: "WhatsApp", width: 130, render: (c) => <Muted v={c.whatsapp} /> },
+  { key: "linkedinUrl", title: "LinkedIn", width: 150, render: (c) => <Muted v={c.linkedinUrl} /> },
+  { key: "language", title: "语言", width: 70, render: (c) => <Muted v={c.language} /> },
+  { key: "country", title: "国家", width: 70, render: (c) => <Muted v={c.country} /> },
+  { key: "sourceLevel1", title: "一级来源", width: 110, render: (c) => <Muted v={c.sourceLevel1} /> },
+  { key: "sourceLevel2", title: "二级来源", width: 130, render: (c) => <Muted v={c.sourceLevel2} /> },
+  {
+    key: "source", title: "导入批次来源", width: 120,
     render: (c) => c.source ? <Tag className="text-[10px] my-0 leading-none px-1.5">{c.source}</Tag> : <Dash />,
   },
   { key: "assignee", title: "负责人", width: 90, render: (c) => <Muted v={c.assignee} /> },
@@ -73,23 +100,28 @@ const COLUMN_DEFS: ColDef[] = [
     key: "tags", title: "标签", width: 90,
     render: (c) => {
       const key = parseTags(c.tags)[0];
-      const m = key ? CRM_STAGES.find(s => s.key === key) : null;
-      return m ? <Tag color={m.color} className="text-[10px] my-0 leading-none py-0.5 px-1.5">{m.label}</Tag> : <Dash />;
+      return key ? <Tag className="text-[10px] my-0 leading-none py-0.5 px-1.5">{key}</Tag> : <Dash />;
     },
   },
   { key: "createdAt", title: "创建", width: 80, render: (c) => <Muted v={fmtDate(c.createdAt)} /> },
   { key: "updatedAt", title: "更新", width: 80, render: (c) => <Muted v={fmtDate(c.updatedAt)} /> },
 ];
 
-export function ContactList() {
+export function ContactList({ dataPort, importPort, onAssign, renderDetail, headerActionsTarget, online = true }: {
+  dataPort?: ContactDataPort; importPort?: ImportDrawerPort;
+  onAssign?: (ids: number[]) => void;
+  renderDetail?: (contact: Contact | null, close: () => void) => ReactNode;
+  headerActionsTarget?: HTMLElement | null;
+  online?: boolean;
+} = {}) {
+  const location = useRouterState({ select: s => s.location });
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<{
-    stage?: string; status?: string; tags?: string; clientType?: string; country?: string;
-  }>({});
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionsView, setActionsView] = useState<"main" | "columns" | "export">("main");
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -99,9 +131,11 @@ export function ContactList() {
   const tableRef = useRef<ComponentRef<typeof Table>>(null);
   const [visibleCols, setVisibleCols] = useState<string[]>(() => {
     try {
-      const s = localStorage.getItem(COLS_KEY);
-      return s ? (JSON.parse(s) as string[]) : DEFAULT_COLS;
-    } catch { return DEFAULT_COLS; }
+      const current = dataPort ? localStorage.getItem(CENTER_COLS_KEY) : null;
+      const s = current ?? localStorage.getItem(COLS_KEY);
+      const saved = s ? JSON.parse(s) as string[] : dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS;
+      return dataPort && !current ? [...new Set(saved.flatMap(key => key === 'source' ? ['sourceLevel1', 'sourceLevel2'] : [key]))] : saved;
+    } catch { return dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS; }
   });
   const [form] = Form.useForm();
 
@@ -111,13 +145,25 @@ export function ContactList() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data, isLoading, error } = useContacts({ search: debouncedSearch, page, ...filters });
-  const upsertContact = useUpsertContact();
-  const deleteContact = useDeleteContact();
+  const { data, isLoading, error, dataUpdatedAt } = useContacts({ search: debouncedSearch, page }, dataPort);
+  const upsertContact = useUpsertContact(dataPort);
+  const deleteContact = useDeleteContact(dataPort);
   const qc = useQueryClient();
 
   const contacts = data?.success ? (data.data?.items || []) : [];
   const total = data?.success ? (data.data?.total || 0) : 0;
+
+  useEffect(() => {
+    if (!dataPort || !data?.success || !selectedRowKeys.length) return;
+    let active = true;
+    // A paginated row disappearing does not prove loss of access; reconcile against the full authorized scope.
+    void dataPort.listIds({}).then(result => {
+      if (!active || !result.success || !result.data) return;
+      const allowed = new Set(result.data.ids);
+      setSelectedRowKeys(previous => previous.every(id => allowed.has(Number(id))) ? previous : previous.filter(id => allowed.has(Number(id))));
+    }).catch(() => { /* Retain selection while the authorized ID list is unavailable. */ });
+    return () => { active = false; };
+  }, [dataPort, dataUpdatedAt, data?.success, selectedRowKeys.length]);
 
   // 跳转定位：目标联系人出现在当前列表数据后 → 高亮该行 + 滚动到可视区 + 详情已由上方打开
   useEffect(() => {
@@ -131,9 +177,9 @@ export function ContactList() {
     setPendingDetailId(null);
   }, [contacts, pendingDetailId]);
 
-  // 跨页全选：拉取当前 search/筛选下的全部 id（服务端分页时表头全选只能选当前页 50 条）
+  // 跨页全选：拉取当前搜索结果的全部 id（服务端分页时表头全选只能选当前页 50 条）
   const selectAllMatched = async () => {
-    const r = await window.api.invoke("contacts:listIds", { search: debouncedSearch, ...filters }) as
+    const r = await (dataPort ? dataPort.listIds({ search: debouncedSearch }) : window.api.invoke("contacts:listIds", { search: debouncedSearch })) as
       { success: boolean; data?: { ids: number[] }; error?: string };
     if (r?.success && r.data) {
       setSelectedRowKeys(r.data.ids);
@@ -143,20 +189,22 @@ export function ContactList() {
 
   // 批量删除选中联系人（一次级联 + 一次落盘，支持跨页全选）
   const batchDelete = () => {
+    if (dataPort && (!online || !dataPort.deleteBatch)) return;
     if (selectedRowKeys.length === 0) return;
     const ids = selectedRowKeys.map(k => Number(k)).filter(n => Number.isInteger(n) && n > 0);
     Modal.confirm({
       title: `删除 ${ids.length} 个联系人？`,
-      content: "将同时清除其跟进/发送记录并解除邮件关联，空壳公司一并回收。此操作不可撤销，建议先导出。",
+      content: dataPort ? "删除后不再参与匹配和新发送任务，历史记录保留。" : "将同时清除其跟进/发送记录并解除邮件关联，空壳公司一并回收。此操作不可撤销，建议先导出。",
       okText: "删除", okType: "danger", cancelText: "取消",
       onOk: async () => {
-        const r = await window.api.invoke("contacts:deleteBatch", ids) as
+        const r = await (dataPort ? dataPort.deleteBatch!(ids) : window.api.invoke("contacts:deleteBatch", ids)) as
           { success: boolean; data?: { deleted: number; companiesRemoved: number }; error?: string };
         r?.success
           ? message.success(`已删除 ${r.data?.deleted ?? ids.length} 个联系人`)
           : message.error(r?.error || "删除失败");
-        setSelectedRowKeys([]);
-        invalidateDomain(qc, "contacts");
+        if(r.success)setSelectedRowKeys([]);
+        if(dataPort)for(const key of ["center-contacts","center-companies","center-company-detail","center-contact-detail","dashboard","search","center-assignment","inbox"])void qc.invalidateQueries({queryKey:[key]});
+        else invalidateDomain(qc, "contacts");
       },
     });
   };
@@ -175,7 +223,7 @@ export function ContactList() {
   const handleExport = async (kind: "contacts" | "notes") => {
     setExporting(true);
     try {
-      const result = kind === "contacts"
+      const result = dataPort?.export ? await dataPort.export(kind, { search: debouncedSearch }) : kind === "contacts"
         ? await window.api.invoke("export:contactsToExcel", { search: debouncedSearch })
         : await window.api.invoke("export:notesToCsv");
       const r = result as { success: boolean; data?: string; error?: string };
@@ -192,25 +240,28 @@ export function ContactList() {
 
   // 从收件箱跳转来的预填/详情（读 hash 路由的 search 部分）
   useEffect(() => {
+    if (location.pathname !== "/customers") return;
     const rawHash = window.location.hash; // 如 "#/customers?view=table&add=1&email=..." 或 "#/customers?view=table&detail=123"
     const qs = rawHash.includes("?") ? rawHash.split("?")[1] : "";
     if (!qs) return;
     const sp = new URLSearchParams(qs);
+    if (sp.get("view") && sp.get("view") !== "table") return;
 
     // 打开详情 — 直接按 id 拉取，不依赖当前分页/筛选结果（否则目标联系人不在当前页就弹不出）
     const detailId = sp.get("detail");
     if (detailId) {
+      // Inbox detail IDs refer to SQLite. Never reinterpret them as center IDs.
+      if (dataPort) { message.info("请在联系人列表中选择中心联系人"); return; }
       const id = Number(detailId);
       if (!isNaN(id)) {
         window.api.invoke("contacts:getById", id).then((res) => {
           const r = res as { success: boolean; data?: Contact };
           if (r?.success && r.data) setDetailContact(r.data);
         });
-        // 跳转定位：清掉搜索/筛选（保证目标行一定在结果集里），再用 listIds（与列表同排序）
+        // 跳转定位：清掉搜索（保证目标行在结果集里），再用 listIds（与列表同排序）
         // 算出目标所在页码，数据到位后由下方 effect 滚动定位 + 高亮 + 保持详情展开
         setSearch("");
         setDebouncedSearch("");
-        setFilters({});
         setPage(1);
         window.api.invoke("contacts:listIds", {}).then((res) => {
           const r = res as { success: boolean; data?: { ids: number[] } };
@@ -233,20 +284,21 @@ export function ContactList() {
         firstName: sp.get("firstName") || "",
         lastName: sp.get("lastName") || "",
         clientType: sp.get("clientType") || undefined,
+        ...(dataPort ? {customerType: CLIENT_TYPE[sp.get("clientType") ?? '']?.label} : {}),
       });
       setAddOpen(true);
       window.location.hash = rawHash.split("?")[0]!;
     }
-    // 只需挂载时解析一次：深链参数读后即清回裸 hash，列表数据刷新无需重跑
-  }, [form]);
+  }, [form, location.pathname, location.searchStr, dataPort]);
 
   const updateCols = (cols: string[]) => {
     setVisibleCols(cols);
-    localStorage.setItem(COLS_KEY, JSON.stringify(cols));
+    localStorage.setItem(dataPort ? CENTER_COLS_KEY : COLS_KEY, JSON.stringify(cols));
   };
 
+  const visibleDefinitions = visibleCols.flatMap(key => COLUMN_DEFS.find(d => d.key === key) ?? []);
   const columns: TableColumnsType<Contact> = [
-    ...COLUMN_DEFS.filter(d => visibleCols.includes(d.key)).map(d => ({
+    ...visibleDefinitions.map(d => ({
       title: d.title, key: d.key, width: d.width,
       render: (_: unknown, r: Contact) => d.render(r),
     })),
@@ -265,18 +317,19 @@ export function ContactList() {
             }}
           />
           <Button type="text" size="small" icon={<PartitionOutlined />}
-            disabled={r.status !== "reached"}
+            disabled={!inCrm(r)}
             className="btn-hover-color"
-            style={{ color: r.status === "reached" ? "#bbb" : "#d9d9d9" }}
-            title={r.status === "reached" ? "在CRM中查看" : "未进入CRM管线"}
+            style={{ color: inCrm(r) ? "#bbb" : "#d9d9d9" }}
+            title={inCrm(r) ? "在CRM中查看" : "未进入CRM管线"}
             onDoubleClick={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              if (r.status !== "reached") return;
-              window.location.hash = `#/customers?view=board&detail=${r.id}`;
+              if (!inCrm(r)) return;
+              window.location.hash = dataPort ? `#/customers?view=board&centerContact=${r.contactId}&centerCustomer=${r.customerId}` : `#/customers?view=board&detail=${r.id}`;
             }}
           />
           <Button type="text" size="small" icon={<DeleteOutlined />}
+            disabled={!!dataPort && (!online || !r.canDelete)}
             loading={deletingId === r.id}
             className="btn-hover-color"
             style={{ color: "#bbb" }}
@@ -307,97 +360,77 @@ export function ContactList() {
       <Checkbox.Group
         value={visibleCols}
         onChange={(v) => updateCols(v as string[])}
-        className="grid grid-cols-2 gap-x-2"
+        className="contact-columns-options grid grid-cols-2 gap-x-2 gap-y-1"
       >
         {COLUMN_DEFS.map(d => (
           <Checkbox key={d.key} value={d.key} className="text-xs">{d.title}</Checkbox>
         ))}
       </Checkbox.Group>
       <div className="flex justify-between mt-3 pt-2 border-t border-gray-100">
-        <Button size="small" type="text" onClick={() => updateCols(DEFAULT_COLS)}>恢复默认</Button>
+        <Button size="small" type="text" onClick={() => updateCols(dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS)}>恢复默认</Button>
         <Button size="small" type="text" onClick={() => updateCols(COLUMN_DEFS.map(d => d.key))}>全选</Button>
       </div>
     </div>
   );
 
+  const closeActions = () => { setActionsOpen(false); setActionsView("main"); };
+  const actionItem = (label: string, icon: ReactNode, onClick: () => void, disabled = false) => (
+    <Button key={label} type="text" size="small" icon={icon} disabled={disabled} onClick={onClick}
+      className="w-full text-left" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start" }}>{label}</Button>
+  );
+  const actionsPanel = <div className={`${actionsView === "columns" ? "w-56" : "w-48"} flex flex-col gap-0.5`}>
+    {actionsView !== "main" && actionItem("返回", <LeftOutlined />, () => setActionsView("main"))}
+    {actionsView === "main" && <>
+      {actionItem("新增", <PlusOutlined />, () => { closeActions(); form.resetFields(); setAddOpen(true); }, !!dataPort && !online)}
+      {actionItem("导入", <ImportOutlined />, () => { closeActions(); setImportOpen(true); }, !!dataPort && (!importPort || !online))}
+      {actionItem("导出", <ExportOutlined />, () => setActionsView("export"), !!dataPort && !dataPort.export)}
+      {actionItem("列设置", <SettingOutlined />, () => setActionsView("columns"))}
+    </>}
+    {actionsView === "export" && <>
+      {actionItem("联系人 CSV", <ExportOutlined />, () => { closeActions(); void handleExport("contacts"); }, exporting)}
+      {actionItem("跟进记录 CSV", <ExportOutlined />, () => { closeActions(); void handleExport("notes"); }, exporting)}
+    </>}
+    {actionsView === "columns" && colsPanel}
+  </div>;
+
   // scroll.x 用数字：每列已有固定 width，"max-content" 会让 Table 挂载时同步测量内容宽度并强制回流
   const tableScrollX = COLUMN_DEFS.filter(d => visibleCols.includes(d.key))
     .reduce((s, d) => s + (d.width || 100), 0) + 96 /* 操作列 */ + 32 /* 多选列 */;
 
+  const searchInput = <Input prefix={<SearchOutlined />} placeholder="搜索邮箱、姓名、公司..."
+    value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+    size="small" style={{ width: 260, maxWidth: "100%" }} allowClear />;
+  const headerActions = <Space size="small">
+    {headerActionsTarget && searchInput}
+    <Popover trigger="click" placement="bottomRight" open={actionsOpen}
+      onOpenChange={open => { setActionsOpen(open); if (!open) setActionsView("main"); }} content={actionsPanel}>
+      <Button type="text" size="small" icon={<MoreOutlined />} aria-label="更多操作" title="更多操作" />
+    </Popover>
+  </Space>;
+
   return (
-    <div className="space-y-3">
-      {/* 工具栏 — 紧凑 */}
-      <div className="flex items-center justify-between">
-        <Input prefix={<SearchOutlined />} placeholder="搜索邮箱、姓名、公司..."
-          value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-          size="small" style={{ width: 260 }} allowClear />
+    <div className="prospector-table-page customer-contacts-page">
+      {headerActionsTarget && createPortal(headerActions, headerActionsTarget)}
+      {/* 选中记录后的批量操作 */}
+      {(!headerActionsTarget || selectedRowKeys.length > 0) && <div className={`flex items-center ${headerActionsTarget ? "justify-end" : "justify-between"}`}>
+        {!headerActionsTarget && searchInput}
         <Space size="small">
-          <span className="text-xs text-gray-400">共 {total} 人</span>
+          {!headerActionsTarget && headerActions}
           {selectedRowKeys.length > 0 && selectedRowKeys.length < total && (
             <Button size="small" type="link" style={{ padding: 0, height: "auto" }}
               onClick={selectAllMatched}>选择全部 {total} 个匹配项</Button>
           )}
           {selectedRowKeys.length > 0 && (
             <Button size="small" danger icon={<DeleteOutlined />}
+              disabled={!!dataPort && (!online || !dataPort.deleteBatch || selectedRowKeys.some(id=>!dataPort.canDelete?.(Number(id))))}
               onClick={batchDelete}>删除选中 ({selectedRowKeys.length})</Button>
           )}
-          <Popover trigger="click" placement="bottomRight" content={colsPanel}>
-            <Button size="small" icon={<SettingOutlined />}>列设置</Button>
-          </Popover>
-          <Dropdown menu={{
-            items: [
-              { key: "contacts", label: "导出联系人 CSV" },
-              { key: "notes", label: "导出跟进记录 CSV" },
-            ],
-            onClick: (e) => handleExport(e.key as "contacts" | "notes"),
-          }}>
-            <Button size="small" icon={<ExportOutlined />} loading={exporting}>导出</Button>
-          </Dropdown>
-          <Button size="small" icon={<ImportOutlined />}
-            onClick={() => setImportOpen(true)}>导入</Button>
-          <Button type="primary" size="small" icon={<PlusOutlined />}
-            onClick={() => { form.resetFields(); setAddOpen(true); }}>新增</Button>
+          {onAssign && selectedRowKeys.length > 0 && <Button size="small" onClick={() => onAssign(selectedRowKeys.map(Number))}>分配线索 ({selectedRowKeys.length})</Button>}
         </Space>
-      </div>
-
-      {/* 筛选栏 */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Select size="small" placeholder="阶段" allowClear style={{ width: 100 }}
-          value={filters.stage} onChange={v => { setFilters(prev => ({ ...prev, stage: v })); setPage(1); }}
-          options={Object.entries(STAGE_META).map(([k, m]) => ({ value: k, label: m.label }))}
-        />
-        <Select size="small" placeholder="状态" allowClear style={{ width: 100 }}
-          value={filters.status} onChange={v => { setFilters(prev => ({ ...prev, status: v })); setPage(1); }}
-          options={Object.entries(STATUS_META).map(([k, m]) => ({ value: k, label: m.label }))}
-        />
-        <Select size="small" placeholder="标签" allowClear style={{ width: 100 }}
-          value={filters.tags} onChange={v => { setFilters(prev => ({ ...prev, tags: v })); setPage(1); }}
-          options={CRM_STAGES.map(s => ({ value: s.key, label: s.label }))}
-        />
-        <Select size="small" placeholder="客户类型" allowClear style={{ width: 100 }}
-          value={filters.clientType} onChange={v => { setFilters(prev => ({ ...prev, clientType: v })); setPage(1); }}
-          options={[
-            { value: "agent", label: "代理" },
-            { value: "direct", label: "直客" },
-          ]}
-        />
-        <Select size="small" placeholder="语言" allowClear style={{ width: 120 }}
-          value={filters.country} onChange={v => { setFilters(prev => ({ ...prev, country: v })); setPage(1); }}
-          options={[
-            { value: "ES", label: "ES 西班牙语" },
-            { value: "PT", label: "PT 葡萄牙语" },
-            { value: "EN", label: "EN 英语" },
-          ]}
-        />
-        {Object.values(filters).some(Boolean) && (
-          <Button size="small" type="text" onClick={() => { setFilters({}); setPage(1); }}>
-            清除筛选
-          </Button>
-        )}
-      </div>
+      </div>}
 
       {/* 加载 / 错误 */}
-      {error && <div className="text-xs text-red-500 p-2 bg-red-50 rounded">加载失败</div>}
+      {(error || data?.success === false) && <div role="alert" className="text-xs text-red-500 p-2 bg-red-50 rounded">{data?.error || '加载失败'}</div>}
 
       {/* 表格 — 高密度 */}
       <Table
@@ -408,7 +441,7 @@ export function ContactList() {
         loading={isLoading}
         size="small"
         scroll={{ x: tableScrollX }}
-        className="[&_.ant-table-thead>tr>th]:!text-[11px] [&_.ant-table-thead>tr>th]:!text-gray-400 [&_.ant-table-thead>tr>th]:!font-medium"
+        className="prospector-page-table customer-contacts-table [&_.ant-table-thead>tr>th]:!text-[11px] [&_.ant-table-thead>tr>th]:!text-gray-400 [&_.ant-table-thead>tr>th]:!font-medium"
         pagination={{
           current: page, pageSize: 50, total, onChange: setPage,
           size: "small", showSizeChanger: false,
@@ -419,6 +452,7 @@ export function ContactList() {
           onChange: setSelectedRowKeys,
           preserveSelectedRowKeys: true,
         }}
+        tableLayout="fixed"
         onRow={(record) => ({
           onDoubleClick: () => setDetailContact(record),
           onClick: (e: React.MouseEvent) => {
@@ -438,30 +472,38 @@ export function ContactList() {
       />
 
       {/* 新增弹窗 — 紧凑 */}
-      <Drawer title="新增联系人" open={addOpen} onClose={() => setAddOpen(false)} width={400}>
+      <Drawer rootClassName="app-drawer-below-titlebar" title="新增联系人" open={addOpen} onClose={() => setAddOpen(false)} width={400}>
         <Form form={form} layout="vertical" size="small"
           onFinish={async (v) => {
             const r = await upsertContact.mutateAsync(v);
             r?.success ? (setAddOpen(false), message.success("已保存")) : message.error(r?.error || "失败");
           }}
         >
+          {dataPort && <div className="text-xs font-semibold text-gray-500 mb-3">公司资料</div>}
           <div className="grid grid-cols-2 gap-3">
-            <Form.Item name="companyName" label="公司"><Input size="small" placeholder="公司名称" /></Form.Item>
-            <Form.Item name="email" label="邮箱" rules={[{ required: true, type: "email" }]}><Input size="small" /></Form.Item>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Form.Item name="firstName" label="名"><Input size="small" /></Form.Item>
-            <Form.Item name="lastName" label="姓"><Input size="small" /></Form.Item>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Form.Item name="title" label="职位"><Input size="small" /></Form.Item>
-            <Form.Item name="linkedinUrl" label="LinkedIn"><Input size="small" /></Form.Item>
+            <Form.Item name="companyName" label="公司名" rules={dataPort ? [{ required: true, whitespace: true, message: "请输入公司名称" }] : []}><Input size="small" placeholder="公司名称" /></Form.Item>
+            <Form.Item name={dataPort ? "customerType" : "clientType"} label="客户类型"><Select size="small" allowClear options={[{value:dataPort ? "代理" : "agent",label:"代理"},{value:dataPort ? "直客" : "direct",label:"直客"}]} /></Form.Item>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Form.Item name="country" label="国家">
               <Select size="small" showSearch optionFilterProp="label" allowClear placeholder="搜索选择国家"
                 options={COUNTRIES.map(c => ({ value: c.code, label: `${c.code} ${c.label}` }))} />
             </Form.Item>
+          </div>
+          {dataPort && <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="businessType" label="业务类型"><Input size="small" /></Form.Item>
+            <Form.Item name="website" label="网站"><Input size="small" /></Form.Item>
+          </div>}
+          {dataPort && <div className="text-xs font-semibold text-gray-500 mb-3">联系人与线索来源</div>}
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="firstName" label="名"><Input size="small" /></Form.Item>
+            <Form.Item name="lastName" label="姓"><Input size="small" /></Form.Item>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="title" label="职位 / Title"><Input size="small" /></Form.Item>
+            <Form.Item name="linkedinUrl" label="LinkedIn"><Input size="small" /></Form.Item>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <Form.Item name="language" label="语言">
                 <Select size="small" allowClear placeholder="匹配发信模板"
                   options={[
@@ -473,14 +515,16 @@ export function ContactList() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Form.Item name="phone" label="电话"><Input size="small" /></Form.Item>
-            <Form.Item name="clientType" label="客户类型">
-                <Select size="small" allowClear placeholder="代理 / 直客"
-                  options={[
-                    { value: "agent", label: "代理" },
-                    { value: "direct", label: "直客" },
-                  ]} />
-              </Form.Item>
+            {dataPort && <Form.Item name="whatsapp" label="WhatsApp"><Input size="small" /></Form.Item>}
           </div>
+          <Form.Item name="email" label="邮箱" rules={[{ required: !dataPort, type: "email" }]}><Input size="small" /></Form.Item>
+          {dataPort && <>
+            <div className="grid grid-cols-2 gap-3">
+              <Form.Item name="sourceLevel1" label="一级来源"><Input size="small" /></Form.Item>
+              <Form.Item name="sourceLevel2" label="二级来源"><Input size="small" /></Form.Item>
+            </div>
+            <Form.Item name="stage" label="发送阶段"><Select size="small" allowClear options={Object.entries(STAGE_META).map(([value,meta])=>({value,label:meta.label}))} /></Form.Item>
+          </>}
           <Button type="primary" htmlType="submit" size="small" block loading={upsertContact.isPending}>
             保存
           </Button>
@@ -488,15 +532,15 @@ export function ContactList() {
       </Drawer>
 
       {/* 导入抽屉 */}
-      <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} />
+      <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} port={importPort} disabled={!!dataPort && !online} />
 
       {/* 详情抽屉 — 双击打开，分页标签 */}
-      <ContactDetailDrawer
+      {renderDetail ? renderDetail(detailContact, () => setDetailContact(null)) : <ContactDetailDrawer
         contact={detailContact}
         open={!!detailContact}
         onClose={() => setDetailContact(null)}
         onUpdated={(c) => setDetailContact(c)}
-      />
+      />}
     </div>
   );
 }

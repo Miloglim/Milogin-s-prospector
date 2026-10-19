@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["admin-web/**/*.ts", "admin-web/**/*.tsx", "src/renderer/lib/brand-theme.ts", "server/core/**/*.ts", "vite.admin.config.ts"]
+}

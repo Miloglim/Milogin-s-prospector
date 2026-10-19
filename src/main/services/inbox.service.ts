@@ -1,4 +1,5 @@
 import { htmlToText } from "../core/html-text";
+import type { InboxListRequest } from "../../shared/inbox";
 import { getDb } from "../db";
 import { inboxMessages, inboxBounceMatches, type InboxMessageRow, type InsertInboxMessageRow } from "../db/schema/inbox";
 import { emailAccounts } from "../db/schema/accounts";
@@ -21,19 +22,113 @@ import { detectSenderBlockSignal, recordSenderBlock } from "./sender-block.servi
 import * as path from "path";
 import * as fs from "fs";
 import { DB_PATH } from "../config";
+import { readMailboxSnapshot, readMailboxSnapshots, latestMailboxId, MAILBOX_RECONCILE_MAX, type MailboxSnapshotQuery } from '../adapters/inbox-center-contact.adapter';
+import { matchCenterMailboxMessage, type InboxCenterContactPort, type CenterMailboxMatchOptions } from './inbox-center-contact.service';
+import { centerContactDisplayStatus } from '../../shared/online-crm';
+import { latestInboxClassificationChange, recordInboxClassificationChange, replayInboxClassificationChanges } from './inbox-classification.service';
+
+let inboxCenterContactPort: InboxCenterContactPort | null = null;
+/** Center references use their own port and never enter the legacy SQLite contact FK columns. */
+export function setInboxCenterContactPort(port: InboxCenterContactPort | null): void { inboxCenterContactPort = port; }
+export async function replayInboxCenterClassificationChanges(): Promise<Result<void>> {
+  return inboxCenterContactPort ? replayInboxClassificationChanges(inboxCenterContactPort) : okResult(undefined);
+}
+export function isInboxCenterContactConfigured(): boolean { return inboxCenterContactPort !== null; }
+export async function listInboxCenterMatchContacts() {
+  const port = inboxCenterContactPort;
+  if (!port) return null;
+  const context = port.context();
+  if (!context) return failResult('当前账号无法读取中心联系人');
+  if (!port.contacts) return failResult('中心联系人匹配接口未配置');
+  try {
+    const rows = await port.contacts(context);
+    const current = port.context();
+    if (current?.userId !== context.userId || current.baseUrl !== context.baseUrl) return failResult('账号已切换');
+    return okResult(rows.map(row => ({
+      id: row.contactId, email: row.email || '', companyName: row.companyName,
+      centerReference: { contactId: row.contactId, customerId: row.customerId },
+      contactVersion: row.contactVersion, status: centerContactDisplayStatus(row), tags: JSON.stringify(row.relationshipStage?row.relationshipStage==='cold'?[]:[row.relationshipStage]:row.tags),
+    })));
+  } catch (error) {
+    Log.error('inbox.centerMatch', '中心联系人匹配列表读取失败', error instanceof Error ? error.stack : undefined);
+    return failResult(error instanceof Error ? error.message : String(error));
+  }
+}
+export async function syncInboxCenterMessage(id: number, options: CenterMailboxMatchOptions = {}): Promise<Result<{ matched: number; classification: string }>> {
+  const port = inboxCenterContactPort;
+  if (!port) return okResult({ matched: 0, classification: 'other' });
+  const context = port.context();
+  if (!context) return failResult('当前账号无法建立中心邮件关联');
+  try {
+    const source = readMailboxSnapshot(id);
+    if (!source) return failResult('邮件不存在');
+    const manualChange = latestInboxClassificationChange(port, id);
+    const result = await matchCenterMailboxMessage(port, source, {
+      isSenderBlock: text => !!detectSenderBlockSignal(text), ...options,
+      ...(manualChange ? { classify: undefined, associationOnly: true } : {}),
+    });
+    const current = port.context();
+    if (current?.userId !== context?.userId || current?.baseUrl !== context?.baseUrl) return failResult('账号已切换，邮件关联已停止');
+    if (!result.success) Log.warn('inbox.centerMatch', `中心邮件关联未完成 id=${id}: ${result.error}`);
+    else if (result.data.matched > 0 && result.data.classification !== source.classification
+      && latestInboxClassificationChange(port, id) === manualChange
+      && getDb().select({ classification: inboxMessages.classification }).from(inboxMessages).where(eq(inboxMessages.id, id)).get()?.classification === source.classification) {
+      getDb().update(inboxMessages).set({ classification: result.data.classification }).where(eq(inboxMessages.id, id)).run();
+      saveDatabase();
+    }
+    if (result.success) {
+      const latest = getDb().select({ classification: inboxMessages.classification }).from(inboxMessages).where(eq(inboxMessages.id, id)).get();
+      if (latest?.classification) return okResult({ ...result.data, classification: latest.classification });
+    }
+    return result;
+  } catch (error) {
+    Log.error('inbox.centerMatch', `中心邮件关联失败 id=${id}`, error instanceof Error ? error.stack : undefined);
+    return failResult(error instanceof Error ? error.message : String(error));
+  }
+}
+/** Bounded cursor: import/startup may continue pages, failures retain the last successful position. */
+export async function reconcileInboxCenterContacts(input: MailboxSnapshotQuery = {}): Promise<Result<{ processed: number; nextAfterId: number; hasMore: boolean }>> {
+  if (input.afterId !== undefined && (!Number.isSafeInteger(input.afterId) || input.afterId < 0)) return failResult('无效的邮件补挂游标');
+  if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit <= 0 || input.limit > MAILBOX_RECONCILE_MAX)) return failResult('无效的邮件补挂数量');
+  if (input.accountId !== undefined && (!Number.isSafeInteger(input.accountId) || input.accountId <= 0)) return failResult('无效的邮箱账号');
+  if (!inboxCenterContactPort) return okResult({ processed: 0, nextAfterId: input.afterId ?? 0, hasMore: false });
+  if (!inboxCenterContactPort.context()) return failResult('当前账号无法补挂中心邮件');
+  try {
+    const page = readMailboxSnapshots(input);
+    let processed = 0;
+    for (const row of page.items) {
+      const text = row.classification === 'bounce' ? readLocalBodyHtml(row.id) || row.bodyPreview || '' : undefined;
+      const result = await syncInboxCenterMessage(row.id, { bounceText: text, classify });
+      if (!result.success) return failResult(result.error);
+      processed++;
+    }
+    return okResult({ processed, nextAfterId: page.nextAfterId, hasMore: page.hasMore });
+  } catch (error) {
+    Log.error('inbox.centerReconcile', '中心历史邮件补挂失败', error instanceof Error ? error.stack : undefined);
+    return failResult(error instanceof Error ? error.message : String(error));
+  }
+}
+
+let inboxNetworkAllowed: () => boolean = () => true;
+/** Main-process identity/connectivity authority; defaults preserve standalone service tests. */
+export function setInboxNetworkAllowed(reader: () => boolean): void { inboxNetworkAllowed = reader; }
 
 // ── 已删除集持久化（防重取，参照旧 PE inbox-deleted.json）──
 
-const DELETED_PATH = path.join(path.dirname(DB_PATH), "inbox-deleted.json");
+const deletedFilePath = () => path.join(path.dirname(DB_PATH), "inbox-deleted.json");
+const MAX_DELETED_KEYS = 2000;
 
 // 内存缓存：isDeleted 在拉取循环里逐封调用，若每次读盘+JSON.parse 整个文件会卡（量一大几千次 IO）
 let _deletedCache: Set<string> | null = null;
+let _deletedCachePath = '';
 
 function _readDeleted(): Set<string> {
+  const file=deletedFilePath();
+  if(_deletedCachePath!==file){_deletedCache=null;_deletedCachePath=file;}
   if (_deletedCache) return _deletedCache;
   try {
-    if (fs.existsSync(DELETED_PATH)) {
-      _deletedCache = new Set(JSON.parse(fs.readFileSync(DELETED_PATH, "utf-8")));
+    if (fs.existsSync(file)) {
+      _deletedCache = new Set(JSON.parse(fs.readFileSync(file, "utf-8")));
     }
   } catch { /* 文件损坏 → 空集 */ }
   if (!_deletedCache) _deletedCache = new Set();
@@ -41,12 +136,14 @@ function _readDeleted(): Set<string> {
 }
 
 function _writeDeleted(set: Set<string>): void {
+  const file=deletedFilePath();
   _deletedCache = set;
+  _deletedCachePath = file;
   try {
-    const dir = path.dirname(DELETED_PATH);
+    const dir = path.dirname(file);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(DELETED_PATH, JSON.stringify([...set].slice(-2000)));
-  } catch { /* 静默 */ }
+    fs.writeFileSync(file, JSON.stringify([...set].slice(-MAX_DELETED_KEYS)));
+  } catch (error) { Log.error('inbox.deleted', '已删除邮件索引保存失败', error instanceof Error ? error.stack : undefined); }
 }
 
 /** 检查指定 key 是否已被删除 */
@@ -356,6 +453,7 @@ export function setPostFetchAdapters(adapters: PostFetchAdapters): void {
 // ── 抓取 ──
 
 export async function fetchInbox(accountId?: number, excludeIds?: number[]): Promise<Result<InboxMessageRow[]>> {
+  if (!inboxNetworkAllowed()) return failResult('当前离线，无法刷新邮件。');
   Log.debug("inbox.fetch", `accountId=${accountId}`);
 
   if (!imapFetchFn) {
@@ -405,6 +503,17 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
       .set({ fetchFailCount: 0, lastFetchError: null, lastFetchAt: now })
       .where(eq(emailAccounts.id, account.id)).run();
     health.push({ accountId: account.id, email: account.email, ok: true });
+
+    // The protocol already persisted these inbox rows. Center matching uses persisted metadata, independently of local IDs.
+    if (inboxCenterContactPort) for (const mail of result.data) {
+      const stored = mail.id > 0 ? readMailboxSnapshot(mail.id) : mail.messageId
+        ? db.select({ id: inboxMessages.id }).from(inboxMessages).where(and(eq(inboxMessages.accountId, account.id), eq(inboxMessages.messageId, mail.messageId))).get()
+        : undefined;
+      if (stored) {
+        const linked = await syncInboxCenterMessage(stored.id, { classify });
+        if (linked.success) mail.classification = linked.data.classification;
+      }
+    }
 
     // 去重 UID
     const newItems = result.data.filter(m => !SEEN_UIDS.has(m.messageId || ""));
@@ -506,7 +615,9 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
 
 /** 用户手动抓取：抓取完成后异步补齐退信关联、正文缓存和 Sent 文件夹。 */
 export async function refreshInbox(accountId?: number): Promise<Result<InboxMessageRow[]>> {
+  if (!inboxNetworkAllowed()) return failResult('当前离线，无法刷新邮件。');
   await fetchInbox(accountId);
+  if (!inboxNetworkAllowed()) return failResult('当前离线，无法刷新邮件。');
   cleanupInbox();
   void prefetchRecentBodies(20);
 
@@ -521,6 +632,7 @@ export async function refreshInbox(accountId?: number): Promise<Result<InboxMess
 }
 
 async function backfillAfterFetch(accountId: number | undefined, adapters: PostFetchAdapters): Promise<void> {
+  if (!inboxNetworkAllowed()) return;
   try {
     let matched = await backfillBounceMatches();
     const accountIds = accountId
@@ -528,7 +640,10 @@ async function backfillAfterFetch(accountId: number | undefined, adapters: PostF
         .where(eq(emailAccounts.id, accountId)).all().filter(a => !!a.imapHost).map(a => a.id)
       : getDb().select({ id: emailAccounts.id, imapHost: emailAccounts.imapHost }).from(emailAccounts)
         .where(eq(emailAccounts.isActive, 1)).all().filter(a => !!a.imapHost).map(a => a.id);
-    for (const id of accountIds) matched += await adapters.backfillBounceDeep(id);
+    for (const id of accountIds) {
+      if (!inboxNetworkAllowed()) break;
+      matched += await adapters.backfillBounceDeep(id);
+    }
     if (matched > 0) {
       pushFn?.("inbox:newMail", { count: 0 });
       nudgeSuggestions();
@@ -539,12 +654,23 @@ async function backfillAfterFetch(accountId: number | undefined, adapters: PostF
 }
 
 async function detectSentAfterFetch(adapters: PostFetchAdapters): Promise<void> {
+  if (!inboxNetworkAllowed()) return;
   const accounts = getDb().select().from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all();
   const sentTargets = accounts.filter(account => !!account.imapHost && !adapters.isPop3Port(account.imapPort || 993));
   Log.debug("inbox.sent", `将检测 ${sentTargets.length}/${accounts.length} 个账号`);
+  const beforeId = inboxCenterContactPort ? latestMailboxId() : 0;
   const results = await Promise.allSettled(sentTargets.map(account => adapters.detectSent(account.id)));
   const totalNew = results.reduce((sum, result) => sum + (result.status === "fulfilled" ? (result.value || 0) : 0), 0);
   if (totalNew <= 0) return;
+
+  if (inboxCenterContactPort) {
+    let cursor = beforeId;
+    while (inboxCenterContactPort) {
+      const page = await reconcileInboxCenterContacts({ afterId: cursor, limit: MAILBOX_RECONCILE_MAX });
+      if (!page.success || !page.data.hasMore) break;
+      cursor = page.data.nextAfterId;
+    }
+  }
 
   try {
     cleanupInbox();
@@ -560,7 +686,7 @@ const CLEANUP_LIMITS: Record<string, number> = {
   replied: 2000, autoreply: 2000, bounce: 1000, other: 500,
 }; // sent 完全解除限制：真实发信量远大于 500，不再清理/截断
 
-const ARCHIVE_PATH = path.join(path.dirname(DB_PATH), "inbox-archive.jsonl");
+const archiveFilePath = () => path.join(path.dirname(DB_PATH), "inbox-archive.jsonl");
 
 export function cleanupInbox(): void {
   const db = getDb();
@@ -574,7 +700,7 @@ export function cleanupInbox(): void {
         AND id NOT IN (
           SELECT MIN(id) FROM inbox_messages
           WHERE classification = 'bounce'
-          GROUP BY subject, from_email, received_at
+          GROUP BY account_id, subject, from_email, received_at
         )
     `).run().changes;
     if (deleted > 0) {
@@ -583,7 +709,7 @@ export function cleanupInbox(): void {
     }
   } catch (e) { Log.warn("inbox.cleanup", `退信去重失败: ${(e as Error).message}`); }
 
-  // messageId 去重：相同 messageId 多行只保留最小 id（detectSent 并发导致的重复）
+  // 同一邮箱的 messageId 去重：不同邮箱收到同一封邮件仍各自保留。
   try {
     const deleted2 = getRawDb().prepare(`
       DELETE FROM inbox_messages
@@ -591,7 +717,7 @@ export function cleanupInbox(): void {
         AND id NOT IN (
           SELECT MIN(id) FROM inbox_messages
           WHERE message_id IS NOT NULL AND message_id != ''
-          GROUP BY message_id
+          GROUP BY account_id, message_id
         )
     `).run().changes;
     if (deleted2 > 0) {
@@ -633,10 +759,11 @@ export function cleanupInbox(): void {
   // 追加写入备份文件（每行一条 JSON）
   if (archiveLines.length > 0) {
     try {
-      const dir = path.dirname(ARCHIVE_PATH);
+      const file=archiveFilePath();
+      const dir = path.dirname(file);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.appendFileSync(ARCHIVE_PATH, archiveLines.join("\n") + "\n");
-      Log.info("inbox.archive", `已备份 ${archiveLines.length} 封邮件 → ${ARCHIVE_PATH}`);
+      fs.appendFileSync(file, archiveLines.join("\n") + "\n");
+      Log.info("inbox.archive", `已备份 ${archiveLines.length} 封邮件 → ${file}`);
     } catch (err) {
       Log.error("inbox.archive", "备份写入失败", err instanceof Error ? err.stack : undefined);
     }
@@ -646,7 +773,10 @@ export function cleanupInbox(): void {
 
 // ── 列表 ──
 
-export function listInbox(): Result<InboxMessageRow[]> {
+export function listInbox(request?: InboxListRequest): Result<InboxMessageRow[]> {
+  if (request != null && (typeof request !== "object" || Array.isArray(request))) return failResult("无效的邮件列表请求");
+  const includeId = request?.includeId;
+  if (includeId !== undefined && (!Number.isSafeInteger(includeId) || includeId <= 0)) return failResult("无效的邮件 ID");
   const db = getDb();
   // 按分类分别限定数量，合并返回
   const all: InboxMessageRow[] = [];
@@ -664,6 +794,10 @@ export function listInbox(): Result<InboxMessageRow[]> {
     .orderBy(desc(inboxMessages.receivedAt))
     .all();
   all.push(...sentRows);
+  if (includeId && !all.some(r => r.id === includeId)) {
+    const target = db.select().from(inboxMessages).where(eq(inboxMessages.id, includeId)).get();
+    if (target) all.push(target);
+  }
   // 按时间统一排序
   all.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
 
@@ -690,27 +824,39 @@ export function listInbox(): Result<InboxMessageRow[]> {
     _contactStatus: contactMap.get(r.matchedContactId ?? 0)?.status || null,
     _contactTags: contactMap.get(r.matchedContactId ?? 0)?.tags || null,
   }));
+  const centerContext = inboxCenterContactPort?.context();
+  if (centerContext && inboxCenterContactPort?.getLinks) for (const row of enriched) {
+    const links = inboxCenterContactPort.getLinks(centerContext, row.id);
+    Object.assign(row, {
+      _centerContacts: links, _centerContact: links.find(link => link.role === 'primary' || link.role === 'bounce') || links[0] || null,
+      ...(links.length ? { _contactStatus: links[0]?.status ?? null, _contactTags: links[0]?.tags ? JSON.stringify(links[0].tags) : null } : {}),
+    });
+  }
   return okResult(enriched as unknown as InboxMessageRow[]);
 }
 
 // ── 正文落盘（正文不进库，独立文件存储，参照 Foxmail 索引/正文分离）──
 
-const BODY_DIR = path.join(path.dirname(DB_PATH), "bodies");
+// Modules load before login selects DB_PATH; body storage follows the selected account.
+const bodyDirectory = () => path.join(path.dirname(DB_PATH), "bodies");
 
 function bodyFilePath(id: number): string {
-  return path.join(BODY_DIR, `${id}.html`);
+  return path.join(bodyDirectory(), `${id}.html`);
 }
 
 /** 正文写入磁盘文件（异步，避免阻塞主进程） */
 export async function writeBodyFile(id: number, html: string): Promise<void> {
   if (!html) return;
-  if (!fs.existsSync(BODY_DIR)) fs.mkdirSync(BODY_DIR, { recursive: true });
+  const dir=bodyDirectory();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   await fs.promises.writeFile(bodyFilePath(id), html, "utf-8");
+  if (inboxCenterContactPort) await syncInboxCenterMessage(id, { bounceText: htmlToText(html) });
   indexEmailBody(id, htmlToText(html));
   setImmediate(() => enrichAndNotify(id, html));
 }
 
 function enrichAndNotify(id: number, html: string): void {
+  if (!inboxNetworkAllowed()) return; // Offline mailbox reads must not mutate legacy CRM records.
   const result = enrichMatchedMail(id, htmlToText(html));
   if (!result.success || !result.data) return;
   try { pushFn?.("inbox:newMail", { count: 0 }); }
@@ -779,16 +925,22 @@ export async function getBody(id: number): Promise<Result<string>> {
   if (fs.existsSync(file)) {
     try {
       const html = await fs.promises.readFile(file, "utf-8");
-      backfillMatchFromBody(row.id, row.matchedContactId, row.classification, html);
-      enrichAndNotify(row.id, html);
+      if (inboxNetworkAllowed()) {
+        backfillMatchFromBody(row.id, row.matchedContactId, row.classification, html);
+        enrichAndNotify(row.id, html);
+      }
+      if (inboxCenterContactPort) await syncInboxCenterMessage(row.id, { bounceText: htmlToText(html) });
       return okResult(html);
     }
     catch (err) { Log.error("inbox.body", `正文文件读取失败 id=${id}`, err instanceof Error ? err.stack : undefined); }
   }
   // ② 懒加载：IMAP 拉单封（fetchBody 内部会落盘文件）
-  if (row.messageId && imapFetchBodyFn) {
+  if (inboxNetworkAllowed() && row.messageId && imapFetchBodyFn) {
     const r = await imapFetchBodyFn(row.accountId, row.messageId, row.classification);
-    if (r.success && r.data) return okResult(r.data);
+    if (r.success && r.data) {
+      if (inboxCenterContactPort) await syncInboxCenterMessage(row.id, { bounceText: htmlToText(r.data) });
+      return okResult(r.data);
+    }
   }
   return okResult(row.bodyPreview || "");
 }
@@ -804,7 +956,7 @@ export function prefetchRecentBodies(limit = PREFETCH_BODY_LIMIT): Promise<void>
   return prefetchBodiesTask;
 }
 async function prefetchBodies(limit: number): Promise<void> {
-  if (!imapFetchBodyFn) return;
+  if (!imapFetchBodyFn || !inboxNetworkAllowed()) return;
   const rows = getDb().select({ id: inboxMessages.id, accountId: inboxMessages.accountId, messageId: inboxMessages.messageId, classification: inboxMessages.classification })
     .from(inboxMessages)
     .where(sql`${inboxMessages.messageId} IS NOT NULL`)
@@ -813,6 +965,7 @@ async function prefetchBodies(limit: number): Promise<void> {
     .all();
   let loaded = 0;
   for (const r of rows) {
+    if (!inboxNetworkAllowed()) break;
     if (!r.messageId) continue;
     if (fs.existsSync(bodyFilePath(r.id))) continue; // 已落盘 → 跳过（幂等）
     try {
@@ -848,6 +1001,7 @@ export async function applyBounceSource(
   // 关联表 + 标记退信 + bounced 事件的下游链都在 recordBounceMatches 里
   const fresh = recordBounceMatches(row.id, extractBouncedContacts(rawSource));
   saveDatabase();
+  if (inboxCenterContactPort) await syncInboxCenterMessage(row.id, { bounceText: rawSource });
   return fresh.length > 0;
 }
 
@@ -896,7 +1050,7 @@ export async function migrateBodiesOut(): Promise<void> {
   }
   raw.exec("ALTER TABLE inbox_messages DROP COLUMN raw_source;");
   saveDatabase();
-  Log.info("inbox.migrate", `正文出库 ${n} 封 → ${BODY_DIR}，库已瘦身`);
+  Log.info("inbox.migrate", `正文出库 ${n} 封 → ${bodyDirectory()}，库已瘦身`);
 }
 
 // ── 手动更新邮件分类 ──
@@ -910,6 +1064,18 @@ export function classifyMessage(id: number, classification: string): Result<void
 
   const existing = getDb().select().from(inboxMessages).where(eq(inboxMessages.id, id)).get();
   if (!existing) return failResult("邮件不存在");
+  if (inboxCenterContactPort) {
+    if (classification === 'sent' || existing.classification === 'sent' || existing.myRole === 'sender') return failResult('已发邮件不能通过收件分类更改');
+    const source = readMailboxSnapshot(id);
+    if (!source) return failResult('邮件不存在');
+    const saved = recordInboxClassificationChange(inboxCenterContactPort, { ...source, classification });
+    if (!saved.success) return saved;
+    saveDatabase();
+    void replayInboxCenterClassificationChanges().then(result => {
+      if (!result.success) Log.warn('inbox.classification', result.error);
+    });
+    return okResult(undefined);
+  }
 
   getDb().update(inboxMessages).set({ classification })
     .where(eq(inboxMessages.id, id)).run();
@@ -930,6 +1096,7 @@ export function markReplied(id: number): Result<void> {
   if (!Number.isInteger(id) || id <= 0) return failResult("无效的 ID");
   const existing = getDb().select().from(inboxMessages).where(eq(inboxMessages.id, id)).get();
   if (!existing) return failResult("邮件不存在");
+  if (inboxCenterContactPort) return classifyMessage(id, 'replied');
 
   getDb().update(inboxMessages).set({ classification: "replied" })
     .where(eq(inboxMessages.id, id)).run();
@@ -1080,6 +1247,7 @@ export function startAutoFetch(intervalMs = 5 * 60 * 1000) {
   // 失败退避：被限流的账号越撞限得越狠 —— 连败 ≥3 降频到每 4 轮、≥12 降频到每 12 轮；成功一轮自动恢复
   let autoTick = 0;
   fetchInterval = setInterval(() => {
+    if (!inboxNetworkAllowed()) return;
     if (autoRunning) {
       Log.warn("inbox.auto", "上一轮抓取未结束，本轮跳过");
       return;

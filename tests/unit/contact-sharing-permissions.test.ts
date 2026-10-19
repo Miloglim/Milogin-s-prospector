@@ -1,0 +1,12 @@
+import {describe,it,expect} from 'vitest';
+import {contactPermissions,sourceContactManager} from '../../server/core/contact-permissions';
+const actor={userId:'owner',roles:['sales'],scope:'own',capabilities:['leads.develop']};
+const row={ownerUserId:'owner',created_by:'ops',origin:'operations',active_assignment_status:'accepted'};
+describe('field-level contact permissions',()=>{
+ it('separates assigned editable fields, send and delegation',()=>{const p=contactPermissions(actor,row);expect(p.editableFields).toContain('phone');expect(p.editableFields).not.toContain('email');expect(p.editableFields).not.toContain('stage');expect(p).toMatchObject({canShare:true,canSendMail:true,canFollowup:true});});
+ it('allows uploading administrator to retain management after assignment',()=>{const p=contactPermissions({...actor,userId:'ops',scope:'shared',roles:['operations'],capabilities:['leads.develop','leads.assign']},row);expect(p.editableFields).toContain('email');});
+ it('allows every operations administrator to manage another administrator\'s imported contact',()=>{const other={...actor,userId:'other-ops',scope:'shared',roles:['operations'],capabilities:['leads.develop','leads.assign']};expect(sourceContactManager(other,row)).toBe(true);expect(contactPermissions(other,row)).toMatchObject({canFollowup:true,canChangeStage:true,canSendMail:true});expect(contactPermissions(other,row).editableFields).toContain('email');});
+ it('separates collaboration followup from independent sending',()=>{expect(contactPermissions({...actor,userId:'collaborator'},{...row,shared_grant:{editableFields:['phone','email'],canFollowup:false,canChangeStage:true}})).toEqual({editableFields:['phone'],canFollowup:false,canChangeStage:true,canSendMail:true,canShare:false});});
+ it('never grants a manager access to personal contacts from origin alone',()=>{expect(contactPermissions({...actor,userId:'ops',scope:'shared',roles:['operations'],capabilities:['leads.develop','leads.assign']},{...row,origin:'personal'}).canSendMail).toBe(false);});
+ it('does not treat a sales-owned personal contact as operations data',()=>{const other={...actor,userId:'other-ops',scope:'shared',roles:['operations'],capabilities:['leads.develop','leads.assign']};expect(sourceContactManager(other,{...row,origin:'personal'})).toBe(false);expect(contactPermissions(other,{...row,origin:'personal'}).editableFields).toEqual([]);});
+});

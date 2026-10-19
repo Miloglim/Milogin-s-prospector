@@ -6,7 +6,6 @@ import { getDb } from "../db";
 import { emailAccounts } from "../db/schema/accounts";
 import { eq } from "drizzle-orm";
 import { getDecryptedPassword } from "../services/account.service";
-import { loadConfig } from "../config";
 import { embedInlineImages } from "../services/inline-images";
 import { netFetch } from "../net-proxy";
 
@@ -60,8 +59,13 @@ async function loadInlineImage(src: string): Promise<{ buffer: Buffer; ext: stri
 // 改为 pooled transporter 按账号复用（maxConnections:1 与全局串行调度匹配）：
 // 缓存键含 host/port/密码指纹 → 账号改配置自动重建，不会拿旧凭据硬发；
 // 发送成功保留连接，发送失败立即剔除（下次重连新鲜连接，坏连接不会反复失败）。
+interface SmtpAcceptance { messageId?: string; accepted?: Array<string | { address: string }>; rejected?: Array<string | { address: string }> }
+export interface SmtpSendConfirmation { messageId: string | null; accepted?: string[]; rejected?: string[] }
+function envelopeAddresses(values: SmtpAcceptance['accepted']): string[] | undefined {
+  return values?.map(value => typeof value === 'string' ? value : value.address);
+}
 type PooledTransporter = {
-  sendMail: (opts: Record<string, unknown>) => Promise<{ messageId?: string }>;
+  sendMail: (opts: Record<string, unknown>) => Promise<SmtpAcceptance>;
   close: () => void;
 };
 const transporterPool = new Map<number, { transporter: PooledTransporter; key: string }>();
@@ -110,7 +114,7 @@ function idleConnectionError(msg: string): boolean {
 
 /** 发送一封邮件（v6.1 发送方式可切换）：individual=单独一封，收件人走 To（像人工手发）；
  *  缺省 bcc=收件人全走 BCC 互不可见。账号从 DB email_accounts 表读取（唯一数据源），密码解密后传给 nodemailer。 */
-export async function sendBcc(item: SendItem & { body: string }): Promise<Result<{ messageId: string | null }>> {
+export async function sendBcc(item: SendItem & { body: string }): Promise<Result<SmtpSendConfirmation>> {
   const account = getDb().select().from(emailAccounts).where(eq(emailAccounts.id, item.accountId)).get();
   if (!account) return failResult("账号未找到");
 
@@ -118,8 +122,7 @@ export async function sendBcc(item: SendItem & { body: string }): Promise<Result
   if (!passRes.success) return failResult("账号密码解密失败: " + passRes.error);
 
   try {
-    const config = loadConfig();
-    const displayName = account.displayName || config.fromName || "";
+    const displayName = account.displayName || "";
     const emails = item.recipients.map(r => r.email);
     const signature = (account.signature || "").trim();
     const body = item.body || "Hello, I hope this email finds you well.\n\nBest regards";
@@ -156,14 +159,14 @@ export async function sendBcc(item: SendItem & { body: string }): Promise<Result
       };
     }
 
-    let info: { messageId?: string } | null = null;
+    let info: SmtpAcceptance | null = null;
     try {
       info = await acquireTransporter(account, passRes.data).sendMail(mailOptions);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       evictTransporter(account.id, msg.slice(0, 60));
       // 池化连接闲置被掐：换新连接原参数重试一次，不计为发送失败（防误触连续失败/熔断）
-      if (idleConnectionError(msg)) {
+      if (!item.centerScope && !item.recipients.some(r => r.centerReference) && idleConnectionError(msg)) {
         Log.debug("send.pool", `闲置连接断开，重连重试：${msg.slice(0, 60)}`);
         info = await acquireTransporter(account, passRes.data).sendMail(mailOptions);
       } else {
@@ -171,7 +174,7 @@ export async function sendBcc(item: SendItem & { body: string }): Promise<Result
       }
     }
     Log.debug("send.bcc", `${item.companyName}: ${emails.length} 人`);
-    return okResult({ messageId: info?.messageId || null });
+    return okResult({ messageId: info?.messageId || null, ...(info?.accepted !== undefined ? { accepted: envelopeAddresses(info.accepted) } : {}), ...(info?.rejected !== undefined ? { rejected: envelopeAddresses(info.rejected) } : {}) });
   } catch (err: unknown) {
     return failResult(err instanceof Error ? err.message : "发送失败");
   }

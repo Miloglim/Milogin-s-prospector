@@ -28,6 +28,8 @@ void ensureToolMeta();
 /** IPC 返回的统一包裹形态（结构同 main/errors 的 Result，渲染层本地声明避免跨层 import） */
 type IpcResult<T> = { success: boolean; data?: T; error?: string };
 
+const MODEL_NOTICE_SECONDS = 2;
+
 /** 工具 → 人话名（过程卡展示用）：唯一事实源在主进程注册表（agent/manifest.ts），
  *  经 agent:toolMeta 取回缓存在 tool-meta；reasoning 是思考伪通道，本地特判即可 */
 const toolLabel = (name?: string) => (name === "reasoning" ? "思考" : toolLabelText(name));
@@ -1023,6 +1025,27 @@ export function AssistantPage() {
   const handleSend = async (raw: string): Promise<void> => {
     const t = raw.trim();
     if (!t) return;
+    const command = t.startsWith("/")
+      ? SLASH_COMMANDS.find(c => t === c.cmd || t.startsWith(`${c.cmd} `))
+      : undefined;
+    // 本地命令不依赖模型；真正调用助手时才检查，避免初始页面常驻警告。
+    if (!t.startsWith("/") || command?.template) {
+      try {
+        const status = await window.api.invoke("agent:status") as IpcResult<{ configured: boolean }>;
+        if (!status?.success || !status.data) {
+          message.error({ key: "assistant-model-status", content: "无法读取模型配置，请稍后重试", duration: MODEL_NOTICE_SECONDS });
+          return;
+        }
+        setConfigured(status.data.configured);
+        if (!status.data.configured) {
+          message.warning({ key: "assistant-model-status", content: "请先在「设置 → 模型与端点」配置并启用模型", duration: MODEL_NOTICE_SECONDS });
+          return;
+        }
+      } catch { // IPC 不可用时仅提示，不启动模型请求或在对话中留下错误消息。
+        message.error({ key: "assistant-model-status", content: "无法读取模型配置，请稍后重试", duration: MODEL_NOTICE_SECONDS });
+        return;
+      }
+    }
     if (sending) {
       // 豆包式插队：生成中来新消息 → 立即打断当前回答（已生成内容保留），紧接着处理新消息。
       // 快捷命令语义依赖空闲输入，不随打断执行。
@@ -1246,19 +1269,6 @@ export function AssistantPage() {
             className="!text-gray-300 hover:!text-gray-600" />
         </Tooltip>
       </div>
-      {configured === false && (
-        <Alert
-          type="error" showIcon className="mb-2"
-          message="未配置模型端点，助手无法回答"
-          description="到「设置 → 模型与端点」新增端点（Agnes / DeepSeek / 本地 Ollama / 公司中转 都有模板），填好密钥后点「启用」——保存即生效，不用重启应用。"
-          action={
-            <Button size="small" onClick={() => { window.location.hash = "#/settings"; }}>
-              去设置
-            </Button>
-          }
-        />
-      )}
-
       {configured && !identityOk && (
         <Alert
           type="info" showIcon closable className="mb-2"

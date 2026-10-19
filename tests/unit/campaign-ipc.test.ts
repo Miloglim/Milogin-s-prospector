@@ -30,6 +30,7 @@ vi.mock("../../src/main/net-proxy", () => ({ netFetch: async () => null }));
 vi.mock("../../src/main/services/send.service", () => {
   const ok = (data: unknown = null) => ({ success: true, data });
   return {
+    setSendNetworkAllowed: vi.fn(),
     buildDynamicQueue: vi.fn(async () => ok([])),
     getSendStatus: vi.fn(() => ok({ isRunning: false, isPaused: false, sentCount: 0, failedCount: 0, totalItems: 0 })),
     getQuotaStatus: vi.fn(() => ok({})),
@@ -190,5 +191,21 @@ describe("campaign IPC 端到端（向导 payload → transport → 落库）", 
     const r = invoke(IPC.SEND.CAMPAIGN_CREATE, { ...wizardPayload, name: "   " });
     expect(r.success).toBe(false);
     expect(r.error).toContain("任务名必填");
+  });
+});
+
+const sendPreviewService = await import("../../src/main/services/send.service");
+describe("recipient preview contract", () => {
+  beforeEach(() => { registerSendIPC(); vi.mocked(sendPreviewService.buildAdaptiveQueue).mockClear(); vi.mocked(sendPreviewService.buildQueue).mockClear(); });
+  it("routes refs-only selection to adaptive builder without interpreting numeric legacy IDs", async () => {
+    const refs=[{contactId:1,customerId:"center-a"}];
+    await handlers.get(IPC.SEND.PREVIEW)!(undefined,{centerContactRefs:refs});
+    expect(sendPreviewService.buildAdaptiveQueue).toHaveBeenCalledWith([],undefined,refs);
+  });
+  it("accepts empty buckets with explicit refs and retains template mode", async () => {
+    const refs=[{contactId:1,customerId:"center-a"}];const templates=[{subject:"Hi",body:"Body"}];
+    await handlers.get(IPC.SEND.PREVIEW)!(undefined,{keys:[],contactIds:[1],centerContactRefs:refs,templates});
+    expect(sendPreviewService.buildQueue).toHaveBeenCalledWith([],templates,[1],refs);
+    expect(invoke(IPC.SEND.PREVIEW,{keys:[],contactIds:[],centerContactRefs:[]}).success).toBe(false);
   });
 });

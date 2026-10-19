@@ -3,28 +3,39 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   DashboardOutlined, UserOutlined, SendOutlined,
   InboxOutlined, FileTextOutlined,
-  SettingOutlined, MoreOutlined, DollarOutlined, UpOutlined,
+  SettingOutlined, SearchOutlined, MoreOutlined, DollarOutlined, UpOutlined, BellOutlined,
+  MenuFoldOutlined, MenuUnfoldOutlined,
 } from "@ant-design/icons";
-import { Dropdown, Input, Modal } from "antd";
+import { ConfigProvider, Dropdown, Input, Modal } from "antd";
+import "./SidebarFooter.css";
+import { brandTheme } from '../../lib/brand-theme';
 import { useAppContext } from "../../AppContext";
 import { DiamondLogo } from "../DiamondLogo";
 import { GlobalSearch } from "../GlobalSearch";
 import { CONVS_CHANGED, gotoConversation } from "../../lib/agent-route";
 import { drop as dropConv, useRunningConvIds } from "../../hooks/useAgentTranscript";
+import { useOptionalNotifications } from '../../NotificationContext';
+import { useOptionalIdentity } from '../../IdentityContext';
+import { identityRoleLabel } from '../../../shared/online-crm';
 
 interface NavItem {
   key: string;
   icon: React.ReactNode;
   label: string;
-  dot?: boolean;
 }
 
 const navItems: NavItem[] = [
   { key: "/assistant", icon: <DiamondLogo size={15} state="idle" />, label: "新对话" },
   { key: "/", icon: <DashboardOutlined />, label: "仪表盘" },
-  { key: "/inbox", icon: <InboxOutlined />, label: "收件箱", dot: true },
-  { key: "/customers", icon: <UserOutlined />, label: "客户", dot: true },
+  { key: "/inbox", icon: <InboxOutlined />, label: "收件箱" },
+  { key: "/customers", icon: <UserOutlined />, label: "客户" },
 ];
+
+// 公司大模型正式接入前，先隐藏尚未开放的产品入口；路由和实现保留，后续只需打开开关。
+const SHOW_DASHBOARD_NAV = false;
+const SHOW_RATES_NAV = false;
+const SHOW_NEW_CONVERSATION_NAV = false;
+const SHOW_CONVERSATIONS_PANEL = false;
 
 // 豆包式空间让位：会话历史溢出时，这三行折叠进底栏图标，列表向上增高
 const collapsibleItems: NavItem[] = [
@@ -221,25 +232,33 @@ function ConversationsPanel({ collapsed, onMetrics, onTuck }: {
 }
 
 // 共用的导航项样式
-const navItemStyle = (active: boolean): React.CSSProperties => ({
-  padding: "12px 20px",
+const navItemStyle = (active: boolean, collapsed: boolean): React.CSSProperties => ({
+  padding: collapsed ? "12px 0" : "12px 20px",
+  height: 44,
+  boxSizing: "border-box",
   cursor: "pointer",
   fontSize: 14,
   display: "flex",
   alignItems: "center",
-  gap: 10,
-  borderLeft: `3px solid ${active ? "#00bfa5" : "transparent"}`,
-  background: active ? "rgba(255,255,255,0.14)" : "transparent",
+  justifyContent: collapsed ? "center" : "flex-start",
+  gap: collapsed ? 0 : 10,
+  borderLeft: collapsed ? "none" : `3px solid ${active ? "#00bfa5" : "transparent"}`,
+  background: active ? (collapsed ? "rgba(0,191,165,0.15)" : "rgba(255,255,255,0.14)") : "transparent",
   fontWeight: active ? 600 : 400,
-  transition: "background 0.15s, border-color 0.15s",
-  color: "#fff",
+  transition: "background 0.5s ease-in-out, border-color 0.5s ease-in-out",
+  color: active && collapsed ? "#00bfa5" : "#fff",
+  position: "relative",
 });
 
 export function Sidebar() {
-  const { sidebarCollapsed } = useAppContext();
+  const session = useOptionalIdentity();
+  const notifications = useOptionalNotifications();
+  const localAvailable = !session || session.localAvailable;
+  const offline = session?.status === 'offline';
+  const unavailable = (key: string) => !localAvailable && key !== '/customers';
+  const { sidebarCollapsed, toggleSidebar } = useAppContext();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: s => s.location.pathname });
-  const [version, setVersion] = useState("");
   /** 是否已在某个具体会话里——是则「新对话」不高亮（高亮交给会话列表那一行）；
    *  与列表同源：从 router state 派生而非监听 hashchange（navigate() 不触发后者） */
   const cParam = useRouterState({ select: s => (s.location.search as { c?: unknown }).c });
@@ -264,16 +283,6 @@ export function Sidebar() {
   }, []);
   const handleTuck = useCallback((down: boolean) => setTucked(down), []);
 
-  useEffect(() => {
-    window.api.invoke("system:appVersion").then((r) => {
-      if (r && typeof r === "object" && "success" in r && r.success && "data" in r) {
-        setVersion(String(r.data));
-      }
-    }).catch((err) => {
-      console.error("[Sidebar] appVersion failed:", err);
-    });
-  }, []);
-
   const isActive = (key: string) => {
     // 「新对话」只代表空态入口：已经在某个会话里就不高亮（高亮交给会话列表那一行）
     if (key === "/assistant") return pathname === "/assistant" && !activeConv;
@@ -281,16 +290,21 @@ export function Sidebar() {
   };
 
   const width = sidebarCollapsed ? 64 : 210;
+  const visibleNavItems = navItems.filter(item => (item.key !== '/' || SHOW_DASHBOARD_NAV) && (item.key !== '/assistant' || SHOW_NEW_CONVERSATION_NAV));
+  const visibleCollapsibleItems = collapsibleItems.filter(item => item.key !== '/rates' || SHOW_RATES_NAV);
 
   const renderItem = (item: NavItem) => (
     <li
       key={item.key}
       onClick={() => {
+        if (unavailable(item.key)) return;
         // 「新对话」= 清掉会话参数进入空白态；已在该页时 hash 变化仍会触发页面重置
         if (item.key === "/assistant") gotoConversation(undefined);
         else navigate({ to: item.key });
       }}
-      style={navItemStyle(isActive(item.key))}
+      title={unavailable(item.key) ? offline ? '离线' : '此功能暂未开放' : sidebarCollapsed ? item.label : undefined}
+      aria-disabled={unavailable(item.key)}
+      style={{ ...navItemStyle(isActive(item.key), sidebarCollapsed), ...(unavailable(item.key) ? { opacity: .4, cursor: 'not-allowed' } : {}) }}
       onMouseEnter={(e) => {
         if (!isActive(item.key))
           e.currentTarget.style.background = "rgba(255,255,255,0.08)";
@@ -309,18 +323,15 @@ export function Sidebar() {
           ? <DiamondLogo size={15} state={agentBusy ? "running" : "idle"} />
           : item.icon}
       </span>
-      {!sidebarCollapsed && (
-        <>
-          {item.label}
-          {item.dot && (
-            <span style={{
-              width: 6, height: 6, borderRadius: "50%",
-              background: "#e5484d", marginLeft: 4, flexShrink: 0,
-              opacity: 0,
-            }} />
-          )}
-        </>
-      )}
+      <span style={{
+        overflow: "hidden",
+        whiteSpace: "nowrap",
+        opacity: sidebarCollapsed ? 0 : 1,
+        transition: "opacity 0.15s ease",
+        display: sidebarCollapsed ? "none" : "flex", alignItems: "center",
+      }}>
+        {item.label}
+      </span>
     </li>
   );
 
@@ -334,113 +345,108 @@ export function Sidebar() {
         borderRight: "1px solid rgba(255,255,255,0.08)",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
+        overflow: "visible",
+        position: "relative",
         transition: "width 0.2s, min-width 0.2s, max-width 0.2s",
       }}
     >
-      {/* Brand */}
+      {/* 保留品牌区域高度，折叠仅隐藏内容，导航不会上下跳动。 */}
       <div
-        style={{ padding: sidebarCollapsed ? "16px 0" : "24px 20px 20px", cursor: "pointer", textAlign: sidebarCollapsed ? "center" : "left" }}
-        onClick={() => navigate({ to: "/" })}
+        aria-hidden={sidebarCollapsed}
+        style={{ padding: "24px 20px 20px", cursor: "pointer", textAlign: "left", opacity: sidebarCollapsed ? 0 : 1, borderBottom: sidebarCollapsed ? "1px solid rgba(255,255,255,0.08)" : "none", whiteSpace: "nowrap", flexShrink: 0 }}
+        onClick={() => navigate({ to: localAvailable ? '/' : '/customers' })}
       >
-        {sidebarCollapsed ? (
-          <div style={{
-            width: 24, height: 24, borderRadius: 4,
-            background: "#00bfa5", display: "inline-flex",
-            alignItems: "center", justifyContent: "center",
-            fontSize: 12, fontWeight: 700, color: "#000",
-          }}>
-            M
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 10, opacity: 0.5, display: "block", color: "#999" }}>
-              Milogin&apos;s
-            </div>
-            <h1 style={{
-              fontSize: 20, fontWeight: 700, letterSpacing: "0.5px",
-              margin: 0, color: "#fff",
-            }}>
-              Prospector<span style={{ color: "#00bfa5" }}>.</span>
-            </h1>
-          </>
-        )}
+        <div style={{ fontSize: 10, opacity: 0.5, display: "block", color: "#999" }}>
+          Milogin&apos;s
+        </div>
+        <h1 style={{
+          fontSize: 20, fontWeight: 700, letterSpacing: "0.5px",
+          margin: 0, color: "#fff",
+        }}>
+          Prospector<span className={`sidebar-brand-dot${offline ? ' is-offline' : ''}`}>.</span>
+        </h1>
       </div>
 
-      <GlobalSearch collapsed={sidebarCollapsed} />
       {/* Nav — 平铺列表；会话历史常驻导航项下方（豆包式：任何页面都可直切会话） */}
       <nav style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
         <ul style={{ listStyle: "none", padding: 0, margin: 0, flexShrink: 0 }}>
-          {navItems.map(renderItem)}
-          {/* 折叠让位只发生在展开态；rail 模式没有会话列表，三项常驻防入口丢失 */}
-          {!navHidden && collapsibleItems.map(renderItem)}
+          {visibleNavItems.map(renderItem)}
+          {!navHidden && visibleCollapsibleItems.map(renderItem)}
         </ul>
 
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "8px 12px 0", flexShrink: 0 }} />
-        <ConversationsPanel collapsed={sidebarCollapsed} onMetrics={handleMetrics} onTuck={handleTuck} />
+        {SHOW_CONVERSATIONS_PANEL && <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "8px 12px 0", flexShrink: 0 }} />}
+        {localAvailable && SHOW_CONVERSATIONS_PANEL && <ConversationsPanel collapsed={sidebarCollapsed} onMetrics={handleMetrics} onTuck={handleTuck} />}
       </nav>
 
-      {/* 底栏 — 折叠态图标组 + 设置（轻量图标）+ 版本号；Shift+点版本号重开新手向导（沿用旧 PE 调试入口） */}
-      <div style={{
-        borderTop: "1px solid rgba(255,255,255,0.12)",
-        padding: sidebarCollapsed ? "8px 0" : "8px 14px",
-        display: "flex", alignItems: "center",
-        justifyContent: sidebarCollapsed ? "center" : "space-between",
-        flexShrink: 0,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {navHidden && (
-            <>
-              <span
-                title="已收起 3 个入口 · 点击展开（列表滚回顶部也会自动展开）"
-                onClick={() => setTucked(false)}
-                style={{
-                  width: 26, height: 26, borderRadius: 6, fontSize: 13,
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer", color: "rgba(255,255,255,0.55)",
-                  transition: "background 0.15s, color 0.15s",
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#fff"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.55)"; }}
-              >
-                <UpOutlined />
-              </span>
-              {collapsibleItems.map(it => (
-                <FootIcon key={it.key} icon={it.icon} label={it.label}
-                  active={isActive(it.key)} onClick={() => navigate({ to: it.key })} />
-              ))}
-              <span style={{ width: 1, height: 16, background: "rgba(255,255,255,0.12)", margin: "0 4px 0 2px" }} />
-            </>
-          )}
-          <FootIcon icon={<SettingOutlined />} label="设置"
-            active={isActive("/settings")} onClick={() => navigate({ to: "/settings" })} />
+      {navHidden && SHOW_CONVERSATIONS_PANEL && <div className="sidebar-tucked-nav">
+        <FootIcon icon={<UpOutlined />} label="展开导航" active={false} onClick={() => setTucked(false)} />
+        {visibleCollapsibleItems.map(it => <FootIcon key={it.key} icon={it.icon} label={it.label}
+          active={isActive(it.key)} onClick={() => navigate({ to: it.key })} />)}
+      </div>}
+
+      <div className={`sidebar-footer${sidebarCollapsed ? ' is-collapsed' : ''}`}>
+        {session?.identity && <ConfigProvider theme={brandTheme(true)}><Dropdown overlayClassName="account-menu-popup" trigger={['click']} placement="topLeft" menu={{ items: [{ type: 'group', label: <div className="account-menu-identity"><strong>{session.identity.displayName}</strong><span>{session.identity.email}</span></div> }, { type: 'divider' }, { key: 'profile', icon: <UserOutlined />, label: '账号资料' }, { key: 'settings', icon: <SettingOutlined />, label: '设置' }, { type: 'divider' }, { key: 'switch', label: '切换账号' }, { key: 'logout', label: '退出登录' }], onClick: ({ key }) => { if (key === 'logout') void session.logout(); if (key === 'switch') void session.logout({ switchAccount: true }); if (key === 'settings') void navigate({ to: '/settings' }); if (key === 'profile') void navigate({ to: '/account' }); } }}>
+                <button type="button" className="sidebar-account" aria-label="账号菜单" title={`你好，${identityRoleLabel(session.identity)}`}>
+            <SettingOutlined />
+                  {!sidebarCollapsed && <span className="sidebar-greeting" style={{ color: '#9b9b9b', fontWeight: 600 }}>你好，{identityRoleLabel(session.identity)}</span>}
+          </button>
+        </Dropdown></ConfigProvider>}
+        <div className="sidebar-footer-actions">
+          {localAvailable && <GlobalSearch trigger={(onClick, active) => <FootIcon icon={<SearchOutlined />} label="全局搜索" active={active} onClick={onClick} />} />}
+          {session?.identity && <FootIcon icon={<><BellOutlined />{(notifications?.unread ?? 0) > 0 && <span className="sidebar-message-dot" aria-label="有未读消息" />}</>} label="消息中心" disabled={offline} active={isActive('/messages')} onClick={() => void navigate({ to: '/messages' })} />}
         </div>
-        {!sidebarCollapsed && (
-          <span
-            title="Shift+点击：重开新手向导"
-            onClick={(e) => { if (e.shiftKey) window.dispatchEvent(new Event("open-onboarding")); }}
-            style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", cursor: "pointer", userSelect: "none" }}
-          >
-            v{version || "4.0"}
-          </span>
-        )}
       </div>
+
+      {/* 边缘细长书签式折叠钮：向外突出在侧栏右边线上 */}
+      <button
+        type="button"
+        onClick={toggleSidebar}
+        title={sidebarCollapsed ? "展开侧栏" : "折叠为图标轨"}
+        style={{
+          position: "absolute",
+          right: -4,
+          top: "50%",
+          transform: "translateY(-50%)",
+          width: 8,
+          height: 40,
+          padding: 0,
+          border: "none",
+          background: "#2a2a2a",
+          cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: "4px",
+          boxShadow: "0 1px 4px rgba(0,0,0,.35)",
+          zIndex: 10,
+          transition: "background .15s",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = "#00bfa5"; }}
+        onMouseLeave={e => { e.currentTarget.style.background = "#2a2a2a"; }}
+      >
+        <span style={{
+          fontSize: 9, color: "rgba(255,255,255,.6)",
+          transition: "color .15s",
+          lineHeight: 1,
+        }}>
+          {sidebarCollapsed ? "›" : "‹"}
+        </span>
+      </button>
     </aside>
   );
 }
 
 /** 底栏轻量图标按钮（设置 / 折叠进来的导航项共用） */
-function FootIcon({ icon, label, active, onClick }: {
-  icon: React.ReactNode; label: string; active: boolean; onClick: () => void;
+function FootIcon({ icon, label, active, onClick, disabled = false }: {
+  icon: React.ReactNode; label: string; active: boolean; onClick: () => void; disabled?: boolean;
 }) {
   return (
-    <span
+    <button type="button" className="sidebar-foot-icon" aria-label={label} disabled={disabled}
       title={label}
       onClick={onClick}
       style={{
-        width: 26, height: 26, borderRadius: 6, fontSize: 14,
+        borderRadius: 6, position: "relative",
+        border: "none", padding: 0, flexShrink: 0,
         display: "inline-flex", alignItems: "center", justifyContent: "center",
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .4 : 1,
         color: active ? "#fff" : "rgba(255,255,255,0.45)",
         background: active ? "rgba(255,255,255,0.12)" : "transparent",
         transition: "background 0.15s, color 0.15s",
@@ -452,6 +458,6 @@ function FootIcon({ icon, label, active, onClick }: {
       }}
     >
       {icon}
-    </span>
+    </button>
   );
 }
