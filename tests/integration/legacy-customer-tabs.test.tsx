@@ -13,11 +13,11 @@ describe('restored original customer view switch', () => {
   let root: Root; let host: HTMLDivElement;
   beforeEach(() => { (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; window.history.replaceState(null, '', '#/customers'); host = document.createElement('div'); document.body.append(host); root = createRoot(host); });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
-  const waitForDeferredTable = () => act(async () => { await new Promise<void>(resolve => window.setTimeout(resolve, 80)); });
+  const waitForDeferredTable = () => act(async () => { await new Promise<void>(resolve => window.setTimeout(resolve, 220)); });
   const mount = async () => { await act(async () => { root.render(<QueryClientProvider client={new QueryClient()}><LegacyCustomersPage /></QueryClientProvider>); }); await waitForDeferredTable(); };
   const select = (label: string) => act(async () => { Array.from(host.querySelectorAll('.ant-segmented-item')).find(item => item.textContent === label)!.querySelector<HTMLInputElement>('input')!.click(); });
   it('restores all three original tabs and switches the original pages', async () => {
-    await mount(); expect(host.querySelector('[data-view="table"]')).not.toBeNull();
+    await mount(); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
     await select('跟进看板'); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
     await select('公司'); expect(host.querySelector('[data-view="company"]')).not.toBeNull();
     await select('联系人'); await waitForDeferredTable(); expect(host.querySelector('[data-view="table"]')).not.toBeNull();
@@ -33,6 +33,6 @@ describe('restored original customer view switch', () => {
   it('keeps the formal customer source without the retired isolation preview', async () => {
     await mount();
     expect(host.textContent).not.toContain('隔离预览');expect(host.textContent).toContain('分配管理');
-    expect(window.location.hash).toBe('#/customers'); expect(host.querySelector('[data-view="table"]')).not.toBeNull();
+    expect(window.location.hash).toBe('#/customers'); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
   });
 });

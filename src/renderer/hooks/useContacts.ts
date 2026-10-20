@@ -2,6 +2,9 @@ import { invalidateDomain } from "../lib/cacheDeps";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { ONLINE_LIMITS } from '../../shared/online-crm';
 
+// 客户页离开后短时间内返回，直接使用查询缓存；挂载中的 5 秒轮询和写入失效仍负责保持内容新鲜。
+const CONTACT_CACHE_STALE_MS = 30_000;
+
 export interface Contact {
   /** Explicit source identity: center records must never reach local ID APIs. */
   dataSource?: 'center';
@@ -65,6 +68,7 @@ export function useContacts(params?: { search?: string; page?: number } & Contac
     }>,
     // 翻页/筛选/搜索变更时保留上一份数据展示，不闪加载态
     placeholderData: keepPreviousData,
+    staleTime: port ? CONTACT_CACHE_STALE_MS : 0,
     refetchInterval: port ? ONLINE_LIMITS.pollMs : false,
   });
 }

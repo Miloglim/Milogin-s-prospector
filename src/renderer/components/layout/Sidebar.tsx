@@ -242,12 +242,14 @@ const navItemStyle = (active: boolean, collapsed: boolean): React.CSSProperties 
   alignItems: "center",
   justifyContent: collapsed ? "center" : "flex-start",
   gap: collapsed ? 0 : 10,
-  borderLeft: collapsed ? "none" : `3px solid ${active ? "#00bfa5" : "transparent"}`,
-  background: active ? (collapsed ? "rgba(0,191,165,0.15)" : "rgba(255,255,255,0.14)") : "transparent",
+  // 选中态的绿色条由父级滑块统一绘制，避免每个条目各自重排。
+  borderLeft: collapsed ? "none" : "3px solid transparent",
+  background: collapsed && active ? "rgba(0,191,165,0.15)" : "transparent",
   fontWeight: active ? 600 : 400,
-  transition: "background 0.5s ease-in-out, border-color 0.5s ease-in-out",
+  transition: "color 0.15s ease, opacity 0.15s ease",
   color: active && collapsed ? "#00bfa5" : "#fff",
   position: "relative",
+  zIndex: 1,
 });
 
 export function Sidebar() {
@@ -265,6 +267,7 @@ export function Sidebar() {
   const activeConv = typeof cParam === "string" && cParam ? cParam : undefined;
   // agent 输出中：「新对话」导航菱形从呼吸切到旋转（任意页面的全局状态灯）
   const [agentBusy, setAgentBusy] = useState(false);
+  const indicatorRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const offChunk = window.api.on("agent:chunk", () => setAgentBusy(true));
@@ -292,27 +295,28 @@ export function Sidebar() {
   const width = sidebarCollapsed ? 64 : 210;
   const visibleNavItems = navItems.filter(item => (item.key !== '/' || SHOW_DASHBOARD_NAV) && (item.key !== '/assistant' || SHOW_NEW_CONVERSATION_NAV));
   const visibleCollapsibleItems = collapsibleItems.filter(item => item.key !== '/rates' || SHOW_RATES_NAV);
+  const renderedNavItems = navHidden ? visibleNavItems : [...visibleNavItems, ...visibleCollapsibleItems];
+  const activeNavIndex = renderedNavItems.findIndex(item => isActive(item.key));
 
-  const renderItem = (item: NavItem) => (
+  const renderItem = (item: NavItem, index: number) => (
     <li
       key={item.key}
       onClick={() => {
         if (unavailable(item.key)) return;
-        // 「新对话」= 清掉会话参数进入空白态；已在该页时 hash 变化仍会触发页面重置
-        if (item.key === "/assistant") gotoConversation(undefined);
-        else navigate({ to: item.key });
+        const go = () => {
+          // 「新对话」= 清掉会话参数进入空白态；已在该页时 hash 变化仍会触发页面重置
+          if (item.key === "/assistant") gotoConversation(undefined);
+          else navigate({ to: item.key });
+        };
+        // 客户页高亮条独立于页面内容移动；路由壳体立即切换，重表格由客户页自行延后挂载。
+        if (item.key === "/customers" && !isActive(item.key) && !sidebarCollapsed) {
+          indicatorRef.current?.style.setProperty("transform", `translateY(${index * 44}px)`);
+        }
+        go();
       }}
       title={unavailable(item.key) ? offline ? '离线' : '此功能暂未开放' : sidebarCollapsed ? item.label : undefined}
       aria-disabled={unavailable(item.key)}
       style={{ ...navItemStyle(isActive(item.key), sidebarCollapsed), ...(unavailable(item.key) ? { opacity: .4, cursor: 'not-allowed' } : {}) }}
-      onMouseEnter={(e) => {
-        if (!isActive(item.key))
-          e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive(item.key))
-          e.currentTarget.style.background = "transparent";
-      }}
     >
       <span style={{
         width: 20, height: 20, textAlign: "center",
@@ -369,9 +373,14 @@ export function Sidebar() {
 
       {/* Nav — 平铺列表；会话历史常驻导航项下方（豆包式：任何页面都可直切会话） */}
       <nav style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, flexShrink: 0 }}>
-          {visibleNavItems.map(renderItem)}
-          {!navHidden && visibleCollapsibleItems.map(renderItem)}
+        <ul className="sidebar-nav-list" style={{ listStyle: "none", padding: 0, margin: 0, flexShrink: 0, position: "relative" }}>
+          {!sidebarCollapsed && activeNavIndex >= 0 && <span
+            ref={indicatorRef}
+            className="sidebar-nav-indicator"
+            aria-hidden="true"
+            style={{ transform: `translateY(${activeNavIndex * 44}px)` }}
+          />}
+          {renderedNavItems.map(renderItem)}
         </ul>
 
         {SHOW_CONVERSATIONS_PANEL && <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "8px 12px 0", flexShrink: 0 }} />}

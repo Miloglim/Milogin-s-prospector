@@ -590,10 +590,10 @@ export function InboxList() {
   // ── 渲染 ──
 
   return (
-    <div className="flex h-full" style={{ minHeight: "calc(100vh - 130px)" }} onClick={() => setMenu(null)}>
+    <div className="inbox-workspace prospector-inbox-page flex h-full" style={{ height: "100%", minHeight: 0, overflow: "hidden" }} onClick={() => setMenu(null)}>
 
       {/* ══ 左侧 ══ */}
-      <div className="flex flex-col flex-shrink-0 bg-white" style={{ width: "40%", minWidth: 340, userSelect: "none", borderRight: "1px solid #e8e8e8" }}>
+      <div className="flex flex-col flex-shrink-0 bg-white" style={{ width: "34%", minWidth: 360, maxWidth: 620, minHeight: 0, userSelect: "none", borderRight: "1px solid #e8e8e8" }}>
 
         {/* 顶部 */}
         <div style={{ padding: "7px 10px 5px", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -818,7 +818,7 @@ export function InboxList() {
       </div>
 
       {/* ══ 右侧 ══ */}
-      <div className="flex-1 bg-white flex flex-col overflow-hidden">
+      <div className="flex-1 bg-white flex flex-col overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
         {!sel_ ? (
           <div className="flex-1 flex flex-col items-center justify-center" style={{ color: "#ddd" }}>
             <MailOutlined style={{ fontSize: 32, marginBottom: 10 }} />
@@ -1059,8 +1059,8 @@ export function InboxList() {
             )}
 
             {/* 正文 */}
-            <div className="detail-body">
-              <div className="body-pane" style={{ height: "calc(100vh - 290px)", display: "flex", flexDirection: "column" }}>
+            <div className="detail-body" style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
+              <div className="body-pane" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                 {bl ? (
                   <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc", fontSize: 13 }}>加载正文中...</div>
                 ) : body ? (

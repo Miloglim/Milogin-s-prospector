@@ -8,6 +8,7 @@ import { OnboardingWizard } from "../OnboardingWizard";
 import { globalStatusNotices, GLOBAL_STATUS_TOAST_DURATION_SECONDS, type GlobalStatusNotice } from './app-layout-status';
 
 const { Content } = Layout;
+const EDGE_TO_EDGE_PATHS = new Set(['/inbox']);
 
 /** 路由级 keep-alive：登记过的页面切走只隐藏不卸载，切回来零重挂、零 loading 闪变。
  *  · 缓存键 = pathname；从别的页面带着新 query 深链进来时换新实例（页面挂载时读 query 的语义不变）；
@@ -81,7 +82,7 @@ export function TitleBar() {
 }
 
 /** 内容区滚动容器：每个路由记住自己的 scrollTop，切页互不串位置（keep-alive 后必需）。 */
-function ScrollArea({ pathname, children }: { pathname: string; children: React.ReactNode }) {
+function ScrollArea({ pathname, fullScreen, children }: { pathname: string; fullScreen: boolean; children: React.ReactNode }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const posMap = useRef<Map<string, number>>(new Map());
   const activePath = useRef<string>(pathname);
@@ -94,8 +95,9 @@ function ScrollArea({ pathname, children }: { pathname: string; children: React.
   return (
     <div
       ref={scrollRef}
+      className={fullScreen ? 'app-scroll-area app-scroll-area--edge-to-edge' : 'app-scroll-area'}
       onScroll={e => posMap.current.set(activePath.current, e.currentTarget.scrollTop)}
-      style={{ height: "100%", overflow: "auto", padding: '16px 20px' }}
+      style={{ height: "100%", minHeight: 0, overflow: fullScreen ? "hidden" : "auto", padding: fullScreen ? 0 : '16px 20px' }}
     >
       {children}
     </div>
@@ -184,8 +186,11 @@ export function AppLayout() {
         <Sidebar />
         <Layout>
           <Content style={{ background: "#f5f5f5", minHeight: 0, overflow: "hidden" }}>
-            <ScrollArea pathname={pathname}>
-              <div hidden={centerUnavailable}>{!localAvailable && pathname === '/settings' ? <Spin /> : !localAvailable && !['/customers', '/customers-online', '/account', '/messages'].includes(pathname) ? null : <KeepAliveOutlet />}</div>
+            <ScrollArea pathname={pathname} fullScreen={EDGE_TO_EDGE_PATHS.has(pathname)}>
+              <div
+                className={EDGE_TO_EDGE_PATHS.has(pathname) ? 'app-route-content app-route-content--edge-to-edge' : 'app-route-content'}
+                hidden={centerUnavailable}
+              >{!localAvailable && pathname === '/settings' ? <Spin /> : !localAvailable && !['/customers', '/customers-online', '/account', '/messages'].includes(pathname) ? null : <KeepAliveOutlet />}</div>
             </ScrollArea>
           </Content>
         </Layout>

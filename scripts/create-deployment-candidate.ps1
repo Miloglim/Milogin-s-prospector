@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $navigatorRoot = 'C:\Users\YQN\Documents\正式版运价库\运价项目\Database'
 $navigatorScripts = 'C:\Users\YQN\Documents\正式版运价库\运价项目\Skill\freight-rate-heartbeat\scripts'
@@ -21,6 +21,7 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'dist-admin') -Destination (Join-
 Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\server-runtime\package.json') -Destination (Join-Path $prospector 'package.json')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\server-runtime\package-lock.json') -Destination (Join-Path $prospector 'package-lock.json')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\production-server.mjs') -Destination (Join-Path $prospector 'scripts\production-server.mjs')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\bootstrap-company-server.ps1') -Destination (Join-Path $prospector 'scripts\bootstrap-company-server.ps1')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\production-deployment.env.example') -Destination (Join-Path $prospector 'production-deployment.env.example')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\company-server-handoff-20261019.md') -Destination (Join-Path $candidateRoot 'README.md')
 
@@ -58,7 +59,7 @@ foreach ($directory in @('', 'core', 'services')) {
     ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $targetDirectory $_.Name) }
 }
 
-$version = (& node -p "require('./package.json').version").Trim()
+$version = (& node -p "require(process.argv[1]).version" (Join-Path $projectRoot 'package.json')).Trim()
 $installerName = "prospecting-email-setup-$version.exe"
 $installerPath = Join-Path (Join-Path $projectRoot '..\dist-release') $installerName
 if (!(Test-Path -LiteralPath $installerPath)) { throw "客户端安装包不存在：$installerPath" }

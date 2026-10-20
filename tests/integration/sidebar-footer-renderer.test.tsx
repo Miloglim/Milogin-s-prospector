@@ -68,7 +68,7 @@ describe('sidebar account, search and messages footer', () => {
     expect(host.querySelector('.sidebar-brand-dot')?.classList.contains('is-offline')).toBe(true);
     const item=Array.from(host.querySelectorAll('li')).find(li=>li.textContent==='客户')!;
     expect(item.getAttribute('aria-disabled')).toBe('false');
-    await act(async()=>item.click());expect(state.navigate).toHaveBeenCalledWith({to:'/customers'});
+    await act(async()=>{ item.click(); });expect(state.navigate).toHaveBeenCalledWith({to:'/customers'});
     expect(host.querySelector('button[aria-label="消息中心"]')?.hasAttribute('disabled')).toBe(true);
   });
   it('keeps the brand dot active while connected', async () => {

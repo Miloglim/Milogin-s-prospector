@@ -131,6 +131,8 @@ MANIFEST.json        文件清单和排除项
 5. 检查中心 API 的 `/health/ready`。
 6. 准备 Navigator PostgreSQL，并按 Navigator 的说明配置 `FREIGHT_POSTGRES_DSN`。
 7. 启动 Navigator `manual_server.py`，确认运价接口可访问。
+
+首次部署也可以在交接包根目录运行 `prospector\scripts\bootstrap-company-server.ps1`。脚本会逐步检查 Node/Python/psql，交互读取两个数据库账号密码，生成 Navigator 的本机配置，安装 PostgreSQL 驱动并初始化表结构；增加 `-StartServices` 才会启动两个服务并执行健康检查。脚本不会删除数据库、不会覆盖已有 DSN 配置，也不会把密码写入项目目录。
 8. 部署 HTTPS 反向代理，再安装 `client/` 中的 Prospector 客户端。
 
 中心 PostgreSQL 和 Navigator PostgreSQL 可以在同一台服务器上，但必须是两个独立数据库，账号权限也应分开。PostgreSQL 的 `5432` 不应直接暴露给客户端。
