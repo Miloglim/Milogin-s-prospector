@@ -17,6 +17,7 @@
 - Navigator 业务经验必须先写入本地不可变事件和 `account_growth_sync_outbox`，再补传中心；中心离线时 outbox 保持 pending，不能丢事件或由本地投影覆盖中心。
 - 中心账号模式的本地会话查询不得要求 `operators.password_hash` 非空；本地密码只用于历史兼容或显式本地模式。
 - Prospector 与 Navigator 的改密必须最终写中心 `identity.credentials` 并撤销旧会话。中心模式下禁止修改 Navigator 本地 `operators.password_hash` 冒充账号改密。
+- 中心不可用时，Prospector 只能在“已记住登录且离线授权仍有效”的前提下恢复离线工作区；不得用本地密码哈希或缓存密码接受一次全新登录。当前开发版中心地址由 `assets/center.json`/`PROSPECTOR_CENTER_URL` 指向本机 `55847`，该地址关闭时首次登录必然失败。
 
 ## 前端与迭代约定（2026-10-12）
 
