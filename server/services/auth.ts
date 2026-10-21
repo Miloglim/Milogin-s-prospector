@@ -1,5 +1,7 @@
 import { success, failure, type Result } from "../core/crm";
 import { AUTH_LIMITS, CRM_CAPABILITIES,BOOTSTRAP_LOGIN_MIN, type AuthRepository, type PasswordPort, type TokenPort, type ClockPort, type Identity, type LoginResponse } from "../core/auth";
+import { normalizeAccountProfilePatch } from "../core/account-profile";
+import { isGrowthEventInput } from "../core/account-growth";
 
 const MILLISECONDS_PER_SECOND = 1000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -43,6 +45,24 @@ export function createAuthService(repo: AuthRepository, passwords: PasswordPort,
       const result=await repo.accountProfile(tokens.hash(token));
       if(!result.ok)return result;
       return result.data?.userId===identity.data.userId?success(result.data):unauthorized();
+    },
+    async updateAccountProfile(token: string,input: unknown) {
+      const identity=await me(token);
+      if(!identity.ok)return identity;
+      if(!repo.updateAccountProfile)return failure('UNAVAILABLE','账号资料写入暂不可用');
+      let patch;
+      try { patch=normalizeAccountProfilePatch(input); }
+      catch(error) { return failure('INVALID_INPUT',error instanceof Error?error.message:'账号资料参数无效'); }
+      const result=await repo.updateAccountProfile(tokens.hash(token),patch);
+      if(!result.ok)return result;
+      return result.data?.userId===identity.data.userId?success(result.data):unauthorized();
+    },
+    async accountGrowth(token: string,input: unknown) {
+      const identity=await me(token);
+      if(!identity.ok)return identity;
+      if(!repo.recordGrowthEvent)return failure('UNAVAILABLE','成长记账暂不可用');
+      if(!isGrowthEventInput(input))return failure('INVALID_INPUT','成长事件参数无效');
+      return repo.recordGrowthEvent(tokens.hash(token),input);
     },
     async logout(token: string,client:"api"|"browser"='api'): Promise<Result<void>> {
       const identity = await me(token,client);

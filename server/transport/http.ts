@@ -62,6 +62,14 @@ export function createOnlineServer(service: AuthService, gate: LoginGate, config
       }
     } else if(method === "GET" && path === API_ROUTES.me) result = await service.me(token);
     else if(method === "GET" && path === API_ROUTES.accountProfile) result = await service.accountProfile(token);
+    else if(method === "POST" && path === API_ROUTES.accountProfile) {
+      const input=await body(request,config.request_body_bytes);
+      result=input.ok?await service.updateAccountProfile(token,input.data):input;
+    }
+    else if(method === "POST" && path === API_ROUTES.accountGrowth) {
+      const input=await body(request,config.request_body_bytes);
+      result=input.ok?await service.accountGrowth(token,input.data):input;
+    }
     else if(method === "POST" && path === API_ROUTES.logout) result = await service.logout(token);
     else if(method === "GET" && path === API_ROUTES.users) result = await service.users(token);
     else if(method === "GET" && path === API_ROUTES.crmAccess) result = await service.crmAccess(token);

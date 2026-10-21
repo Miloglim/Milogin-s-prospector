@@ -85,7 +85,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
     expect(identity.headers.get("cache-control")).toContain("no-store");
   });
   it("serves only the authenticated account's shared profile and derived growth", async () => {
-    const token = await login("admin");
+    const token = tokens.admin!;
     const userId = users.admin!.userId;
     await pool.query("INSERT INTO identity.user_profiles(user_id,avatar_id,bio) VALUES($1,'av-04','') ON CONFLICT(user_id) DO UPDATE SET avatar_id='av-04',bio=''", [userId]);
     await pool.query("INSERT INTO identity.account_growth_projection(user_id,total_xp,cycle,level,today_xp,today_key) VALUES($1,6612,7,28,18,CURRENT_DATE) ON CONFLICT(user_id) DO UPDATE SET total_xp=6612,cycle=7,level=28,today_xp=18,today_key=CURRENT_DATE", [userId]);
@@ -103,12 +103,48 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
     }
   });
   it("keeps missing shared profile and growth unknown instead of inventing values", async () => {
-    const token = await login("a");
+    const token = tokens.admin!;
     const profile = await request(API_ROUTES.accountProfile, { token });
     expect(profile.status).toBe(200);
     expect(profile.body).toMatchObject({ ok: true, data: {
-      userId: users.a!.userId, displayName: "a", avatarId: "default", bio: "", growth: null,
+      userId: users.admin!.userId, displayName: "admin", avatarId: "default", bio: "", growth: null,
     } });
+  });
+  it("updates only the current account's shared display name, avatar and bio", async () => {
+    const token = tokens.admin!, userId = users.admin!.userId;
+    const auditBefore = (await pool.query("SELECT count(*)::int AS n FROM identity.management_audit WHERE target_id=$1 AND action='identity.profile.updated'", [userId])).rows[0].n;
+    const updated = await request(API_ROUTES.accountProfile, { method: "POST", token, body: { displayName: "Zayne Center", avatarId: "av-04", bio: "shared profile" } });
+    expect(updated.status).toBe(200);
+    expect(updated.body).toMatchObject({ ok: true, data: { userId, displayName: "Zayne Center", avatarId: "av-04", bio: "shared profile" } });
+    expect((await request(API_ROUTES.accountProfile, { method: "POST", token, body: { userId, displayName: "other" } })).status).toBe(400);
+    try {
+      const current = await request(API_ROUTES.accountProfile, { token });
+      expect(current.body.data).toMatchObject({ userId, displayName: "Zayne Center", avatarId: "av-04", bio: "shared profile" });
+      expect((await request(API_ROUTES.accountProfile, { method: "POST", token, body: { displayName: "Zayne Center", avatarId: "av-04", bio: "shared profile" } })).status).toBe(200);
+      const auditAfter = (await pool.query("SELECT count(*)::int AS n FROM identity.management_audit WHERE target_id=$1 AND action='identity.profile.updated'", [userId])).rows[0].n;
+      expect(auditAfter).toBe(auditBefore + 1);
+    } finally {
+      await pool.query("UPDATE identity.users SET display_name='admin' WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM identity.user_profiles WHERE user_id=$1", [userId]);
+    }
+  });
+  it("records idempotent product growth within the shared daily cap", async () => {
+    const token = tokens.admin!, userId = users.admin!.userId, occurredAt = new Date().toISOString();
+    await pool.query("INSERT INTO identity.product_access(user_id,product_id,active,scope) VALUES($1,'navigator',true,'summary') ON CONFLICT(user_id,product_id) DO UPDATE SET active=true", [userId]);
+    try {
+      const first = await request(API_ROUTES.accountGrowth, { method: "POST", token, body: { eventId: "event-1", sourceProduct: "navigator", eventType: "daily_effective_search", subjectKey: "day-1", points: 18, ruleVersion: 2, occurredAt } });
+      expect(first.body).toMatchObject({ ok: true, data: { awarded: true, awardedPoints: 18, summary: { totalXp: 18, todayXp: 18 } } });
+      const duplicate = await request(API_ROUTES.accountGrowth, { method: "POST", token, body: { eventId: "event-1", sourceProduct: "navigator", eventType: "daily_effective_search", subjectKey: "day-1", points: 18, ruleVersion: 2, occurredAt } });
+      expect(duplicate.body).toMatchObject({ ok: true, data: { awarded: false, awardedPoints: 0, summary: { totalXp: 18 } } });
+      const capped = await request(API_ROUTES.accountGrowth, { method: "POST", token, body: { eventId: "event-2", sourceProduct: "navigator", eventType: "daily_review_activity", subjectKey: "day-2", points: 18, ruleVersion: 2, occurredAt } });
+      expect(capped.body).toMatchObject({ ok: true, data: { awarded: true, awardedPoints: 12, summary: { totalXp: 30, todayXp: 30 } } });
+      const uncapped = await request(API_ROUTES.accountGrowth, { method: "POST", token, body: { eventId: "event-3", sourceProduct: "navigator", eventType: "pending_approved", subjectKey: "pending-1", points: 2, ruleVersion: 2, occurredAt } });
+      expect(uncapped.body).toMatchObject({ ok: true, data: { awarded: true, awardedPoints: 2, summary: { totalXp: 32, todayXp: 32 } } });
+    } finally {
+      await pool.query("DELETE FROM identity.account_experience_events WHERE user_id=$1 AND source_product='navigator'", [userId]);
+      await pool.query("DELETE FROM identity.account_growth_projection WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM identity.product_access WHERE user_id=$1 AND product_id='navigator'", [userId]);
+    }
   });
   it("enforces manager and product roles server-side, ignoring claimed role", async () => {
     tokens.a = await login("a"); tokens.b = await login("b"); tokens.ops = await login("ops"); tokens.none = await login("none");

@@ -49,7 +49,7 @@ services:
     restart: always
 
   nav-api:
-    image: logistics-nav:0.54.0
+    image: logistics-nav:6.50.0
     build:
       context: ${RELEASE_ROOT}/navigator/Database
     container_name: nav-api

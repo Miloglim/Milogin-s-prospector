@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACCOUNT_PROFILE_LIMITS, normalizeLoginAlias } from "../../server/core/account-profile";
+import { ACCOUNT_PROFILE_LIMITS, normalizeAccountProfilePatch, normalizeLoginAlias } from "../../server/core/account-profile";
 import { GROWTH_SOURCE_PRODUCTS, growthSummary, isGrowthEventDraft, type GrowthEventDraft } from "../../server/core/account-growth";
 import { isLegacyAccountMappingDraft } from "../../server/core/legacy-account-mapping";
 
@@ -11,6 +11,13 @@ describe("central account domain contracts", () => {
 
   it("keeps profile limits explicit", () => {
     expect(ACCOUNT_PROFILE_LIMITS).toMatchObject({ aliasMax: 128, avatarIdMax: 64, bioMax: 500 });
+  });
+
+  it("accepts only known self-service profile fields", () => {
+    expect(normalizeAccountProfilePatch({ displayName: " Zayne ", avatarId: "av-04", bio: " hello " })).toEqual({ displayName: "Zayne", avatarId: "av-04", bio: "hello" });
+    expect(() => normalizeAccountProfilePatch({ userId: "other" })).toThrow("未知字段");
+    expect(() => normalizeAccountProfilePatch({})).toThrow("没有需要保存");
+    expect(() => normalizeAccountProfilePatch({ avatarId: "../../secret" })).toThrow("头像 ID");
   });
 
   it("accepts only known product growth sources", () => {
@@ -28,7 +35,9 @@ describe("central account domain contracts", () => {
 
   it("derives the shared level and in-level progress from total XP", () => {
     expect(growthSummary(6612, 18, "2026-10-21")).toMatchObject({
-      totalXp: 6612, cycle: 7, level: 28, levelProgress: 16, levelCost: 21, todayXp: 18,
+      totalXp: 6612, cycle: 7, level: 28, levelStart: 6596, nextThreshold: 6617,
+      levelProgress: 16, levelCost: 21, cycleStart: 6156, cycleEnd: 7182, cycleXp: 1026,
+      todayAwarded: true, todayXp: 18,
     });
     expect(growthSummary(0)).toMatchObject({ cycle: 1, level: 1, levelProgress: 0, levelCost: 12 });
     expect(growthSummary(12)).toMatchObject({ cycle: 1, level: 2, levelProgress: 0, levelCost: 12 });

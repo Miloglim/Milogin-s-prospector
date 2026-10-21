@@ -28,10 +28,59 @@ export interface GrowthSummary {
   totalXp: number;
   cycle: number;
   level: number;
+  levelName: string;
+  levelStart: number;
+  nextThreshold: number;
   levelProgress: number;
   levelCost: number;
+  cycleStart: number;
+  cycleEnd: number;
+  cycleXp: number;
+  todayAwarded: boolean;
   todayXp: number;
   todayKey: string | null;
+}
+
+export interface GrowthEventInput {
+  eventId: string;
+  sourceProduct: GrowthSourceProduct;
+  eventType: string;
+  subjectKey: string;
+  points: number;
+  ruleVersion: number;
+  occurredAt: string;
+}
+
+export interface GrowthEventReceipt {
+  awarded: boolean;
+  awardedPoints: number;
+  summary: GrowthSummary;
+}
+
+const GROWTH_EVENT_RULES: Readonly<Record<string, { points: number; dailyCap: number | null }>> = {
+  daily_quote_search: { points: 2, dailyCap: 30 },
+  daily_effective_search: { points: 18, dailyCap: 30 },
+  daily_review_activity: { points: 18, dailyCap: 30 },
+  pending_approved: { points: 2, dailyCap: null },
+  pending_correction_approved: { points: 6, dailyCap: null },
+  daily_governance_activity: { points: 6, dailyCap: 30 },
+  governance_item_completed: { points: 6, dailyCap: 30 },
+};
+
+export function growthEventRule(sourceProduct: GrowthSourceProduct, eventType: string) {
+  return sourceProduct === "navigator" ? GROWTH_EVENT_RULES[eventType] ?? null : null;
+}
+
+export function isGrowthEventInput(value: unknown): value is GrowthEventInput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const event = value as Partial<GrowthEventInput>;
+  return nonEmpty(event.eventId) && event.eventId.length <= 128
+    && GROWTH_SOURCE_PRODUCTS.includes(event.sourceProduct as GrowthSourceProduct)
+    && nonEmpty(event.eventType) && event.eventType.length <= 80
+    && nonEmpty(event.subjectKey) && event.subjectKey.length <= 256
+    && Number.isInteger(event.points) && (event.points as number) >= 1 && (event.points as number) <= 1000
+    && Number.isInteger(event.ruleVersion) && (event.ruleVersion as number) >= 1
+    && typeof event.occurredAt === "string" && !Number.isNaN(Date.parse(event.occurredAt));
 }
 
 const GROWTH_LEVELS_PER_CYCLE = 50;
@@ -62,7 +111,14 @@ export function growthSummary(totalXp: number, todayXp = 0, todayKey: string | n
     levelStartInCycle += cost;
   }
   const levelCost = growthLevelCost(level);
-  return { totalXp: total, cycle, level, levelProgress: withinCycle - levelStartInCycle, levelCost, todayXp: Math.max(0, Math.trunc(todayXp)), todayKey };
+  const levelProgress = withinCycle - levelStartInCycle;
+  const levelStart = (cycle - 1) * GROWTH_XP_PER_CYCLE + levelStartInCycle;
+  return {
+    totalXp: total, cycle, level, levelName: `第${cycle}循环`, levelStart, nextThreshold: levelStart + levelCost,
+    levelProgress, levelCost, cycleStart: (cycle - 1) * GROWTH_XP_PER_CYCLE,
+    cycleEnd: cycle * GROWTH_XP_PER_CYCLE, cycleXp: GROWTH_XP_PER_CYCLE,
+    todayAwarded: todayXp > 0, todayXp: Math.max(0, Math.trunc(todayXp)), todayKey,
+  };
 }
 
 function nonEmpty(value: unknown): value is string {

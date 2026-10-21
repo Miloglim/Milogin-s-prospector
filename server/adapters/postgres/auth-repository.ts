@@ -13,8 +13,8 @@ import { ACCOUNT_PROFILE_SCHEMA_LOCK, ACCOUNT_PROFILE_SCHEMA_SQL, ACCOUNT_PROFIL
 import { ACCOUNT_GROWTH_SCHEMA_LOCK, ACCOUNT_GROWTH_SCHEMA_SQL, ACCOUNT_GROWTH_SCHEMA_VERSION } from './account-growth-schema';
 import { PASSWORD_COMPAT_SCHEMA_LOCK, PASSWORD_COMPAT_SCHEMA_SQL, PASSWORD_COMPAT_SCHEMA_VERSION } from './password-compat-schema';
 import { LEGACY_ACCOUNT_MAPPING_SCHEMA_LOCK, LEGACY_ACCOUNT_MAPPING_SCHEMA_SQL, LEGACY_ACCOUNT_MAPPING_SCHEMA_VERSION } from './legacy-account-mapping-schema';
-import type { AccountProfile } from '../../core/account-profile';
-import { growthSummary } from '../../core/account-growth';
+import type { AccountProfile, AccountProfilePatch } from '../../core/account-profile';
+import { growthEventRule, growthSummary, type GrowthEventInput, type GrowthEventReceipt } from '../../core/account-growth';
 
 const IDENTITY_COLUMNS = `u.user_id AS "userId",u.display_name AS "displayName",e.email,
   (e.verified_at IS NOT NULL) AS "emailVerified",u.identity_admin AS "identityAdmin",u.must_change_password AS "mustChangePassword",
@@ -23,6 +23,24 @@ const IDENTITY_COLUMNS = `u.user_id AS "userId",u.display_name AS "displayName",
     AND NOT EXISTS(SELECT 1 FROM identity.product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND NOT a.active) ORDER BY g.role) AS "crmRoles"`;
 const SESSION_FILTER = `s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now()
   AND u.active AND s.security_revision=u.security_revision`;
+const GROWTH_RULE_VERSION = 2;
+function profileFromRow(row: Record<string, unknown> | undefined): AccountProfile | null {
+  if (!row) return null;
+  return {
+    userId:String(row.userId),displayName:String(row.displayName),avatarId:String(row.avatarId),bio:String(row.bio),
+    growth:row.totalXp==null?null:growthSummary(Number(row.totalXp),Number(row.todayXp),row.todayKey as string | null),
+  };
+}
+function stableGrowthEventId(userId: string, sourceProduct: string, sourceEventId: string): string {
+  const bytes=createHash('sha256').update(`${sourceProduct}:${userId}:${sourceEventId}`).digest().subarray(0,16);
+  bytes[6]=(bytes[6]!&0x0f)|0x50;bytes[8]=(bytes[8]!&0x3f)|0x80;
+  const hex=bytes.toString('hex');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+function noGrowthAward(summary: AccountProfile['growth']): GrowthEventReceipt {
+  if(!summary)throw new Error('growth summary missing');
+  return {awarded:false,awardedPoints:0,summary};
+}
 function code(error: unknown) {
   return error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z0-9]+$/.test(error.code) ? error.code : "UNKNOWN";
 }
@@ -202,13 +220,74 @@ export class PostgresAuthRepository implements AuthRepository {
         LEFT JOIN identity.user_profiles p USING(user_id)
         LEFT JOIN identity.account_growth_projection g USING(user_id)
         WHERE ${SESSION_FILTER} AND s.client='api'`,[tokenHash]);
-      const row=result.rows[0];
-      if(!row)return success(null);
-      return success({
-        userId:row.userId,displayName:row.displayName,avatarId:row.avatarId,bio:row.bio,
-        growth:row.totalXp==null?null:growthSummary(Number(row.totalXp),Number(row.todayXp),row.todayKey),
-      });
+      return success(profileFromRow(result.rows[0]));
     });
+  }
+  updateAccountProfile(tokenHash: string, patch: AccountProfilePatch): Promise<Result<AccountProfile | null>> {
+    return this.execute(() => this.tx(async client => {
+      const allowed=await client.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",
+        COALESCE(p.avatar_id,'default') AS "avatarId",COALESCE(p.bio,'') AS bio
+        FROM identity.sessions s JOIN identity.users u USING(user_id)
+        LEFT JOIN identity.user_profiles p USING(user_id)
+        WHERE ${SESSION_FILTER} AND s.client='api' FOR UPDATE OF u`,[tokenHash]);
+      if(!allowed.rows.length)return success(null);
+      const userId=allowed.rows[0].userId,current=allowed.rows[0];
+      const displayChanged=patch.displayName!==undefined&&patch.displayName!==current.displayName;
+      const profileChanged=(patch.avatarId!==undefined&&patch.avatarId!==current.avatarId)||(patch.bio!==undefined&&patch.bio!==current.bio);
+      if(displayChanged)await client.query('UPDATE identity.users SET display_name=$2,management_revision=management_revision+1 WHERE user_id=$1',[userId,patch.displayName]);
+      if(profileChanged) {
+        await client.query(`INSERT INTO identity.user_profiles(user_id,avatar_id,bio) VALUES($1,COALESCE($2,'default'),COALESCE($3,''))
+          ON CONFLICT(user_id) DO UPDATE SET avatar_id=COALESCE($2,identity.user_profiles.avatar_id),bio=COALESCE($3,identity.user_profiles.bio),updated_at=now()`,
+        [userId,patch.avatarId??null,patch.bio??null]);
+      }
+      if(displayChanged||profileChanged)await client.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,reason)
+        VALUES($1,$1,'identity.profile.updated','本人更新共享账号资料')`,[userId]);
+      const result=await client.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",
+        COALESCE(p.avatar_id,'default') AS "avatarId",COALESCE(p.bio,'') AS bio,
+        g.total_xp AS "totalXp",g.today_xp AS "todayXp",g.today_key::text AS "todayKey"
+        FROM identity.users u LEFT JOIN identity.user_profiles p USING(user_id)
+        LEFT JOIN identity.account_growth_projection g USING(user_id) WHERE u.user_id=$1`,[userId]);
+      return success(profileFromRow(result.rows[0]));
+    }));
+  }
+  recordGrowthEvent(tokenHash: string, event: GrowthEventInput): Promise<Result<GrowthEventReceipt | null>> {
+    return this.execute(() => this.tx(async client => {
+      const allowed=await client.query(`SELECT u.user_id AS "userId" FROM identity.sessions s JOIN identity.users u USING(user_id)
+        WHERE ${SESSION_FILTER} AND s.client='api' AND EXISTS(
+          SELECT 1 FROM identity.product_access a WHERE a.user_id=u.user_id AND a.product_id=$2 AND a.active
+        ) FOR UPDATE OF u`,[tokenHash,event.sourceProduct]);
+      if(!allowed.rows.length)return success(null);
+      const userId=allowed.rows[0].userId, rule=growthEventRule(event.sourceProduct,event.eventType);
+      if(!rule || event.ruleVersion!==GROWTH_RULE_VERSION || event.points>rule.points)return failure('INVALID_INPUT','成长事件不符合中心规则');
+      const state=await client.query(`SELECT (($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date)::text AS "occurredDay",
+        ((now() AT TIME ZONE 'Asia/Shanghai')::date)::text AS "todayKey"`,[event.occurredAt]);
+      const projection=await client.query('SELECT total_xp,today_xp,today_key::text FROM identity.account_growth_projection WHERE user_id=$1 FOR UPDATE',[userId]);
+      if(!projection.rows.length) {
+        const count=await client.query('SELECT count(*)::int AS n FROM identity.account_experience_events WHERE user_id=$1',[userId]);
+        if(count.rows[0].n>0)return failure('CONFLICT','中心成长投影缺失，请先完成历史迁移');
+        await client.query("INSERT INTO identity.account_growth_projection(user_id) VALUES($1) ON CONFLICT DO NOTHING",[userId]);
+      }
+      const current=(await client.query('SELECT total_xp,today_xp,today_key::text FROM identity.account_growth_projection WHERE user_id=$1 FOR UPDATE',[userId])).rows[0];
+      const duplicate=await client.query(`SELECT 1 FROM identity.account_experience_events
+        WHERE user_id=$1 AND source_product=$2 AND event_type=$3 AND subject_key=$4`,[userId,event.sourceProduct,event.eventType,event.subjectKey]);
+      if(duplicate.rows.length)return success(noGrowthAward(growthSummary(Number(current.total_xp),Number(current.today_xp),current.today_key)));
+      const earned=(await client.query(`SELECT COALESCE(SUM(points),0)::int AS n FROM identity.account_experience_events
+        WHERE user_id=$1 AND rule_version>=2 AND event_type<>'account_growth_reset'
+          AND (occurred_at AT TIME ZONE 'Asia/Shanghai')::date=$2::date`,[userId,state.rows[0].occurredDay])).rows[0].n;
+      const awarded=rule.dailyCap===null?event.points:Math.min(event.points,Math.max(0,rule.dailyCap-Number(earned)));
+      if(awarded<=0)return success(noGrowthAward(growthSummary(Number(current.total_xp),Number(current.today_xp),current.today_key)));
+      const inserted=await client.query(`INSERT INTO identity.account_experience_events
+        (event_id,user_id,source_product,event_type,subject_key,points,rule_version,occurred_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING event_id`,
+      [stableGrowthEventId(userId,event.sourceProduct,event.eventId),userId,event.sourceProduct,event.eventType,event.subjectKey,awarded,event.ruleVersion,event.occurredAt]);
+      if(!inserted.rows.length)return success(noGrowthAward(growthSummary(Number(current.total_xp),Number(current.today_xp),current.today_key)));
+      const total=Math.max(0,Number(current.total_xp)+awarded);
+      const summary=growthSummary(total,state.rows[0].occurredDay===state.rows[0].todayKey?Number(earned)+awarded:Number(current.today_xp),state.rows[0].occurredDay===state.rows[0].todayKey?state.rows[0].todayKey:current.today_key);
+      await client.query(`UPDATE identity.account_growth_projection SET total_xp=$2,cycle=$3,level=$4,today_xp=$5,today_key=$6,updated_at=now() WHERE user_id=$1`,
+      [userId,summary.totalXp,summary.cycle,summary.level,summary.todayXp,summary.todayKey]);
+      const receipt: GrowthEventReceipt = {awarded:true,awardedPoints:awarded,summary};
+      return success(receipt);
+    }));
   }
   navigatorAccess(tokenHash: string): Promise<Result<NavigatorAccess | null>> {
     return this.execute(async () => {

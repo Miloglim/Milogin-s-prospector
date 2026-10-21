@@ -4,7 +4,9 @@
 
 `GET /api/account/profile` 要求有效 API Bearer 会话，返回 `{ok:true,data:AccountProfile}`。服务端先从会话取得当前中心用户，再读取共享显示名、`identity.user_profiles.avatar_id/bio` 和 `identity.account_growth_projection`；不接受客户端 userId。无资料行时头像 ID 为 `default`、简介为空；无成长投影时 `growth=null`。存在投影时 `growth` 返回 `totalXp/cycle/level/levelProgress/levelCost/todayXp/todayKey`，等级进度由共享总经验派生。
 
-无令牌、伪造令牌、过期/撤销会话均返回 401；数据库异常返回统一 503，不返回密码、会话 Token 或内部查询信息。桌面只经 `online:account-profile` 调用，不直接暴露中心令牌。资料写入、头像编辑和成长事件上报不在本节点开放。
+`POST /api/account/profile` 只接受 `displayName/avatarId/bio` 的非空子集，始终作用于当前会话用户；无实际变化时不增加管理修订或审计。`POST /api/account/growth` 接受 `eventId/sourceProduct/eventType/subjectKey/points/ruleVersion/occurredAt`，服务端重新校验产品准入和事件规则，按 `source_product + event_type + subject_key` 去重，普通行为执行 30 XP 日上限，审批/修正事件不受单项上限，但仍计入当日普通上限消耗。重复请求返回 awarded=false，不重复加经验。
+
+无令牌、伪造令牌、过期/撤销会话均返回 401；无对应产品准入返回 403；数据库异常返回统一 503，不返回密码、会话 Token 或内部查询信息。Prospector 桌面只经 `online:account-profile` 读取，不直接暴露中心令牌；Navigator 服务端使用同一中心用户会话写入资料并补传经验 outbox。
 
 ## 2026-10-16 公司与联系人生命周期接口
 
