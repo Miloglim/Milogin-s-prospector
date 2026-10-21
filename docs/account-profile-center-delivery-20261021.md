@@ -23,12 +23,14 @@
 - 真实 Electron 合成中心显示 `Zayne`、`av-04`、`Lv. 28`、`16 / 21 XP`，页面错误 0；合成夹具后台客户同步仍记录 1 个 `TypeError`，因此本次只确认账号页链路，不把主进程日志整体视为清洁通过。
 - Navigator 15 项账号、成长、outbox 和中心客户端测试通过；跨栈隔离实例连接中心 55844，实测资料读取/保存、成长首次 +18、重复请求不增加、中心最终 1 条事件。
 - `node --check` 迁移脚本、typecheck、245 文件架构检查、Electron/中心构建通过。多个 PG 测试文件并行启动迁移时曾有一个文件因共享测试库迁移竞争失败，串行重跑通过，不能表述为并行稳定性通过。
+- 阿里云切换前将中心、Navigator 和发布目录备份到 `/opt/logistics-api/backups/profile-sync-20261021T092754Z`；SHA256 分别为中心 `3fbfebf472a4e26c6bdff30562011984cb162a68f795af1951b15a1e80f36184`、Navigator `bb1cc6b7de87186540abc77a90ac9e7416d9c6ef5d8b869a1c81b0685b4e3edd`、发布目录 `bab3cbb7316dd7311a19719be0fed6e75dbfbd6d5446a5d3ba2bd0e10d26ecfa`。
+- 阿里云中心/Navigator 容器已加载新代码并重启。真实管理员登录后，云端中心与 Navigator 均返回 `Zayne / av-04 / 6612 XP / level 28`，Navigator `shared_growth.level=28`，outbox pending=0。
 
 ## 当前边界
 
 正式迁移和本机切换已完成：中心 `admin@yqn.com` 为 `Zayne / av-04 / 6612 XP / cycle 7 / level 28 / today 18 XP`，5088 条经验、显式映射和管理审计均已核对；其余 5 个可映射账号合计 5098 条事件。中心 55847 已重新编译并健康，Navigator 8795 已由 watchdog 重载，Prospector 开发端已重启加载新 IPC。
 
-本机仍使用 `http://127.0.0.1:55847` 管理例外；公司服务器公网部署仍需 HTTPS、域名和跨机器登录验收。徽章尚无中心模型，继续显示未知。全量普通回归仍有 1 项既有设置页“工作区外观”断言与当前未提交页面改动冲突，与本链路无关。
+GitHub：Prospector `main` 推送至 `2e0eaf9`，Navigator `main` 推送至 `5029e16`。本机仍使用 `http://127.0.0.1:55847` 管理例外；阿里云使用既有 HTTPS 域名并已完成真实登录。徽章尚无中心模型，继续显示未知。全量普通回归仍有 1 项既有设置页“工作区外观”断言与当前未提交页面改动冲突，与本链路无关。
 
 ## 回退
 

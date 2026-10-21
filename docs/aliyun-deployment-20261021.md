@@ -38,3 +38,9 @@ docker compose up -d
 ## 回退
 
 先停止当前 Compose，恢复 `old-deployment.tgz` 或 `docker-compose.yml.save`，再使用备份 dump 恢复数据库。旧库和旧业务代码未删除。
+
+## 2026-10-21 中心账号资料与成长同步
+
+后续版本将共享昵称、头像和成长数据切到中心：Navigator 资料先写中心，再保存本地产品偏好；业务经验进入本地 outbox 后幂等补传。云端管理员账号已同步为 `Zayne / av-04 / 6612 XP / level 28`，中心与 Navigator 真实登录均核对一致。
+
+本次切换前备份：`/opt/logistics-api/backups/profile-sync-20261021T092754Z`，包含 `center.dump`、`navigator.dump`、`release-current.tgz` 及 restore list。发布目录保留原路径，Navigator 镜像标签更新为 `logistics-nav:6.50.0`。
