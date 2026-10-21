@@ -1,5 +1,5 @@
 import { success, failure, type Result } from "../core/crm";
-import { AUTH_LIMITS, CRM_CAPABILITIES,BOOTSTRAP_LOGIN_MIN, type AuthRepository, type PasswordPort, type TokenPort, type ClockPort, type Identity, type LoginResponse } from "../core/auth";
+import { AUTH_LIMITS, CRM_CAPABILITIES,BOOTSTRAP_LOGIN_MIN,isNewAccountPassword, type AuthRepository, type PasswordPort, type TokenPort, type ClockPort, type Identity, type LoginResponse } from "../core/auth";
 import { normalizeAccountProfilePatch } from "../core/account-profile";
 import { isGrowthEventInput } from "../core/account-growth";
 
@@ -63,6 +63,23 @@ export function createAuthService(repo: AuthRepository, passwords: PasswordPort,
       if(!repo.recordGrowthEvent)return failure('UNAVAILABLE','成长记账暂不可用');
       if(!isGrowthEventInput(input))return failure('INVALID_INPUT','成长事件参数无效');
       return repo.recordGrowthEvent(tokens.hash(token),input);
+    },
+    async changeAccountPassword(token: string,input: unknown) {
+      const identity=await me(token);
+      if(!identity.ok)return identity;
+      if(!repo.changePassword||typeof (passwords as PasswordPort & {hash?:unknown}).hash!=="function")return failure('UNAVAILABLE','改密暂不可用');
+      if(!input||typeof input!=="object"||Array.isArray(input))return failure('INVALID_INPUT','改密请求无效');
+      const value=input as Record<string,unknown>;
+      if(Object.keys(value).some(key=>key!=="currentPassword"&&key!=="newPassword")
+        ||typeof value.currentPassword!=="string"||!value.currentPassword.length||value.currentPassword.length>AUTH_LIMITS.passwordMax
+        ||!isNewAccountPassword(value.newPassword)||value.newPassword===value.currentPassword)return failure('INVALID_INPUT','新密码至少6位，仅允许英文字母和数字，且必须与当前密码不同');
+      const credential=await repo.credential(identity.data.email);
+      if(!credential.ok)return credential;
+      if(!credential.data?.active)return unauthorized();
+      try {
+        if(!await passwords.verify(value.currentPassword,credential.data.passwordHash))return failure('UNAUTHORIZED','当前密码不正确');
+        return await repo.changePassword(tokens.hash(token),credential.data.passwordHash,credential.data.securityRevision,await (passwords as PasswordPort & {hash:(password:string)=>Promise<string>}).hash(value.newPassword),'api');
+      } catch { return failure('UNAVAILABLE','改密暂不可用'); } // Never expose passwords or crypto diagnostics.
     },
     async logout(token: string,client:"api"|"browser"='api'): Promise<Result<void>> {
       const identity = await me(token,client);

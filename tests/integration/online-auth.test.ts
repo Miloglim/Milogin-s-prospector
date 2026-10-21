@@ -146,6 +146,31 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
       await pool.query("DELETE FROM identity.product_access WHERE user_id=$1 AND product_id='navigator'", [userId]);
     }
   });
+  it("changes the central credential through a normal API session and revokes that session", async () => {
+    const userId = randomUUID(), email = `${prefix}-password@example.invalid`, newPassword = "NewPassword123";
+    await pool.query("INSERT INTO identity.users(user_id,display_name) VALUES($1,'Password fixture')", [userId]);
+    await pool.query("INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)", [userId, email]);
+    await pool.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')", [userId, await passwords.hash(password)]);
+    try {
+      const signedIn = await request(API_ROUTES.login, { method: "POST", body: { email, password } });
+      expect(signedIn.status).toBe(200);
+      const token = signedIn.body.data.token as string;
+      const changed = await request(API_ROUTES.accountPassword, { method: "POST", token, body: { currentPassword: password, newPassword } });
+      expect(changed.status).toBe(200);
+      expect((await request(API_ROUTES.me, { token })).status).toBe(401);
+      const credential = await repo.credential(email);
+      expect(credential.ok && credential.data ? await passwords.verify(newPassword, credential.data.passwordHash) : false).toBe(true);
+    } finally {
+      await pool.query("DELETE FROM identity.management_audit WHERE target_id=$1", [userId]);
+      await pool.query("DELETE FROM crm_notification_consumed WHERE event_id IN (SELECT event_id FROM identity.outbox WHERE user_id=$1)", [userId]);
+      await pool.query("DELETE FROM identity.outbox WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM identity.sessions WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM identity.audit WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM identity.credentials WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM identity.login_emails WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM identity.users WHERE user_id=$1", [userId]);
+    }
+  });
   it("enforces manager and product roles server-side, ignoring claimed role", async () => {
     tokens.a = await login("a"); tokens.b = await login("b"); tokens.ops = await login("ops"); tokens.none = await login("none");
     expect((await request(API_ROUTES.users,{token:tokens.a})).status).toBe(403);

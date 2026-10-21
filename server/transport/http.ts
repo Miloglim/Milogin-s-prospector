@@ -70,6 +70,10 @@ export function createOnlineServer(service: AuthService, gate: LoginGate, config
       const input=await body(request,config.request_body_bytes);
       result=input.ok?await service.accountGrowth(token,input.data):input;
     }
+    else if(method === "POST" && path === API_ROUTES.accountPassword) {
+      const input=await body(request,config.request_body_bytes);
+      result=input.ok?await service.changeAccountPassword(token,input.data):input;
+    }
     else if(method === "POST" && path === API_ROUTES.logout) result = await service.logout(token);
     else if(method === "GET" && path === API_ROUTES.users) result = await service.users(token);
     else if(method === "GET" && path === API_ROUTES.crmAccess) result = await service.crmAccess(token);

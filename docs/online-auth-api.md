@@ -1,10 +1,18 @@
 # 本机中心账号与 API
 
+## 2026-10-21 只读系统运行摘要
+
+`GET /admin-api/operations` 只接受有效浏览器管理会话，返回统一 `{ok:true,data:OperationsSummary}`。`OperationsSummary` 包含中心版本、`uptime_seconds`、检查时间和中心/数据库/磁盘/备份检查；transport 在读取中心快照后附加 Navigator `/api/health/live` 结果，Navigator 不可用时单项返回 `offline`，不影响其余中心状态返回。
+
+读取权限与现有管理中心数据看板一致：中心超级管理员，或数据范围为 `summary`、具备 `metrics.read` 且身份为管理员/审计员。接口不返回连接串、文件路径、进程环境、Token 或日志；该节点没有发布、备份写入、Shell 或容器控制能力。
+
 ## 2026-10-21 账号资料与成长摘要
 
 `GET /api/account/profile` 要求有效 API Bearer 会话，返回 `{ok:true,data:AccountProfile}`。服务端先从会话取得当前中心用户，再读取共享显示名、`identity.user_profiles.avatar_id/bio` 和 `identity.account_growth_projection`；不接受客户端 userId。无资料行时头像 ID 为 `default`、简介为空；无成长投影时 `growth=null`。存在投影时 `growth` 返回 `totalXp/cycle/level/levelProgress/levelCost/todayXp/todayKey`，等级进度由共享总经验派生。
 
 `POST /api/account/profile` 只接受 `displayName/avatarId/bio` 的非空子集，始终作用于当前会话用户；无实际变化时不增加管理修订或审计。`POST /api/account/growth` 接受 `eventId/sourceProduct/eventType/subjectKey/points/ruleVersion/occurredAt`，服务端重新校验产品准入和事件规则，按 `source_product + event_type + subject_key` 去重，普通行为执行 30 XP 日上限，审批/修正事件不受单项上限，但仍计入当日普通上限消耗。重复请求返回 awarded=false，不重复加经验。
+
+`POST /api/account/password` 供 Navigator 等 Web 产品使用普通 API Bearer 会话修改本人密码，body 为 `{currentPassword,newPassword}`。中心校验当前密码后更新 `identity.credentials`、递增 `security_revision` 并撤销该用户全部会话。Prospector 桌面继续使用 `/api/auth/desktop/password`，其最终凭据写入同一张中心表。任何产品都不得在中心模式下修改本地账号哈希冒充改密。
 
 无令牌、伪造令牌、过期/撤销会话均返回 401；无对应产品准入返回 403；数据库异常返回统一 503，不返回密码、会话 Token 或内部查询信息。Prospector 桌面只经 `online:account-profile` 读取，不直接暴露中心令牌；Navigator 服务端使用同一中心用户会话写入资料并补传经验 outbox。
 

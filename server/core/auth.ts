@@ -5,7 +5,7 @@ import type { GrowthEventInput, GrowthEventReceipt } from "./account-growth";
 export const API_ROUTES = {
   live: "/health/live", ready: "/health/ready", login: "/api/auth/login", me: "/api/auth/me",
   logout: "/api/auth/logout", users: "/api/admin/users", crmAccess: "/api/crm/access", navigatorAccess: "/api/navigator/access",
-  accountProfile: "/api/account/profile", accountGrowth: "/api/account/growth",
+  accountProfile: "/api/account/profile", accountGrowth: "/api/account/growth", accountPassword: "/api/account/password",
 } as const;
 export const CRM_ROLES = ["admin", "operations", "sales", "auditor"] as const;
 export type CrmRole = typeof CRM_ROLES[number];
@@ -77,6 +77,7 @@ export interface AuthRepository {
   accountProfile?(tokenHash: string): Promise<Result<AccountProfile | null>>;
   updateAccountProfile?(tokenHash: string, patch: AccountProfilePatch): Promise<Result<AccountProfile | null>>;
   recordGrowthEvent?(tokenHash: string, event: GrowthEventInput): Promise<Result<GrowthEventReceipt | null>>;
+  changePassword?(tokenHash: string, expectedHash: string, revision: number, newHash: string, client?: "api"|"browser"): Promise<Result<void>>;
   navigatorAccess?(tokenHash: string): Promise<Result<NavigatorAccess | null>>;
   revoke(tokenHash: string): Promise<Result<void>>;
   listUsers(tokenHash: string): Promise<Result<Identity[]>>;
