@@ -33,7 +33,7 @@ describe('account creation character policy', () => {
   it.each(['New.Name+tag@example.invalid', "o'hara@example.invalid", 'first_last@sub.example.invalid'])('preserves valid ASCII email syntax: %s', async email => {
     const f = fixture();
     expect((await f.desktop.register({ email, password: 'Abc123' })).ok).toBe(true);
-    expect(f.createSalesAccount).toHaveBeenCalledWith({ email: email.toLowerCase(), passwordHash: 'synthetic-hash' });
+    expect(f.createSalesAccount).toHaveBeenCalledWith({ email: email.toLowerCase(), passwordHash: 'synthetic-hash', product: 'crm' });
     expect((await f.admin.mutate('session', { action: 'user.create', email, role: 'sales', reason: 'test' })).ok).toBe(true);
   });
 });

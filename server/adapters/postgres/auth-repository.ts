@@ -7,7 +7,7 @@ import { assertCenterDatabasePool } from "./config";
 import { PostgresAdminRepository } from "./admin-repository";
 import {PASSWORD_SCHEMA_LOCK,PASSWORD_SCHEMA_SQL,PASSWORD_SCHEMA_VERSION} from './password-schema';
 import {ADMIN_LOCK} from './admin-schema';
-import type { DesktopSessionDraft, DesktopRotation } from '../../core/desktop-session';
+import type { DesktopSessionDraft, DesktopRotation, RegistrationProduct } from '../../core/desktop-session';
 import { DESKTOP_SCHEMA_LOCK, DESKTOP_SCHEMA_SQL, DESKTOP_SCHEMA_VERSION } from './desktop-session-schema';
 import { ACCOUNT_PROFILE_SCHEMA_LOCK, ACCOUNT_PROFILE_SCHEMA_SQL, ACCOUNT_PROFILE_SCHEMA_VERSION } from './account-profile-schema';
 import { ACCOUNT_GROWTH_SCHEMA_LOCK, ACCOUNT_GROWTH_SCHEMA_SQL, ACCOUNT_GROWTH_SCHEMA_VERSION } from './account-growth-schema';
@@ -172,7 +172,7 @@ export class PostgresAuthRepository implements AuthRepository {
       return success(undefined);
     }));
   }
-  createSalesAccount(input: { email: string; passwordHash: string }): Promise<Result<{ email: string }>> {
+  createSalesAccount(input: { email: string; passwordHash: string; product: RegistrationProduct }): Promise<Result<{ email: string }>> {
     return this.execute(() => this.tx(async client => {
       await client.query('SELECT pg_advisory_xact_lock($1)', [ADMIN_LOCK]);
       const existing = await client.query('SELECT user_id FROM identity.login_emails WHERE email=$1', [input.email]);
@@ -181,10 +181,10 @@ export class PostgresAuthRepository implements AuthRepository {
       await client.query('INSERT INTO identity.users(user_id,display_name,identity_admin) VALUES($1,$2,false)', [userId, input.email.split('@')[0]]);
       await client.query('INSERT INTO identity.login_emails(user_id,email,verified_at) VALUES($1,$2,NULL)', [userId, input.email]);
       await client.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')", [userId, input.passwordHash]);
-      await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm','sales')", [userId]);
-      await client.query("INSERT INTO identity.product_access(user_id,product_id,scope) VALUES($1,'crm','own')", [userId]);
-      await client.query("INSERT INTO identity.management_audit(actor_id,target_id,action,product_id,reason) VALUES($1,$1,'identity.register','crm','邮箱自助注册；邮箱未验证')", [userId]);
-      await client.query("INSERT INTO identity.outbox(event_type,user_id,product_id,revision) VALUES('identity.register',$1,'crm',1)", [userId]);
+      await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,$2,'sales')", [userId, input.product]);
+      await client.query("INSERT INTO identity.product_access(user_id,product_id,scope) VALUES($1,$2,'own')", [userId, input.product]);
+      await client.query("INSERT INTO identity.management_audit(actor_id,target_id,action,product_id,reason) VALUES($1,$1,'identity.register',$2,'邮箱自助注册；邮箱未验证')", [userId, input.product]);
+      await client.query("INSERT INTO identity.outbox(event_type,user_id,product_id,revision) VALUES('identity.register',$1,$2,1)", [userId, input.product]);
       return success({ email: input.email });
     }));
   }

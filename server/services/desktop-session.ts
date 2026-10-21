@@ -1,5 +1,5 @@
 import { AUTH_LIMITS, BOOTSTRAP_LOGIN_MIN, isAccountEmail, isNewAccountPassword, type ClockPort, type PasswordPort, type TokenPort } from '../core/auth';
-import { DESKTOP_SESSION_LIMITS, type DesktopSessionRepository, type DesktopLoginResponse } from '../core/desktop-session';
+import { DESKTOP_SESSION_LIMITS, REGISTRATION_PRODUCTS, type DesktopSessionRepository, type DesktopLoginResponse, type RegistrationProduct } from '../core/desktop-session';
 import { failure, success, type Result } from '../core/crm';
 import type { Identity } from '../core/auth';
 import type { OfflineAccessIssuer } from '../core/offline-access';
@@ -28,10 +28,12 @@ export function createDesktopSessionService(repo: DesktopSessionRepository, pass
   return {
     me,
     async register(input: unknown) {
-      const value = object(input, ['email', 'password']);
-      if (!value || !isAccountEmail(value.email) || !isNewAccountPassword(value.password)) return failure('INVALID_INPUT', '请输入有效邮箱，密码至少6位，仅允许英文字母和数字');
+      const value = object(input, ['email', 'password', 'product']);
+      const product = value?.product ?? 'crm';
+      if (!value || !isAccountEmail(value.email) || !isNewAccountPassword(value.password)
+        || !REGISTRATION_PRODUCTS.includes(product as RegistrationProduct)) return failure('INVALID_INPUT', '请输入有效邮箱，密码至少6位，仅允许英文字母和数字');
       if (!repo.createSalesAccount) return failure('UNAVAILABLE', '注册暂不可用');
-      try { return await repo.createSalesAccount({ email: value.email.trim().toLowerCase(), passwordHash: await passwords.hash(value.password) }); }
+      try { return await repo.createSalesAccount({ email: value.email.trim().toLowerCase(), passwordHash: await passwords.hash(value.password), product: product as RegistrationProduct }); }
       catch { return failure('UNAVAILABLE', '注册暂不可用，请稍后重试'); } // Do not include credentials or crypto diagnostics in responses.
     },
     async login(input: unknown): Promise<Result<DesktopLoginResponse>> {

@@ -29,8 +29,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('registration real
     if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
     await pool?.end();
   });
-  async function register(email: string, password: string) {
-    return fetch(`${base}/api/auth/desktop/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  async function register(email: string, password: string, product?: 'crm' | 'navigator') {
+    return fetch(`${base}/api/auth/desktop/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, ...(product ? { product } : {}) }) });
   }
   it.each(['abc!123', 'abc 123', '密码123456', '12345'])('rejects invalid password without creating any identity: %j', async password => {
     const email = `${randomUUID()}@example.invalid`;
@@ -47,5 +47,18 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('registration real
     const response = await fetch(`${base}/api/auth/desktop/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'Abc123' }) });
     expect(response.status).toBe(200);
     expect((await response.json() as any).data.identity.crmRoles).toEqual(['sales']);
+  });
+  it('creates Navigator-only sales access when registration comes from Navigator', async () => {
+    const email = `Navigator.${randomUUID()}@example.invalid`.toLowerCase();
+    expect((await register(email, 'Abc123', 'navigator')).status).toBe(200);
+    const grants = (await pool.query(`SELECT g.product_id,g.role,a.active,a.scope FROM identity.users u JOIN identity.login_emails e USING(user_id)
+      JOIN identity.product_grants g USING(user_id) LEFT JOIN identity.product_access a ON a.user_id=u.user_id AND a.product_id=g.product_id
+      WHERE e.email=$1 ORDER BY g.product_id`, [email])).rows;
+    expect(grants).toEqual([{ product_id: 'navigator', role: 'sales', active: true, scope: 'own' }]);
+    const login = await fetch(`${base}/api/auth/desktop/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'Abc123' }) });
+    const token = (await login.json() as any).data.token;
+    const access = await fetch(`${base}/api/navigator/access`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(access.status).toBe(200);
+    expect((await access.json() as any).data).toMatchObject({ email, role: 'sales' });
   });
 });

@@ -6,6 +6,8 @@ export const DESKTOP_AUTH_ROUTES = {
   logout: '/api/auth/desktop/logout', me: '/api/auth/desktop/me', password: '/api/auth/desktop/password',
 } as const;
 export const DESKTOP_SESSION_LIMITS = { idle_seconds: 15 * 24 * 60 * 60, absolute_seconds: 90 * 24 * 60 * 60 } as const;
+export const REGISTRATION_PRODUCTS = ["crm", "navigator"] as const;
+export type RegistrationProduct = typeof REGISTRATION_PRODUCTS[number];
 export type DesktopLoginRequest = LoginRequest;
 export interface RegisteredAccount { email: string; }
 export interface DesktopRefreshRequest { refreshToken: string; }
@@ -14,7 +16,7 @@ export interface DesktopLoginResponse extends LoginResponse { refreshToken: stri
 export interface DesktopSessionDraft extends SessionDraft { refreshHash: string; idleExpiresAt: string; absoluteExpiresAt: string; }
 export interface DesktopRotation { tokenHash: string; refreshHash: string; expiresAt: string; idleExpiresAt: string; }
 export interface DesktopSessionRepository {
-  createSalesAccount?(input: { email: string; passwordHash: string }): Promise<Result<RegisteredAccount>>;
+  createSalesAccount?(input: { email: string; passwordHash: string; product: RegistrationProduct }): Promise<Result<RegisteredAccount>>;
   credential(email: string): Promise<Result<Credential | null>>;
   createDesktopSession(input: DesktopSessionDraft): Promise<Result<Identity | null>>;
   rotateDesktopSession(refreshHash: string, input: DesktopRotation): Promise<Result<{ identity: Identity; expiresAt: string; absoluteExpiresAt?: string } | null>>;
