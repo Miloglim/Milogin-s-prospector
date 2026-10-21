@@ -41,8 +41,9 @@ export type BrowserHandler = (request: IncomingMessage, response: ServerResponse
 export function createOnlineServer(service: AuthService, gate: LoginGate, config: OnlineConfig, log: LogSink, instanceId = "integration", browser?: BrowserHandler, crm?: BrowserHandler, desktop?: BrowserHandler) {
   const dispatch = async (request: IncomingMessage, response: ServerResponse) => {
     const path = request.url ?? "", method = request.method;
-    const expectedHost = `${request.socket.localAddress}:${request.socket.localPort}`;
-    if(request.headers.host !== expectedHost) { send(response,failure("FORBIDDEN","测试服务 Host 无效")); return; }
+    const localHost = `${request.socket.localAddress}:${request.socket.localPort}`;
+    const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
+    if(request.headers.host !== localHost && (!publicHost || request.headers.host !== publicHost)) { send(response,failure("FORBIDDEN","服务 Host 无效")); return; }
     if(browser && (path.startsWith('/admin-api/') || path === '/' || path.startsWith('/?') || path.startsWith('/assets/'))) {await browser(request,response);return;}
     if(request.headers.origin || request.headers["sec-fetch-site"] === "cross-site") { send(response,failure("FORBIDDEN","当前仅接受本机非浏览器跨站请求")); return; }
     if(desktop && path.startsWith('/api/auth/desktop/')) { await desktop(request,response); return; }
@@ -60,6 +61,7 @@ export function createOnlineServer(service: AuthService, gate: LoginGate, config
         result = gate.allow(email,request.socket.remoteAddress ?? "unknown") ? await service.login(input.data) : failure("RATE_LIMITED","登录尝试过多，请稍后重试");
       }
     } else if(method === "GET" && path === API_ROUTES.me) result = await service.me(token);
+    else if(method === "GET" && path === API_ROUTES.accountProfile) result = await service.accountProfile(token);
     else if(method === "POST" && path === API_ROUTES.logout) result = await service.logout(token);
     else if(method === "GET" && path === API_ROUTES.users) result = await service.users(token);
     else if(method === "GET" && path === API_ROUTES.crmAccess) result = await service.crmAccess(token);

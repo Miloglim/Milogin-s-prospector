@@ -62,7 +62,7 @@ export function selectAccountRoot(root: string): void {
 }
 
 export interface SendSchedule {
-  /** 时间窗口 */
+  /** 兼容旧配置；全局发送时段已停用，实际时段仅由开发任务单独控制 */
   timeWindowEnabled: boolean;
   startHour: number;   // 本机时区时（跟操作系统，非固定北京时）
   endHour: number;     // 本机时区时（次日）
@@ -96,7 +96,7 @@ export interface RuntimeConfig {
   test: {
     email: string;      // 测试收件邮箱
     company: string;    // 测试用的公司名
-    enabled: boolean;   // 启用测试模式（跳过发送时段限制）
+    enabled: boolean;   // 启用测试收件人和测试公司资料
     dryRun: boolean;    // 发信阻隔（流程完整但不实际发送）
   };
   /** CRM 客户跟进偏好 */
@@ -120,7 +120,7 @@ export interface RuntimeConfig {
 }
 
 export const DEFAULT_SCHEDULE: SendSchedule = {
-  timeWindowEnabled: true,
+  timeWindowEnabled: false,
   startHour: 9,
   endHour: 8,
   groupSize: 20,
@@ -130,6 +130,7 @@ export const DEFAULT_SCHEDULE: SendSchedule = {
 
 const DEFAULT_CONFIG: RuntimeConfig = {
   fromName: "",
+  sendQuota: { dailyLimit: 800, firstSendAt: null, sentToday: 0 },
   schedule: DEFAULT_SCHEDULE,
   test: { email: "", company: "", enabled: false, dryRun: false },
   // 用户配置 Navigator 服务地址；历史 source 值不再影响选源。

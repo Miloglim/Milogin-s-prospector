@@ -4,22 +4,30 @@ import type { Identity } from '../../shared/online-crm';
 /** Presentation data only. Future center adapters supply these fields; unknown is not zero. */
 export interface AccountProfileExtras {
   userId: string;
+  displayName?: string;
   avatarUrl?: string;
+  avatarId?: string;
   growth?: { level: number; totalXp: number; levelProgress: number; levelCost: number };
   badges?: Array<{ id: string; label: string }>;
   preferences?: Array<{ id: string; label: string; value: string }>;
 }
 
+const avatarUrls = import.meta.glob('../assets/avatars/*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+function avatarUrl(id?: string): string | undefined {
+  return id && id !== 'default' ? avatarUrls[`../assets/avatars/${id}.png`] : undefined;
+}
+
 export function AccountProfilePanel({ identity, extras }: { identity: Identity; extras?: AccountProfileExtras }) {
   const { token } = theme.useToken();
   const data = extras?.userId === identity.userId ? extras : undefined;
+  const displayName = data?.displayName || identity.displayName;
   const growth = data?.growth;
   const progress = growth && growth.levelCost > 0 ? Math.min(100, Math.max(0, growth.levelProgress / growth.levelCost * 100)) : undefined;
   return <div className="account-profile-layout" style={{ color: token.colorText }}>
     <div className="account-profile-main">
       <Card title="基本信息" size="small">
         <Descriptions column={1} colon={false} items={[
-          { key: 'name', label: '用户名', children: identity.displayName },
+          { key: 'name', label: '用户名', children: displayName },
           { key: 'email', label: '登录邮箱', children: identity.email },
         ]} />
       </Card>
@@ -36,8 +44,8 @@ export function AccountProfilePanel({ identity, extras }: { identity: Identity; 
     <aside className="account-profile-identity">
       <Card size="small">
         <div className="account-profile-face">
-          <Avatar shape="square" size={72} src={data?.avatarUrl} style={{ background: token.colorFillSecondary, color: token.colorText, borderRadius: 20, fontSize: 27 }}>{Array.from(identity.displayName || identity.email)[0]?.toUpperCase()}</Avatar>
-          <div className="account-profile-name">{identity.displayName}</div>
+          <Avatar shape="square" size={72} src={data?.avatarUrl ?? avatarUrl(data?.avatarId)} style={{ background: token.colorFillSecondary, color: token.colorText, borderRadius: 20, fontSize: 27 }}>{Array.from(displayName || identity.email)[0]?.toUpperCase()}</Avatar>
+          <div className="account-profile-name">{displayName}</div>
         </div>
         <div className="account-profile-growth" style={{ borderColor: token.colorBorderSecondary }}>
           <div className="account-profile-label" style={{ color: token.colorTextSecondary }}>等级与经验</div>

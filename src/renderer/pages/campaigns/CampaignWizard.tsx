@@ -60,7 +60,7 @@ interface DetailResult {
       touches: Array<{ stage: string; delayDays: number; mode?: TouchMode; templateId?: number; content?: { subject: string; body: string; cc?: string } }>;
       accountPolicy: "rotate" | "fixed";
       accountIds: number[];
-      schedule: { windowStartHour?: number; windowEndHour?: number; dailyGroupCap?: number };
+      schedule: { windowStartHour?: number; windowEndHour?: number };
       autoSend: boolean;
       sendMode?: "individual" | "bcc";
     } | null;
@@ -88,7 +88,6 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
   const [winEnabled, setWinEnabled] = useState(false);
   const [winStart, setWinStart] = useState(9);
   const [winEnd, setWinEnd] = useState(18);
-  const [dailyCap, setDailyCap] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const qc = useQueryClient();
 
@@ -128,7 +127,6 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
         setWinStart(s.windowStartHour);
         setWinEnd(s.windowEndHour);
       }
-      setDailyCap(s?.dailyGroupCap ?? 0);
       if (raw.touches[0]?.mode) setMode(raw.touches[0].mode);
       if (raw.sendMode) setSendMode(raw.sendMode);
     })();
@@ -213,10 +211,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
         touches: buildTouches(),
         autoSend, sendMode,
         accountPolicy: { mode: acctMode, ...(acctMode === "fixed" ? { accountIds: acctIds } : {}) },
-        schedule: {
-          ...(winEnabled && winStart !== winEnd ? { windowStartHour: winStart, windowEndHour: winEnd } : {}),
-          ...(dailyCap > 0 ? { dailyGroupCap: dailyCap } : {}),
-        },
+        schedule: winEnabled && winStart !== winEnd ? { windowStartHour: winStart, windowEndHour: winEnd } : {},
         ...(draftId ? { campaignId: draftId } : {}),
       };
       // 只添加不启动：任何 IPC 异常必须显形（曾被静默吞掉 → 按钮"点不动"无任何反馈）
@@ -425,7 +420,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
               </div>
             </div>
             <div>
-              <div className="text-[11px] text-gray-500 mb-1">发送时段（不勾选 = 跟随全局设置）</div>
+              <div className="text-[11px] text-gray-500 mb-1">发送时段（仅本任务，不勾选 = 不限时段）</div>
               <div className="flex items-center gap-2">
                 <Switch size="small" checked={winEnabled} onChange={setWinEnabled} />
                 {winEnabled && (
@@ -438,14 +433,6 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
                 )}
               </div>
               <div className="text-[10px] text-gray-400 mt-1">时段外只入队等待，到点自动发送（本机时区）</div>
-            </div>
-            <div>
-              <div className="text-[11px] text-gray-500 mb-1">单日放行上限（组/天）</div>
-              <div className="flex items-center gap-2">
-                <InputNumber size="small" min={0} max={2000} value={dailyCap} style={{ width: 110 }}
-                  onChange={v => setDailyCap(Math.max(0, Math.floor(Number(v) || 0)))} />
-                <span className="text-[11px] text-gray-400">{dailyCap === 0 ? "0 = 不限（尽快发完）" : "超出部分顺延次日继续——周期式发送"}</span>
-              </div>
             </div>
             <div>
               <div className="text-[11px] text-gray-500 mb-1">无人值守</div>
@@ -474,9 +461,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
               <div className="flex justify-between"><span className="text-gray-500">发信账号</span>
                 <span className="text-gray-800">{acctMode === "rotate" ? "智能轮换" : `指定 ${acctIds.length} 个账号`}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">发送时段</span>
-                <span className="text-gray-800">{winEnabled && winStart !== winEnd ? `${String(winStart).padStart(2, "0")}:00–${String(winEnd).padStart(2, "0")}:00` : "跟随全局"}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">单日上限</span>
-                <span className="text-gray-800">{dailyCap > 0 ? `${dailyCap} 组/天` : "不限"}</span></div>
+                <span className="text-gray-800">{winEnabled && winStart !== winEnd ? `${String(winStart).padStart(2, "0")}:00–${String(winEnd).padStart(2, "0")}:00` : "不限时段"}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">无人值守</span>
                 <span className="text-gray-800">{autoSend ? "自动发送" : "每轮手动开始"}</span></div>
             </div>

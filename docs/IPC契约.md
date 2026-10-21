@@ -333,3 +333,9 @@ HTTP复用POST /api/crm/contact-mail-events：ContactMailEventInput新增可选a
 ### 2026-10-19 联系人显示与新增字段补齐
 
 原CONTACT_LIST/CONTACT_DETAIL的CenterContact增加可选businessType/website，只读派生companies.industry/domain；字段存储与权限不变。原新增表单通过IMPORT发送companyMatching=true、自动公司键及同一导入词典字段，客户类型使用customerType（代理/直客），不再写联系人clientType。CSV使用中文分类并分列一二级来源与批次来源。无新增IPC/HTTP路径。
+
+## 2026-10-21 中心账号资料摘要（0.54.0-alpha.1，工作区）
+
+新增 `online:account-profile`，无业务参数，统一返回 `Result<AccountProfile>`。类型唯一来源为 `server/core/account-profile.ts`，经 `src/shared/online-crm.ts` 重导出；账号页只读取当前登录会话的资料，服务端按会话用户约束，不接受 renderer 指定其他 userId。中心 HTTP 对应 `GET /api/account/profile`，Bearer 仍只在主进程。头像只接受中心保存的 ID，界面资源随客户端打包；成长缺失返回 null。
+
+本次 ONLINE 通道增加 1 项，旧字段无改名、无删除。`ONLINE_CHANNELS`、`IPC.ONLINE`、preload 白名单和处理器注册继续共用同一常量源。

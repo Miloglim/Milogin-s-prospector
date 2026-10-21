@@ -31,6 +31,9 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\export-company-deploymen
 Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\verify-company-deployment.mjs') -Destination (Join-Path $prospector 'scripts\verify-company-deployment.mjs')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\production-deployment.env.example') -Destination (Join-Path $prospector 'production-deployment.env.example')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\company-server-handoff-20261019.md') -Destination (Join-Path $candidateRoot 'README.md')
+$deploymentTarget = Join-Path $candidateRoot 'deployment\aliyun'
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $deploymentTarget) | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment-templates\aliyun') -Destination $deploymentTarget -Recurse
 
 Push-Location $prospector
 try {
@@ -51,9 +54,10 @@ foreach ($directory in @('core', 'services', 'transport', 'ops')) {
 }
 $web = Join-Path $navigator 'web'
 New-Item -ItemType Directory -Path $web | Out-Null
-foreach ($name in @('index.html', 'prospector-authorize.html', 'admin-terminal.css', 'admin-terminal.js', 'notices.css', 'notices.js', 'notice-icons.svg', 'notice-icons.LICENSE')) {
+foreach ($name in @('index.html', 'download.html', 'download.css', 'download.js', 'prospector-authorize.html', 'admin-terminal.css', 'admin-terminal.js', 'notices.css', 'notices.js', 'notice-icons.svg', 'notice-icons.LICENSE')) {
   Copy-Item -LiteralPath (Join-Path $navigatorRoot "web\$name") -Destination (Join-Path $web $name) -ErrorAction Stop
 }
+Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment-templates\aliyun\navigator.Dockerfile') -Destination (Join-Path $navigator 'Dockerfile')
 Copy-Item -LiteralPath (Join-Path $navigatorRoot 'web\avatars') -Destination (Join-Path $web 'avatars') -Recurse
 New-Item -ItemType Directory -Path (Join-Path $navigator 'images') | Out-Null
 $identityTarget = Join-Path $candidateRoot 'navigator\Skill\freight-rate-heartbeat\scripts\freight_identity'
@@ -87,7 +91,7 @@ $manifest = [ordered]@{
   candidate = $stamp
   version = $version
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-  contents = @('prospector/dist-server', 'prospector/dist-admin', 'prospector/node_modules (pg runtime only)', 'navigator/Database Python runtime', 'navigator/Skill/freight-rate-heartbeat/scripts/freight_identity', 'navigator/Skill/freight-rate-heartbeat/scripts/config (empty deployment templates)', 'navigator/Skill/navigator-agent-intake', "client/$installerName")
+  contents = @('prospector/dist-server', 'prospector/dist-admin', 'prospector/node_modules (pg runtime only)', 'navigator/Database Python runtime', 'navigator/Database/Dockerfile', 'navigator/Database/web/download.html', 'navigator/Database/web/download.css', 'navigator/Database/web/download.js', 'navigator/Skill/freight-rate-heartbeat/scripts/freight_identity', 'navigator/Skill/freight-rate-heartbeat/scripts/config (empty deployment templates)', 'navigator/Skill/navigator-agent-intake', 'deployment/aliyun', "client/$installerName")
   excludes = @('runtime config', 'tokens', 'passwords', 'database files', 'logs', 'backups', 'business images', 'test fixtures')
   navigatorSourceBoundary = 'Navigator is Python runtime source; no frozen binary build was introduced.'
   electronInstallerSha256 = $installerHash
@@ -95,7 +99,7 @@ $manifest = [ordered]@{
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $candidateRoot 'MANIFEST.json') -Encoding UTF8
 
-$required = @('prospector\dist-server\online.js', 'prospector\dist-admin\index.html', 'prospector\node_modules\pg\package.json', 'prospector\scripts\center-postgres.mjs', 'prospector\scripts\provision-company-databases.mjs', 'prospector\scripts\production-server.mjs', 'prospector\scripts\bootstrap-company-server.ps1', 'prospector\scripts\bootstrap-production-admin.mjs', 'prospector\scripts\deploy-company-server.ps1', 'prospector\scripts\export-company-deployment.ps1', 'prospector\scripts\verify-company-deployment.mjs', 'navigator\Database\manual_server.py', 'navigator\Database\price_sanitize.py', 'navigator\Database\web\index.html', 'navigator\Skill\freight-rate-heartbeat\scripts\freight_identity\runtime.py', 'navigator\Skill\freight-rate-heartbeat\scripts\config\publisher_roster.json', 'navigator\Skill\freight-rate-heartbeat\scripts\config\chat_sources.json', 'navigator\Skill\navigator-agent-intake\SKILL.md', 'navigator\Skill\navigator-agent-intake\scripts\submit_intake.py', "client\$installerName")
+$required = @('prospector\dist-server\online.js', 'prospector\dist-admin\index.html', 'prospector\node_modules\pg\package.json', 'prospector\scripts\center-postgres.mjs', 'prospector\scripts\provision-company-databases.mjs', 'prospector\scripts\production-server.mjs', 'prospector\scripts\bootstrap-company-server.ps1', 'prospector\scripts\bootstrap-production-admin.mjs', 'prospector\scripts\deploy-company-server.ps1', 'prospector\scripts\export-company-deployment.ps1', 'prospector\scripts\verify-company-deployment.mjs', 'navigator\Database\manual_server.py', 'navigator\Database\price_sanitize.py', 'navigator\Database\Dockerfile', 'navigator\Database\web\index.html', 'navigator\Database\web\download.html', 'navigator\Database\web\download.css', 'navigator\Database\web\download.js', 'navigator\Skill\freight-rate-heartbeat\scripts\freight_identity\runtime.py', 'navigator\Skill\freight-rate-heartbeat\scripts\config\publisher_roster.json', 'navigator\Skill\freight-rate-heartbeat\scripts\config\chat_sources.json', 'navigator\Skill\navigator-agent-intake\SKILL.md', 'navigator\Skill\navigator-agent-intake\scripts\submit_intake.py', 'deployment\aliyun\docker-compose.yml', 'deployment\aliyun\Caddyfile', 'deployment\aliyun\env.example', "client\$installerName")
 foreach ($name in $required) {
   if (!(Test-Path -LiteralPath (Join-Path $candidateRoot $name))) { throw "候选包缺少运行文件：$name" }
 }

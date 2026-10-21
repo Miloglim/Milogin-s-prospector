@@ -34,7 +34,7 @@ export interface CampaignAccountPolicy {
   accountIds?: number[];
 }
 export interface CampaignSchedule {
-  /** 任务级发送时段覆盖（本机时区整点，起止都填且不相等才生效）；缺省=继承全局设置 */
+  /** 任务级发送时段（本机时区整点，起止都填且不相等才生效）；缺省=不限时段 */
   windowStartHour?: number;
   windowEndHour?: number;
   /** 单日放行组数上限（组/天，0=不限）：超出部分顺延次日——定时器语义「今天到此为止，明天继续」 */
@@ -54,7 +54,7 @@ export interface CreateCampaignInput {
   createdBy?: "ui" | "agent";
   /** 发信账号策略，缺省 rotate（健康账号智能轮换） */
   accountPolicy?: CampaignAccountPolicy;
-  /** 任务级调度覆盖，缺省继承全局 */
+  /** 任务级调度，缺省不限时段 */
   schedule?: CampaignSchedule;
   /** 发送方式：individual=每个联系人单独一封（收件人走 To，缺省）/ bcc=同公司合并一封（v6.1 用户拍板） */
   sendMode?: "individual" | "bcc";

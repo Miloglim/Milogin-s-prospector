@@ -1,7 +1,7 @@
 {
   "name": "milogin-center-runtime",
   "private": true,
-  "version": "0.52.0-alpha.2",
+  "version": "0.54.0-alpha.1",
   "engines": {
     "node": ">=22"
   },

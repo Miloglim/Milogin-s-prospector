@@ -13,6 +13,8 @@ import { ACCOUNT_PROFILE_SCHEMA_LOCK, ACCOUNT_PROFILE_SCHEMA_SQL, ACCOUNT_PROFIL
 import { ACCOUNT_GROWTH_SCHEMA_LOCK, ACCOUNT_GROWTH_SCHEMA_SQL, ACCOUNT_GROWTH_SCHEMA_VERSION } from './account-growth-schema';
 import { PASSWORD_COMPAT_SCHEMA_LOCK, PASSWORD_COMPAT_SCHEMA_SQL, PASSWORD_COMPAT_SCHEMA_VERSION } from './password-compat-schema';
 import { LEGACY_ACCOUNT_MAPPING_SCHEMA_LOCK, LEGACY_ACCOUNT_MAPPING_SCHEMA_SQL, LEGACY_ACCOUNT_MAPPING_SCHEMA_VERSION } from './legacy-account-mapping-schema';
+import type { AccountProfile } from '../../core/account-profile';
+import { growthSummary } from '../../core/account-growth';
 
 const IDENTITY_COLUMNS = `u.user_id AS "userId",u.display_name AS "displayName",e.email,
   (e.verified_at IS NOT NULL) AS "emailVerified",u.identity_admin AS "identityAdmin",u.must_change_password AS "mustChangePassword",
@@ -189,6 +191,23 @@ export class PostgresAuthRepository implements AuthRepository {
     return this.execute(async () => {
       const result = await this.pool.query(`SELECT ${IDENTITY_COLUMNS} FROM identity.sessions s JOIN identity.users u USING(user_id) JOIN identity.login_emails e USING(user_id) WHERE ${SESSION_FILTER} AND s.client=$2`,[tokenHash,client]);
       return success(result.rows[0] ?? null);
+    });
+  }
+  accountProfile(tokenHash: string): Promise<Result<AccountProfile | null>> {
+    return this.execute(async () => {
+      const result = await this.pool.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",
+        COALESCE(p.avatar_id,'default') AS "avatarId",COALESCE(p.bio,'') AS bio,
+        g.total_xp AS "totalXp",g.today_xp AS "todayXp",g.today_key::text AS "todayKey"
+        FROM identity.sessions s JOIN identity.users u USING(user_id)
+        LEFT JOIN identity.user_profiles p USING(user_id)
+        LEFT JOIN identity.account_growth_projection g USING(user_id)
+        WHERE ${SESSION_FILTER} AND s.client='api'`,[tokenHash]);
+      const row=result.rows[0];
+      if(!row)return success(null);
+      return success({
+        userId:row.userId,displayName:row.displayName,avatarId:row.avatarId,bio:row.bio,
+        growth:row.totalXp==null?null:growthSummary(Number(row.totalXp),Number(row.todayXp),row.todayKey),
+      });
     });
   }
   navigatorAccess(tokenHash: string): Promise<Result<NavigatorAccess | null>> {

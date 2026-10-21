@@ -1,3 +1,5 @@
+import type { GrowthSummary } from "./account-growth";
+
 export const ACCOUNT_PROFILE_LIMITS = {
   aliasMax: 128,
   avatarIdMax: 64,
@@ -6,8 +8,10 @@ export const ACCOUNT_PROFILE_LIMITS = {
 
 export interface AccountProfile {
   userId: string;
+  displayName: string;
   avatarId: string;
   bio: string;
+  growth: GrowthSummary | null;
 }
 
 export interface AccountProfilePatch {

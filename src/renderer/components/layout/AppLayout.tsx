@@ -97,7 +97,7 @@ function ScrollArea({ pathname, fullScreen, children }: { pathname: string; full
   return (
     <div
       className={fullScreen ? 'app-scroll-area app-scroll-area--edge-to-edge' : 'app-scroll-area'}
-      style={{ height: "100%", minHeight: 0, overflow: "hidden", padding: '16px 20px' }}
+      style={{ height: "100%", minHeight: 0, overflow: "hidden", padding: fullScreen ? 0 : '16px 20px' }}
     >
       <div
         ref={scrollRef}

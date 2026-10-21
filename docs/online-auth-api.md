@@ -1,5 +1,11 @@
 # 本机中心账号与 API
 
+## 2026-10-21 账号资料与成长摘要
+
+`GET /api/account/profile` 要求有效 API Bearer 会话，返回 `{ok:true,data:AccountProfile}`。服务端先从会话取得当前中心用户，再读取共享显示名、`identity.user_profiles.avatar_id/bio` 和 `identity.account_growth_projection`；不接受客户端 userId。无资料行时头像 ID 为 `default`、简介为空；无成长投影时 `growth=null`。存在投影时 `growth` 返回 `totalXp/cycle/level/levelProgress/levelCost/todayXp/todayKey`，等级进度由共享总经验派生。
+
+无令牌、伪造令牌、过期/撤销会话均返回 401；数据库异常返回统一 503，不返回密码、会话 Token 或内部查询信息。桌面只经 `online:account-profile` 调用，不直接暴露中心令牌。资料写入、头像编辑和成长事件上报不在本节点开放。
+
 ## 2026-10-16 公司与联系人生命周期接口
 
 以下均要求现有 CRM Bearer 会话、实时账号/产品授权校验，统一 `{ok,data?,error?}`。定义与 IPC 对应见 `server/core/crm-lifecycle.ts`。

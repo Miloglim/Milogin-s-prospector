@@ -50,12 +50,12 @@ describe('AppLayout full-screen routes', () => {
     return host.querySelector('.app-scroll-area') as HTMLDivElement;
   }
 
-  it('uses the shared page inset and keeps scrolling inside the inbox panes', async () => {
+  it('keeps the inbox edge-to-edge with scrolling inside its panes', async () => {
     const scrollArea = await renderRoute('/inbox');
     expect(scrollArea.style.height).toBe('100%');
     expect(scrollArea.style.minHeight).toBe('0px');
     expect(scrollArea.style.overflow).toBe('hidden');
-    expect(scrollArea.style.padding).toBe('16px 20px');
+    expect(scrollArea.style.padding).toBe('0px');
     expect((host.querySelector('.app-route-content') as HTMLDivElement).style.overflowY).toBe('hidden');
     expect(host.querySelector('[data-testid="route-content"]')?.textContent).toBe('Inbox fixture');
   });

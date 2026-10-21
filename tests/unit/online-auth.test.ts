@@ -60,4 +60,13 @@ describe("online boundary guards",()=> {
     const overloaded=await createAuthService(missing,{verify:async()=>{throw new Error("secret must not be returned");}},tokens,clock,1).login(input);
     expect(overloaded.ok).toBe(false);expect(JSON.stringify(overloaded)).not.toContain("secret");
   });
+  it("returns only the current session's shared profile summary",async()=>{
+    const token="a".repeat(43),hashed="stored-hash";
+    const identity={userId:"user-a",displayName:"Zayne",email:"admin@yqn.com",emailVerified:false,identityAdmin:true,crmRoles:["admin" as const]};
+    const profile={userId:"user-a",displayName:"Zayne",avatarId:"av-04",bio:"",growth:{totalXp:6612,cycle:7,level:28,levelProgress:16,levelCost:21,todayXp:18,todayKey:"2026-10-21"}};
+    const repo={identity:async()=>success(identity),accountProfile:async(hash:string)=>success(hash===hashed?profile:null)} as unknown as AuthRepository;
+    const service=createAuthService(repo,{verify:async()=>true},{create:()=>token,hash:()=>hashed},{now:()=>0},1);
+    expect(await service.accountProfile(token)).toEqual(success(profile));
+    expect(await service.accountProfile(token.slice(1))).toMatchObject({ok:false,error:{code:"UNAUTHORIZED"}});
+  });
 });

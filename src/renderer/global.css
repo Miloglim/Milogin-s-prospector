@@ -8,6 +8,11 @@
   --workspace-canvas: #f4f5f6;
   --workspace-surface: #fafbfc;
   --workspace-control: #f1f3f5;
+  --workspace-elevated: #ffffff;
+  --workspace-hover: #f2f4f5;
+  --workspace-line: #e3e6e9;
+  --workspace-text: #1a1a1a;
+  --workspace-muted: #6b7280;
 }
 body.workspace-dark {
   --workspace-canvas: #0b0d0f;
@@ -28,7 +33,9 @@ body.workspace-dark {
 .account-menu-identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 3px 0; }
 .account-menu-identity strong { color: #eee; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-menu-identity span { color: #a8a8a8; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.account-menu-logout { color: #f1a0a0; }
+.account-menu-popup .ant-dropdown-menu-item.account-menu-logout-item { color: #ff4d4f; background: rgba(255,77,79,.12); }
+.account-menu-popup .ant-dropdown-menu-item.account-menu-logout-item:hover { color: #ff7875; background: rgba(255,77,79,.18); }
+.account-menu-logout { color: inherit; font-weight: 600; }
 .account-profile-layout { display: grid; grid-template-columns: minmax(0,1fr) 250px; gap: 24px; align-items: start; }
 .account-profile-main { display: grid; gap: 16px; min-width: 0; }
 .account-profile-main .ant-card-body { padding: 20px; }
@@ -139,7 +146,7 @@ body {
 .app-route-content { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow-x: hidden; }
 .app-route-host { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .app-scroll-area--edge-to-edge {
-  padding: 16px 20px;
+  padding: 0;
   overflow: hidden;
 }
 .app-route-content--edge-to-edge {
@@ -153,6 +160,18 @@ body {
   min-height: 0;
   min-width: 0;
 }
+.inbox-list-pane,
+.inbox-reader-pane { background: var(--workspace-surface); }
+.inbox-list-pane { border-color: var(--workspace-line); }
+.inbox-action-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 8px; flex-shrink: 0; }
+.inbox-action-bar .ant-input-affix-wrapper { flex: 1 1 180px; min-width: 140px; }
+.inbox-switch-bar { padding: 0 12px 8px; flex-shrink: 0; }
+.inbox-filter-bar { padding: 0 12px; border-bottom: 1px solid var(--workspace-line); flex-shrink: 0; }
+.inbox-action-bar .ant-btn,
+.inbox-action-bar .ant-input,
+.inbox-switch-bar .ant-segmented-item-label,
+.inbox-filter-bar .ant-segmented-item-label { font-size: 12px; }
+.inbox-filter-option { display: inline-flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; }
 
 /* 普通抽屉和遮罩从标题栏下方开始，标题栏始终可见且可操作。 */
 .app-drawer-below-titlebar .ant-drawer-content-wrapper {
@@ -366,10 +385,65 @@ body {
 .settings-section {
   position: relative;
   animation: section-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  scroll-margin-top: 20px;
 }
 .settings-section:nth-child(2) { animation-delay: 0.06s; }
 .settings-section:nth-child(3) { animation-delay: 0.12s; }
 .settings-section:nth-child(4) { animation-delay: 0.18s; }
+
+.settings-page { align-items: flex-start; }
+.settings-panel {
+  overflow: hidden;
+  border: 1px solid var(--workspace-line);
+  border-radius: 8px;
+  background: var(--workspace-surface);
+}
+.settings-panel-heading {
+  padding: 18px 24px 15px;
+  border-bottom: 1px solid var(--workspace-line);
+  background: var(--workspace-control);
+}
+.settings-panel-heading h2 { margin: 0; color: var(--workspace-text); font-size: 16px; font-weight: 650; }
+.settings-panel-heading p { margin: 5px 0 0; color: var(--workspace-muted); font-size: 11px; }
+.settings-panel-body { padding: 0 24px 8px; }
+.settings-group { padding: 16px 0; border-top: 1px solid var(--workspace-line); }
+.settings-panel-body > .settings-group:first-child { border-top: 0; }
+.settings-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 26px; margin-bottom: 8px; }
+.settings-group-heading h3 { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--workspace-text); font-size: 13px; font-weight: 600; }
+.settings-group-heading > span { color: var(--workspace-muted); font-size: 11px; }
+.settings-group-body { min-width: 0; }
+.settings-group-body > .settings-group { border-top: 1px solid var(--workspace-line); }
+.settings-group-body > .settings-group:first-child { border-top: 0; padding-top: 2px; }
+.settings-group-note { margin: 2px 0 8px; color: var(--workspace-muted); font-size: 11px; line-height: 1.6; }
+.settings-row { display: grid; grid-template-columns: 132px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 40px; padding: 5px 0; }
+.settings-row-label { color: var(--workspace-muted); font-size: 12px; text-align: right; }
+.settings-row-value { min-width: 0; color: var(--workspace-text); font-size: 12px; }
+.settings-row-value:hover { background: var(--workspace-hover); }
+.settings-row-tail { display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; min-width: 36px; color: var(--workspace-muted); font-size: 11px; white-space: nowrap; }
+.settings-account-list { display: grid; gap: 8px; }
+.settings-account-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; min-height: 64px; padding: 10px 12px; border: 1px solid var(--workspace-line); border-radius: 6px; background: var(--workspace-elevated); }
+.settings-account-mark { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: var(--workspace-muted); background: var(--workspace-control); font-size: 12px; font-weight: 600; }
+.settings-account-identity { display: grid; min-width: 0; gap: 2px; }
+.settings-account-identity strong { overflow: hidden; color: var(--workspace-text); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.settings-account-identity span { overflow: hidden; color: var(--workspace-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.settings-account-status { display: flex; justify-content: flex-end; }
+.settings-account-actions { display: flex; align-items: center; justify-content: flex-end; gap: 1px; }
+.settings-empty-row { padding: 18px 0; color: var(--workspace-muted); font-size: 12px; text-align: center; }
+@media (max-width: 980px) {
+  .settings-account-row { grid-template-columns: 26px minmax(0, 1fr) auto; }
+  .settings-account-status { grid-column: 2; justify-content: flex-start; }
+  .settings-account-actions { grid-column: 3; grid-row: 1 / span 2; }
+}
+@media (max-width: 720px) {
+  .settings-panel-body { padding-left: 14px; padding-right: 14px; }
+  .settings-row { grid-template-columns: 104px minmax(0, 1fr); }
+  .settings-row-tail { grid-column: 2; justify-content: flex-start; }
+  .settings-account-row { grid-template-columns: 26px minmax(0, 1fr); }
+  .settings-account-status, .settings-account-actions { grid-column: 2; justify-content: flex-start; }
+  .settings-account-actions { grid-row: auto; flex-wrap: wrap; }
+}
+
+body.settings-route-active .app-route-content::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 /* 导航定位到某分区时的一圈青色描边+轻填充（独立伪元素，不抢 section-enter 动画） */
 @keyframes sec-locate {

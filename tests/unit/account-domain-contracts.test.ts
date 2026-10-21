@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ACCOUNT_PROFILE_LIMITS, normalizeLoginAlias } from "../../server/core/account-profile";
-import { GROWTH_SOURCE_PRODUCTS, isGrowthEventDraft, type GrowthEventDraft } from "../../server/core/account-growth";
+import { GROWTH_SOURCE_PRODUCTS, growthSummary, isGrowthEventDraft, type GrowthEventDraft } from "../../server/core/account-growth";
 import { isLegacyAccountMappingDraft } from "../../server/core/legacy-account-mapping";
 
 describe("central account domain contracts", () => {
@@ -24,6 +24,15 @@ describe("central account domain contracts", () => {
     expect(isGrowthEventDraft({ ...event, sourceProduct: "other" })).toBe(false);
     expect(isGrowthEventDraft({ ...event, subjectKey: "" })).toBe(false);
     expect(isGrowthEventDraft({ ...event, points: 0 })).toBe(false);
+  });
+
+  it("derives the shared level and in-level progress from total XP", () => {
+    expect(growthSummary(6612, 18, "2026-10-21")).toMatchObject({
+      totalXp: 6612, cycle: 7, level: 28, levelProgress: 16, levelCost: 21, todayXp: 18,
+    });
+    expect(growthSummary(0)).toMatchObject({ cycle: 1, level: 1, levelProgress: 0, levelCost: 12 });
+    expect(growthSummary(12)).toMatchObject({ cycle: 1, level: 2, levelProgress: 0, levelCost: 12 });
+    expect(growthSummary(1026)).toMatchObject({ cycle: 2, level: 1, levelProgress: 0, levelCost: 12 });
   });
 
   it("requires an explicit status for legacy Navigator account mappings", () => {

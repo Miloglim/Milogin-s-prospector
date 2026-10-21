@@ -7,6 +7,7 @@ export { importRowIssue, LEAD_LIMITS } from '../../server/core/leads';
 export { FOLLOWUP_METHODS, FOLLOWUP_METHOD_LABELS, CONTACT_TOUCH_STATUSES, CONTACT_TOUCH_LABELS } from '../../server/core/leads';
 export type { FollowupMethod, ContactTouchStatus, CustomerStage } from '../../server/core/leads';
 export type { Identity } from '../../server/core/auth';
+export type { AccountProfile } from '../../server/core/account-profile';
 export { CRM_ROLE_LABELS, identityRoleLabel } from '../../server/core/auth';
 export { AUTH_LIMITS } from '../../server/core/auth';
 export type { ImportRow, ImportRequest, ImportReceipt, PublishRequest, PublishReceipt, LeadQuery, LeadPage, LeadDetail, LeadBootstrap, LeadCommand, FollowupRequest } from '../../server/core/leads';
@@ -49,6 +50,7 @@ export interface CrmSyncStatus { connection:'online'|'offline'; syncing:boolean;
 export interface CrmSyncResolve { id:string; action:'retry'|'use-central'; }
 export type {ContactDelete,ContactDeleteReceipt,CompanyCreate,CompanyDelete,CompanyQuery,CompanyPage as CenterCompanyPage,CompanyDetail as CenterCompanyDetail,CenterCompany} from '../../server/core/crm-lifecycle';
 export const ONLINE_CHANNELS = {
+  ACCOUNT_PROFILE:'online:account-profile',
   CONTACT_SHARES:'online:contact-shares', CONTACT_SHARE_CREATE:'online:contact-share-create', CONTACT_SHARE_DECIDE:'online:contact-share-decide', CONTACT_SHARE_UPDATE:'online:contact-share-update', CONTACT_SHARE_MEMBERS:'online:contact-share-members',
  CONTACT_DELETE:'online:contact-delete',COMPANY_LIST:'online:company-list',COMPANY_DETAIL:'online:company-detail',COMPANY_CREATE:'online:company-create',COMPANY_DELETE:'online:company-delete',
   REGISTER:'online:register', LOGIN:'online:login', LOGOUT:'online:logout', STATUS:'online:status', RESTORE:'online:restore', PASSWORD:'online:password', BOOTSTRAP:'online:bootstrap',

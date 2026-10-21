@@ -1419,15 +1419,6 @@ export async function startDynamicSend(contactIds: number[], subject: string, bo
   return startQueue(qr.data, autoStart);
 }
 
-// 检查时间窗口（跟操作系统时区：2026-09-06 用户拍板，不再固定北京时间）
-function inWindow(sched: typeof DEFAULT_SCHEDULE): boolean {
-  if (!sched.timeWindowEnabled) return true;
-  const h = new Date().getHours(); // 本机时区小时
-  return sched.startHour < sched.endHour
-    ? h >= sched.startHour && h < sched.endHour
-    : h >= sched.startHour || h < sched.endHour;
-}
-
 function randBetween(min: number, max: number): number {
   if (max <= min) return min * 1000;
   return (Math.floor(Math.random() * (max - min + 1)) + min) * 1000;
@@ -1523,23 +1514,6 @@ async function runBatchLoop(): Promise<void> {
     const item = items[i]!;
     if (item.status !== "pending") continue; // 已被熔断标记的组直接跳过
     const accountId = item.accountId;
-
-    // 时间窗口检查 — 窗口外等待，模拟人工只在工作时间发信（测试模式跳过时段限制）
-    if (!loadConfig().test.enabled && !inWindow(sched)) {
-      const waitMs = 60 * 1000; // 每分钟检查一次
-      state.delaySeconds = Math.floor(waitMs / 1000);
-      state.delayUntil = new Date(Date.now() + waitMs).toISOString();
-      state.delayReason = "window"; // 前端据此显示"未到发送时段"而非 60 秒倒计时
-      push(EVENTS.SEND_PROGRESS, state);
-      await sleep(waitMs);
-      if (loopGen !== myGen) return; // 已被新批次接管
-      if (!state.isRunning) return;
-      state.delaySeconds = 0;
-      state.delayUntil = null;
-      state.delayReason = null;
-      i--; // 不消耗队列项，继续等
-      continue;
-    }
 
     // 账号并发闸：该账号排发单元已满（≥MAX_ACTIVE_TASKS_PER_ACCOUNT）则等号，不硬塞。
     // 非任务驱动（手动直发，无 campaignId）不参与上限 —— 同步放行，不经过 await，

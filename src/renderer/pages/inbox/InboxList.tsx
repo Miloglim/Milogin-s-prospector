@@ -1,11 +1,11 @@
 import { invalidateDomain } from "../../lib/cacheDeps";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Button, message, Modal, Tooltip, Progress, notification, Dropdown, Select } from "antd";
+import { Button, Input, message, Modal, Tooltip, Progress, notification, Dropdown, Select, Segmented } from "antd";
 
 // (Button etc. used in sub-components)
 import {
-  ReloadOutlined, MailOutlined,
+  ReloadOutlined, MailOutlined, SearchOutlined,
   DeleteOutlined,
 } from "@ant-design/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -593,17 +593,20 @@ export function InboxList() {
     <div className="inbox-workspace prospector-inbox-page flex h-full" style={{ height: "100%", minHeight: 0, overflow: "hidden" }} onClick={() => setMenu(null)}>
 
       {/* ══ 左侧 ══ */}
-      <div className="flex flex-col flex-shrink-0 bg-white" style={{ width: "38%", minWidth: 400, maxWidth: 680, minHeight: 0, userSelect: "none", borderRight: "1px solid #e8e8e8" }}>
+      <div className="inbox-list-pane flex flex-col flex-shrink-0" style={{ width: "38%", minWidth: 400, maxWidth: 680, minHeight: 0, userSelect: "none", borderRight: "1px solid var(--workspace-line)" }}>
 
         {/* 顶部 */}
-        <div style={{ padding: "7px 10px 5px", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+        <div className="inbox-action-bar">
           <Button size="small" onClick={doFetch} disabled={fetching || offline}
             icon={<ReloadOutlined className={fetching ? "animate-spin" : ""} />}>
             刷新
           </Button>
-          <input
+          <Input
+            size="small"
+            prefix={<SearchOutlined />}
+            allowClear
             placeholder="搜索..." value={search} onChange={e => setSearch(e.target.value)}
-            style={{ flex: 1, border: "1px solid #e5e5e5", borderRadius: 5, padding: "3px 8px", fontSize: 11, outline: "none", minWidth: 0, lineHeight: "18px" }} />
+          />
           {sel.size > 1 && <Button size="small" onClick={batchRead} title="Ctrl+A 全选 · ↑↓ 移动（Shift 扩选）· Space 切换选中">已读</Button>}
           {sel.size > 1 && <Button size="small" danger onClick={batchDel} title="已选 {n} 封 · Delete 键同样可删（有确认）· Esc 取消选择">删({sel.size})</Button>}
         </div>
@@ -627,20 +630,14 @@ export function InboxList() {
         </Modal>
 
         {/* 视图切换 */}
-        <div style={{ display: "flex", padding: "2px 10px 4px", gap: 4, flexShrink: 0 }}>
-          {(["flat", "sender"] as const).map(v => {
-            const on = view === v;
-            return (
-              <button key={v} onClick={() => { setView(v); setSenderFilter(null); }} className={`inbox-view-mode${on ? ' is-active' : ''}`}
-                style={{
-                  flex: 1, padding: "2px 0", fontSize: 10, cursor: "pointer", border: "1px solid #e5e5e5",
-                  borderRadius: 6, background: on ? "#1a1a1a" : "#fff", color: on ? "#fff" : "#666",
-                  fontWeight: on ? 600 : 400, transition: "all .12s",
-                }}>
-                {v === "flat" ? "全部邮件" : "按发信人"}
-              </button>
-            );
-          })}
+        <div className="inbox-switch-bar">
+          <Segmented
+            block
+            size="small"
+            value={view}
+            options={[{ value: "flat", label: "全部邮件" }, { value: "sender", label: "按发信人" }]}
+            onChange={value => { setView(value as "flat" | "sender"); setSenderFilter(null); }}
+          />
         </div>
 
         {/* 发信人选中后的面包屑栏：让用户一眼看出是从发信人列表点进来的邮件汇总 */}
@@ -666,27 +663,21 @@ export function InboxList() {
         })()}
 
         {/* 筛选 */}
-        <div style={{ display: "flex", borderBottom: "1px solid #e8e8e8", flexShrink: 0 }}>
-          {FILTERS.map(f => {
-            const on = filter === f.key;
-            return (
-              <button key={f.key} onClick={() => setFilter(f.key)}
-                style={{
-                  flex: 1, padding: "6px 0", fontSize: 11.5, cursor: "pointer", border: 0, background: "none",
-                  color: on ? "#1a1a1a" : "#999", fontWeight: on ? 600 : 400,
-                  boxShadow: on ? "inset 0 -1.5px 0 #1a1a1a" : "none",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 3, whiteSpace: "nowrap",
-                  transition: "color .12s",
-                }}
-                onMouseEnter={e => { if (!on) (e.currentTarget as HTMLElement).style.color = "#666"; }}
-                onMouseLeave={e => { if (!on) (e.currentTarget as HTMLElement).style.color = "#999"; }}
-              >
-                {"dot" in f && <span style={{ fontSize: 8, color: f.dot, lineHeight: 1, flexShrink: 0 }}>●</span>}
+        <div className="inbox-filter-bar">
+          <Segmented
+            block
+            size="small"
+            value={filter}
+            onChange={value => setFilter(value as typeof filter)}
+            options={FILTERS.map(f => ({
+              value: f.key,
+              label: <span className="inbox-filter-option">
+                {"dot" in f && <span style={{ fontSize: 8, color: f.dot, lineHeight: 1 }}>●</span>}
                 {f.label}
-                {f.key !== "all" && (nCounts[f.key] ?? 0) > 0 && <span style={{ fontSize: 8, color: "#e5484d", lineHeight: 1, flexShrink: 0 }}>●</span>}
-              </button>
-            );
-          })}
+                {f.key !== "all" && (nCounts[f.key] ?? 0) > 0 && <span style={{ fontSize: 8, color: "#e5484d", lineHeight: 1 }}>●</span>}
+              </span>,
+            }))}
+          />
         </div>
 
         {/* 退信删除：计数/弹窗/执行同一数据源（后端全库），所见即所删；删除前主进程先归档 */}
@@ -818,7 +809,7 @@ export function InboxList() {
       </div>
 
       {/* ══ 右侧 ══ */}
-      <div className="flex-1 bg-white flex flex-col overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
+      <div className="inbox-reader-pane flex-1 flex flex-col overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
         {!sel_ ? (
           <div className="flex-1 flex flex-col items-center justify-center" style={{ color: "#ddd" }}>
             <MailOutlined style={{ fontSize: 32, marginBottom: 10 }} />

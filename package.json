@@ -1,6 +1,6 @@
 {
   "name": "prospecting-email",
-  "version": "0.53.2-alpha.1",
+  "version": "0.54.0-alpha.1",
   "description": "Milogin's Outreacher — 货代行业客户开发工具",
   "main": "./dist/main/index.js",
   "scripts": {
@@ -21,6 +21,7 @@
     "crm:pg:build": "tsc -p tsconfig.server.json",
     "crm:pg:check": "npm run crm:pg:build && node dist-server/cli.js",
     "crm:pg:test": "node scripts/crm-postgres.mjs test",
+    "test:account-profile-migration": "npm run crm:pg:build && node scripts/test-account-profile-migration.cjs",
     "crm:admin:build": "tsc -p tsconfig.admin.json && node scripts/build-admin.mjs",
     "crm:online:start": "npm run crm:admin:build && npm run crm:pg:build && node scripts/online-server.mjs start --test",
     "crm:online:status": "node scripts/online-server.mjs status",

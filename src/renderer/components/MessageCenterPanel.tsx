@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
-import { Alert, Button, Empty, Segmented, Spin, theme } from 'antd';
+import { Alert, Empty, Segmented, theme } from 'antd';
 import {
   BellOutlined, ClockCircleOutlined, EditOutlined,
-  LineChartOutlined, ReloadOutlined, ShareAltOutlined, UserAddOutlined, UserSwitchOutlined,
+  LineChartOutlined, ShareAltOutlined, UserAddOutlined, UserSwitchOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from '@tanstack/react-router';
 import { useOptionalIdentity } from '../IdentityContext';
@@ -84,7 +84,7 @@ function resizePanel(startWidth: number, startHeight: number, deltaX: number, de
   };
 }
 
-export function MessageCenterPanel({ onNavigate }: { onNavigate?: () => void }) {
+export function MessageCenterPanel() {
   const identity = useOptionalIdentity()?.identity;
   const notifications = useOptionalNotifications();
   const navigate = useNavigate();
@@ -107,7 +107,6 @@ export function MessageCenterPanel({ onNavigate }: { onNavigate?: () => void }) 
   const open = async (item: OnlineNotification) => {
     const id = await notifications?.open(item);
     if (!id) return;
-    onNavigate?.();
     if (item.eventType.startsWith('crm.contact.share.')) {
       const view = item.shareTargetUserId && item.shareTargetUserId !== identity?.userId ? 'outgoing' : 'incoming';
       window.location.hash = `#/customers?view=assignments&sharing=true&shareView=${view}`;
@@ -200,46 +199,43 @@ export function MessageCenterPanel({ onNavigate }: { onNavigate?: () => void }) 
       </div>
       <div className="messages-tools">
         <Segmented aria-label="消息筛选" size="small" options={[...FILTERS]} value={filter} onChange={value => setFilter(value as MessageFilter)} />
-        <Button type="text" icon={<ReloadOutlined />} aria-label="刷新消息" title="刷新消息" loading={notifications?.loading} onClick={() => void notifications?.refresh(true)} />
       </div>
     </header>
     {notifications?.error && <Alert className="messages-alert" type="warning" showIcon message={notifications.error} />}
     <div className="messages-body">
-      <Spin spinning={notifications?.loading ?? false}>
-        <div className="messages-list">
-          {!items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={filter === '未读' ? '暂无未读消息' : '暂无消息'} />}
-          {Array.from(groups, ([name, group]) => <section key={name} aria-label={name}>
-            <h2 className="message-date-group">{name}</h2>
-            {group.map(item => {
-              const canOpen = item.canOpen !== false && (!!item.customerId || !!item.requestId || !!item.shareId);
-              const summary = canOpen ? item.summary : undefined;
-              const detail = [summary?.actorName, summary?.note].filter(Boolean).join(' · ');
-              const action = canOpen ? destinationLabel(item) : '';
-              const content = <>
-                <span className="message-type-icon" aria-hidden="true">{messageIcon(item.eventType)}</span>
-                <span className="message-copy">
-                  <span className="message-title">
-                    {LABELS[item.eventType] ?? '记录更新'}
-                    {summary?.companyName && <strong> · {summary.companyName}</strong>}
-                  </span>
-                  {(action || detail) && <span className="message-summary">
-                    {action && <span className="message-destination">{action}</span>}
-                    {action && detail && ' · '}
-                    {detail}
-                  </span>}
+      <div className="messages-list">
+        {!items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={filter === '未读' ? '暂无未读消息' : '暂无消息'} />}
+        {Array.from(groups, ([name, group]) => <section key={name} aria-label={name}>
+          <h2 className="message-date-group">{name}</h2>
+          {group.map(item => {
+            const canOpen = item.canOpen !== false && (!!item.customerId || !!item.requestId || !!item.shareId);
+            const summary = canOpen ? item.summary : undefined;
+            const detail = [summary?.actorName, summary?.note].filter(Boolean).join(' · ');
+            const action = canOpen ? destinationLabel(item) : '';
+            const content = <>
+              <span className="message-type-icon" aria-hidden="true">{messageIcon(item.eventType)}</span>
+              <span className="message-copy">
+                <span className="message-title">
+                  {LABELS[item.eventType] ?? '记录更新'}
+                  {summary?.companyName && <strong> · {summary.companyName}</strong>}
                 </span>
-                <span className="message-meta"><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time></span>
-              </>;
-              return <div key={item.id} className={`message-row${item.read ? '' : ' is-unread'}`}>
-                {canOpen ? <button type="button" className="message-main" onClick={() => void open(item)}>{content}</button> : <div className="message-main">{content}</div>}
-                <span className="message-status">
-                  {!item.read && <span className="message-unread-dot" aria-label="未读" />}
-                </span>
-              </div>;
-            })}
-          </section>)}
-        </div>
-      </Spin>
+                {(action || detail) && <span className="message-summary">
+                  {action && <span className="message-destination">{action}</span>}
+                  {action && detail && ' · '}
+                  {detail}
+                </span>}
+              </span>
+              <span className="message-meta"><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time></span>
+            </>;
+            return <div key={item.id} className={`message-row${item.read ? '' : ' is-unread'}`}>
+              {canOpen ? <button type="button" className="message-main" onClick={() => void open(item)}>{content}</button> : <div className="message-main">{content}</div>}
+              <span className="message-status">
+                {!item.read && <span className="message-unread-dot" aria-label="未读" />}
+              </span>
+            </div>;
+          })}
+        </section>)}
+      </div>
     </div>
   </section>;
 }

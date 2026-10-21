@@ -1,0 +1,97 @@
+name: logistics-api
+
+services:
+  pg-center:
+    image: postgres:15-alpine
+    container_name: pg-center
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${CENTER_DB_PASSWORD}
+      POSTGRES_DB: prospector_center
+    ports:
+      - '127.0.0.1:55846:5432'
+    volumes:
+      - pg_center_data:/var/lib/postgresql/data
+    restart: always
+
+  pg-nav:
+    image: postgres:15-alpine
+    container_name: pg-nav
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${NAV_DB_PASSWORD}
+      POSTGRES_DB: navigator_rates
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - pg_nav_data:/var/lib/postgresql/data
+    restart: always
+
+  center-api:
+    image: node:22-alpine
+    container_name: center-api
+    network_mode: host
+    working_dir: /app
+    volumes:
+      - ${RELEASE_ROOT}/prospector:/app
+      - milogin_runtime:/var/lib/MiloginCenter
+    environment:
+      - ProgramData=/var/lib
+      - PROSPECTOR_CENTER_MODE=production
+      - PROSPECTOR_CENTER_PG_DSN=postgresql://milogin_app:${CENTER_APP_PASSWORD}@127.0.0.1:55846/milogin_center
+      - PROSPECTOR_CENTER_PUBLIC_ORIGIN=https://${CENTER_HOST}
+      - PROSPECTOR_NAVIGATOR_URL=http://127.0.0.1:8795
+      - PROSPECTOR_NAVIGATOR_ENTRY_URL=https://${NAVIGATOR_HOST}
+      - PROSPECTOR_ONLINE_INSTANCE=${PROSPECTOR_ONLINE_INSTANCE}
+    depends_on:
+      - pg-center
+    command: node dist-server/online.js
+    restart: always
+
+  nav-api:
+    image: logistics-nav:0.54.0
+    build:
+      context: ${RELEASE_ROOT}/navigator/Database
+    container_name: nav-api
+    network_mode: host
+    working_dir: /app
+    volumes:
+      - ${RELEASE_ROOT}/navigator/Database:/app
+      - ${RELEASE_ROOT}/navigator/Skill/freight-rate-heartbeat/scripts:/opt/navigator-skill:ro
+      - /opt/logistics/freight-postgres.env:/opt/freight-postgres.env:ro
+    environment:
+      - NAVIGATOR_AGENT_API_TOKEN=${NAVIGATOR_AGENT_API_TOKEN}
+      - NAVIGATOR_TRUSTED_PROXY_HTTPS=1
+      - PG_BIN=/usr/bin
+      - PYTHONPATH=/app:/opt/navigator-skill
+    depends_on:
+      - pg-nav
+      - center-api
+    command: python -u manual_server.py --host 127.0.0.1 --port 8795 --backend postgres --postgres-env-file /opt/freight-postgres.env --center-auth-url http://127.0.0.1:55847
+    restart: always
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: caddy
+    network_mode: host
+    volumes:
+      - ${RELEASE_ROOT}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - center-api
+      - nav-api
+    restart: always
+
+volumes:
+  pg_center_data:
+    external: true
+    name: logistics-api_pg_center_data
+  pg_nav_data:
+    external: true
+    name: logistics-api_pg_nav_data
+  milogin_runtime:
+    external: true
+    name: logistics-api_milogin_runtime
+  caddy_data:
+  caddy_config:

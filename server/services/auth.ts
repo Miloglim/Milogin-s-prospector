@@ -36,6 +36,14 @@ export function createAuthService(repo: AuthRepository, passwords: PasswordPort,
       return session.data ? success({token,expiresAt,identity:session.data}) : unauthorized();
     },
     me,
+    async accountProfile(token: string) {
+      const identity=await me(token);
+      if(!identity.ok)return identity;
+      if(!repo.accountProfile)return failure('UNAVAILABLE','账号资料暂不可用');
+      const result=await repo.accountProfile(tokens.hash(token));
+      if(!result.ok)return result;
+      return result.data?.userId===identity.data.userId?success(result.data):unauthorized();
+    },
     async logout(token: string,client:"api"|"browser"='api'): Promise<Result<void>> {
       const identity = await me(token,client);
       return identity.ok ? repo.revoke(tokens.hash(token)) : identity;

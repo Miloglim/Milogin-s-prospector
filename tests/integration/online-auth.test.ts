@@ -84,6 +84,32 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
     expect(JSON.stringify(identity.body)).not.toMatch(/password|tokenHash|securityRevision/);
     expect(identity.headers.get("cache-control")).toContain("no-store");
   });
+  it("serves only the authenticated account's shared profile and derived growth", async () => {
+    const token = await login("admin");
+    const userId = users.admin!.userId;
+    await pool.query("INSERT INTO identity.user_profiles(user_id,avatar_id,bio) VALUES($1,'av-04','') ON CONFLICT(user_id) DO UPDATE SET avatar_id='av-04',bio=''", [userId]);
+    await pool.query("INSERT INTO identity.account_growth_projection(user_id,total_xp,cycle,level,today_xp,today_key) VALUES($1,6612,7,28,18,CURRENT_DATE) ON CONFLICT(user_id) DO UPDATE SET total_xp=6612,cycle=7,level=28,today_xp=18,today_key=CURRENT_DATE", [userId]);
+    try {
+      expect((await request(API_ROUTES.accountProfile)).status).toBe(401);
+      const profile = await request(API_ROUTES.accountProfile, { token });
+      expect(profile.status).toBe(200);
+      expect(profile.body).toMatchObject({ ok: true, data: {
+        userId, displayName: "admin", avatarId: "av-04", bio: "",
+        growth: { totalXp: 6612, cycle: 7, level: 28, levelProgress: 16, levelCost: 21 },
+      } });
+    } finally {
+      await pool.query("DELETE FROM identity.account_growth_projection WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM identity.user_profiles WHERE user_id=$1", [userId]);
+    }
+  });
+  it("keeps missing shared profile and growth unknown instead of inventing values", async () => {
+    const token = await login("a");
+    const profile = await request(API_ROUTES.accountProfile, { token });
+    expect(profile.status).toBe(200);
+    expect(profile.body).toMatchObject({ ok: true, data: {
+      userId: users.a!.userId, displayName: "a", avatarId: "default", bio: "", growth: null,
+    } });
+  });
   it("enforces manager and product roles server-side, ignoring claimed role", async () => {
     tokens.a = await login("a"); tokens.b = await login("b"); tokens.ops = await login("ops"); tokens.none = await login("none");
     expect((await request(API_ROUTES.users,{token:tokens.a})).status).toBe(403);

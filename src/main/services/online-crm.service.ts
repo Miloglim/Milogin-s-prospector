@@ -1,5 +1,5 @@
 import type { ImportFileContent } from "../../shared/online-crm";
-import type { Result, Identity, OnlineLogin, ImportPreview, ImportRequest, ImportReceipt, PublishRequest, PublishReceipt, LeadBootstrap, LeadQuery, LeadPage, LeadDetail, LeadCommand, FollowupRequest, OnlineFeed } from '../../shared/online-crm';
+import type { AccountProfile, Result, Identity, OnlineLogin, ImportPreview, ImportRequest, ImportReceipt, PublishRequest, PublishReceipt, LeadBootstrap, LeadQuery, LeadPage, LeadDetail, LeadCommand, FollowupRequest, OnlineFeed } from '../../shared/online-crm';
 import type { OnlineSessionSnapshot, OnlinePasswordChange, OnlineRegistration, RegisteredAccount, OnlineFeedRequest } from '../../shared/online-crm';
 import type { LoginAccountQuery, SavedAccountLogin, OnlineLogout } from '../../shared/online-crm';
 import type { CustomerCreate, CustomerUpdate, MemberQuery, MemberPage } from '../../shared/online-crm';
@@ -24,6 +24,7 @@ export interface OnlineCrmPort {
   contacts?(query:CenterContactQuery):Promise<Result<CenterContactPage>>;
   register?(input:OnlineRegistration):Promise<Result<RegisteredAccount>>;
   login(input:OnlineLogin):Promise<Result<Identity>>; logout(input?:OnlineLogout):Promise<Result<void>>;
+  accountProfile?():Promise<Result<AccountProfile>>;
   request<T>(method:string,path:string,body?:unknown,requireCenterReceipt?:boolean):Promise<Result<T>>;
   preview(input?:ImportFileContent):Promise<Result<ImportPreview>>; feed(input?:OnlineFeedRequest):Promise<Result<OnlineFeed>>;
   workbookPreview?():Promise<Result<ImportPreview>>;
@@ -79,6 +80,7 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     opportunityStage:(input:OpportunityUpdateStage)=>port.request<Opportunity>('POST',`${OPPORTUNITY_ROUTES.opportunities}/${encodeURIComponent(input.opportunityId)}/${OPPORTUNITY_ROUTES.stageAction}`,input),
     register:(input:OnlineRegistration)=>port.register?.(input) ?? Promise.resolve(failure('UNAVAILABLE','注册暂不可用')),
     login:(input:OnlineLogin)=>port.login(input), logout:(input?:OnlineLogout)=>port.logout(input), preview:(input?:ImportFileContent)=>port.preview(input),
+    accountProfile:()=>port.accountProfile?.() ?? Promise.resolve(failure('UNAVAILABLE','账号资料暂不可用')),
     workbookPreview:()=>port.workbookPreview?.() ?? Promise.resolve(failure('UNAVAILABLE','工作簿预览暂不可用')),
     importWorkbook:(input:WorkbookImportRequest)=>port.request<WorkbookImportReceipt>('POST',WORKBOOK_IMPORT_ROUTE,input),
     status:()=>port.status?.() ?? Promise.resolve(failure('UNAVAILABLE','身份状态不可用')),

@@ -12,7 +12,7 @@ import type { LoginAccountQuery, SavedAccountLogin, OnlineLogout } from '../../s
 import { isCenterUnavailable, OFFLINE_ACCESS_LIMITS } from '../../../server/core/offline-access';
 import type { OfflineAccessGrant } from '../../../server/core/offline-access';
 import { verifyOfflineAccess } from './offline-access-verifier.adapter';
-import type { Result, Identity, OnlineLogin, OnlinePasswordChange, OnlineSessionSnapshot, ImportPreview, OnlineFeed, OnlineFeedRequest, OnlineRegistration, RegisteredAccount } from '../../shared/online-crm';
+import type { AccountProfile, Result, Identity, OnlineLogin, OnlinePasswordChange, OnlineSessionSnapshot, ImportPreview, OnlineFeed, OnlineFeedRequest, OnlineRegistration, RegisteredAccount } from '../../shared/online-crm';
 import { ONLINE_LIMITS } from '../../shared/online-crm';
 import type { OnlineCrmPort } from '../services/online-crm.service';
 import { Log } from '../logger';
@@ -278,6 +278,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
       return me;
     } catch(error) { Log.error('online.login',`登录状态保存失败 (${error instanceof Error?error.name:'unknown'})`);if(generation===this.generation)await this.forget();return failure('UNAVAILABLE','登录状态无法安全保存，请重试'); }
   }
+  accountProfile():Promise<Result<AccountProfile>> { return this.request<AccountProfile>('GET',API_ROUTES.accountProfile); }
   async logout(input?:OnlineLogout):Promise<Result<void>> {
     if(input!==undefined&&(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>key!=='switchAccount')||input.switchAccount!==undefined&&typeof input.switchAccount!=='boolean'))return failure('INVALID_INPUT','退出参数无效');
     if(input?.switchAccount&&this.remembered){

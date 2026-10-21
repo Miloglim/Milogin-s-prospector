@@ -419,7 +419,7 @@ export function Sidebar() {
       </div>}
 
       <div className={`sidebar-footer${sidebarCollapsed ? ' is-collapsed' : ''}`}>
-        {session?.identity && <ConfigProvider theme={brandTheme(true)}><Dropdown overlayClassName="account-menu-popup" trigger={['click']} placement="topLeft" menu={{ items: [{ type: 'group', label: <div className="account-menu-identity"><strong>{session.identity.displayName}</strong><span>{session.identity.email}</span></div> }, { type: 'divider' }, { key: 'profile', icon: <UserOutlined />, label: '账号资料' }, { key: 'settings', icon: <SettingOutlined />, label: '设置' }, { type: 'divider' }, { key: 'switch', label: '切换账号' }, { key: 'logout', label: <span className="account-menu-logout">退出登录</span> }], onClick: ({ key }) => { if (key === 'logout') void session.logout(); if (key === 'switch') void session.logout({ switchAccount: true }); if (key === 'settings') void navigate({ to: '/settings' }); if (key === 'profile') void navigate({ to: '/account' }); } }}>
+        {session?.identity && <ConfigProvider theme={brandTheme(true)}><Dropdown overlayClassName="account-menu-popup" trigger={['click']} placement="topLeft" menu={{ items: [{ type: 'group', label: <div className="account-menu-identity"><strong>{session.identity.displayName}</strong><span>{session.identity.email}</span></div> }, { type: 'divider' }, { key: 'profile', icon: <UserOutlined />, label: '账号资料' }, { key: 'settings', icon: <SettingOutlined />, label: '设置' }, { type: 'divider' }, { key: 'switch', label: '切换账号' }, { key: 'logout', className: 'account-menu-logout-item', label: <span className="account-menu-logout">退出登录</span> }], onClick: ({ key }) => { if (key === 'logout') void session.logout(); if (key === 'switch') void session.logout({ switchAccount: true }); if (key === 'settings') void navigate({ to: '/settings' }); if (key === 'profile') void navigate({ to: '/account' }); } }}>
                 <button type="button" className="sidebar-account" aria-label="账号菜单" title={`你好，${identityRoleLabel(session.identity)}`}>
             <SettingOutlined />
                   {!sidebarCollapsed && <span className="sidebar-greeting" style={{ color: '#9b9b9b', fontWeight: 600 }}>你好，{identityRoleLabel(session.identity)}</span>}
@@ -434,7 +434,7 @@ export function Sidebar() {
             onOpenChange={setMessagesOpen}
             overlayClassName="message-center-popover"
             styles={{ body: { padding: 0, overflow: 'hidden' } }}
-            content={<MessageCenterPanel onNavigate={() => setMessagesOpen(false)} />}
+            content={<MessageCenterPanel />}
           >
             <span className="message-center-trigger">
               <FootIcon icon={<><BellOutlined />{(notifications?.unread ?? 0) > 0 && <span className="sidebar-message-badge" aria-label={`${notifications?.unread} 条未读`}>{notifications?.unread}</span>}</>} label="消息中心" disabled={offline} active={messagesOpen} onClick={() => undefined} />

@@ -4,11 +4,11 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { App as AntApp } from 'antd';
 import { Sidebar } from '../../src/renderer/components/layout/Sidebar';
-const state = vi.hoisted(() => ({ offline:false, collapsed: false, unread: 1, items: [] as Array<Record<string, unknown>>, navigate: vi.fn(), logout: vi.fn(), reconnect: vi.fn(), search: vi.fn(), refresh: vi.fn(), readMessage: vi.fn(), openMessage: vi.fn(), identityAdmin: false, roles: ['sales'] as Array<'admin' | 'operations' | 'sales' | 'auditor'> }));
+const state = vi.hoisted(() => ({ offline:false, collapsed: false, unread: 1, items: [] as Array<Record<string, unknown>>, navigate: vi.fn(), logout: vi.fn(), reconnect: vi.fn(), search: vi.fn(), refresh: vi.fn(), readMessage: vi.fn(), openMessage: vi.fn(), loading: false, identityAdmin: false, roles: ['sales'] as Array<'admin' | 'operations' | 'sales' | 'auditor'> }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => state.navigate, useRouterState: ({ select }: { select: (value: unknown) => unknown }) => select({ location: { pathname: '/messages', search: {} } }) }));
 vi.mock('../../src/renderer/AppContext', () => ({ useAppContext: () => ({ sidebarCollapsed: state.collapsed }) }));
 vi.mock('../../src/renderer/IdentityContext', () => ({ useOptionalIdentity: () => ({ status:state.offline?'offline':'authenticated',localAvailable: true, identity: { displayName: '很长很长的账号名称需要省略而不会挤掉图标', email: 'test@example.invalid', identityAdmin: state.identityAdmin, crmRoles: state.roles }, logout: state.logout, reconnect: state.reconnect }) }));
-vi.mock('../../src/renderer/NotificationContext', () => ({ useOptionalNotifications: () => ({ unread: state.unread, items: state.items, error: '', loading: false, refresh: state.refresh, read: state.readMessage, open: state.openMessage }) }));
+vi.mock('../../src/renderer/NotificationContext', () => ({ useOptionalNotifications: () => ({ unread: state.unread, items: state.items, error: '', loading: state.loading, refresh: state.refresh, read: state.readMessage, open: state.openMessage }) }));
 vi.mock('../../src/renderer/hooks/useAgentTranscript', () => ({ drop: vi.fn(), useRunningConvIds: () => [] }));
 vi.mock('../../src/renderer/components/DiamondLogo', () => ({ DiamondLogo: () => <span /> }));
 vi.mock('../../src/renderer/components/GlobalSearch', () => ({ GlobalSearch: ({ trigger }: { trigger: (click: () => void, active: boolean) => React.ReactNode }) => trigger(state.search, false) }));
@@ -17,7 +17,7 @@ describe('sidebar account, search and messages footer', () => {
   const mount = async () => act(async () => { root.render(<AntApp><Sidebar /></AntApp>); });
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    state.offline=false;state.collapsed = false; state.unread = 1; state.items = []; state.identityAdmin = false; state.roles = ['sales']; state.navigate.mockClear(); state.search.mockClear(); state.logout.mockClear(); state.refresh.mockClear(); state.readMessage.mockClear(); state.openMessage.mockClear(); state.reconnect.mockReset(); state.reconnect.mockResolvedValue(true);
+    state.offline=false;state.collapsed = false; state.unread = 1; state.items = []; state.loading = false; state.identityAdmin = false; state.roles = ['sales']; state.navigate.mockClear(); state.search.mockClear(); state.logout.mockClear(); state.refresh.mockClear(); state.readMessage.mockClear(); state.openMessage.mockReset(); state.openMessage.mockResolvedValue('customer-b'); state.reconnect.mockReset(); state.reconnect.mockResolvedValue(true);
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
     vi.stubGlobal('ResizeObserver', class { constructor(_callback: () => void) {} observe(_element: HTMLElement) {} disconnect() {} });
     Object.defineProperty(window, 'api', { configurable: true, value: { invoke: vi.fn(async () => ({ success: true, data: [] })), on: () => () => {} } });
@@ -48,7 +48,9 @@ describe('sidebar account, search and messages footer', () => {
     expect(state.navigate).not.toHaveBeenCalled(); expect(document.querySelector('.message-center-panel')).not.toBeNull(); expect(document.body.textContent).toContain('暂无消息');
     await act(async () => { footer.querySelector<HTMLButtonElement>('button[aria-label="账号菜单"]')!.click(); });
     expect(Array.from(document.querySelectorAll('[role="menuitem"]')).map(item => item.textContent).join(' ')).not.toContain('消息中心');
-    expect(document.querySelector('.account-menu-logout')?.textContent).toBe('退出登录');
+    const logout = Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent === '退出登录') as HTMLElement;
+    expect(logout.querySelector('.account-menu-logout')?.textContent).toBe('退出登录');
+    expect(logout.classList.contains('account-menu-logout-item')).toBe(true);
     const settings = Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent === '设置') as HTMLElement;
     await act(async () => settings.click()); expect(state.navigate).toHaveBeenCalledWith({ to: '/settings' });
   });
@@ -58,6 +60,18 @@ describe('sidebar account, search and messages footer', () => {
     const item=Array.from(document.querySelectorAll('[role="menuitem"]')).find(item=>item.textContent==='切换账号') as HTMLElement;
     await act(async()=>item.click());
     expect(state.logout).toHaveBeenCalledWith({switchAccount:true});
+  });
+  it('refreshes without a loading gate and keeps the message panel open after navigation', async () => {
+    state.loading = true;
+    state.items = [{ id: 'message-a', eventType: 'crm.customer.created', customerId: 'customer-b', version: 1, cursor: '1', createdAt: '2026-10-21T08:00:00Z', read: false, canOpen: true }];
+    await mount();
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="消息中心"]')!.click(); await Promise.resolve(); });
+    expect(document.querySelector('button[aria-label="刷新消息"]')).toBeNull();
+    expect(document.querySelector('.ant-spin-spinning')).toBeNull();
+    await act(async () => { document.querySelector<HTMLButtonElement>('button.message-main')!.click(); await Promise.resolve(); });
+    expect(state.openMessage).toHaveBeenCalledOnce();
+    expect(state.navigate).toHaveBeenCalledWith({ to: '/customers', search: { customerId: 'customer-b' } });
+    expect(document.querySelector('.message-center-panel')).not.toBeNull();
   });
   it('keeps every independent button in collapsed rail and removes read badge once cleared', async () => {
     state.collapsed = true; state.unread = 0; await mount();

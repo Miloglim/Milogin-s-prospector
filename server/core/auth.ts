@@ -1,8 +1,10 @@
 import type { Result } from "./crm";
+import type { AccountProfile } from "./account-profile";
 
 export const API_ROUTES = {
   live: "/health/live", ready: "/health/ready", login: "/api/auth/login", me: "/api/auth/me",
   logout: "/api/auth/logout", users: "/api/admin/users", crmAccess: "/api/crm/access", navigatorAccess: "/api/navigator/access",
+  accountProfile: "/api/account/profile",
 } as const;
 export const CRM_ROLES = ["admin", "operations", "sales", "auditor"] as const;
 export type CrmRole = typeof CRM_ROLES[number];
@@ -71,6 +73,7 @@ export interface AuthRepository {
   credential(email: string): Promise<Result<Credential | null>>;
   createSession(input: SessionDraft): Promise<Result<Identity | null>>;
   identity(tokenHash: string,client?:"api"|"browser"): Promise<Result<Identity | null>>;
+  accountProfile?(tokenHash: string): Promise<Result<AccountProfile | null>>;
   navigatorAccess?(tokenHash: string): Promise<Result<NavigatorAccess | null>>;
   revoke(tokenHash: string): Promise<Result<void>>;
   listUsers(tokenHash: string): Promise<Result<Identity[]>>;

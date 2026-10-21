@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../config';
 import { NavigatorClient, validateNavigatorBase } from '../services/navigator-auth.service';
 import { browserAuthorization } from './navigator-browser.adapter';
+import { readConfiguredRatesBase } from './center-endpoint.adapter';
 import { Log } from '../logger';
 import { EVENTS } from '../events';
 const REQUEST_TIMEOUT_SECONDS = 20;
@@ -28,7 +29,7 @@ const client = new NavigatorClient({
       if (!window.isDestroyed()) window.webContents.send(EVENTS.NAVIGATOR_IDENTITY_CHANGED,{epoch:authorizationEpoch});
     }
   },
-  baseUrl: () => validateNavigatorBase(process.env.RATES_REMOTE_URL || loadConfig().rates?.url || '',app.isPackaged),
+  baseUrl: () => validateNavigatorBase(process.env.RATES_REMOTE_URL || loadConfig().rates?.url || readConfiguredRatesBase() || '',app.isPackaged),
   async loadRefresh(base) {
     try {
       if (!safeStorage.isEncryptionAvailable() || safeStorage.getSelectedStorageBackend?.() === 'basic_text') return null;

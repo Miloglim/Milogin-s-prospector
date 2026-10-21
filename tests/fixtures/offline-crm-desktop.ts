@@ -10,15 +10,15 @@ if(!root)throw new Error('SMOKE_PROFILE required');
 app.setPath('userData',resolve(root));
 app.whenReady().then(async()=>{
   registerOnlineCrmIPC();
-  if(process.env.SMOKE_CONTACT_DATAFLOW==='1'){
+  if(process.env.SMOKE_CONTACT_DATAFLOW==='1'||process.env.SMOKE_LOCAL_DB==='1'){
     selectAccountRoot(root);
     await initDatabase();
     runMigrations();
-    await startContactMailDataflow(()=>{});
+    if(process.env.SMOKE_CONTACT_DATAFLOW==='1')await startContactMailDataflow(()=>{});
   }
   for(const [domain,channels] of Object.entries(IPC))if(domain!=='ONLINE')for(const channel of Object.values(channels))ipcMain.handle(channel,()=>channel===IPC.SYSTEM.GET_CONFIG?{success:true,data:{general:{onboarding:'skipped'}}}:channel===IPC.SYSTEM.APP_VERSION?{success:true,data:'offline-crm-smoke'}:{success:true,data:[]});
   const win=new BrowserWindow({show:false,width:1366,height:768,webPreferences:{preload:resolve('dist/preload/index.js'),contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
-  await win.loadFile(resolve('dist/renderer/index.html'),{hash:'/customers'});
+  await win.loadFile(resolve('dist/renderer/index.html'),{hash:process.env.SMOKE_ROUTE||'/customers'});
 }).catch(error=>{console.error(error.message);app.exit(1);});
-app.on('before-quit',()=>{closeOnlineCrmSession();if(process.env.SMOKE_CONTACT_DATAFLOW==='1')closeDatabase();});
+app.on('before-quit',()=>{closeOnlineCrmSession();if(process.env.SMOKE_CONTACT_DATAFLOW==='1'||process.env.SMOKE_LOCAL_DB==='1')closeDatabase();});
 app.on('window-all-closed',()=>app.quit());

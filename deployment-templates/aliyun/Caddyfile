@@ -1,0 +1,14 @@
+{$CENTER_HOST} {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:55847 {
+        header_up Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+{$NAVIGATOR_HOST} {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8795 {
+        header_up Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

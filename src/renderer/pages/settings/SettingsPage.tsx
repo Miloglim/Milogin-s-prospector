@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card, Input, InputNumber, Button, message, notification, Table, Modal, Form, Tag, Space,
-  Switch, TimePicker, Tooltip, Badge, Popconfirm, Select,
+  Switch, Tooltip, Badge, Popconfirm, Select, Segmented,
 } from "antd";
 import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined, DownloadOutlined, SyncOutlined, FolderOpenOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import { RichTextEditor } from "../../components/RichTextEditor";
@@ -41,6 +41,8 @@ interface SendSchedule {
 }
 
 interface RuntimeConfig {
+  general?: { closeAction?: "tray" | "quit"; autoLaunch?: boolean };
+  sendQuota?: { dailyLimit: number; firstSendAt: string | null; sentToday: number };
   fromName: string;
   schedule: SendSchedule;
   test: { email: string; company: string; enabled: boolean; dryRun: boolean };
@@ -51,9 +53,6 @@ interface RuntimeConfig {
 const SECTIONS = [
   { id: "sec-general", label: "通用" },
   { id: "sec-mail", label: "邮件发送" },
-  { id: "sec-api", label: "API 与服务" },
-  { id: "sec-crm", label: "客户跟进" },
-  { id: "sec-data", label: "数据" },
   { id: "sec-advanced", label: "高级" },
   { id: "sec-about", label: "关于" },
 ];
@@ -82,8 +81,8 @@ function SettingRow({ label, value, onSave, type = "text", placeholder, required
   };
 
   return (
-    <div className="flex items-center gap-2.5 py-1.5 min-h-[30px] group">
-      <label className="w-[72px] text-right text-[11px] text-gray-500 flex-shrink-0">
+    <div className="settings-row group">
+      <label className="settings-row-label">
         {label}{required && <span className="text-red-500 ml-0.5">·</span>}
       </label>
       {editing ? (
@@ -101,21 +100,23 @@ function SettingRow({ label, value, onSave, type = "text", placeholder, required
           className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded outline-none focus:border-teal-400"
         />
       ) : disabled ? (
-        <span className="flex-1 text-xs text-gray-300 truncate cursor-not-allowed">
+        <span className="settings-row-value text-gray-300 truncate cursor-not-allowed">
           {value !== null && value !== undefined && value !== "" ? String(value) : "未启用"}
         </span>
       ) : (
         <span
-          className="flex-1 text-xs text-gray-700 cursor-pointer px-1 py-0.5 rounded hover:bg-gray-50 truncate"
+          className="settings-row-value text-gray-700 cursor-pointer truncate"
           onClick={() => setEditing(true)}
         >
           {value !== null && value !== undefined && value !== "" ? String(value) : placeholder || "未设置"}
         </span>
       )}
-      {hint && <span className="text-[10px] text-gray-400 whitespace-nowrap">{hint}</span>}
-      {saving === "saving" && <span className="text-[11px] text-amber-500 w-4">…</span>}
-      {saving === "saved" && <span className="text-[11px] text-green-500 w-4">✓</span>}
-      {saving === "error" && <span className="text-[11px] text-red-500 w-4">✗</span>}
+      <div className="settings-row-tail">
+        {hint && <span className="text-gray-400">{hint}</span>}
+        {saving === "saving" && <span className="text-amber-500">…</span>}
+        {saving === "saved" && <span className="text-green-500">✓</span>}
+        {saving === "error" && <span className="text-red-500">✗</span>}
+      </div>
     </div>
   );
 }
@@ -153,9 +154,9 @@ function RangeRow({ label, min, max, onSaveMin, onSaveMax, hint }: {
   const displayVal = (v: number) => (editing && editingField === "min" ? val : String(v));
 
   return (
-    <div className="flex items-center gap-2.5 py-1.5 min-h-[30px]">
-      <label className="w-[72px] text-right text-[11px] text-gray-500 flex-shrink-0">{label}</label>
-      <div className="flex-1 flex items-center gap-1 text-xs">
+    <div className="settings-row">
+      <label className="settings-row-label">{label}</label>
+      <div className="settings-row-value flex items-center gap-1 text-xs">
         <input
           value={editingField === "min" ? val : String(min)}
           onChange={e => { if (editingField === "min") setVal(e.target.value); }}
@@ -174,8 +175,10 @@ function RangeRow({ label, min, max, onSaveMin, onSaveMax, hint }: {
           className="w-12 px-1 py-0.5 text-center border rounded outline-none focus:border-teal-400 cursor-pointer"
         />
       </div>
-      <span className="text-[10px] text-gray-400 whitespace-nowrap">{hint}</span>
-      {saving === "saved" && <span className="text-[11px] text-green-500 w-4">✓</span>}
+      <div className="settings-row-tail">
+        <span className="text-gray-400">{hint}</span>
+        {saving === "saved" && <span className="text-green-500">✓</span>}
+      </div>
     </div>
   );
 }
@@ -185,16 +188,38 @@ function SettingCard({ icon, title, required, children, status }: {
   icon?: React.ReactNode; title: string; required?: boolean; children: React.ReactNode; status?: React.ReactNode;
 }) {
   return (
-    <div className={`border border-gray-200 bg-white ${required ? "border-l-2 border-l-teal-400" : ""}`}>
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-600 flex items-center gap-1.5">
+    <div className={`settings-group ${required ? "is-required" : ""}`}>
+      <div className="settings-group-heading">
+        <h3>
           {icon ? <span className="opacity-50">{icon}</span> : null} {title}
         </h3>
-        <span className="text-[11px]">{status}</span>
+        <span>{status}</span>
       </div>
-      <div className="px-4 pt-1 pb-3">{children}</div>
+      <div className="settings-group-body">{children}</div>
     </div>
   );
+}
+
+function SettingsPanel({ id, title, description, children }: {
+  id: string; title: string; description?: string; children: React.ReactNode;
+}) {
+  return <section id={id} className="settings-section settings-panel">
+    <header className="settings-panel-heading">
+      <h2>{title}</h2>
+      {description && <p>{description}</p>}
+    </header>
+    <div className="settings-panel-body">{children}</div>
+  </section>;
+}
+
+function ControlRow({ label, hint, children }: {
+  label: string; hint?: React.ReactNode; children: React.ReactNode;
+}) {
+  return <div className="settings-row">
+    <span className="settings-row-label">{label}</span>
+    <div className="settings-row-value">{children}</div>
+    {hint && <div className="settings-row-hint">{hint}</div>}
+  </div>;
 }
 
 function KbDispatchCard() {
@@ -575,58 +600,6 @@ function UpdateChecker() {
 }
 
 // ── 设置页主组件 ──
-// ── 发信时间预估（设置页展示用，纯函数推导，不落库不参与发送）──
-const SEND_OVERHEAD_SEC = 2; // 每组 SMTP 处理耗时近似值
-
-interface SendPlanInput {
-  count: number; groupSize: number; delayMin: number; delayMax: number;
-  winEnabled: boolean; startHour: number; endHour: number;
-}
-
-/** 由发信参数推算：组数/平均速率(封/小时)/窗口小时/纯节奏耗时/预计完成时刻 */
-function estimateSendPlan(o: SendPlanInput, now: Date) {
-  const groupSize = Math.max(1, Math.floor(o.groupSize) || 1);
-  const delayMin = Math.max(0, o.delayMin || 0), delayMax = Math.max(delayMin, o.delayMax || 0);
-  const cadence = (delayMin + delayMax) / 2 + SEND_OVERHEAD_SEC; // 相邻两组的平均间隔(秒)
-  const groups = Math.ceil(Math.max(0, o.count) / groupSize);
-  const activeSec = Math.round(groups * cadence);
-  const ratePerHour = cadence > 0 ? (3600 / cadence) * groupSize : 0;
-  const rawWin = o.startHour < o.endHour ? o.endHour - o.startHour : 24 - o.startHour + o.endHour;
-  const winHours = o.winEnabled && rawWin > 0 ? rawWin : 24;
-  const win = o.winEnabled && rawWin > 0;
-  const finish = win
-    ? advanceWithinWindows(now, activeSec, o.startHour, o.endHour)
-    : new Date(now.getTime() + activeSec * 1000);
-  return { groups, cadenceSec: cadence, ratePerHour, activeSec, winHours, finish };
-}
-
-/** 从 now 起、只在发信窗口内消耗所需时长，推算完成时刻（跟操作系统时区） */
-function advanceWithinWindows(from: Date, needSec: number, startH: number, endH: number): Date {
-  const cross = startH >= endH; // 跨天窗口（如 21 → 8）
-  const inWin = (h: number) => cross ? (h >= startH || h < endH) : (h >= startH && h < endH);
-  const secToBoundary = (d: Date) => {
-    const elapsed = d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000;
-    const h = d.getHours();
-    const target = inWin(h) ? (endH <= h && cross ? 24 : endH) : startH; // 目标钟点
-    return Math.max(1, (((target * 3600 - elapsed) - h * 3600) % 86400 + 86400) % 86400); // 顺推至该钟点的秒数
-  };
-  let need = needSec;
-  let cur = new Date(from.getTime());
-  for (let guard = 0; need > 0 && guard < 2000; guard++) {
-    const seg = Math.min(need, secToBoundary(cur));
-    cur = new Date(cur.getTime() + seg * 1000);
-    need -= seg;
-  }
-  return cur;
-}
-
-const fmtDur = (s: number) => {
-  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
-  return h > 0 ? `${h} 小时${m > 0 ? ` ${m} 分` : ""}` : `${Math.max(1, m)} 分钟`;
-};
-const fmtFinish = (d: Date) =>
-  d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit" });
-
 // ── AI 活动记录：agent_tool_calls 审计可视化（谁在什么会话里调了什么工具、写操作是否经人工确认）──
 interface ToolCallLog {
   id: number;
@@ -1077,8 +1050,12 @@ export function SettingsPage() {
   const qc = useQueryClient();
   const [activeSection, setActiveSection] = useState("sec-general");
   const [workspaceDark, setWorkspaceDark] = useState(workspaceDarkEnabled);
-  const [accountsOpen, setAccountsOpen] = useState(true);
   const railLockRef = useRef(0);
+
+  useEffect(() => {
+    document.body.classList.add("settings-route-active");
+    return () => document.body.classList.remove("settings-route-active");
+  }, []);
 
   const { data: accountData } = useQuery({
     queryKey: ["accounts"],
@@ -1121,8 +1098,11 @@ export function SettingsPage() {
     saveConfigMut.mutate({ schedule: { ...sched, ...patch } });
   };
 
-  // 发送预估的"预计发送 N 封"输入（空 = 默认取日限额，无限额则 1000）
-  const [estCount, setEstCount] = useState<number | null>(null);
+  const setAutoLaunch = async (enabled: boolean) => {
+    const result = await window.api.invoke("system:setAutoLaunch", enabled) as { success: boolean; error?: string };
+    if (!result.success) { message.error(result.error || "开机启动设置失败"); return; }
+    await invalidateDomain(qc, "settings");
+  };
 
   // 账号熔断状态变化 → 即时刷新账号列表
   useEffect(() => {
@@ -1182,271 +1162,123 @@ export function SettingsPage() {
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const accountColumns = [
-    { title: "邮箱", dataIndex: "email", key: "email", render: (v: string) => <span className="font-mono text-xs">{v}</span> },
-    { title: "服务器", key: "servers", render: (_: unknown, r: EmailAccount) => (
-      <span className="text-[11px] text-gray-500">
-        <span className="block">SMTP {r.smtpHost}:{r.smtpPort}</span>
-        <span className="block">IMAP {r.imapHost ? `${r.imapHost}${r.imapPort ? `:${r.imapPort}` : ""}` : "未配置（仅发信）"}</span>
-      </span>
-    ) },
-    { title: "状态", key: "status", width: 160, render: (_: unknown, r: EmailAccount) => {
-      // 发信熔断（服务商拦截 / 连续发送失败）与收信失败分开呈现
-      const open = circuitOpenOf(r);
-      const blocked = open && r.circuitReason === "sender_block";
-      const recvBad = !!r.imapHost && r.fetchFailCount > 0;
-      if (!open && !r.consecutiveFails && !recvBad) return <Tag color={r.imapHost ? "green" : "default"}>{r.imapHost ? "正常" : "仅发信"}</Tag>;
-      return (
-        <Space size={2}>
-          {blocked && (
-            <Tooltip title={`服务商把我们的内容/发信频率拦下了（反垃圾/限流）——该账号已摘出发信轮换，${
-              r.circuitResetAfter ? new Date(r.circuitResetAfter).toLocaleString("zh-CN") : "24 小时"
-            }后自动恢复，或点右侧「解除熔断」提前放行`}>
-              <Tag color="red">发信受阻</Tag>
-            </Tooltip>
-          )}
-          {open && !blocked && <Tooltip title={`发信连续失败 ${r.consecutiveFails || 3} 次，已熔断`}><Tag color="orange">发信异常</Tag></Tooltip>}
-          {!open && r.consecutiveFails > 0 && (
-            <Tooltip title={`发信已连续失败 ${r.consecutiveFails} 次（满 3 次熔断）`}><Tag color="orange">发信欠佳</Tag></Tooltip>
-          )}
-          {recvBad && (
-            <Tooltip title={`连续失败 ${r.fetchFailCount} 次${r.lastFetchAt ? ` · ${new Date(r.lastFetchAt).toLocaleString("zh-CN")}` : ""}：${r.lastFetchError || "收信失败"}`}>
-              <Tag color="red">收信异常</Tag>
-            </Tooltip>
-          )}
-        </Space>
-      );
-    } },
-    {
-      title: "操作", key: "actions", width: 120,
-      render: (_: unknown, r: EmailAccount) => (
-        <Space size="small">
-          <Button size="small" icon={<EditOutlined />} onClick={() => {
-            setEditingAccount(r);
-            form.setFieldsValue({
-              displayName: r.displayName,
-              smtpHost: r.smtpHost,
-              smtpPort: r.smtpPort,
-              email: r.email,
-              imapHost: r.imapHost,
-              imapPort: r.imapPort,
-              signature: r.signature,
-            });
-            setAddOpen(true);
-          }}>编辑</Button>
-          <Button size="small" icon={<CheckCircleOutlined />} loading={testingId === r.id} onClick={async () => {
-            setTestingId(r.id);
-            try {
-              const res = await window.api.invoke("accounts:validate", r.id) as {
-                success: boolean;
-                data?: { smtpOk: boolean; smtpError?: string; imapConfigured?: boolean; imapOk: boolean; imapError?: string };
-                error?: string;
-              };
-              if (!res?.success || !res.data) { message.error(res?.error || "验证请求失败"); return; }
-              const { smtpOk, smtpError, imapOk, imapError } = res.data;
-              // 旧主进程不返回 imapConfigured；不能把“字段缺席”误判成“未配置收信”。
-              const imapConfigured = res.data.imapConfigured ?? (!!r.imapHost || imapOk);
-              if (smtpOk && imapConfigured && imapOk) {
-                message.success(`${r.email} 连接正常（SMTP + IMAP 认证通过）`);
-              } else if (smtpOk && !imapConfigured) {
-                message.warning(`${r.email} SMTP 认证通过；未配置收信，请编辑账号并保存 IMAP 服务器`);
-              } else {
-                const parts = [
-                  !smtpOk && `SMTP ✗ ${smtpError || "失败"}`,
-                  imapConfigured && !imapOk && `IMAP ✗ ${imapError || "失败"}`,
-                ].filter(Boolean).join("；");
-                notification.error({
-                  message: `${r.email} 连接异常`,
-                  description: parts,
-                  duration: 8,
-                });
-              }
-            } finally {
-              setTestingId(null);
-            }
-          }}>测试</Button>
-          {/* 熔断生效中才出现：解除后账号立刻回到发信轮换（规范 docs/sender-block-circuit-spec.md §6） */}
-          {circuitOpenOf(r) && (
-            <Popconfirm
-              title={r.circuitReason === "sender_block"
-                ? "确认解除该账号的发信受阻熔断？"
-                : "确认解除该账号的发信熔断？"}
-              description="解除后它会立刻回到发信轮换。建议先改掉被拦的内容或把组间暂停调长，否则会再次触发。"
-              okText="解除" cancelText="先不动"
-              onConfirm={async () => {
-                const res = await window.api.invoke("accounts:resetCircuit", r.id) as { success: boolean; error?: string };
-                res?.success ? message.success(`${r.email} 已解除熔断`) : message.error(res?.error || "解除失败");
-                invalidateDomain(qc, "accounts");
-              }}
-            >
-              <Button size="small" danger type="primary" ghost icon={<PlayCircleOutlined />}>解除熔断</Button>
-            </Popconfirm>
-          )}
-          <Button danger size="small" icon={<DeleteOutlined />} onClick={async () => {
-            const res = await deleteMut.mutateAsync(r.id);
-            res?.success ? message.success("已删除") : message.error(res?.error || "失败");
-          }} />
-        </Space>
-      ),
-    },
-  ];
+  const accountStatus = (r: EmailAccount) => {
+    const open = circuitOpenOf(r);
+    const blocked = open && r.circuitReason === "sender_block";
+    const recvBad = !!r.imapHost && r.fetchFailCount > 0;
+    if (!open && !r.consecutiveFails && !recvBad) return <Tag color={r.imapHost ? "green" : "default"}>{r.imapHost ? "正常" : "仅发信"}</Tag>;
+    return <Space size={2}>
+      {blocked && <Tooltip title={`服务商拦截后已摘出发信轮换，${r.circuitResetAfter ? new Date(r.circuitResetAfter).toLocaleString("zh-CN") : "24 小时"}后自动恢复`}><Tag color="red">发信受阻</Tag></Tooltip>}
+      {open && !blocked && <Tooltip title={`发信连续失败 ${r.consecutiveFails || 3} 次，已熔断`}><Tag color="orange">发信异常</Tag></Tooltip>}
+      {!open && r.consecutiveFails > 0 && <Tooltip title={`发信已连续失败 ${r.consecutiveFails} 次（满 3 次熔断）`}><Tag color="orange">发信欠佳</Tag></Tooltip>}
+      {recvBad && <Tooltip title={`连续失败 ${r.fetchFailCount} 次：${r.lastFetchError || "收信失败"}`}><Tag color="red">收信异常</Tag></Tooltip>}
+    </Space>;
+  };
+  const editAccount = (r: EmailAccount) => {
+    setEditingAccount(r);
+    form.setFieldsValue({ displayName: r.displayName, smtpHost: r.smtpHost, smtpPort: r.smtpPort, email: r.email, imapHost: r.imapHost, imapPort: r.imapPort, signature: r.signature });
+    setAddOpen(true);
+  };
+  const testAccount = async (r: EmailAccount) => {
+    setTestingId(r.id);
+    try {
+      const res = await window.api.invoke("accounts:validate", r.id) as { success: boolean; data?: { smtpOk: boolean; smtpError?: string; imapConfigured?: boolean; imapOk: boolean; imapError?: string }; error?: string };
+      if (!res?.success || !res.data) { message.error(res?.error || "验证请求失败"); return; }
+      const { smtpOk, smtpError, imapOk, imapError } = res.data;
+      const imapConfigured = res.data.imapConfigured ?? (!!r.imapHost || imapOk);
+      if (smtpOk && imapConfigured && imapOk) message.success(`${r.email} 连接正常（SMTP + IMAP 认证通过）`);
+      else if (smtpOk && !imapConfigured) message.warning(`${r.email} SMTP 认证通过；未配置收信`);
+      else notification.error({ message: `${r.email} 连接异常`, description: [!smtpOk && `SMTP ✗ ${smtpError || "失败"}`, imapConfigured && !imapOk && `IMAP ✗ ${imapError || "失败"}`].filter(Boolean).join("；"), duration: 8 });
+    } finally { setTestingId(null); }
+  };
+  const resetAccountCircuit = async (r: EmailAccount) => {
+    const res = await window.api.invoke("accounts:resetCircuit", r.id) as { success: boolean; error?: string };
+    res?.success ? message.success(`${r.email} 已解除熔断`) : message.error(res?.error || "解除失败");
+    await invalidateDomain(qc, "accounts");
+  };
+  const removeAccount = async (r: EmailAccount) => {
+    const res = await deleteMut.mutateAsync(r.id);
+    res?.success ? message.success("已删除") : message.error(res?.error || "失败");
+  };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl gap-8">
+    <div className="settings-page mx-auto flex w-full max-w-6xl gap-8">
       {/* 主内容 */}
       <div className="min-w-[560px] max-w-[820px] flex-1 space-y-8">
         {/* ═══ 通用 ═══ */}
-        <div id="sec-general" className="settings-section">
-          <div className="text-[13px] font-bold mb-3 text-gray-800">通用</div>
-          <SettingCard icon="" title="工作区外观">
-            <div className="flex items-center gap-2.5 py-1.5 min-h-[30px]">
-              <label className="w-[72px] text-right text-[11px] text-gray-500 flex-shrink-0">黑色工作区</label>
+        <SettingsPanel id="sec-general" title="通用" description="工作区外观、关闭方式和启动行为">
+          <SettingCard title="界面与启动">
+            <ControlRow label="深浅色切换" hint="当前工作区配色">
               <Switch size="small" checked={workspaceDark} onChange={value => { setWorkspaceDark(value); applyWorkspaceDark(value); }} />
-            </div>
+            </ControlRow>
+            <ControlRow label="关闭窗口时">
+              <Segmented size="small" value={config?.general?.closeAction === "quit" ? "quit" : "tray"}
+                options={[{ value: "tray", label: "最小化托盘" }, { value: "quit", label: "直接退出" }]}
+                onChange={value => saveConfigMut.mutate({ general: { ...config?.general, closeAction: value as "tray" | "quit" } })} />
+            </ControlRow>
+            <ControlRow label="开机自动启动" hint="登录 Windows 后自动打开">
+              <Switch size="small" checked={config?.general?.autoLaunch ?? false} onChange={value => void setAutoLaunch(value)} />
+            </ControlRow>
           </SettingCard>
-          <SettingCard icon="" title="启动与关闭">
-            <div className="flex items-center gap-2.5 py-1.5 min-h-[30px]">
-              <label className="w-[72px] text-right text-[11px] text-gray-500 flex-shrink-0">关闭窗口时</label>
-              <div className="flex bg-gray-100 rounded p-px">
-                <button
-                  onClick={() => saveConfigMut.mutate({ general: { closeAction: "tray" } })}
-                  className={`px-2.5 py-0.5 text-[11px] rounded transition-colors ${(config as any)?.general?.closeAction !== "quit" ? "bg-white shadow-sm text-gray-800 font-medium" : "text-gray-500"}`}
-                >最小化托盘</button>
-                <button
-                  onClick={() => saveConfigMut.mutate({ general: { closeAction: "quit" } })}
-                  className={`px-2.5 py-0.5 text-[11px] rounded transition-colors ${(config as any)?.general?.closeAction === "quit" ? "bg-white shadow-sm text-gray-800 font-medium" : "text-gray-500"}`}
-                >直接退出</button>
-              </div>
-            </div>
-          </SettingCard>
-          <SettingCard icon="" title="检查更新">
-            <UpdateChecker />
-          </SettingCard>
-        </div>
+        </SettingsPanel>
 
         {/* ═══ 邮件发送 ═══ */}
-        <div id="sec-mail" className="settings-section">
-          <div className="text-[13px] font-bold mb-3 text-gray-800">邮件发送</div>
-
-          {/* 发信账号 */}
-          <SettingCard icon="" title={`发信账号 · ${accounts.length}`}
-            status={<Space size={6}>
-              <button onClick={() => setAccountsOpen(o => !o)} className="text-[11px] text-gray-400 hover:text-gray-600">{accountsOpen ? "收起" : "管理"}</button>
-              <Button size="small" onClick={() => { setEditingAccount(null); form.setFieldsValue({ smtpHost: DEFAULT_MAIL_SERVERS.smtpHost, smtpPort: DEFAULT_MAIL_SERVERS.smtpPort, imapHost: DEFAULT_MAIL_SERVERS.imapHost, imapPort: DEFAULT_MAIL_SERVERS.imapPort }); setAddOpen(true); }}>+ 添加账号</Button>
-            </Space>}
-          >
-            {accountsOpen ? (
-              <Table dataSource={accounts} columns={accountColumns} rowKey="id"
-                size="small" pagination={false} locale={{ emptyText: "还没有发信账号" }}
-                className="mb-2" />
-            ) : (
-              <div className="py-1.5 text-[11px] text-gray-500">
-                共 {accounts.length} 个发信账号，点右上「管理」查看、编辑或验证。
-              </div>
-            )}
+        <SettingsPanel id="sec-mail" title="邮件发送" description="发信账号、全局限额与发送节奏">
+          <SettingCard title={`发信账号 · ${accounts.length}`}
+            status={<Button size="small" onClick={() => { setEditingAccount(null); form.setFieldsValue({ smtpHost: DEFAULT_MAIL_SERVERS.smtpHost, smtpPort: DEFAULT_MAIL_SERVERS.smtpPort, imapHost: DEFAULT_MAIL_SERVERS.imapHost, imapPort: DEFAULT_MAIL_SERVERS.imapPort }); setAddOpen(true); }}>添加账号</Button>}>
+            <div className="settings-account-list">
+              {accounts.length ? accounts.map(account => <div key={account.id} className="settings-account-row">
+                <div className="settings-account-mark" aria-hidden="true">@</div>
+                <div className="settings-account-identity">
+                  <strong>{account.email}</strong>
+                  <span>SMTP {account.smtpHost}:{account.smtpPort}</span>
+                  <span>IMAP {account.imapHost ? `${account.imapHost}${account.imapPort ? `:${account.imapPort}` : ""}` : "未配置，仅发信"}</span>
+                </div>
+                <div className="settings-account-status">{accountStatus(account)}</div>
+                <div className="settings-account-actions">
+                  <Button size="small" type="text" icon={<EditOutlined />} onClick={() => editAccount(account)}>编辑</Button>
+                  <Button size="small" type="text" icon={<CheckCircleOutlined />} loading={testingId === account.id} onClick={() => void testAccount(account)}>测试</Button>
+                  {circuitOpenOf(account) && <Button size="small" type="text" danger icon={<PlayCircleOutlined />} onClick={() => void resetAccountCircuit(account)}>解除熔断</Button>}
+                  <Popconfirm title={`删除 ${account.email}？`} okText="删除" cancelText="取消" onConfirm={() => void removeAccount(account)}>
+                    <Button size="small" type="text" danger icon={<DeleteOutlined />} aria-label={`删除 ${account.email}`} />
+                  </Popconfirm>
+                </div>
+              </div>) : <div className="settings-empty-row">还没有发信账号</div>}
+            </div>
           </SettingCard>
 
-          {/* 发信限额 */}
-          <SettingCard icon="" title="发信限额">
-            <div className="text-[10px] text-gray-400 mb-2">
-              全局日限额，从首次发送起计时 24h 后自动重置，0=不限制
-            </div>
-            <SettingRow label="每日上限" value={(config as any)?.sendQuota?.dailyLimit || 0} type="number"
-              onSave={v => { const cur = (config as any)?.sendQuota || {}; saveConfigMut.mutate({ sendQuota: { ...cur, dailyLimit: Number(v) } }); }}
+          <SettingCard title="发信限额">
+            <div className="settings-group-note">全局限额从首次发送起计时，24 小时后自动重置；0 表示不限制。</div>
+            <SettingRow label="每日上限" value={config?.sendQuota?.dailyLimit ?? 800} type="number"
+              onSave={v => saveConfigMut.mutate({ sendQuota: { ...(config?.sendQuota || {}), dailyLimit: Number(v) } })}
               hint="封" />
-            {((config as any)?.sendQuota?.firstSendAt) && (
-              <div className="text-[10px] text-gray-400 mt-1">
-                首次发送: {new Date((config as any).sendQuota.firstSendAt).toLocaleString("zh-CN")} ·
-                已发: {(config as any).sendQuota.sentToday || 0} 封 ·
-                重置: {new Date(new Date((config as any).sendQuota.firstSendAt).getTime() + 86400000).toLocaleTimeString("zh-CN")}
-              </div>
-            )}
+            {config?.sendQuota?.firstSendAt && <div className="settings-group-note">
+              已发 {config.sendQuota.sentToday || 0} 封 · {new Date(new Date(config.sendQuota.firstSendAt).getTime() + 86400000).toLocaleString("zh-CN")} 重置
+            </div>}
           </SettingCard>
 
-          {/* 发送规则 */}
-          <SettingCard icon="" title="发送规则">
-            {/* 发送时段 */}
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-2 mb-1">发送时段</div>
-            <div className="flex items-center gap-2.5 py-1.5 min-h-[30px]">
-              <label className="w-[72px] text-right text-[11px] text-gray-500 flex-shrink-0">限时发送</label>
-              <Switch size="small" checked={sched?.timeWindowEnabled ?? true}
-                onChange={v => saveSched({ timeWindowEnabled: v })}
-              />
-              <span className="text-[10px] text-gray-400">开启后仅在设定时段内发信</span>
-            </div>
-            <SettingRow label="开始时段" value={sched ? `${String(sched.startHour).padStart(2, "0")}:00` : "09:00"} type="text"
-              onSave={v => {
-                const h = parseInt(String(v).slice(0, 2), 10);
-                if (!isNaN(h) && h >= 0 && h <= 23) saveSched({ startHour: h });
-              }} placeholder="本地时，如 09" />
-            <SettingRow label="结束时段" value={sched ? `${String(sched.endHour).padStart(2, "0")}:00` : "08:00"} type="text"
-              onSave={v => {
-                const h = parseInt(String(v).slice(0, 2), 10);
-                if (!isNaN(h) && h >= 0 && h <= 23) saveSched({ endHour: h });
-              }} placeholder="本地时，次日结束如 08" hint="跨天" />
-
-            {/* 发送参数 */}
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-3 mb-1">发送参数</div>
+          <SettingCard title="发送节奏">
             <SettingRow label="每组人数" value={sched?.groupSize ?? 20} type="number"
               onSave={v => saveSched({ groupSize: Number(v) })} hint="人/组" />
-            {sched && (
-              <RangeRow label="组间暂停" min={sched.groupDelayMinSeconds} max={sched.groupDelayMaxSeconds}
-                onSaveMin={v => saveSched({ groupDelayMinSeconds: v })} onSaveMax={v => saveSched({ groupDelayMaxSeconds: v })}
-                hint="秒" />
-            )}
-
-            {/* 发送预估 — 由上方参数纯推导，仅供参考（不参与实际发送逻辑） */}
-            {sched && (() => {
-              const quota = Number((config as unknown as { sendQuota?: { dailyLimit?: number } })?.sendQuota?.dailyLimit) || 0;
-              const n = Math.max(1, Math.floor(estCount ?? (quota > 0 ? quota : 1000)));
-              const p = estimateSendPlan({
-                count: n, groupSize: sched.groupSize,
-                delayMin: sched.groupDelayMinSeconds, delayMax: sched.groupDelayMaxSeconds,
-                winEnabled: sched.timeWindowEnabled, startHour: sched.startHour, endHour: sched.endHour,
-              }, new Date());
-              const windowCap = p.ratePerHour * p.winHours;
-              const perDay = quota > 0 ? Math.min(windowCap, quota) : windowCap;
-              const days = perDay > 0 ? n / perDay : 0;
-              return (
-                <div className="mt-3 pt-2.5 border-t border-gray-100">
-                  <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-500">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">发送预估</span>
-                    <span>平均约 <b className="text-gray-800">{Math.round(p.ratePerHour)}</b> 封/小时</span>
-                    <span className="text-gray-300">·</span>
-                    <span>发信窗口 {p.winHours} 小时/天，日产能约 <b className="text-gray-800">{Math.round(perDay)}</b> 封{quota > 0 && quota < windowCap ? "（受日限额封顶）" : ""}</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <span className="text-[11px] text-gray-400">预计发送</span>
-                    <InputNumber size="small" min={1} max={999999} controls={false} style={{ width: 92 }}
-                      value={estCount ?? (quota > 0 ? quota : 1000)}
-                      onChange={v => setEstCount(typeof v === "number" ? v : null)} />
-                    <span className="text-[11px] text-gray-500">封 · 分 <b className="text-gray-800">{p.groups}</b> 组</span>
-                    <span className="text-gray-300">·</span>
-                    <span className="text-[11px] text-gray-500">耗时约 <b className="text-gray-800">{fmtDur(p.activeSec)}</b></span>
-                    <span className="text-gray-300">·</span>
-                    <span className="text-[11px] text-gray-500">预计 <b className="text-gray-800">{fmtFinish(p.finish)}</b> 完成{days > 1.5 ? `（约 ${Math.ceil(days)} 天）` : ""}</span>
-                  </div>
-                  <div className="text-[10px] text-gray-300 mt-1.5">按组间暂停均值、每组约 2s 处理耗时、仅在发信窗口内推进推算；实际受网络与服务商响应影响</div>
-                </div>
-              );
-            })()}
+            {sched && <RangeRow label="组间暂停" min={sched.groupDelayMinSeconds} max={sched.groupDelayMaxSeconds}
+              onSaveMin={v => saveSched({ groupDelayMinSeconds: v })} onSaveMax={v => saveSched({ groupDelayMaxSeconds: v })}
+              hint="秒" />}
+            <div className="settings-group-note">发送时段由每个开发任务单独设置。</div>
           </SettingCard>
-        </div>
-
-        {/* ═══ API 与服务 ═══ */}
-        <div id="sec-api" className="settings-section">
-          <div className="text-[13px] font-bold mb-3 text-gray-800">API 与服务</div>
+        </SettingsPanel>
+        {/* ═══ 高级 ═══ */}
+        <SettingsPanel id="sec-advanced" title="高级" description="API、客户跟进、数据与测试模式">
+          <SettingCard title="API 与服务">
           <ProviderCard />
           <SearchKeyCard />
           <KbDispatchCard />
           <RatesSourceCard />
           <AgentConversationCard />
           <AgentAuditCard />
-        </div>
+          </SettingCard>
 
         {/* ═══ 客户跟进 ═══ */}
-        <div id="sec-crm" className="settings-section">
-          <div className="text-[13px] font-bold mb-3 text-gray-800">客户跟进</div>
+          <SettingCard title="客户跟进">
           <SettingCard icon="" title="沉默预警">
             <Space wrap>
               <span>沉默逾期</span>
@@ -1503,11 +1335,10 @@ export function SettingsPage() {
               发信后 N 天无回复自动标记为「已流失」，0=禁用
             </div>
           </SettingCard>
-        </div>
+          </SettingCard>
 
         {/* ═══ 数据 ═══ */}
-        <div id="sec-data" className="settings-section">
-          <div className="text-[13px] font-bold mb-3 text-gray-800">数据</div>
+          <SettingCard title="数据">
           <SettingCard icon="" title="导出数据库">
             <div className="text-[11px] text-gray-400 mb-3">将联系人数据和跟进记录导出为 CSV 文件，可用 Excel 打开。</div>
             <Space>
@@ -1560,11 +1391,8 @@ export function SettingsPage() {
               >定位归档文件</Button>
             </Space>
           </SettingCard>
-        </div>
+          </SettingCard>
 
-        {/* ═══ 高级 ═══ */}
-        <div id="sec-advanced" className="settings-section">
-          <div className="text-[13px] font-bold mb-3 text-gray-800">高级</div>
           <SettingCard icon="" title="测试模式">
             <SettingRow label="测试邮箱" value={config?.test?.email || ""}
               onSave={v => saveConfigMut.mutate({ test: { ...config?.test, email: String(v) } })}
@@ -1577,7 +1405,7 @@ export function SettingsPage() {
               <Switch size="small" checked={config?.test?.enabled ?? false}
                 onChange={v => saveConfigMut.mutate({ test: { ...config?.test, enabled: v } })}
               />
-              <span className="text-[10px] text-gray-400">跳过发送时段限制</span>
+              <span className="text-[10px] text-gray-400">使用测试收件人和测试公司资料</span>
             </div>
             <div className="flex items-center gap-2.5 py-1.5 min-h-[30px]">
               <label className="w-[72px] text-right text-[11px] text-gray-500 flex-shrink-0">发信阻隔</label>
@@ -1587,9 +1415,8 @@ export function SettingsPage() {
               <span className="text-[10px] text-gray-400">流程完整但不实际发送</span>
             </div>
           </SettingCard>
-        </div>
-        <div id="sec-about" className="settings-section">
-          <div className="text-[13px] font-bold mb-3 text-gray-800">关于</div>
+        </SettingsPanel>
+        <SettingsPanel id="sec-about" title="关于" description="版本与更新">
           <SettingCard title="Milogin’s Prospector">
             <div className="flex justify-between py-3 text-xs text-gray-500"><span>版本</span><span
               onMouseDown={event => { if (event.shiftKey && event.button === 0) window.dispatchEvent(new Event("open-onboarding")); }}
@@ -1597,7 +1424,8 @@ export function SettingsPage() {
               style={{ cursor: "default" }}
             >{appVersion?.success ? `v${appVersion.data}` : '—'}</span></div>
           </SettingCard>
-        </div>
+          <SettingCard title="检查更新"><UpdateChecker /></SettingCard>
+        </SettingsPanel>
       </div>
 
       {/* 右侧浮动导航轨道 */}
