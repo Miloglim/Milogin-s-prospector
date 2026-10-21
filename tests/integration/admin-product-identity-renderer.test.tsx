@@ -22,6 +22,8 @@ describe('A2 management single identity renderer', () => {
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
   const flush = () => new Promise(resolve => setTimeout(resolve, 30));
   async function click(label: string) { await act(async () => { Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === label)!.click(); await flush(); }); }
+  async function clickDocument(label: string) { await act(async () => { Array.from(document.querySelectorAll('button')).find(button => button.textContent?.trim() === label)!.click(); await flush(); }); }
+  function setInput(input: HTMLInputElement, value: string) { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })); }
   async function editor() {
     await act(async () => { root.render(<AdminApp initialChallenge={null} />); await flush(); });
     await click('Target');
@@ -41,5 +43,17 @@ describe('A2 management single identity renderer', () => {
   it('saves a single explicit identity with compatible derived fields', async () => {
     await editor(); await click('保存配置');
     expect(api.command).toHaveBeenCalledWith(expect.objectContaining({ action: 'product.update', userId: 'target', role: 'operations', ...productPermissionsFor('operations') }));
+  });
+  it('offers password change after login and signs out after it succeeds', async () => {
+    vi.spyOn(api, 'password').mockResolvedValue(undefined);
+    await act(async () => { root.render(<AdminApp initialChallenge={null} />); await flush(); });
+    await click('修改密码');
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const inputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input[type="password"]'));
+    expect(inputs).toHaveLength(3);
+    await act(async () => { setInput(inputs[0]!, 'current1'); setInput(inputs[1]!, 'newpass1'); setInput(inputs[2]!, 'newpass1'); await flush(); });
+    await clickDocument('修改密码并重新登录');
+    expect(api.password).toHaveBeenCalledWith('current1', 'newpass1');
+    expect(host.textContent).toContain('登录管理工作台');
   });
 });
