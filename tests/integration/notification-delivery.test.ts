@@ -44,6 +44,10 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('actual PostgreSQL d
   const tx=await pool.connect();await tx.query('BEGIN');const late=await event('crm.lead.published',tx);const earlier=await event();expect((await repo.dispatch()).ok).toBe(true);await tx.query('COMMIT');tx.release();expect((await repo.dispatch()).ok).toBe(true);
   const rows=await pool.query('SELECT event_id,delivery_seq::text FROM crm_event_deliveries WHERE recipient_user_id=$1 AND event_id=ANY($2::uuid[]) ORDER BY delivery_seq',[sales,[late,earlier]]);expect(rows.rows.map(r=>r.event_id)).toEqual([earlier,late]);
  });
+ it('projects customer creation into the operations notification feed',async()=>{
+  const id=await event('crm.customer.created');expect((await repo.dispatch()).ok).toBe(true);
+  const delivery=await pool.query('SELECT 1 FROM crm_event_deliveries WHERE event_id=$1 AND recipient_user_id=$2',[id,op]);expect(delivery.rows).toHaveLength(1);
+ });
  it('ignores management payloads and restart does not duplicate committed projections',async()=>{
   const id=await pool.query("INSERT INTO identity.outbox(event_type,user_id,product_id,revision,payload) VALUES('identity.product.updated',$1,'crm',1,$2) RETURNING event_id",[op,JSON.stringify({sensitive:'must never project'})]);await repo.dispatch();const restart=new PostgresNotificationRepository(pool,log);await restart.dispatch();expect((await pool.query('SELECT * FROM crm_event_deliveries WHERE event_id=$1',[id.rows[0].event_id])).rows).toEqual([]);
  });

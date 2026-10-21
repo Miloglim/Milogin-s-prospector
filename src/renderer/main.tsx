@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { AppProvider } from "./AppContext";
 import "./global.css";
+import { applyWorkspaceDark, workspaceDarkEnabled } from './lib/workspace-preferences';
+
+applyWorkspaceDark(workspaceDarkEnabled());
 
 const queryClient = new QueryClient({
   defaultOptions: {

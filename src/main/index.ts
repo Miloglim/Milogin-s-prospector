@@ -1,26 +1,34 @@
 import { app, BrowserWindow, Menu, ipcMain, Tray, nativeImage, dialog, session, shell } from "electron";
+import * as fs from "fs";
 import * as path from "path";
 import { initDatabase, runMigrations, saveDatabase, closeDatabase } from "./db";
 import { Log } from "./logger";
-import { registerOnlineCrmIPC, closeOnlineCrmSession, getOnlineIdentity, isOnlineConnection, onOnlineIdentityChanged, configureOnlineLocalScope, loginDevelopmentIdentity, startContactMailDataflow } from "./transport/online-crm.ipc";
+import { registerOnlineCrmIPC, closeOnlineCrmSession, getOnlineIdentity, isOnlineConnection, onOnlineIdentityChanged, configureOnlineLocalScope, configureOnlineAccountSwitchLifecycle, loginDevelopmentIdentity, startContactMailDataflow } from "./transport/online-crm.ipc";
 import { developmentLogin } from './adapters/developer-login.adapter';
 import { registerUpdateIPC } from "./transport/update.ipc";
 import { registerSystemRestartIPC } from "./transport/system.ipc";
 import { initUpdater, cleanupUpdater } from "./updater";
 import { APP_ROOT, getResourcesRoot, loadConfig, selectAccountRoot } from "./config";
-import { DesktopLocalScope, developerProfileRoot, accountProfileRoot } from "./adapters/desktop-local-scope.adapter";
+import { DesktopLocalScope, developerProfileRoot, developmentUserDataRoot, accountProfileRoot } from "./adapters/desktop-local-scope.adapter";
 import { registerLockedLocalIPC, registerGuardedLocalIPC } from "./transport/desktop-local.ipc";
 import { EVENTS } from "./events";
 
 const developerRoot = developerProfileRoot(process.env.PROSPECTOR_DEV_PROFILE, app.isPackaged);
+const developmentUserData = developmentUserDataRoot(developerRoot, app.isPackaged, app.getPath('appData'));
 // APP_ROOT already reads the environment at module evaluation; Electron's profile must
 // be selected before its lock/session/auth stores are opened as well.
-if (developerRoot) app.setPath("userData", developerRoot);
+if (developmentUserData) {
+  fs.mkdirSync(developmentUserData, { recursive: true });
+  app.setPath("userData", developmentUserData);
+}
 let localScope = new DesktopLocalScope(APP_ROOT, !!developerRoot, getOnlineIdentity, isOnlineConnection);
 let normalAccountSelected = false;
 let localInitializationStarted = false;
 let localInitialized = false;
 let identityRestarting = false;
+let identityRestartTimer: ReturnType<typeof setTimeout> | null = null;
+let lastIdentityScopeState = "";
+const IDENTITY_SETTLE_MS = 1_000;
 let suspendLocalNetworkWork: () => void = () => {};
 const LOCAL_BACKUP_START_MS = 5 * 60_000;
 const LOCAL_BACKUP_INTERVAL_MS = 24 * 60 * 60_000;
@@ -306,24 +314,45 @@ async function activateLocalProfile(): Promise<void> {
 }
 
 function updateLocalIdentity(): void {
+  if (identityRestarting) return;
   if (localInitialized && !isOnlineConnection()) suspendLocalNetworkWork();
   const identity = getOnlineIdentity();
+  const identityKey = identity ? `${identity.baseUrl}|${identity.userId}` : "anonymous";
   if (identity && !normalAccountSelected) {
-    const root = accountProfileRoot(developerRoot || app.getPath('userData'), identity);
+    const root = accountProfileRoot(developmentUserData || app.getPath('userData'), identity);
     selectAccountRoot(root);
     localScope = new DesktopLocalScope(root, true, getOnlineIdentity, isOnlineConnection);
     normalAccountSelected = true;
   }
   localScope.setIdentity(getOnlineIdentity());
+  const scopeState = `${identityKey}|started=${localInitializationStarted}|allowed=${localScope.allowed()}`;
+  if (scopeState !== lastIdentityScopeState) {
+    lastIdentityScopeState = scopeState;
+    Log.info("local.scope", `身份范围检查 ${identityKey}，初始化已开始=${localInitializationStarted}，本地可用=${localScope.allowed()}`);
+  }
   if (localInitializationStarted && !localScope.allowed()) {
     // Existing services lack a complete stop-all contract (in-flight IMAP/model/SMTP).
     // Terminating this process is the R1 boundary: no previous-account work survives
     // a logout/revocation/switch, and a new account cannot reuse this profile.
-    identityRestarting = true;
-    Log.warn("local.scope", "身份已变化，本地任务停止并重启；未保存草稿将丢失");
-    app.relaunch();
-    app.exit(0);
+    if (identityRestartTimer) return;
+    identityRestartTimer = setTimeout(() => {
+      identityRestartTimer = null;
+      const recovered = getOnlineIdentity();
+      if (recovered) localScope.setIdentity(recovered);
+      if (localScope.allowed()) {
+        Log.info("local.scope", "身份短暂变化后已恢复，取消重启");
+        return;
+      }
+      identityRestarting = true;
+      Log.warn("local.scope", "身份已变化，本地任务停止并重启；未保存草稿将丢失");
+      app.relaunch();
+      app.exit(0);
+    }, IDENTITY_SETTLE_MS);
     return;
+  }
+  if (identityRestartTimer) {
+    clearTimeout(identityRestartTimer);
+    identityRestartTimer = null;
   }
   void activateLocalProfile().catch(error => {
     Log.error("local.scope", `隔离资料初始化失败: ${error instanceof Error ? error.message : String(error)}`);
@@ -350,6 +379,26 @@ if (!gotLock) {
 if (gotLock) app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   configureOnlineLocalScope(() => localInitialized && localScope.allowed());
+  configureOnlineAccountSwitchLifecycle({
+    begin() {
+      if (identityRestartTimer) clearTimeout(identityRestartTimer);
+      identityRestartTimer = null;
+      identityRestarting = true;
+      mainWindow?.hide();
+      Log.info("local.scope", "开始切换账号，窗口隐藏并准备重启");
+    },
+    finish(ok) {
+      if (!ok) {
+        identityRestarting = false;
+        mainWindow?.show();
+        mainWindow?.focus();
+        Log.warn("local.scope", "切换账号未完成，已恢复原窗口");
+        return;
+      }
+      app.relaunch();
+      app.exit(0);
+    },
+  });
   registerSessionIPC();
   onOnlineIdentityChanged(updateLocalIdentity);
   updateLocalIdentity();
@@ -369,6 +418,8 @@ if (gotLock) app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  if (identityRestartTimer) clearTimeout(identityRestartTimer);
+  identityRestartTimer = null;
   closeOnlineCrmSession();
   isQuitting = true;
   if (localInitialized) {

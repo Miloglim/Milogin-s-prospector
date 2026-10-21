@@ -7,7 +7,7 @@
 .sidebar-footer-actions { display: flex; align-items: center; gap: 0; flex-shrink: 0; margin-left: auto; }
 .sidebar-foot-icon { width: 32px; height: 32px; font-size: 14px; }
 .sidebar-footer-actions .sidebar-foot-icon { width: 26px; height: 32px; }
-.sidebar-message-dot { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--brand-accent); }
+.sidebar-message-badge { position: absolute; top: -3px; right: -4px; display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border: 2px solid #262626; border-radius: 8px; color: #fff; background: #ff4d4f; font-size: 9px; font-weight: 600; line-height: 12px; }
 .sidebar-brand-dot { color: var(--brand-accent); transition: color .2s ease; }
 .sidebar-brand-dot.is-offline { color: #888; }
 .sidebar-foot-icon:focus-visible, .sidebar-account:focus-visible { outline: 2px solid rgba(255,255,255,.75); outline-offset: 1px; }

@@ -12,6 +12,7 @@ import { toolLabelText, useToolMetaVersion } from "../../lib/tool-meta";
 import { CONVS_CHANGED } from "../../lib/agent-route";
 import type { NavigatorResult, NavigatorStatus } from "../../../shared/navigator";
 import { DEFAULT_MAIL_SERVERS } from "../../../shared/mail-defaults";
+import { applyWorkspaceDark, workspaceDarkEnabled } from '../../lib/workspace-preferences';
 
 interface EmailAccount {
   id: number; email: string; provider: string;
@@ -1075,6 +1076,7 @@ export function SettingsPage() {
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const [activeSection, setActiveSection] = useState("sec-general");
+  const [workspaceDark, setWorkspaceDark] = useState(workspaceDarkEnabled);
   const [accountsOpen, setAccountsOpen] = useState(true);
   const railLockRef = useRef(0);
 
@@ -1296,6 +1298,12 @@ export function SettingsPage() {
         {/* ═══ 通用 ═══ */}
         <div id="sec-general" className="settings-section">
           <div className="text-[13px] font-bold mb-3 text-gray-800">通用</div>
+          <SettingCard icon="" title="工作区外观">
+            <div className="flex items-center gap-2.5 py-1.5 min-h-[30px]">
+              <label className="w-[72px] text-right text-[11px] text-gray-500 flex-shrink-0">黑色工作区</label>
+              <Switch size="small" checked={workspaceDark} onChange={value => { setWorkspaceDark(value); applyWorkspaceDark(value); }} />
+            </div>
+          </SettingCard>
           <SettingCard icon="" title="启动与关闭">
             <div className="flex items-center gap-2.5 py-1.5 min-h-[30px]">
               <label className="w-[72px] text-right text-[11px] text-gray-500 flex-shrink-0">关闭窗口时</label>

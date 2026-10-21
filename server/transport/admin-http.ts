@@ -34,7 +34,7 @@ async function navigatorDashboard(config: OnlineConfig, token: string) {
  } catch { return failure('UNAVAILABLE','Navigator 服务暂不可用'); }
 }
 export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:TokenPort,gate:LoginGate,config:OnlineConfig,staticHandler:BrowserHandler,passwordChange?:PasswordChangeService,dashboard?:ReturnType<typeof createManagementDashboardService>):BrowserHandler {
- const cookieFlags=`HttpOnly; SameSite=Strict; Path=/`+(config.test_mode?'':'; Secure');
+ const cookieFlags=`HttpOnly; SameSite=Strict; Path=/`+(config.test_mode||config.local_http?'':'; Secure');
  return async(request,response)=>{
   response.setHeader('Referrer-Policy','no-referrer');
   response.setHeader('X-Frame-Options','DENY');

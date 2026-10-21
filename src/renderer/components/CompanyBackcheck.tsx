@@ -21,7 +21,9 @@ export interface CompanyRow {
   backcheckData: string | null;
 }
 
-/** 联系人详情里的"公司背调"卡片 */
+/** 联系人详情里的"公司背调"卡片；当前仅在界面隐藏，后端与历史报告保留。 */
+export const COMPANY_BACKCHECK_UI_ENABLED = false;
+
 export function CompanyBackcheck({ companyId, centerCompany, run }: { companyId: number | null; centerCompany?: CompanyRow; run?: (input: {companyName:string;website?:string;country?:string}) => Promise<{success:boolean;error?:string}> }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);

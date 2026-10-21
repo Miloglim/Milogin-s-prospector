@@ -9,6 +9,7 @@ import { TitleBar } from './layout/AppLayout';
 import './OnboardingWizard.css';
 import './ProductLogin.css';
 import { DEFAULT_MAIL_SERVERS } from '../../shared/mail-defaults';
+import { subscribeWorkspaceDark, workspaceDarkEnabled } from '../lib/workspace-preferences';
 
 const PASSWORD_MIN_LENGTH = AUTH_LIMITS.passwordMin;
 const MASCOT_SIZE = 52;
@@ -16,6 +17,7 @@ const MASCOT_SIZE = 52;
 /** The original onboarding surface, adapted only for product authentication. */
 export function ProductLogin() {
   const session = useIdentity();
+  const [workspaceDark, setWorkspaceDark] = useState(workspaceDarkEnabled);
   const [notice, setNotice] = useState('');
   const [creating, setCreating] = useState(false);
   const [email, setEmail] = useState('');
@@ -48,6 +50,7 @@ export function ProductLogin() {
       await new Promise(resolve => setTimeout(resolve, 300));
     }
   }
+  useEffect(() => subscribeWorkspaceDark(setWorkspaceDark), []);
   function chooseAccount(account: LoginAccount) {
     initialAccountChosen.current = true;setEmail(account.email);setPassword('');setAccountId(account.accountId);
     setRemember(account.remembered);setAutoLogin(account.autoLogin);setAccountsOpen(false);setNotice('');
@@ -97,7 +100,7 @@ export function ProductLogin() {
   }
   const busyLabel = restricted ? '正在更新密码…' : creating ? '正在创建账号…' : '正在验证账号…';
   return <div className={`product-login${session.busy ? ' is-submitting' : ''}`}>
-    <TitleBar />
+    <TitleBar tone={workspaceDark ? 'dark' : 'light'} transparent />
     <div className={`product-login-busybar${session.busy ? ' is-visible' : ''}`} role="status" aria-live="polite"><span>{session.busy ? busyLabel : ''}</span></div>
     <main className="ob-root show product-login-main">
       <DotPattern width={20} height={20} cr={1.3} className="product-login-pattern [mask-image:radial-gradient(560px_circle_at_50%_42%,white,transparent)]" />
@@ -119,11 +122,13 @@ export function ProductLogin() {
                     <LoginField name="email" label="邮箱" type="email" autoComplete="username" placeholder="your@email.com" value={email} onChange={value=>{initialAccountChosen.current=true;setEmail(value);setAccountId(undefined);setPassword('');setAutoLogin(false);}}>
                       {!creating && accounts.length>0 && <button type="button" className="product-login-account-toggle" aria-label="选择账号" aria-expanded={accountsOpen} aria-controls="login-account-presets" onClick={()=>setAccountsOpen(value=>!value)}><DownOutlined/></button>}
                     </LoginField>
-                    {!creating && accountsOpen && <div id="login-account-presets" className="product-login-presets" role="group" aria-label="已保存账号">
-                      {accounts.map(account=><div key={account.accountId} className={`product-login-preset${account.accountId===accountId?' is-selected':''}`}>
-                        <button type="button" className="product-login-preset-select" data-account-id={account.accountId} onClick={()=>chooseAccount(account)}><span className="product-login-preset-avatar" aria-hidden="true">{account.email.slice(0,1).toUpperCase()}</span><span>{account.email}</span></button>
-                        <button type="button" className="product-login-preset-remove" aria-label={`移除 ${account.email}`} title="移除账号" onClick={()=>{void session.removeAccount(account.accountId).then(removed=>{if(removed&&account.accountId===accountId){setAccountId(undefined);setPassword('');setRemember(false);setAutoLogin(false);}});}}><CloseOutlined/></button>
-                      </div>)}
+                    {!creating && accounts.length>0 && <div id="login-account-presets" className={`product-login-presets${accountsOpen?' is-open':''}`} role="group" aria-label="已保存账号" aria-hidden={!accountsOpen}>
+                      <div className="product-login-presets-inner">
+                        {accounts.map(account=><div key={account.accountId} className={`product-login-preset${account.accountId===accountId?' is-selected':''}`}>
+                          <button type="button" className="product-login-preset-select" data-account-id={account.accountId} onClick={()=>chooseAccount(account)}><span className="product-login-preset-avatar" aria-hidden="true">{account.email.slice(0,1).toUpperCase()}</span><span>{account.email}</span></button>
+                          <button type="button" className="product-login-preset-remove" aria-label={`移除 ${account.email}`} title="移除账号" onClick={()=>{void session.removeAccount(account.accountId).then(removed=>{if(removed&&account.accountId===accountId){setAccountId(undefined);setPassword('');setRemember(false);setAutoLogin(false);}});}}><CloseOutlined/></button>
+                        </div>)}
+                      </div>
                     </div>}
                   </div>
                   <LoginField name="password" label="密码" type="password" autoComplete={creating ? 'new-password' : 'current-password'} minLength={creating ? PASSWORD_MIN_LENGTH : undefined} placeholder={creating ? `至少${PASSWORD_MIN_LENGTH}个字符` : savedCredential ? '••••••••' : '请输入密码'} value={password} onChange={setPassword} required={!savedCredential} />

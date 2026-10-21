@@ -21,14 +21,7 @@ import type { OfflineCrmService } from '../services/offline-crm.service';
 import type { OfflineCrmContext } from '../core/offline-crm';
 import type { CrmSyncResolve, CrmSyncStatus } from '../../shared/online-crm';
 import { CONTACT_COMMAND_PREFIX } from '../core/contact-commands';
-
-export function loopbackCenter(input:string):string|null {
-  try {
-    const url=new URL(input);
-    if(url.protocol!=='http:' || !['127.0.0.1','[::1]'].includes(url.hostname) || url.username || url.password || url.pathname!=='/' || url.search || url.hash) return null;
-    return url.origin;
-  } catch { /* Invalid URL is rejected before network IO. */ return null; }
-}
+import { validateCenterBase } from '../core/center-endpoint';
 
 const FALLBACK_ACCESS_MS = 3600000;
 const RENEW_BEFORE_MS = 30000;
@@ -64,7 +57,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   onResponse(observer:(context:{baseUrl:string;userId:string},method:string,path:string,data:unknown)=>void):()=>void {this.responseObservers.add(observer);return()=>{this.responseObservers.delete(observer);};}
   /** A complete mirror scan must never substitute an old cached page for a center response. */
   requestLive<T>(method:string,path:string,body?:unknown):Promise<Result<T>> {return this.onlineRequest<T>(method,path,body);}
-  private baseUrl:string=ONLINE_LIMITS.defaultUrl;
+  private baseUrl:string;
   private token='';
   private generation=0;
   private credentialRevision=0;
@@ -87,7 +80,10 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   private localExpiresAt=0;
   private localExpired=false;
   private persistedClockFloor=0;
-  constructor(private readonly fetcher:typeof fetch=fetch, private readonly store?:OnlineSessionStore, private readonly changed:()=>void=()=>{}, private readonly localCrm?:OfflineCrmService) {}
+  private lastIdentityState='';
+  constructor(private readonly fetcher:typeof fetch=fetch, private readonly store?:OnlineSessionStore, private readonly changed:()=>void=()=>{}, private readonly localCrm?:OfflineCrmService, initialBaseUrl:string=ONLINE_LIMITS.defaultUrl) {
+    this.baseUrl=validateCenterBase(initialBaseUrl) ?? ONLINE_LIMITS.defaultUrl;
+  }
   private crmContext():OfflineCrmContext|null {
     const current=this.currentIdentity();if(!current||!this.identity)return null;
     const generation=this.generation;
@@ -119,7 +115,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     return this.localCrm.resolve(ctx,input,(m,p,b)=>this.onlineRequest(m,p,b));
   }
   currentIdentity():{userId:string;baseUrl:string}|null {
-    if(this.switchingAccount)return null;
+    if(this.switchingAccount){this.reportIdentityState('switching-account');return null;}
     if(this.connection==='offline') {
       const now=Date.now();
       const wasExpired=this.localExpired;
@@ -133,10 +129,13 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
           void this.diskAction(async()=>{if(generation===this.generation&&revision===this.credentialRevision)await this.store!.save(saved);}).catch(()=>{Log.error('online.storage','离线时钟保护无法保存，本次拒绝离线访问');if(generation===this.generation&&revision===this.credentialRevision)this.localExpired=true;});
         }
       }
-      if(this.localExpired)return null;
+      if(this.localExpired){this.reportIdentityState('offline-expired');return null;}
     }
-    return this.identity&&!this.identity.mustChangePassword?{userId:this.identity.userId,baseUrl:this.baseUrl}:null;
+    const current=this.identity&&!this.identity.mustChangePassword?{userId:this.identity.userId,baseUrl:this.baseUrl}:null;
+    this.reportIdentityState(current?`ready:${this.connection}:${current.userId}`:!this.identity?'anonymous':this.identity.mustChangePassword?'password-change-required':'unavailable');
+    return current;
   }
+  private reportIdentityState(state:string):void { if(state!==this.lastIdentityState){this.lastIdentityState=state;Log.info?.('online.identity',`身份状态 ${state}`);} }
   isOnline():boolean { return this.connection==='online' && !!this.currentIdentity(); }
   private snapshot():OnlineSessionSnapshot { return {identity:this.connection==='offline'&&!this.currentIdentity()?null:this.identity,remembered:this.remembered,baseUrl:this.baseUrl,connection:this.connection,...(this.connection==='offline'&&this.localExpiresAt?{offlineExpiresAt:new Date(this.localExpiresAt).toISOString()}: {})}; }
   private savedSession(userId:string,refreshToken=this.refreshToken,email=this.identity?.email):SavedOnlineSession { return {baseUrl:this.baseUrl,userId,refreshToken,email,autoLogin:this.autoLogin,...(this.offlineAccess?{offlineAccess:this.offlineAccess,trustedPublicKey:this.trustedPublicKey,lastSeenAt:this.lastSeenAt}:{})}; }
@@ -169,7 +168,11 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
       const result=JSON.parse(await this.boundedText(response)) as Result<T>;
       if(typeof result?.ok!=='boolean' || (!result.ok && (typeof result.error?.code!=='string'||typeof result.error.message!=='string')))return failure('UNAVAILABLE','中心返回格式错误');
       return result;
-    } catch(error) { Log.error('online.request',`中心请求失败 (${error instanceof Error?error.name:'unknown'})`); return failure('UNAVAILABLE','中心不可达，请检查连接'); }
+    } catch(error) {
+      const detail=error instanceof Error?`${error.name}: ${error.message}`:'unknown';
+      Log.error('online.request',`中心请求失败 ${method} ${path} origin=${this.baseUrl} (${detail})`);
+      return failure('UNAVAILABLE','中心不可达，请检查连接');
+    }
   }
   private async accept(data:DesktopLoginResponse,generation:number):Promise<Result<void>> {
     if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换，旧响应已丢弃');
@@ -200,7 +203,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     const pending=(async()=>{
       const result=await this.raw<DesktopLoginResponse>('POST',DESKTOP_AUTH_ROUTES.refresh,{refreshToken:refresh});
       if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换');
-      if(!result.ok){if(result.error.code==='UNAUTHORIZED')await this.forget();else if(isCenterUnavailable(result.error.code))await this.offline();return result;}
+      if(!result.ok){Log.warn?.('online.renew',`登录续期失败 ${result.error.code}: ${result.error.message}`);if(result.error.code==='UNAUTHORIZED')await this.forget();else if(isCenterUnavailable(result.error.code))await this.offline();return result;}
       if((this.identity||expectedUserId) && result.data.identity?.userId!==(this.identity?.userId??expectedUserId)){await this.forget();return failure('UNAUTHORIZED','恢复身份不一致');}
       try{return await this.accept(result.data,generation);}catch{
         if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换，旧存储失败已丢弃');
@@ -238,8 +241,8 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换，旧响应已丢弃');
     if(!result.ok && result.error.code==='UNAUTHORIZED' && this.refreshToken){const fresh=await this.renew();if(!fresh.ok)return fresh;if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换');result=await this.raw<T>(method,path,body,this.token);}
     if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换，旧响应已丢弃');
-    if(!result.ok && result.error.code==='UNAUTHORIZED')await this.forget();
-    else if(!result.ok && isCenterUnavailable(result.error.code))await this.offline();
+    if(!result.ok && result.error.code==='UNAUTHORIZED'){Log.warn?.('online.request',`${method} ${path} 鉴权失败，清理当前登录状态`);await this.forget();}
+    else if(!result.ok && isCenterUnavailable(result.error.code)){Log.warn?.('online.request',`${method} ${path} 中心不可用，切换离线状态`);await this.offline();}
     return result;
   }
   private async boundedText(response:Response):Promise<string> {
@@ -256,8 +259,8 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   async login(input:OnlineLogin):Promise<Result<Identity>> {
     if(!input || typeof input.baseUrl!=='string' || typeof input.email!=='string' || typeof input.password!=='string') return failure('INVALID_INPUT','登录参数错误');
     if(input.autoLogin!==undefined&&typeof input.autoLogin!=='boolean'||input.remember!==undefined&&typeof input.remember!=='boolean'||input.autoLogin===true&&input.remember!==true)return failure('INVALID_INPUT','自动登录需要记住登录凭据');
-    const base=loopbackCenter(input.baseUrl);
-    if(!base) return failure('INVALID_INPUT','此阶段仅允许本机 loopback 中心地址');
+    const base=validateCenterBase(input.baseUrl);
+    if(!base) return failure('INVALID_INPUT','中心地址必须使用 HTTPS；本机测试仅允许回环 HTTP');
     this.invalidate(false);
     const generation=this.generation;
     this.baseUrl=base;
@@ -339,7 +342,8 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
       const saved=await this.store?.load(accountId);
       if(generation!==this.generation)return failure('UNAUTHORIZED','登录恢复已取消');
       if(!saved)return accountId?failure('UNAUTHORIZED','请重新输入密码登录'):success(this.snapshot());
-      const base=loopbackCenter(saved.baseUrl);if(!base){await this.forget();return failure('INVALID_INPUT','已保存的中心地址不受支持');}
+      if(accountId===undefined&&saved.baseUrl!==this.baseUrl)return success(this.snapshot());
+      const base=validateCenterBase(saved.baseUrl);if(!base){await this.forget();return failure('INVALID_INPUT','已保存的中心地址不受支持');}
       this.baseUrl=base;this.refreshToken=saved.refreshToken;this.remembered=true;this.autoLogin=autoLogin??saved.autoLogin!==false;
       const offline=verifyOfflineAccess(saved.offlineAccess,{trustedPublicKey:saved.trustedPublicKey??'',baseUrl:base,userId:saved.userId,lastSeenAt:saved.lastSeenAt??NaN,now:Date.now()});
       const result=await this.renew(saved.userId);

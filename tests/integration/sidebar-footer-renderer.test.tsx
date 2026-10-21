@@ -2,21 +2,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { App as AntApp } from 'antd';
 import { Sidebar } from '../../src/renderer/components/layout/Sidebar';
-const state = vi.hoisted(() => ({ offline:false, collapsed: false, unread: 1, navigate: vi.fn(), logout: vi.fn(), search: vi.fn(), identityAdmin: false, roles: ['sales'] as Array<'admin' | 'operations' | 'sales' | 'auditor'> }));
+const state = vi.hoisted(() => ({ offline:false, collapsed: false, unread: 1, items: [] as Array<Record<string, unknown>>, navigate: vi.fn(), logout: vi.fn(), reconnect: vi.fn(), search: vi.fn(), refresh: vi.fn(), readMessage: vi.fn(), openMessage: vi.fn(), identityAdmin: false, roles: ['sales'] as Array<'admin' | 'operations' | 'sales' | 'auditor'> }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => state.navigate, useRouterState: ({ select }: { select: (value: unknown) => unknown }) => select({ location: { pathname: '/messages', search: {} } }) }));
 vi.mock('../../src/renderer/AppContext', () => ({ useAppContext: () => ({ sidebarCollapsed: state.collapsed }) }));
-vi.mock('../../src/renderer/IdentityContext', () => ({ useOptionalIdentity: () => ({ status:state.offline?'offline':'authenticated',localAvailable: true, identity: { displayName: '很长很长的账号名称需要省略而不会挤掉图标', email: 'test@example.invalid', identityAdmin: state.identityAdmin, crmRoles: state.roles }, logout: state.logout }) }));
-vi.mock('../../src/renderer/NotificationContext', () => ({ useOptionalNotifications: () => ({ unread: state.unread }) }));
+vi.mock('../../src/renderer/IdentityContext', () => ({ useOptionalIdentity: () => ({ status:state.offline?'offline':'authenticated',localAvailable: true, identity: { displayName: '很长很长的账号名称需要省略而不会挤掉图标', email: 'test@example.invalid', identityAdmin: state.identityAdmin, crmRoles: state.roles }, logout: state.logout, reconnect: state.reconnect }) }));
+vi.mock('../../src/renderer/NotificationContext', () => ({ useOptionalNotifications: () => ({ unread: state.unread, items: state.items, error: '', loading: false, refresh: state.refresh, read: state.readMessage, open: state.openMessage }) }));
 vi.mock('../../src/renderer/hooks/useAgentTranscript', () => ({ drop: vi.fn(), useRunningConvIds: () => [] }));
 vi.mock('../../src/renderer/components/DiamondLogo', () => ({ DiamondLogo: () => <span /> }));
 vi.mock('../../src/renderer/components/GlobalSearch', () => ({ GlobalSearch: ({ trigger }: { trigger: (click: () => void, active: boolean) => React.ReactNode }) => trigger(state.search, false) }));
 describe('sidebar account, search and messages footer', () => {
   let root: Root; let host: HTMLDivElement;
-  const mount = async () => act(async () => { root.render(<Sidebar />); });
+  const mount = async () => act(async () => { root.render(<AntApp><Sidebar /></AntApp>); });
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    state.offline=false;state.collapsed = false; state.unread = 1; state.identityAdmin = false; state.roles = ['sales']; state.navigate.mockClear(); state.search.mockClear(); state.logout.mockClear();
+    state.offline=false;state.collapsed = false; state.unread = 1; state.items = []; state.identityAdmin = false; state.roles = ['sales']; state.navigate.mockClear(); state.search.mockClear(); state.logout.mockClear(); state.refresh.mockClear(); state.readMessage.mockClear(); state.openMessage.mockClear(); state.reconnect.mockReset(); state.reconnect.mockResolvedValue(true);
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
     vi.stubGlobal('ResizeObserver', class { constructor(_callback: () => void) {} observe(_element: HTMLElement) {} disconnect() {} });
     Object.defineProperty(window, 'api', { configurable: true, value: { invoke: vi.fn(async () => ({ success: true, data: [] })), on: () => () => {} } });
@@ -39,13 +40,15 @@ describe('sidebar account, search and messages footer', () => {
   it('places account then search then messages in one footer and confines unread to messages', async () => {
     await mount(); const footer = host.querySelector('.sidebar-footer')!;
     expect(Array.from(footer.querySelectorAll('button[aria-label]')).map(button => button.getAttribute('aria-label'))).toEqual(['账号菜单', '全局搜索', '消息中心']);
-    expect(footer.querySelector('.sidebar-account [aria-label="有未读消息"]')).toBeNull();
-    expect(footer.querySelector('button[aria-label="消息中心"] [aria-label="有未读消息"]')).not.toBeNull();
+    expect(footer.querySelector('.sidebar-account [aria-label="1 条未读"]')).toBeNull();
+    expect(footer.querySelector('button[aria-label="消息中心"] [aria-label="1 条未读"]')?.textContent).toBe('1');
     expect(host.textContent).not.toContain('在线协作');
     await act(async () => { footer.querySelector<HTMLButtonElement>('button[aria-label="全局搜索"]')!.click(); }); expect(state.search).toHaveBeenCalledOnce();
-    await act(async () => { footer.querySelector<HTMLButtonElement>('button[aria-label="消息中心"]')!.click(); }); expect(state.navigate).toHaveBeenCalledWith({ to: '/messages' });
+    await act(async () => { footer.querySelector<HTMLButtonElement>('button[aria-label="消息中心"]')!.click(); await Promise.resolve(); });
+    expect(state.navigate).not.toHaveBeenCalled(); expect(document.querySelector('.message-center-panel')).not.toBeNull(); expect(document.body.textContent).toContain('暂无消息');
     await act(async () => { footer.querySelector<HTMLButtonElement>('button[aria-label="账号菜单"]')!.click(); });
     expect(Array.from(document.querySelectorAll('[role="menuitem"]')).map(item => item.textContent).join(' ')).not.toContain('消息中心');
+    expect(document.querySelector('.account-menu-logout')?.textContent).toBe('退出登录');
     const settings = Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent === '设置') as HTMLElement;
     await act(async () => settings.click()); expect(state.navigate).toHaveBeenCalledWith({ to: '/settings' });
   });
@@ -60,7 +63,7 @@ describe('sidebar account, search and messages footer', () => {
     state.collapsed = true; state.unread = 0; await mount();
     const footer = host.querySelector('.sidebar-footer.is-collapsed')!;
     expect(footer.querySelectorAll('button[aria-label]')).toHaveLength(3);
-    expect(footer.querySelector('[aria-label="有未读消息"]')).toBeNull();
+    expect(footer.querySelector('[aria-label="1 条未读"]')).toBeNull();
     expect(footer.querySelector('.sidebar-account')?.textContent).toBe('');
   });
   it('allows entering customers offline while keeping live messages unavailable',async()=>{
@@ -74,6 +77,13 @@ describe('sidebar account, search and messages footer', () => {
   it('keeps the brand dot active while connected', async () => {
     await mount();
     expect(host.querySelector('.sidebar-brand-dot')?.classList.contains('is-offline')).toBe(false);
+  });
+  it('checks and reconnects the center from the top-left brand', async () => {
+    state.offline = true; await mount();
+    const brand = host.querySelector<HTMLElement>('.sidebar-brand')!;
+    expect(brand.getAttribute('aria-label')).toBe('检查并重连中心');
+    await act(async () => { brand.click(); });
+    expect(state.reconnect).toHaveBeenCalledOnce();
   });
   it('hides unreleased dashboard, rates and conversation history entries', async () => {
     await mount();

@@ -3,7 +3,7 @@ import { Drawer, Tabs, Tag, Select, message, Timeline, Input, Button, Tooltip, M
 import { EditOutlined, SearchOutlined, PartitionOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useUpsertContact, useDeleteContact, type Contact } from "../hooks/useContacts";
-import { CompanyBackcheck } from "./CompanyBackcheck";
+import { CompanyBackcheck, COMPANY_BACKCHECK_UI_ENABLED } from "./CompanyBackcheck";
 import { DiamondLogo } from "./DiamondLogo";
 import { askAssistant } from "../lib/ask-ai";
 
@@ -327,6 +327,7 @@ export const CONTACT_DETAIL_WIDTH = 500;
 /** Shared original drawer layout; data and commands remain owned by each caller. */
 export function ContactDetailLayout({ children, ...props }: DrawerProps) {
   return <Drawer width={CONTACT_DETAIL_WIDTH} title={null} closable={false}
+    rootClassName="customer-contact-detail-layer"
     styles={{ body: { padding: '24px', height: '100%', overflow: 'hidden' } }}
     rootStyle={{ top: 'var(--app-titlebar-height)' }} {...props}>
     <div className="flex flex-col h-full">{children}</div>
@@ -430,7 +431,7 @@ export function ContactDetailDrawer({ contact, open, onClose, onUpdated }: {
           className="contact-detail-tabs"
           items={[
             { key: "info", label: "基本信息", children: <InfoTab contact={contact} onSaveField={saveField} /> },
-            { key: "company", label: "公司背调", children: <CompanyBackcheck companyId={contact.companyId} /> },
+            ...(COMPANY_BACKCHECK_UI_ENABLED ? [{ key: "company", label: "公司背调", children: <CompanyBackcheck companyId={contact.companyId} /> }] : []),
             { key: "history", label: "往来记录", children: <ContactInteractions contactId={contact.id} /> },
           ]}
         />

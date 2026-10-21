@@ -23,6 +23,7 @@ export interface IdentityContextValue {
   register: (input: OnlineRegistration) => Promise<boolean>;
   logout: (input?: OnlineLogout) => Promise<void>;
   refresh: () => Promise<void>;
+  reconnect: () => Promise<boolean>;
   changePassword: (input: { currentPassword: string; newPassword: string }) => Promise<boolean>;
 }
 const IdentityContext = createContext<IdentityContextValue | null>(null);
@@ -58,6 +59,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const currentIdentity = useRef<Identity | null>(null);
   const polling = useRef(false);
   const actionPending = useRef(false);
+  const switchingAccount = useRef(false);
   const refreshAccounts = useCallback(async () => {
     const result = await invoke<LoginAccountQuery>(ONLINE_CHANNELS.ACCOUNT_LIST);
     if (result?.ok && Array.isArray(result.data?.accounts)) {setAccounts(result.data.accounts);setSelectedAccountId(result.data.selectedAccountId);}
@@ -73,7 +75,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     setStatus(activeStatus(next));
   }, [queryClient]);
   const refresh = useCallback(async () => {
-    if (polling.current || actionPending.current) return;
+    if (polling.current || actionPending.current || switchingAccount.current) return;
     polling.current = true;
     const version = epoch.current;
     const result = await invoke<OnlineSessionSnapshot>(ONLINE_CHANNELS.STATUS);
@@ -152,16 +154,43 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   }, [refreshAccounts]);
   const logout = useCallback(async (input?: OnlineLogout) => {
     if (actionPending.current) return;
+    const switching = input?.switchAccount === true;
     actionPending.current = true;
     ++epoch.current;
-    if(!input?.switchAccount){apply(null);setRemembered(false);}
-    setError(''); setBusy(true);
+    if (switching) {
+      switchingAccount.current = true;
+    } else {
+      apply(null);
+      setRemembered(false);
+      setBusy(true);
+    }
+    setError('');
     const result = input ? await invoke<void>(ONLINE_CHANNELS.LOGOUT, input) : await invoke<void>(ONLINE_CHANNELS.LOGOUT);
-    actionPending.current = false; setBusy(false);
-    if(result.ok&&input?.switchAccount){apply(null);setRemembered(false);}
+    actionPending.current = false;
+    if (!switching) setBusy(false);
+    if (switching && !result.ok) switchingAccount.current = false;
     if (!result.ok) setError(result.error.message);
-    void refreshAccounts();
+    if (!switching) void refreshAccounts();
   }, [apply,refreshAccounts]);
+  const reconnect = useCallback(async () => {
+    if (polling.current || actionPending.current) return false;
+    actionPending.current = true;
+    const version = ++epoch.current;
+    setBusy(true); setError('');
+    const result = await invoke<OnlineSessionSnapshot>(ONLINE_CHANNELS.RESTORE);
+    actionPending.current = false;
+    if (version !== epoch.current) return false;
+    setBusy(false);
+    if (result.ok) {
+      apply(result.data.identity); setBaseUrl(result.data.baseUrl); setRemembered(result.data.remembered);
+      setLocalAvailable(result.data.localAvailable === true);
+      if (result.data.connection === 'offline' && result.data.identity) { setStatus('offline'); setError('中心暂时不可用，当前为离线工作区'); return false; }
+      setError(''); return !!result.data.identity;
+    }
+    setError(result.error.message);
+    if (currentIdentity.current) setStatus('offline');
+    return false;
+  }, [apply]);
   const changePassword = useCallback(async (input: { currentPassword: string; newPassword: string }) => {
     if (actionPending.current) return false;
     actionPending.current = true;
@@ -176,5 +205,5 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     void refreshAccounts();
     return true;
   }, [apply,refreshAccounts]);
-  return <IdentityContext.Provider value={{ identity, status, ready: status !== 'restoring', error, baseUrl, remembered, accounts, selectedAccountId, loginAccount, removeAccount, localAvailable, busy, register, login, logout, refresh, changePassword }}>{children}</IdentityContext.Provider>;
+  return <IdentityContext.Provider value={{ identity, status, ready: status !== 'restoring', error, baseUrl, remembered, accounts, selectedAccountId, loginAccount, removeAccount, localAvailable, busy, register, login, logout, refresh, reconnect, changePassword }}>{children}</IdentityContext.Provider>;
 }

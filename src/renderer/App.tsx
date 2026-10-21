@@ -10,7 +10,15 @@ import { IdentityProvider, useIdentity } from './IdentityContext';
 import { NotificationProvider } from './NotificationContext';
 import { ProductLogin } from './components/ProductLogin';
 import { DiamondLogo } from './components/DiamondLogo';
+import { subscribeWorkspaceDark, workspaceDarkEnabled } from './lib/workspace-preferences';
 import './components/ProductLogin.css';
+
+function AppEmptyState() {
+  return <div className="app-empty-state">
+    <span className="app-empty-mark"><DiamondLogo size={18} state="static" /></span>
+    <span>暂无数据</span>
+  </div>;
+}
 
 function RestartRequestDialog() {
   const session = useIdentity();
@@ -69,15 +77,24 @@ function BusinessEvents() {
   return null;
 }
 
+function ApplicationTheme() {
+  const [workspaceDark, setWorkspaceDark] = useState(workspaceDarkEnabled);
+  useEffect(() => subscribeWorkspaceDark(setWorkspaceDark), []);
+  return (
+    <ConfigProvider
+      renderEmpty={() => <AppEmptyState />}
+      theme={brandTheme(workspaceDark)}>
+      <AntApp>
+        <NotificationProvider><RestartRequestDialog /><BusinessEvents /><IdentityGate /></NotificationProvider>
+      </AntApp>
+    </ConfigProvider>
+  );
+}
+
 export function App() {
   return (
     <AppProvider>
-      <ConfigProvider
-        theme={brandTheme()}>
-        <AntApp>
-          <IdentityProvider><NotificationProvider><RestartRequestDialog /><BusinessEvents /><IdentityGate /></NotificationProvider></IdentityProvider>
-        </AntApp>
-      </ConfigProvider>
+      <IdentityProvider><ApplicationTheme /></IdentityProvider>
     </AppProvider>
   );
 }

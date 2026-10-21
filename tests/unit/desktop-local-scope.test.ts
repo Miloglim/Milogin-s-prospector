@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { DesktopLocalScope, developerProfileRoot, accountProfileRoot } from '../../src/main/adapters/desktop-local-scope.adapter';
+import { DesktopLocalScope, developerProfileRoot, developmentUserDataRoot, accountProfileRoot } from '../../src/main/adapters/desktop-local-scope.adapter';
 import { IPC } from '../../src/main/contract';
 
 const roots: string[] = [];
@@ -152,5 +152,13 @@ describe('R1 desktop personal store ownership', () => {
     expect(developerProfileRoot(second, false)).not.toBe(developerProfileRoot(first, false));
     expect(developerProfileRoot(first, true)).toBeNull();
     expect(() => developerProfileRoot('relative-profile', false)).toThrow('绝对路径');
+  });
+
+  it('uses a separate default development userData root without changing packaged storage', () => {
+    const appData = root();
+    const explicit = root();
+    expect(developmentUserDataRoot(null, false, appData)).toBe(path.join(appData, 'prospecting-email-dev'));
+    expect(developmentUserDataRoot(explicit, false, appData)).toBe(explicit);
+    expect(developmentUserDataRoot(explicit, true, appData)).toBeNull();
   });
 });

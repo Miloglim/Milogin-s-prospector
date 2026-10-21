@@ -18,10 +18,10 @@ describe('center database environment boundary', () => {
     void pool.end();
   });
 
-  it('requires a separate local cluster for production', () => {
+  it('requires a separate local application database for production', () => {
     expect(() => readProductionDatabaseConfig({})).toThrow();
-    expect(() => readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_DSN: PRODUCTION_DSN.replace(':55846/', ':55843/') })).toThrow();
-    expect(() => readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_DSN: PRODUCTION_DSN.replace(':55846/', ':5432/') })).toThrow();
+    expect(readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_DSN: PRODUCTION_DSN.replace(':55846/', ':5432/') }))
+      .toMatchObject({ host: '127.0.0.1', port: 5432, database: 'milogin_center', user: 'milogin_app' });
     expect(() => readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_DSN: PRODUCTION_DSN.replace('milogin_center', 'prospector_crm_test') })).toThrow();
     expect(() => readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_DSN: PRODUCTION_DSN.replace('127.0.0.1', '192.168.1.8') })).toThrow();
     expect(readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_DSN: PRODUCTION_DSN })).toMatchObject({
@@ -49,5 +49,8 @@ describe('center database environment boundary', () => {
     expect(onlineRuntimeDirectory(env)).not.toBe(onlineRuntimeDirectory({}));
     expect(() => readOnlineConfig({ PROSPECTOR_CENTER_MODE: 'production' })).toThrow();
     expect(() => readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://center.example.test' })).toThrow();
+    expect(readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://127.0.0.1:55847', PROSPECTOR_CENTER_LOCAL_HTTP: '1' }))
+      .toMatchObject({ host: '127.0.0.1', port: 55847, public_origin: 'http://127.0.0.1:55847', local_http: true });
+    expect(() => readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://127.0.0.1:55847' })).toThrow();
   });
 });

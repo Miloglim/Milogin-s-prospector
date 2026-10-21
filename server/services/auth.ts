@@ -56,9 +56,6 @@ export function createAuthService(repo: AuthRepository, passwords: PasswordPort,
         .filter(cap=>identity.data.crmCapabilities==null||identity.data.crmCapabilities.includes(alias[cap]!))});
     },
     async navigatorAccess(token: string) {
-      const identity = await me(token);
-      if(!identity.ok) return identity;
-      if(identity.data.mustChangePassword) return failure('PASSWORD_CHANGE_REQUIRED','请先修改初始密码');
       if(!repo.navigatorAccess) return failure('UNAVAILABLE','Navigator 授权暂不可用');
       const access=await repo.navigatorAccess(tokens.hash(token));
       if(!access.ok) return access;

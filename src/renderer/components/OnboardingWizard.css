@@ -122,14 +122,16 @@
 .ob-inline > div { flex: 1; }
 .ob-error { font-size: 12px; color: #c62828; text-align: center; margin: -8px 0 12px; }
 .ob-advanced { margin: 2px 0 18px; border-top: 1px solid #ededed; }
-.ob-advanced summary { padding: 11px 0 7px; color: #333; font-size: 12px; font-weight: 600; cursor: pointer; list-style-position: outside; transition: color .18s ease; }
-.ob-advanced summary::marker { color: #00a990; }
-.ob-advanced summary:hover { color: #008f7d; }
-.ob-advanced-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .28s cubic-bezier(.33,1,.68,1), opacity .18s ease; }
-.ob-advanced[open] .ob-advanced-body { grid-template-rows: 1fr; opacity: 1; }
+.ob-advanced-summary { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 11px 0 7px; color: #333; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; border: 0; background: transparent; transition: color .18s ease; }
+.ob-advanced-summary:hover { color: #008f7d; }
+.ob-advanced-summary:focus-visible { outline: 2px solid rgba(0, 169, 144, .35); outline-offset: 3px; border-radius: 3px; }
+.ob-advanced-chevron { color: #00a990; transition: transform .28s cubic-bezier(.33,1,.68,1); }
+.ob-advanced.open .ob-advanced-chevron { transform: rotate(180deg); }
+.ob-advanced-body { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows .28s cubic-bezier(.33,1,.68,1), opacity .18s ease, visibility 0s linear .28s; }
+.ob-advanced.open .ob-advanced-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows .28s cubic-bezier(.33,1,.68,1), opacity .18s ease, visibility 0s linear 0s; }
 .ob-advanced-inner { min-height: 0; overflow: hidden; transform: translateY(-5px); transition: transform .28s cubic-bezier(.33,1,.68,1); }
-.ob-advanced[open] .ob-advanced-inner { transform: translateY(0); }
-.ob-advanced[open] summary { margin-bottom: 4px; }
+.ob-advanced.open .ob-advanced-inner { transform: translateY(0); }
+.ob-advanced.open .ob-advanced-summary { margin-bottom: 4px; }
 
 /* 按钮区 */
 .ob-actions { display: flex; justify-content: center; align-items: center; gap: 10px; }

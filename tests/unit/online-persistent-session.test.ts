@@ -90,6 +90,15 @@ describe('global remembered session lifecycle',()=>{
     expect(fixture.fetcher.mock.calls.filter(([url])=>url.endsWith('/refresh'))).toHaveLength(1);
     expect((await second.logout()).ok).toBe(true);expect(fixture.saved()).toBeNull();
   });
+  it('does not auto-restore a saved session from a different configured center',async()=>{
+    const fixture=setup();await fixture.store.save({baseUrl:base,userId:identity.userId,refreshToken:'fixture-refresh'});
+    fixture.fetcher.mockClear();
+    const client=new OnlineCrmAdapter(fixture.fetcher as unknown as typeof fetch,fixture.store,()=>{},undefined,'http://127.0.0.1:55847');
+    const restored=await client.restore();
+    expect(restored.ok&&restored.data.identity).toBeNull();
+    expect(fixture.fetcher).not.toHaveBeenCalled();
+    expect(fixture.saved()?.baseUrl).toBe(base);
+  });
   it('does not remember an unchecked login',async()=>{
     const fixture=setup();await fixture.client().login({baseUrl:base,email:identity.email,password:'fixture-only-password'});
     expect(fixture.store.save).not.toHaveBeenCalled();expect(fixture.saved()).toBeNull();

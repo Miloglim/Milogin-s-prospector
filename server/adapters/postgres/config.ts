@@ -9,7 +9,6 @@ export const CRM_TEST_HOST = settings.host;
 export const CRM_RUNTIME_MARKER = settings.marker;
 const MILLISECONDS_PER_SECOND = 1000;
 const CONNECTION_MAX = 4;
-const PRODUCTION_PORT = 55846;
 const PRODUCTION_DATABASE = "milogin_center";
 const PRODUCTION_USER = "milogin_app";
 const LOCAL_HOST = "127.0.0.1";
@@ -38,12 +37,13 @@ export function readProductionDatabaseConfig(env: NodeJS.ProcessEnv = process.en
   let url: URL;
   try { url = new URL(dsn); }
   catch { throw new Error("正式中心数据库连接配置无效"); }
+  const port = Number(url.port || 5432);
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.hostname !== LOCAL_HOST
-    || Number(url.port) !== PRODUCTION_PORT || url.pathname !== `/${PRODUCTION_DATABASE}`
+    || !Number.isSafeInteger(port) || port < 1 || port > 65535 || url.pathname !== `/${PRODUCTION_DATABASE}`
     || decodeURIComponent(url.username) !== PRODUCTION_USER || !url.password
-    || url.search || url.hash) throw new Error("正式中心只能连接独立本机数据库");
+    || url.search || url.hash) throw new Error("正式中心只能连接本机独立应用数据库");
   return {
-    host: LOCAL_HOST, port: PRODUCTION_PORT, database: PRODUCTION_DATABASE, user: PRODUCTION_USER,
+    host: LOCAL_HOST, port, database: PRODUCTION_DATABASE, user: PRODUCTION_USER,
     password: decodeURIComponent(url.password), max: CONNECTION_MAX,
     connectionTimeoutMillis: settings.connection_timeout_seconds * MILLISECONDS_PER_SECOND,
     application_name: "milogin-center", ssl: false,

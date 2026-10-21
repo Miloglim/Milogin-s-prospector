@@ -2,7 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { --app-titlebar-height: 36px; --brand-accent: #00bfa5; }
+:root {
+  --app-titlebar-height: 36px;
+  --brand-accent: #00bfa5;
+  --workspace-canvas: #f4f5f6;
+  --workspace-surface: #fafbfc;
+  --workspace-control: #f1f3f5;
+}
+body.workspace-dark {
+  --workspace-canvas: #0b0d0f;
+  --workspace-surface: #15181b;
+  --workspace-control: #202328;
+  --workspace-elevated: #1a1d21;
+  --workspace-hover: #22262b;
+  --workspace-line: #30343a;
+  --workspace-text: #e7e9ec;
+  --workspace-muted: #9ca3aa;
+}
 
 /* Account menu uses the scoped dark brand theme; the profile retains page tokens. */
 .account-menu-popup { width: 248px; max-width: calc(100vw - 24px); }
@@ -12,6 +28,7 @@
 .account-menu-identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 3px 0; }
 .account-menu-identity strong { color: #eee; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-menu-identity span { color: #a8a8a8; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu-logout { color: #f1a0a0; }
 .account-profile-layout { display: grid; grid-template-columns: minmax(0,1fr) 250px; gap: 24px; align-items: start; }
 .account-profile-main { display: grid; gap: 16px; min-width: 0; }
 .account-profile-main .ant-card-body { padding: 20px; }
@@ -84,23 +101,51 @@ body {
 .app-titlebar {
   box-sizing: border-box; height: var(--app-titlebar-height); min-height: var(--app-titlebar-height);
   display: flex; align-items: center; justify-content: space-between; flex: 0 0 var(--app-titlebar-height);
-  background: #1a1a1a; border-bottom: 1px solid rgba(128,128,128,.25);
+  background: #1a1a1a; border-bottom: 0;
   user-select: none; overflow: hidden; z-index: 1100;
 }
+.app-titlebar--light { background: #fff; }
+.app-titlebar--transparent { background: transparent !important; }
 .app-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.app-workspace { background: #1a1a1a !important; }
+.app-content {
+  margin: 3px 6px 6px 0;
+  border-radius: 12px 8px 8px 12px;
+  background: var(--workspace-canvas) !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.14);
+}
+.app-content .ant-card {
+  background: var(--workspace-surface);
+}
+.app-content .ant-segmented {
+  background: var(--workspace-control);
+}
+.app-content .ant-input,
+.app-content .ant-select-selector {
+  background: var(--workspace-surface) !important;
+}
+.app-content .ant-table-thead > tr > th {
+  background: var(--workspace-control) !important;
+}
+.app-content .ant-table-tbody > tr:hover > td {
+  background: var(--workspace-surface) !important;
+}
 .app-titlebar-spacer { flex: 1 1 auto; height: 100%; }
 .app-window-controls { display: flex; flex: 0 0 auto; height: 100%; }
 .titlebar-drag { -webkit-app-region: drag; position: relative; }
 .titlebar-nodrag { -webkit-app-region: no-drag; }
 
-.app-route-content { min-width: 0; }
+.app-scroll-area { box-sizing: border-box; }
+.app-route-content { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow-x: hidden; }
+.app-route-host { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .app-scroll-area--edge-to-edge {
-  padding: 0;
+  padding: 16px 20px;
   overflow: hidden;
 }
 .app-route-content--edge-to-edge {
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 .inbox-workspace {
   width: 100%;
@@ -122,8 +167,8 @@ body {
 .prospector-table-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--app-titlebar-height) - 32px);
-  min-height: calc(100vh - var(--app-titlebar-height) - 32px);
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   box-sizing: border-box;
 }
@@ -417,6 +462,45 @@ body {
 .ant-table-placeholder:hover > td {
   background: inherit !important;
 }
+.app-empty-state {
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+.app-empty-mark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #eceef0;
+  border-radius: 8px;
+  background: #f7f8f9;
+}
+.ant-table-placeholder .app-empty-state { min-height: 72px; }
+.ant-empty {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.ant-empty::before {
+  content: "◇";
+  color: #b8bec6;
+  font-size: 22px;
+  line-height: 1;
+}
+.ant-empty .ant-empty-image { display: none; }
+.ant-empty .ant-empty-description {
+  margin-top: 8px;
+  color: #9ca3af;
+  font-size: 12px;
+}
 /* 禁用按钮不改变指针、不变色 */
 .ant-btn[disabled], .ant-btn-disabled { cursor: default !important; pointer-events: none !important; }
 
@@ -691,6 +775,8 @@ body {
   padding: 4px 6px !important; font-size: 10px; line-height: 14px; white-space: nowrap;
 }
 .picker-compact .ant-table-tbody > tr > td { padding: 3px 6px !important; }
+/* The picker owns the single rounded outer border; avoid a second table border. */
+.picker-compact .ant-table-container { border: 0 !important; border-radius: 0 !important; }
 
 /* 已在未完结任务里的联系人：整行压灰，一眼看出"这人已经有人在跟"（规范 §3，灰显不拦截勾选）。
    只走 class 覆盖，不用 onRow.style——那会压掉 antd 的悬停/选中底色。 */
@@ -717,3 +803,95 @@ body {
 .contact-columns-options .ant-checkbox { margin-inline-end: 5px; }
 .contact-columns-options .ant-checkbox-inner { width: 13px; height: 13px; }
 .contact-columns-options .ant-checkbox-inner::after { width: 4px; height: 7px; }
+
+/* Black workspace adaptation. Ant Design supplies component internals; these
+   rules cover the product's fixed white/gray utility and table overrides. */
+body.workspace-dark .app-content { color: var(--workspace-text); }
+body.workspace-dark .app-content .ant-layout,
+body.workspace-dark .app-content .ant-layout-content { background: transparent !important; }
+body.workspace-dark .app-content .bg-white { background-color: var(--workspace-surface) !important; }
+body.workspace-dark .app-content .bg-gray-50 { background-color: #121518 !important; }
+body.workspace-dark .app-content .bg-gray-100 { background-color: var(--workspace-control) !important; }
+body.workspace-dark .app-content .bg-gray-200 { background-color: #2a2f35 !important; }
+body.workspace-dark .app-content .text-gray-900,
+body.workspace-dark .app-content .text-gray-800,
+body.workspace-dark .app-content .text-gray-700 { color: var(--workspace-text) !important; }
+body.workspace-dark .app-content .text-gray-600,
+body.workspace-dark .app-content .text-gray-500 { color: var(--workspace-muted) !important; }
+body.workspace-dark .app-content .text-gray-400,
+body.workspace-dark .app-content .text-gray-300 { color: #737b84 !important; }
+body.workspace-dark .app-content .border-gray-100,
+body.workspace-dark .app-content .border-gray-200,
+body.workspace-dark .app-content .border-gray-300 { border-color: var(--workspace-line) !important; }
+body.workspace-dark .app-content .ant-card,
+body.workspace-dark .app-content .ant-table,
+body.workspace-dark .app-content .ant-table-container { border-color: var(--workspace-line) !important; }
+body.workspace-dark .app-content .ant-table-thead > tr > th {
+  color: var(--workspace-muted) !important;
+  background: var(--workspace-control) !important;
+  border-bottom-color: var(--workspace-line) !important;
+}
+body.workspace-dark .app-content .ant-table-tbody > tr > td {
+  color: var(--workspace-text);
+  background: var(--workspace-surface);
+  border-bottom-color: var(--workspace-line) !important;
+}
+body.workspace-dark .app-content .ant-table-tbody > tr:hover > td { background: var(--workspace-hover) !important; }
+body.workspace-dark .app-content .prospector-page-table .ant-table-cell-fix-right,
+body.workspace-dark .app-content .prospector-page-table .ant-table-cell-fix-left,
+body.workspace-dark .app-content .ant-table-cell-fix-right,
+body.workspace-dark .app-content .ant-table-cell-fix-left { background: var(--workspace-surface) !important; }
+body.workspace-dark .app-content .ant-table-row-selected > td,
+body.workspace-dark .app-content .ant-table-row-selected > .ant-table-cell-fix-right,
+body.workspace-dark .app-content .ant-table-row-selected > .ant-table-cell-fix-left { background: #22272c !important; }
+body.workspace-dark .app-content .ant-list-item,
+body.workspace-dark .app-content .ant-divider { border-color: var(--workspace-line) !important; }
+body.workspace-dark .app-content .ant-empty-description,
+body.workspace-dark .app-empty-state { color: var(--workspace-muted) !important; }
+body.workspace-dark .app-content .app-empty-mark {
+  background: var(--workspace-control);
+  border-color: var(--workspace-line);
+}
+body.workspace-dark .app-content .customer-table-deferred,
+body.workspace-dark .app-content .customer-board-column,
+body.workspace-dark .app-content .customer-company-item,
+body.workspace-dark .app-content .customer-board-card { background: var(--workspace-surface) !important; border-color: var(--workspace-line) !important; }
+body.workspace-dark .app-content .customer-table-skeleton-head { background: var(--workspace-control) !important; border-color: var(--workspace-line) !important; }
+body.workspace-dark .app-content .customer-table-skeleton-row { border-color: var(--workspace-line) !important; }
+body.workspace-dark .app-content .settings-rail-label {
+  color: var(--workspace-text);
+  background: var(--workspace-elevated);
+  border-color: var(--workspace-line);
+}
+body.workspace-dark .app-content .prospector-inbox-page { background: var(--workspace-canvas) !important; color: var(--workspace-text); }
+body.workspace-dark .app-content .prospector-inbox-page .bg-white { background-color: var(--workspace-surface) !important; }
+body.workspace-dark .app-content .prospector-inbox-page input:not([type="checkbox"]) {
+  color: var(--workspace-text) !important;
+  background: var(--workspace-control) !important;
+  border-color: var(--workspace-line) !important;
+}
+body.workspace-dark .app-content .prospector-inbox-page .btn {
+  color: var(--workspace-text) !important;
+  background: var(--workspace-control) !important;
+  border-color: var(--workspace-line) !important;
+}
+body.workspace-dark .app-content .prospector-inbox-page .inbox-view-mode {
+  color: var(--workspace-muted) !important;
+  background: var(--workspace-control) !important;
+  border-color: var(--workspace-line) !important;
+}
+body.workspace-dark .app-content .prospector-inbox-page .inbox-view-mode.is-active {
+  color: var(--workspace-text) !important;
+  background: #2a2f35 !important;
+}
+body.workspace-dark .app-content ::-webkit-scrollbar-thumb {
+  background: #4b525b;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+body.workspace-dark .app-content ::-webkit-scrollbar-thumb:hover { background: #626b75; }
+body.workspace-dark .app-content .prospector-page-table .ant-table-content.is-scrolling-x::-webkit-scrollbar-thumb,
+body.workspace-dark .app-content .prospector-page-table .ant-table-body.is-scrolling-x::-webkit-scrollbar-thumb,
+body.workspace-dark .app-content .prospector-page-table .ant-table-content.is-scrolling-y::-webkit-scrollbar-thumb,
+body.workspace-dark .app-content .prospector-page-table .ant-table-body.is-scrolling-y::-webkit-scrollbar-thumb { background-color: #59616b; }
+body.workspace-dark .app-content .contact-scroll-thumb { background: #59616b; }

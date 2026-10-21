@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import "./OnboardingWizard.css";
 import { DEFAULT_MAIL_SERVERS } from "../../shared/mail-defaults";
 
@@ -55,6 +56,7 @@ export function OnboardingWizard({ autoCheck = true, prefillEmail = "", openSign
   const [errs, setErrs] = useState<Set<string>>(new Set());
   const [serverErr, setServerErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [tutorial, setTutorial] = useState(false);
   const timers = useRef<number[]>([]);
   // 旧版同款：全局跟踪 Shift 按下状态（下一步按钮点击时读取）
@@ -91,7 +93,7 @@ export function OnboardingWizard({ autoCheck = true, prefillEmail = "", openSign
   }, [autoCheck, prefillEmail]);
   useEffect(() => {
     if (openSignal > 0) {
-      setStep(0); setBack(false); setForm({ ...INITIAL, user: prefillEmail }); setErrs(new Set()); setServerErr(""); setPhase("opening");
+      setStep(0); setBack(false); setForm({ ...INITIAL, user: prefillEmail }); setErrs(new Set()); setServerErr(""); setAdvancedOpen(false); setPhase("opening");
     }
   }, [openSignal, prefillEmail]);
 
@@ -131,7 +133,7 @@ export function OnboardingWizard({ autoCheck = true, prefillEmail = "", openSign
       // （字段齐全仍照常保存；不全则跳过保存直接进下一步，真错误不吞）
       const required: Array<[keyof FormState, string]> = [
         ["smtpHost", "SMTP 服务器"], ["user", "邮箱地址"],
-        ...(!prefillEmail ? [["pass", "密码"] as [keyof FormState, string]] : []),
+        ["pass", "邮箱密码或授权码"],
       ];
       const complete = required.every(([k]) => String(form[k]).trim());
       if (!complete && !shiftHeld.current) {
@@ -191,11 +193,14 @@ export function OnboardingWizard({ autoCheck = true, prefillEmail = "", openSign
                   {step === 0 && (<>
                     <Field label="邮箱地址" err={errs.has("user")} placeholder={errs.has("user") ? "请填写邮箱地址" : "your@email.com"}
                       value={form.user} onChange={v => set("user", v)} />
-                    {!prefillEmail && <Field label="密码或授权码" err={errs.has("pass")} placeholder={errs.has("pass") ? "请填写密码" : "邮箱密码或服务商授权码"} type="password"
-                      value={form.pass} onChange={v => set("pass", v)} />}
-                    <details className="ob-advanced">
-                      <summary>高级设置</summary>
-                      <div className="ob-advanced-body">
+                    <Field label="邮箱密码 / 授权码" err={errs.has("pass")} placeholder={errs.has("pass") ? "请填写邮箱密码或服务商授权码" : "填写邮箱密码或服务商授权码"} type="password"
+                      value={form.pass} onChange={v => set("pass", v)} />
+                    <div className={"ob-advanced" + (advancedOpen ? " open" : "")}>
+                      <button type="button" className="ob-advanced-summary" aria-expanded={advancedOpen} aria-controls="ob-advanced-settings"
+                        onClick={() => setAdvancedOpen(open => !open)}>
+                        <span>高级设置</span><ChevronDown className="ob-advanced-chevron" size={14} aria-hidden="true" />
+                      </button>
+                      <div id="ob-advanced-settings" className="ob-advanced-body" aria-hidden={!advancedOpen}>
                         <div className="ob-advanced-inner">
                           <div className="ob-inline" style={{ display: "flex", gap: 10 }}>
                             <div style={{ flex: 2 }}>
@@ -216,7 +221,7 @@ export function OnboardingWizard({ autoCheck = true, prefillEmail = "", openSign
                           </div>
                         </div>
                       </div>
-                    </details>
+                    </div>
                   </>)}
                   {step === 1 && (
                     <Field label="默认发信人名称" placeholder="未指定邮箱账号时使用，如 Zayne Jin" value={form.fromName} onChange={v => set("fromName", v)} />

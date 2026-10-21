@@ -28,7 +28,10 @@
     "crm:online:test": "npm run crm:admin:build && npm run crm:pg:build && node scripts/online-server.mjs test",
     "crm:production:start": "node scripts/production-server.mjs start",
     "crm:production:status": "node scripts/production-server.mjs status",
-    "crm:production:stop": "node scripts/production-server.mjs stop"
+    "crm:production:stop": "node scripts/production-server.mjs stop",
+    "crm:production:bootstrap-admin": "node scripts/bootstrap-production-admin.mjs",
+    "package:formal": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-formal-download.ps1",
+    "deploy:company": "powershell -ExecutionPolicy Bypass -File scripts/deploy-company-server.ps1"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.0",

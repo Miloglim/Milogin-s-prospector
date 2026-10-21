@@ -119,12 +119,12 @@ export function TemplateList() {
   };
 
   const columns = [
-    { title: "名称", dataIndex: "name", key: "name" },
+    { title: "名称", dataIndex: "name", key: "name", width: 180 },
     { title: "语言", dataIndex: "language", key: "language", width: 60,
       render: (v: string) => <Tag>{v}</Tag> },
     { title: "阶段", dataIndex: "stage", key: "stage", width: 80,
       render: (v: string | null) => v ? <Tag>{STAGE_LABELS[v] || v}</Tag> : "-" },
-    { title: "主题", dataIndex: "subject", key: "subject" },
+    { title: "主题", dataIndex: "subject", key: "subject", width: 360 },
     { title: "分类", dataIndex: "category", key: "category", width: 100,
       render: (v: string | null) => v ? <Tag color="purple">{CATEGORY_LABELS[v] || v}</Tag> : "-" },
     {
@@ -177,7 +177,7 @@ export function TemplateList() {
                   </div>
                 </div>
                 <Table className="prospector-page-table template-list-table" dataSource={templates} columns={columns} rowKey="id"
-                  loading={isLoading} size="middle" />
+                  loading={isLoading} size="small" scroll={{ x: 960 }} pagination={{ pageSize: 20, showSizeChanger: false, showTotal: total => `共 ${total} 条` }} />
               </div>
             ),
           },

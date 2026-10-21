@@ -59,4 +59,12 @@ describe('same-origin browser administration boundary',()=>{
   expect(response.status).toBe(200);
   expect(response.headers.get('set-cookie')).toContain('; Secure');
  });
+ it('allows explicitly enabled local HTTP without Secure cookies',async()=>{
+  const base=await setup({test_mode:false,local_http:true});
+  const body=JSON.stringify({email:identity.email,password:'synthetic password'});
+  const response=await fetch(base+'/admin-api/login',{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body});
+  expect(response.status).toBe(200);
+  expect(response.headers.get('set-cookie')).toContain('HttpOnly');
+  expect(response.headers.get('set-cookie')).not.toContain('; Secure');
+ });
 });

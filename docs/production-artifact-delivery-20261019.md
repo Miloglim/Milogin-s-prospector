@@ -17,9 +17,12 @@ Prospector 已构建为 `dist-server`、`dist-admin` 和未签名的 Windows NSI
 1. 在受控 Windows 服务器上准备 Node.js 22+、Python、PostgreSQL 和 HTTPS 反向代理；Navigator 公司接口凭据使用 Windows DPAPI。
 2. 分别准备中心账号/CRM 库和 Navigator 运价业务库；中心库由 `milogin_app` 通过本机 `127.0.0.1:55846` 访问。业务库与发布身份名单需单独受控迁移。
 3. 由部署人员在服务器环境变量设置 `PROSPECTOR_CENTER_MODE=production`、`PROSPECTOR_CENTER_PG_DSN`、`PROSPECTOR_CENTER_PUBLIC_ORIGIN`。配置示例在 `prospector/production-deployment.env.example`；真实密钥不要进入仓库或聊天。
-4. 在 `prospector/` 执行 `node scripts/production-server.mjs start`，随后运行 `node scripts/production-server.mjs status` 并检查 `/health/ready`。`pg` 运行依赖已随包附带，无需安装 Electron 依赖。
-5. 在 `navigator/Database/` 安装 `requirements-postgres.txt`，将 Navigator 运价库 DSN 写入仅服务账号可读的 `freight-postgres.env`（键名 `FREIGHT_POSTGRES_DSN`），然后执行 `python manual_server.py --backend postgres --postgres-env-file <配置文件> --center-auth-url <中心HTTPS地址>`。外部入口也须接入 HTTPS。
-6. 安装 `client/` 中的 Windows 客户端，并用隔离真实账号验收登录、退出、查价、权限拒绝、客户读取和备份恢复。
+4. 在构建客户端前写入正式中心地址：`assets/center.json` 的 `baseUrl`，或部署时设置 `PROSPECTOR_CENTER_URL`。正式中心必须使用 HTTPS；仅本机回环允许 HTTP。
+5. 在 `prospector/` 执行 `node scripts/production-server.mjs start`，随后运行 `node scripts/production-server.mjs status` 并检查 `/health/ready`。`pg` 运行依赖已随包附带，无需安装 Electron 依赖。
+6. 空中心库首次启动后，用 `scripts/bootstrap-production-admin.mjs` 创建唯一超级管理员；已有超级管理员时不得重复执行创建。
+7. 在 `navigator/Database/` 安装 `requirements-postgres.txt`，将 Navigator 运价库 DSN 写入仅服务账号可读的 `freight-postgres.env`（键名 `FREIGHT_POSTGRES_DSN`），然后执行 `python manual_server.py --backend postgres --postgres-env-file <配置文件> --center-auth-url <中心HTTPS地址>`。外部入口也须接入 HTTPS。
+8. 为外部解析 Agent 单独配置 `NAVIGATOR_AGENT_API_TOKEN`，HTTPS 对外提供 `POST /api/agent/intake/v1`，并把随包 `navigator/Skill/navigator-agent-intake/` 交给接入方。
+9. 安装 `client/` 中的 Windows 客户端，并用隔离真实账号验收登录、退出、查价、权限拒绝、客户读取和备份恢复。
 
 ## 未完成边界
 

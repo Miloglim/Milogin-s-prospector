@@ -14,6 +14,7 @@ export type LocalScopeFailure = { success: false; error: string; code: 'UNAUTHOR
 const BINDING_FILE = 'desktop-local-binding.json';
 const PROFILE_VERSION = 1;
 const PERSONAL_PATHS = ['data', 'send', 'outputs', 'backups', '.env'];
+const DEVELOPMENT_PROFILE_DIRECTORY = 'prospecting-email-dev';
 
 /** R1 never assigns an existing anonymous business store to the next login. */
 export class DesktopLocalScope {
@@ -103,4 +104,10 @@ export function developerProfileRoot(value: string | undefined, packaged: boolea
   if (packaged || !value) return null;
   if (!path.isAbsolute(value)) throw new Error('PROSPECTOR_DEV_PROFILE 必须是绝对路径');
   return path.resolve(value);
+}
+
+/** Development clients must never share Electron storage with an installed client. */
+export function developmentUserDataRoot(explicitRoot: string | null, packaged: boolean, appData: string): string | null {
+  if (packaged) return null;
+  return explicitRoot ?? path.join(appData, DEVELOPMENT_PROFILE_DIRECTORY);
 }

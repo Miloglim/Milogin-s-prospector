@@ -5,11 +5,12 @@ import { describe, expect, it } from 'vitest';
 const root = resolve(__dirname, '../..');
 
 describe('full-height table page contract', () => {
-  it('defines a shared flex layout that lets the table consume the remaining viewport', () => {
+  it('defines a shared flex layout that consumes the remaining workspace height', () => {
     const css = readFileSync(resolve(root, 'src/renderer/global.css'), 'utf8');
     expect(css).toContain('.prospector-table-page');
     const pageRule = css.match(/\.prospector-table-page \{[^}]+\}/s)?.[0] ?? '';
-    expect(pageRule).toContain('height: calc(100vh - var(--app-titlebar-height) - 32px)');
+    expect(pageRule).toContain('height: 100%');
+    expect(pageRule).toContain('min-height: 0');
     expect(css).toContain('.prospector-page-table .ant-table-body');
     expect(css).toContain('.prospector-page-table .ant-table-content');
     expect(css).toContain('overflow: auto !important');

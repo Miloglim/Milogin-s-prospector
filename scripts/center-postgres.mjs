@@ -14,12 +14,15 @@ const PASSWORD_FILE = path.join(ROOT, 'init-password.tmp');
 const LOG = path.join(ROOT, 'postgres.log');
 const BACKUP_DIR = path.join(ROOT, 'backups');
 const MARKER = 'milogin-center-postgres-v1';
+const CONFIG_VERSION = 2;
 const BIN = process.env.PROSPECTOR_PG_BIN || 'C:\\Program Files\\PostgreSQL\\18\\bin';
 const HOST = '127.0.0.1';
 const PORT = 55846;
 const DATABASE = 'milogin_center';
 const OWNER = 'milogin_owner';
 const APP = 'milogin_app';
+const NAVIGATOR_DATABASE = 'navigator_rates';
+const NAVIGATOR_APP = 'navigator_app';
 const PASSWORD_BYTES = 32;
 const COMMAND_TIMEOUT_MS = 30000;
 const START_TIMEOUT_SECONDS = 20;
@@ -44,6 +47,15 @@ function readConfig() {
     || value.app !== APP || !/^[a-f0-9]{64}$/.test(value.ownerPassword)
     || !/^[a-f0-9]{64}$/.test(value.appPassword)
     || !fs.existsSync(path.join(CLUSTER, 'PG_VERSION'))) throw new Error('中心集群配置不匹配');
+  if (!value.navigatorDatabase || !value.navigatorApp || !value.navigatorPassword) {
+    value.configVersion = CONFIG_VERSION;
+    value.navigatorDatabase = NAVIGATOR_DATABASE;
+    value.navigatorApp = NAVIGATOR_APP;
+    value.navigatorPassword = randomBytes(PASSWORD_BYTES).toString('hex');
+    fs.writeFileSync(CONFIG, JSON.stringify(value), { mode: CONFIG_MODE });
+  } else if (!/^[a-f0-9]{64}$/.test(value.navigatorPassword)) {
+    throw new Error('Navigator 数据库配置不匹配');
+  }
   return value;
 }
 function initialize() {
@@ -57,10 +69,12 @@ function initialize() {
       { windowsHide: true, timeout: COMMAND_TIMEOUT_MS, stdio: 'ignore' });
   } else fs.chmodSync(ROOT, 0o700);
   const value = {
-    marker: MARKER, cluster: CLUSTER, host: HOST, port: PORT, database: DATABASE,
+    marker: MARKER, configVersion: CONFIG_VERSION, cluster: CLUSTER, host: HOST, port: PORT, database: DATABASE,
     owner: OWNER, app: APP,
+    navigatorDatabase: NAVIGATOR_DATABASE, navigatorApp: NAVIGATOR_APP,
     ownerPassword: randomBytes(PASSWORD_BYTES).toString('hex'),
     appPassword: randomBytes(PASSWORD_BYTES).toString('hex'),
+    navigatorPassword: randomBytes(PASSWORD_BYTES).toString('hex'),
   };
   fs.writeFileSync(CONFIG, JSON.stringify(value), { mode: CONFIG_MODE, flag: 'wx' });
   fs.writeFileSync(PASSWORD_FILE, value.ownerPassword, { mode: CONFIG_MODE, flag: 'wx' });
@@ -91,7 +105,13 @@ async function verify(config, create) {
     if (!role.rowCount && create) await client.query(`CREATE ROLE ${APP} LOGIN PASSWORD '${config.appPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE`);
     const database = await client.query('SELECT 1 FROM pg_database WHERE datname=$1', [DATABASE]);
     if (!database.rowCount && create) await client.query(`CREATE DATABASE ${DATABASE} OWNER ${APP}`);
+    const navigatorRole = await client.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [NAVIGATOR_APP]);
+    if (create && navigatorRole.rowCount) await client.query(`ALTER ROLE ${NAVIGATOR_APP} LOGIN PASSWORD '${config.navigatorPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE`);
+    else if (!navigatorRole.rowCount && create) await client.query(`CREATE ROLE ${NAVIGATOR_APP} LOGIN PASSWORD '${config.navigatorPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE`);
+    const navigatorDatabase = await client.query('SELECT 1 FROM pg_database WHERE datname=$1', [NAVIGATOR_DATABASE]);
+    if (!navigatorDatabase.rowCount && create) await client.query(`CREATE DATABASE ${NAVIGATOR_DATABASE} OWNER ${NAVIGATOR_APP}`);
     if ((!role.rowCount || !database.rowCount) && !create) throw new Error('中心角色或数据库未建立');
+    if ((!navigatorRole.rowCount || !navigatorDatabase.rowCount) && !create) throw new Error('Navigator 角色或数据库未建立');
   } finally { await client.end(); }
   const app = new Client({ host: HOST, port: PORT, database: DATABASE, user: APP,
     password: config.appPassword, connectionTimeoutMillis: 5000 });
@@ -100,6 +120,13 @@ async function verify(config, create) {
     const result = await app.query('SELECT current_database() AS db, current_user AS role');
     if (result.rows[0].db !== DATABASE || result.rows[0].role !== APP) throw new Error('中心应用连接不匹配');
   } finally { await app.end(); }
+  const navigator = new Client({ host: HOST, port: PORT, database: NAVIGATOR_DATABASE, user: NAVIGATOR_APP,
+    password: config.navigatorPassword, connectionTimeoutMillis: 5000 });
+  try {
+    await navigator.connect();
+    const result = await navigator.query('SELECT current_database() AS db, current_user AS role');
+    if (result.rows[0].db !== NAVIGATOR_DATABASE || result.rows[0].role !== NAVIGATOR_APP) throw new Error('Navigator 应用连接不匹配');
+  } finally { await navigator.end(); }
 }
 
 function backup(config) {

@@ -47,21 +47,24 @@ describe('AppLayout full-screen routes', () => {
       root.render(<AppLayout />);
       await new Promise(resolve => setTimeout(resolve, 30));
     });
-    return host.querySelector('.ant-layout-content')!.firstElementChild as HTMLDivElement;
+    return host.querySelector('.app-scroll-area') as HTMLDivElement;
   }
 
-  it('removes the shared padding and outer scrolling for the inbox route', async () => {
+  it('uses the shared page inset and keeps scrolling inside the inbox panes', async () => {
     const scrollArea = await renderRoute('/inbox');
     expect(scrollArea.style.height).toBe('100%');
     expect(scrollArea.style.minHeight).toBe('0px');
     expect(scrollArea.style.overflow).toBe('hidden');
-    expect(scrollArea.style.padding).toBe('0px');
+    expect(scrollArea.style.padding).toBe('16px 20px');
+    expect((host.querySelector('.app-route-content') as HTMLDivElement).style.overflowY).toBe('hidden');
     expect(host.querySelector('[data-testid="route-content"]')?.textContent).toBe('Inbox fixture');
   });
 
   it('keeps the existing scroll container for other pages', async () => {
     const scrollArea = await renderRoute('/settings');
-    expect(scrollArea.style.overflow).toBe('auto');
+    const routeContent = host.querySelector('.app-route-content') as HTMLDivElement;
+    expect(scrollArea.style.overflow).toBe('hidden');
     expect(scrollArea.style.padding).toBe('16px 20px');
+    expect(routeContent.style.overflowY).toBe('auto');
   });
 });

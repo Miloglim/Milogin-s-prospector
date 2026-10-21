@@ -16,12 +16,13 @@ export function onlineRuntimeDirectory(env: NodeJS.ProcessEnv = process.env): st
 export function readOnlineConfig(env: NodeJS.ProcessEnv = process.env): OnlineConfig {
   if (env.PROSPECTOR_CENTER_MODE === 'production') {
     const origin = env.PROSPECTOR_CENTER_PUBLIC_ORIGIN;
-    if (!origin) throw new Error('正式中心缺少 HTTPS 对外地址');
+    if (!origin) throw new Error('正式中心缺少公开访问地址');
     let parsed: URL;
     try { parsed = new URL(origin); }
-    catch { throw new Error('正式中心 HTTPS 对外地址无效'); }
-    if (parsed.protocol !== 'https:' || parsed.origin !== origin || parsed.username || parsed.password) {
-      throw new Error('正式中心只接受 HTTPS 对外地址');
+    catch { throw new Error('正式中心公开访问地址无效'); }
+    const localHttp = env.PROSPECTOR_CENTER_LOCAL_HTTP === '1' && origin === 'http://127.0.0.1:55847';
+    if ((parsed.protocol !== 'https:' && !localHttp) || parsed.origin !== origin || parsed.username || parsed.password) {
+      throw new Error('正式中心只接受 HTTPS，或显式开启的本机回环 HTTP');
     }
     const navigatorUrl = env.PROSPECTOR_NAVIGATOR_URL || ONLINE_DEFAULTS.navigator_url;
     const navigatorEntryUrl = env.PROSPECTOR_NAVIGATOR_ENTRY_URL || navigatorUrl;
@@ -30,7 +31,7 @@ export function readOnlineConfig(env: NodeJS.ProcessEnv = process.env): OnlineCo
       catch { throw new Error('Navigator 服务地址无效'); }
     }
     return { ...ONLINE_DEFAULTS, host: '127.0.0.1', port: PRODUCTION_HTTP_PORT, navigator_url: navigatorUrl, navigator_entry_url: navigatorEntryUrl,
-      test_mode: false, public_origin: origin };
+      test_mode: false, public_origin: origin, ...(localHttp ? { local_http: true } : {}) };
   }
   if (env.PROSPECTOR_CENTER_MODE && env.PROSPECTOR_CENTER_MODE !== 'test') throw new Error('未知中心运行模式');
   const input = JSON.parse(readFileSync(ONLINE_CONFIG_PATH,"utf8")) as Record<string,unknown>;

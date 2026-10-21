@@ -30,7 +30,7 @@ async function request(route:string,input?:unknown,token=manager){
  const response=await fetch(base+route,{method:input===undefined?'GET':'POST',headers:{Cookie:`milogin_admin=${token}`,Origin:base,...(input===undefined?{}:{'Content-Type':'application/json','X-CSRF-Token':tokenAdapter.hash(`csrf:${token}`)})},...(input===undefined?{}:{body:JSON.stringify(input)})});
  return {status:response.status,body:await response.json() as any,headers:response.headers};
 }
-function unwrap<T>(r:{ok:true;data:T}|{ok:false;error:unknown}):T {if(!r.ok)throw Error('unexpected failure');return r.data;}
+function unwrap<T>(r:{ok:true;data:T}|{ok:false;error:unknown}):T {if(!r.ok)throw Error(`unexpected failure: ${JSON.stringify(r.error)}`);return r.data;}
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG management boundary',()=>{
   beforeAll(async()=>{
     pool=new Pool(readTestDatabaseConfig());await new PostgresCrmRepository(pool,log).migrate();authRepo=new PostgresAuthRepository(pool,log);await authRepo.migrate();
@@ -53,6 +53,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
   it('grants Navigator access only from its own product permission and revokes immediately',async()=>{
     const managerApi=unwrap(await auth.login({email:managerEmail,password})).token;
     expect(unwrap(await auth.navigatorAccess(managerApi))).toMatchObject({userId:managerId,role:'admin'});
+    expect(unwrap(await auth.navigatorAccess(manager))).toMatchObject({userId:managerId,role:'admin'});
     const target=unwrap(await admin.users(manager,{search:salesId,limit:25,offset:0})).items[0]!;
     const salesApi=unwrap(await auth.login({email:target.email,password})).token;
     expect((await auth.navigatorAccess(salesApi)).ok).toBe(false);

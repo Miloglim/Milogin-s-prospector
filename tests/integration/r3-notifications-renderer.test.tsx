@@ -25,6 +25,7 @@ describe('R3 global notification ownership', () => {
   it('has one consumer across routes, deduplicates IDs, and preserves unread until explicit read', async () => {
     await mount(); await mount(); expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.FEED)).toHaveLength(1);
     expect(notifications.items).toHaveLength(1); expect(notifications.unread).toBe(1);
+    expect(host.querySelector('button[aria-label="调整消息中心大小"]')).not.toBeNull();
     await act(async () => { for (const timer of timers) timer(); });
     expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.FEED)).toHaveLength(2); expect(notifications.unread).toBe(1);
     expect(invoke).not.toHaveBeenCalledWith(CHANNEL.READ, item.id);
@@ -32,7 +33,16 @@ describe('R3 global notification ownership', () => {
   it('checks exact detail authorization before read and navigates to the real customer drawer', async () => {
     await mount(); await act(async () => { host.querySelector<HTMLButtonElement>('button.message-main')!.click(); });
     const channels = invoke.mock.calls.map(call => call[0]); expect(channels.indexOf(CHANNEL.DETAIL)).toBeLessThan(channels.indexOf(CHANNEL.READ));
-    expect(invoke).toHaveBeenCalledWith(CHANNEL.DETAIL, 'customer-b'); expect(state.navigate).toHaveBeenCalledWith({ to: '/customers-online', search: { customerId: 'customer-b' } }); expect(notifications.unread).toBe(0);
+    expect(invoke).toHaveBeenCalledWith(CHANNEL.DETAIL, 'customer-b'); expect(state.navigate).toHaveBeenCalledWith({ to: '/customers', search: { customerId: 'customer-b' } }); expect(notifications.unread).toBe(0);
+  });
+  it('names customer creation and its destination instead of showing a generic collaboration message', async () => {
+    const normal = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async channel => channel === CHANNEL.FEED ? { ok: true, data: { items: [{ ...item, eventType: 'crm.customer.created', summary: { companyName: 'Mock Jade Coast Shipping', actorName: 'admin' } }], nextCursor: '1', hasMore: false } } : normal(channel));
+    await mount();
+    expect(host.textContent).toContain('新增客户'); expect(host.textContent).toContain('Mock Jade Coast Shipping'); expect(host.textContent).toContain('查看客户');
+    expect(host.textContent).not.toContain('协作消息');
+    await act(async () => { host.querySelector<HTMLButtonElement>('button.message-main')!.click(); });
+    expect(state.navigate).toHaveBeenCalledWith({ to: '/customers', search: { customerId: 'customer-b' } });
   });
   it('does not read or navigate after detail is forbidden', async () => {
     await mount(); invoke.mockImplementationOnce(async () => ({ ok: false, error: { code: 'FORBIDDEN', message: '不可读取' } }));
@@ -63,9 +73,9 @@ describe('R3 global notification ownership', () => {
     expect(window.location.hash).toContain('shareView=outgoing');
     expect(invoke.mock.calls.some(call => [CHANNEL.DETAIL, CHANNEL.CONTACT_DETAIL].includes(call[0]))).toBe(false);
   });
-  it('extra notifications have no resource action but can be explicitly marked read', async () => {
+  it('extra notifications have no resource action and do not show a per-row read control', async () => {
     const normal = invoke.getMockImplementation()!; invoke.mockImplementation(async channel => channel === CHANNEL.FEED ? { ok: true, data: { items: [{ ...item, canOpen: false, customerId: '', summary: { companyName: 'Restricted Co', actorName: 'Restricted Actor', note: 'Restricted note' } }], nextCursor: '1', hasMore: false } } : normal(channel));
-    await mount(); expect(host.querySelector('button.message-main')).toBeNull(); expect(host.textContent).not.toContain('Restricted'); await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="标为已读"]')!.click(); }); expect(notifications.unread).toBe(0); expect(invoke.mock.calls.some(call => call[0] === CHANNEL.DETAIL)).toBe(false);
+    await mount(); expect(host.querySelector('button.message-main')).toBeNull(); expect(host.textContent).not.toContain('Restricted'); expect(host.querySelector('button[aria-label="标为已读"]')).toBeNull(); expect(notifications.unread).toBe(1); expect(invoke.mock.calls.some(call => call[0] === CHANNEL.DETAIL)).toBe(false);
   });
   it('renders only supplied summaries, groups dates, filters loaded unread, and keeps read separate from open', async () => {
     const normal = invoke.getMockImplementation()!;
@@ -81,7 +91,8 @@ describe('R3 global notification ownership', () => {
     const unreadFilter = Array.from(host.querySelectorAll('.ant-segmented-item')).find(label => label.textContent === '未读')!;
     await act(async () => { (unreadFilter as HTMLElement).click(); });
     expect(host.querySelectorAll('.message-row')).toHaveLength(1);
-    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="标为已读"]')!.click(); });
+    expect(host.querySelector('button[aria-label="标为已读"]')).toBeNull();
+    await act(async () => { await notifications.read(item.id); });
     expect(host.textContent).toContain('暂无未读消息');
     expect(state.navigate).not.toHaveBeenCalled(); expect(invoke.mock.calls.some(call => call[0] === CHANNEL.DETAIL)).toBe(false);
   });

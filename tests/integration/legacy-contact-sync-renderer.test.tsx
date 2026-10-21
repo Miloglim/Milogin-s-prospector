@@ -25,7 +25,10 @@ describe('original customer route',()=>{
  it('keeps customer navigation free of manual sync controls',async()=>{
   const invalidate=vi.spyOn(client,'invalidateQueries');
   await act(async()=>root.render(<QueryClientProvider client={client}><LegacyCustomersPage/></QueryClientProvider>));await act(flush);
-  expect(host.textContent).toContain('Original contact table');
+  expect(host.textContent).toContain('跟进看板');
+  expect(host.textContent).toContain('联系人');
+  expect(host.textContent).toContain('分配线索');
+  expect(host.textContent).toContain('公司');
   expect(host.querySelector('.crm-sync-bar')).toBeNull();
   const header=host.firstElementChild!.firstElementChild!;
   expect(header.querySelector('.ant-segmented')).not.toBeNull();

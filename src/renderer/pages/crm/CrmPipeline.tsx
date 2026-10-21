@@ -425,16 +425,8 @@ export function CrmPipeline({ dataPort }: { dataPort?: PipelineDataPort } = {}) 
     setEditingNoteId(null);
   };
 
-  // 浮层卡片 fixed 于视口、不占布局流 → 打开详情时给整行垫出等宽空间（同一条 clamp 公式），
-  // 行尾的提醒/跟进人/复选框就不会从卡片底下钻过去
   return (
-    <div
-      className="flex gap-4 h-full"
-      style={{
-        minHeight: "calc(100vh - 130px)",
-        ...(detailId ? { paddingRight: "calc(clamp(300px, 30vw, 460px) + 20px)" } : {}),
-      }}
-    >
+    <div className="flex gap-4 h-full" style={{ minHeight: "calc(100vh - 130px)" }}>
       {/* ═══ 左侧看板 ═══ */}
       <div className="flex-1 overflow-y-auto pb-4 space-y-1">
         {(listError || data?.success === false) && <div role="alert" className="text-xs text-red-500 p-2 bg-red-50 rounded">{data?.error || (listError instanceof Error ? listError.message : '看板加载失败，请稍后重试')}</div>}
@@ -537,14 +529,15 @@ export function CrmPipeline({ dataPort }: { dataPort?: PipelineDataPort } = {}) 
         }
       </div>
 
-      {/* ═══ 右侧详情：常驻浮层卡片（position: fixed）═══
-          钉在视口右侧：滚动时位置不变、永远浮在列表上层；
-          上下贴边定位 → 高度天然随窗口伸缩，宽度 clamp 按视口比例自适应，内容超出走卡片内部滚动。 */}
+      {/* 详情作为独立上层，列表保持完整宽度并退到遮罩下。 */}
       {dataPort && dataPort.renderDetail(detailId, () => setDetailId(null))}
+      {!dataPort && detailId && (
+        <div className="fixed inset-0 z-20 bg-black/50" aria-label="关闭联系人详情" onClick={() => setDetailId(null)} />
+      )}
       {!dataPort && detailId && (
         <div
           className="fixed z-30 bg-white border border-gray-200 rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.16)] flex flex-col overflow-hidden"
-          style={{ top: 44, right: 36, bottom: 28, width: "clamp(300px, 30vw, 460px)" }}
+          style={{ top: 44, right: 36, bottom: 28, width: "clamp(360px, 44vw, 620px)" }}
         >
           {/* 头部 */}
           <div className="p-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">

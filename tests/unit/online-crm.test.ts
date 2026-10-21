@@ -2,7 +2,8 @@ import {describe,it,expect,vi} from 'vitest';
 import {randomBytes} from 'node:crypto';
 vi.mock('electron',()=>({dialog:{showOpenDialog:vi.fn()}}));
 vi.mock('../../src/main/logger',()=>({Log:{error:vi.fn()}}));
-import {OnlineCrmAdapter,loopbackCenter} from '../../src/main/adapters/online-crm.adapter';
+import {OnlineCrmAdapter} from '../../src/main/adapters/online-crm.adapter';
+import {validateCenterBase} from '../../src/main/core/center-endpoint';
 import {createOnlineCrmService} from '../../src/main/services/online-crm.service';
 import {success} from '../../server/core/crm';
 const identity={userId:'synthetic-user',displayName:'Synthetic',email:'synthetic@example.invalid',emailVerified:true,identityAdmin:false,crmRoles:['sales']};
@@ -17,9 +18,10 @@ describe('desktop center isolation',()=>{
     expect((await adapter.request('GET','/api/crm/bootstrap')).ok).toBe(true);
     expect((fetcher.mock.calls.at(-1)![1].headers as Record<string,string>).Authorization).toBe(`Bearer ${secondToken}`);
   });
-  it('allows only explicit loopback origin and rejects URL credentials and redirects targets',()=>{
-    expect(loopbackCenter('http://127.0.0.1:55844')).toBe('http://127.0.0.1:55844');
-    for(const url of ['https://127.0.0.1','http://localhost:55844','http://example.invalid','http://user@127.0.0.1','http://127.0.0.1/api'])expect(loopbackCenter(url)).toBeNull();
+  it('allows HTTPS centers and explicit loopback HTTP without accepting unsafe URLs',()=>{
+    expect(validateCenterBase('http://127.0.0.1:55844')).toBe('http://127.0.0.1:55844');
+    expect(validateCenterBase('https://crm.company.internal')).toBe('https://crm.company.internal');
+    for(const url of ['http://localhost:55844','http://example.invalid','http://user@127.0.0.1','https://crm.company.internal/api','https://crm.company.internal?x=1'])expect(validateCenterBase(url)).toBeNull();
   });
   it('keeps bearer out of renderer login result and invalidates in-flight old identity reads',async()=>{
     const token=randomBytes(32).toString('base64url');let finish:((value:Response)=>void)|undefined;

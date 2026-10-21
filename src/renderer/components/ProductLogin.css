@@ -70,7 +70,7 @@
 }
 .product-login-card-signin .product-login-brand { margin-bottom: 32px; }
 @media (max-width: 520px) { .product-login-card { --login-label-width: 64px; --login-field-gap: 10px; } .product-login-links { gap: 6px; } }
-@media (prefers-reduced-motion: reduce) { .product-login .ob-step, .product-login .ob-card, .product-login-card .ob-btn, .product-login-busybar::after, .product-login-remember, .product-login-remember input, .product-login-remember input::after, .identity-app-shell { animation: none; transition: none; } }
+@media (prefers-reduced-motion: reduce) { .product-login .ob-step, .product-login .ob-card, .product-login-card .ob-btn, .product-login-busybar::after, .product-login-remember, .product-login-remember input, .product-login-remember input::after, .product-login-account-toggle svg, .product-login-presets, .product-login-presets-inner, .identity-app-shell { animation: none; transition: none; } }
 .restart-dialog-copy { margin: 0; color: #5f6368; font-size: 13px; line-height: 1.6; }
 
 .product-login-options { display: flex; align-items: center; gap: 12px; }
@@ -78,8 +78,13 @@
 .product-login-account-field { position: relative; margin-bottom: 12px; }
 .product-login-account-field input { padding-right: 36px !important; }
 .product-login-account-toggle { position: absolute; right: 5px; top: 5px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #858585; cursor: pointer; font-size: 11px; }
+.product-login-account-toggle svg { transition: transform .24s cubic-bezier(.33,1,.68,1); }
+.product-login-account-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
 .product-login-account-toggle:hover { background: rgba(0,0,0,.035); color: #333; }
-.product-login-presets { position: absolute; left: 0; right: 0; top: calc(100% + 6px); max-height: 192px; overflow-y: auto; padding: 4px; border: 1px solid #e9e9e9; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(20,25,35,.08); z-index: 5; }
+.product-login-presets { position: absolute; left: 0; right: 0; top: calc(100% + 6px); display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; pointer-events: none; transition: grid-template-rows .26s cubic-bezier(.33,1,.68,1), opacity .16s ease, visibility 0s linear .26s; z-index: 5; }
+.product-login-presets.is-open { grid-template-rows: 1fr; opacity: 1; visibility: visible; pointer-events: auto; transition: grid-template-rows .26s cubic-bezier(.33,1,.68,1), opacity .16s ease, visibility 0s linear 0s; }
+.product-login-presets-inner { min-height: 0; max-height: 192px; overflow-y: auto; padding: 4px; border: 1px solid #e9e9e9; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(20,25,35,.08); transform: translateY(-4px); transition: transform .26s cubic-bezier(.33,1,.68,1); }
+.product-login-presets.is-open .product-login-presets-inner { transform: translateY(0); }
 .product-login-preset { display: flex; align-items: center; border-radius: 5px; }
 .product-login-preset:hover, .product-login-preset.is-selected { background: #f7f7f7; }
 .product-login-preset-select { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; height: 42px; border: 0; padding: 6px 8px; background: transparent; color: #444; text-align: left; cursor: pointer; font-size: 12px; }
@@ -87,3 +92,60 @@
 .product-login-preset-avatar { display: grid; place-items: center; flex: 0 0 26px; height: 26px; border-radius: 50%; background: #ececec; color: #666; font-size: 11px; font-weight: 500; }
 .product-login-preset-remove { flex: 0 0 28px; height: 28px; margin-right: 4px; border: 0; border-radius: 4px; background: transparent; color: #999; cursor: pointer; font-size: 10px; }
 .product-login-preset-remove:hover { background: #ededed; color: #555; }
+
+body.workspace-dark .product-login { background: var(--workspace-canvas); color: var(--workspace-text); }
+body.workspace-dark .product-login-main {
+  background: radial-gradient(ellipse at 24% 28%, rgba(255,255,255,.035), transparent 48%), radial-gradient(ellipse at 78% 72%, rgba(255,255,255,.025), transparent 46%), var(--workspace-canvas);
+}
+body.workspace-dark .login-restore-screen,
+body.workspace-dark .identity-route-loading { color: var(--workspace-muted); background: var(--workspace-canvas); }
+body.workspace-dark .product-login-brand,
+body.workspace-dark .product-login-mascot { color: var(--workspace-text); }
+body.workspace-dark .product-login-brand-owner,
+body.workspace-dark .product-login-account,
+body.workspace-dark .product-login-card .ob-field label,
+body.workspace-dark .product-login-remember { color: var(--workspace-muted); }
+body.workspace-dark .product-login-brand-owner,
+body.workspace-dark .product-login-brand-name,
+body.workspace-dark .product-login-card .ob-h2,
+body.workspace-dark .product-login-account,
+body.workspace-dark .product-login-card .ob-field label,
+body.workspace-dark .product-login-links,
+body.workspace-dark .product-login-card .ob-error { text-shadow: none; }
+body.workspace-dark .product-login .ob-field input,
+body.workspace-dark .product-login .ob-field input:focus,
+body.workspace-dark .product-login .ob-field input:focus-visible {
+  color: var(--workspace-text);
+  background: var(--workspace-control);
+  border-color: var(--workspace-line);
+}
+body.workspace-dark .product-login-card .ob-btn {
+  color: #111315;
+  background: #e5e7eb;
+  border-color: #e5e7eb;
+}
+body.workspace-dark .product-login-card .ob-btn:hover:not(:disabled) { background: #f1f3f5; border-color: #f1f3f5; }
+body.workspace-dark .product-login-links .ob-skip,
+body.workspace-dark .product-login .ob-skip { color: var(--workspace-muted); }
+body.workspace-dark .product-login-links .ob-skip:hover { color: var(--workspace-text); }
+body.workspace-dark .product-login-remember input {
+  border-color: #585f68;
+  background: var(--workspace-control);
+}
+body.workspace-dark .product-login-remember input:checked { border-color: var(--brand-accent); background: var(--brand-accent); }
+body.workspace-dark .product-login-account-toggle { color: var(--workspace-muted); }
+body.workspace-dark .product-login-account-toggle:hover { color: var(--workspace-text); background: var(--workspace-hover, #22262b); }
+body.workspace-dark .product-login-presets-inner {
+  background: var(--workspace-surface);
+  border-color: var(--workspace-line);
+  box-shadow: 0 10px 28px rgba(0,0,0,.35);
+}
+body.workspace-dark .product-login-preset:hover,
+body.workspace-dark .product-login-preset.is-selected { background: var(--workspace-hover, #22262b); }
+body.workspace-dark .product-login-preset-select { color: var(--workspace-text); }
+body.workspace-dark .product-login-preset-avatar { color: var(--workspace-text); background: var(--workspace-control); }
+body.workspace-dark .product-login-preset-remove { color: var(--workspace-muted); }
+body.workspace-dark .product-login-preset-remove:hover { color: var(--workspace-text); background: var(--workspace-control); }
+body.workspace-dark .product-login-busybar { color: var(--workspace-muted); }
+body.workspace-dark .product-login-busybar::after { background: #e5e7eb; }
+body.workspace-dark .product-login-card .ob-error { color: #ff8a80; }

@@ -6,12 +6,13 @@ import {
   SettingOutlined, SearchOutlined, MoreOutlined, DollarOutlined, UpOutlined, BellOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined,
 } from "@ant-design/icons";
-import { ConfigProvider, Dropdown, Input, Modal } from "antd";
+import { App as AntApp, ConfigProvider, Dropdown, Input, Modal, Popover } from "antd";
 import "./SidebarFooter.css";
 import { brandTheme } from '../../lib/brand-theme';
 import { useAppContext } from "../../AppContext";
 import { DiamondLogo } from "../DiamondLogo";
 import { GlobalSearch } from "../GlobalSearch";
+import { MessageCenterPanel } from "../MessageCenterPanel";
 import { CONVS_CHANGED, gotoConversation } from "../../lib/agent-route";
 import { drop as dropConv, useRunningConvIds } from "../../hooks/useAgentTranscript";
 import { useOptionalNotifications } from '../../NotificationContext';
@@ -254,6 +255,7 @@ const navItemStyle = (active: boolean, collapsed: boolean): React.CSSProperties 
 
 export function Sidebar() {
   const session = useOptionalIdentity();
+  const { message } = AntApp.useApp();
   const notifications = useOptionalNotifications();
   const localAvailable = !session || session.localAvailable;
   const offline = session?.status === 'offline';
@@ -267,7 +269,13 @@ export function Sidebar() {
   const activeConv = typeof cParam === "string" && cParam ? cParam : undefined;
   // agent 输出中：「新对话」导航菱形从呼吸切到旋转（任意页面的全局状态灯）
   const [agentBusy, setAgentBusy] = useState(false);
+  const [checkingConnection, setCheckingConnection] = useState(false);
+  const [messagesOpen, setMessagesOpen] = useState(false);
   const indicatorRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (offline || !session?.identity) setMessagesOpen(false);
+  }, [offline, session?.identity]);
 
   useEffect(() => {
     const offChunk = window.api.on("agent:chunk", () => setAgentBusy(true));
@@ -297,6 +305,17 @@ export function Sidebar() {
   const visibleCollapsibleItems = collapsibleItems.filter(item => item.key !== '/rates' || SHOW_RATES_NAV);
   const renderedNavItems = navHidden ? visibleNavItems : [...visibleNavItems, ...visibleCollapsibleItems];
   const activeNavIndex = renderedNavItems.findIndex(item => isActive(item.key));
+  const checkConnection = async () => {
+    if (checkingConnection || !session) return;
+    setCheckingConnection(true);
+    try {
+      const online = await session.reconnect();
+      if (online) message.success('中心连接正常');
+      else message.warning('中心仍不可用，当前保留离线工作区');
+    } finally {
+      setCheckingConnection(false);
+    }
+  };
 
   const renderItem = (item: NavItem, index: number) => (
     <li
@@ -346,7 +365,7 @@ export function Sidebar() {
         minWidth: width,
         maxWidth: width,
         background: "#1a1a1a",
-        borderRight: "1px solid rgba(255,255,255,0.08)",
+        borderRight: 0,
         display: "flex",
         flexDirection: "column",
         overflow: "visible",
@@ -356,9 +375,15 @@ export function Sidebar() {
     >
       {/* 保留品牌区域高度，折叠仅隐藏内容，导航不会上下跳动。 */}
       <div
+        className="sidebar-brand"
+        role="button"
+        tabIndex={sidebarCollapsed ? -1 : 0}
         aria-hidden={sidebarCollapsed}
-        style={{ padding: "24px 20px 20px", cursor: "pointer", textAlign: "left", opacity: sidebarCollapsed ? 0 : 1, borderBottom: sidebarCollapsed ? "1px solid rgba(255,255,255,0.08)" : "none", whiteSpace: "nowrap", flexShrink: 0 }}
-        onClick={() => navigate({ to: localAvailable ? '/' : '/customers' })}
+        aria-label={checkingConnection ? '正在检查中心连接' : '检查并重连中心'}
+        title={checkingConnection ? '正在检查中心连接' : '检查并重连中心'}
+        style={{ padding: "24px 20px 20px", cursor: checkingConnection ? 'wait' : 'pointer', textAlign: "left", opacity: sidebarCollapsed ? 0 : 1, borderBottom: sidebarCollapsed ? "1px solid rgba(255,255,255,0.08)" : "none", whiteSpace: "nowrap", flexShrink: 0, pointerEvents: sidebarCollapsed ? 'none' : 'auto' }}
+        onClick={() => void checkConnection()}
+        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void checkConnection(); } }}
       >
         <div style={{ fontSize: 10, opacity: 0.5, display: "block", color: "#999" }}>
           Milogin&apos;s
@@ -394,7 +419,7 @@ export function Sidebar() {
       </div>}
 
       <div className={`sidebar-footer${sidebarCollapsed ? ' is-collapsed' : ''}`}>
-        {session?.identity && <ConfigProvider theme={brandTheme(true)}><Dropdown overlayClassName="account-menu-popup" trigger={['click']} placement="topLeft" menu={{ items: [{ type: 'group', label: <div className="account-menu-identity"><strong>{session.identity.displayName}</strong><span>{session.identity.email}</span></div> }, { type: 'divider' }, { key: 'profile', icon: <UserOutlined />, label: '账号资料' }, { key: 'settings', icon: <SettingOutlined />, label: '设置' }, { type: 'divider' }, { key: 'switch', label: '切换账号' }, { key: 'logout', label: '退出登录' }], onClick: ({ key }) => { if (key === 'logout') void session.logout(); if (key === 'switch') void session.logout({ switchAccount: true }); if (key === 'settings') void navigate({ to: '/settings' }); if (key === 'profile') void navigate({ to: '/account' }); } }}>
+        {session?.identity && <ConfigProvider theme={brandTheme(true)}><Dropdown overlayClassName="account-menu-popup" trigger={['click']} placement="topLeft" menu={{ items: [{ type: 'group', label: <div className="account-menu-identity"><strong>{session.identity.displayName}</strong><span>{session.identity.email}</span></div> }, { type: 'divider' }, { key: 'profile', icon: <UserOutlined />, label: '账号资料' }, { key: 'settings', icon: <SettingOutlined />, label: '设置' }, { type: 'divider' }, { key: 'switch', label: '切换账号' }, { key: 'logout', label: <span className="account-menu-logout">退出登录</span> }], onClick: ({ key }) => { if (key === 'logout') void session.logout(); if (key === 'switch') void session.logout({ switchAccount: true }); if (key === 'settings') void navigate({ to: '/settings' }); if (key === 'profile') void navigate({ to: '/account' }); } }}>
                 <button type="button" className="sidebar-account" aria-label="账号菜单" title={`你好，${identityRoleLabel(session.identity)}`}>
             <SettingOutlined />
                   {!sidebarCollapsed && <span className="sidebar-greeting" style={{ color: '#9b9b9b', fontWeight: 600 }}>你好，{identityRoleLabel(session.identity)}</span>}
@@ -402,7 +427,19 @@ export function Sidebar() {
         </Dropdown></ConfigProvider>}
         <div className="sidebar-footer-actions">
           {localAvailable && <GlobalSearch trigger={(onClick, active) => <FootIcon icon={<SearchOutlined />} label="全局搜索" active={active} onClick={onClick} />} />}
-          {session?.identity && <FootIcon icon={<><BellOutlined />{(notifications?.unread ?? 0) > 0 && <span className="sidebar-message-dot" aria-label="有未读消息" />}</>} label="消息中心" disabled={offline} active={isActive('/messages')} onClick={() => void navigate({ to: '/messages' })} />}
+          {session?.identity && <Popover
+            trigger="click"
+            placement="rightBottom"
+            open={messagesOpen}
+            onOpenChange={setMessagesOpen}
+            overlayClassName="message-center-popover"
+            styles={{ body: { padding: 0, overflow: 'hidden' } }}
+            content={<MessageCenterPanel onNavigate={() => setMessagesOpen(false)} />}
+          >
+            <span className="message-center-trigger">
+              <FootIcon icon={<><BellOutlined />{(notifications?.unread ?? 0) > 0 && <span className="sidebar-message-badge" aria-label={`${notifications?.unread} 条未读`}>{notifications?.unread}</span>}</>} label="消息中心" disabled={offline} active={messagesOpen} onClick={() => undefined} />
+            </span>
+          </Popover>}
         </div>
       </div>
 

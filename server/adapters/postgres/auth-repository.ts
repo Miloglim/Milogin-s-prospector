@@ -200,7 +200,7 @@ export class PostgresAuthRepository implements AuthRepository {
           ELSE NULL END AS role
         FROM identity.sessions s JOIN identity.users u USING(user_id) JOIN identity.login_emails e USING(user_id)
         LEFT JOIN identity.product_access a ON a.user_id=u.user_id AND a.product_id='navigator'
-        WHERE ${SESSION_FILTER} AND s.client='api' AND NOT u.must_change_password`,[tokenHash]);
+        WHERE ${SESSION_FILTER} AND s.client IN ('api','browser') AND NOT u.must_change_password`,[tokenHash]);
       const row=result.rows[0];return success(row?.role ? row as NavigatorAccess : null);
     });
   }

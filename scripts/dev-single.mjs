@@ -8,15 +8,22 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const marker = `--prospector-dev-launcher=${root}`;
 const electron = resolve(root, 'node_modules/electron/dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const env = { ...process.env, NODE_OPTIONS: '' };
-for (const key of ['ELECTRON_RUN_AS_NODE', 'ELECTRON_RENDERER_URL', 'PROSPECTOR_DEV_DUAL', 'PROSPECTOR_DEV_PROFILE', 'PROSPECTOR_DEV_AUTOLOGIN']) delete env[key];
+// Development is intentionally pinned to the formal local center. A stale
+// shell value must not silently route the app back to the isolated test node.
+env.PROSPECTOR_CENTER_URL = 'http://127.0.0.1:55847';
+for (const key of ['ELECTRON_RUN_AS_NODE', 'ELECTRON_RENDERER_URL', 'PROSPECTOR_DEV_DUAL', 'PROSPECTOR_DEV_AUTOLOGIN']) delete env[key];
+
+const escapedMarker = marker.replaceAll("'", "''");
+const processQuery = `Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'electron.exe' -and $_.CommandLine -and $_.CommandLine.Contains('${escapedMarker}') }`;
+const existingElectronPid = () => process.platform === 'win32'
+  ? execFileSync('powershell.exe', ['-NoProfile', '-Command', `${processQuery} | Select-Object -First 1 -ExpandProperty ProcessId`], { windowsHide: true, encoding: 'utf8', timeout: 5_000 }).trim()
+  : '';
 
 // A second click must focus the existing application before any rebuild touches
 // its files. Electron's userData lock remains the final single-instance guard.
-const escapedMarker = marker.replaceAll("'", "''");
-const processQuery = `Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'electron.exe' -and $_.CommandLine -and $_.CommandLine.Contains('${escapedMarker}') }`;
 let alreadyRunning = false;
 if (process.platform === 'win32') {
-  alreadyRunning = execFileSync('powershell.exe', ['-NoProfile', '-Command', `${processQuery} | Select-Object -First 1 -ExpandProperty ProcessId`], { windowsHide: true, encoding: 'utf8' }).trim() !== '';
+  alreadyRunning = existingElectronPid() !== '';
 }
 if (alreadyRunning) {
   const second = spawn(electron, [root, marker], { cwd: root, windowsHide: true, stdio: 'inherit', env });

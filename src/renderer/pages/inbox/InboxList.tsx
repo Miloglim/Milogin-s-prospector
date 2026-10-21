@@ -121,8 +121,8 @@ export function InboxList() {
   const [last, setLast] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; item: InboxItem } | null>(null);
   // 虚拟滚动：只渲染可视区，避免千余封邮件全量渲染卡顿
-  const ROW_H = 58; // 固定行高（压缩后：主题/发信人/标记三行的紧凑高度）
-  const SENDER_ROW_H = 46; // 发信人行高（固定）
+  const ROW_H = 66; // 固定行高：主题、发信人和匹配状态三行可读
+  const SENDER_ROW_H = 52; // 发信人行高（固定）
   const OVERSCAN = 6; // 上下多渲染几行，滚动不露白
   const listRef = useRef<HTMLDivElement>(null);
   const [listH, setListH] = useState(600);
@@ -593,19 +593,19 @@ export function InboxList() {
     <div className="inbox-workspace prospector-inbox-page flex h-full" style={{ height: "100%", minHeight: 0, overflow: "hidden" }} onClick={() => setMenu(null)}>
 
       {/* ══ 左侧 ══ */}
-      <div className="flex flex-col flex-shrink-0 bg-white" style={{ width: "34%", minWidth: 360, maxWidth: 620, minHeight: 0, userSelect: "none", borderRight: "1px solid #e8e8e8" }}>
+      <div className="flex flex-col flex-shrink-0 bg-white" style={{ width: "38%", minWidth: 400, maxWidth: 680, minHeight: 0, userSelect: "none", borderRight: "1px solid #e8e8e8" }}>
 
         {/* 顶部 */}
         <div style={{ padding: "7px 10px 5px", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <button onClick={doFetch} disabled={fetching || offline} className="btn"
-            style={{ padding: "2px 7px", fontSize: 10, gap: 3, borderRadius: 5, lineHeight: "16px" }}>
-            <ReloadOutlined className={fetching ? "animate-spin" : ""} style={{ fontSize: 11 }} /> 刷新
-          </button>
+          <Button size="small" onClick={doFetch} disabled={fetching || offline}
+            icon={<ReloadOutlined className={fetching ? "animate-spin" : ""} />}>
+            刷新
+          </Button>
           <input
             placeholder="搜索..." value={search} onChange={e => setSearch(e.target.value)}
-            style={{ flex: 1, border: "1px solid #e5e5e5", borderRadius: 5, padding: "2px 7px", fontSize: 10, outline: "none", minWidth: 0, lineHeight: "16px" }} />
-          {sel.size > 1 && <button onClick={batchRead} className="btn" title="Ctrl+A 全选 · ↑↓ 移动（Shift 扩选）· Space 切换选中" style={{ padding: "2px 6px", fontSize: 10, borderRadius: 5, lineHeight: "16px" }}>已读</button>}
-          {sel.size > 1 && <button onClick={batchDel} className="btn" title="已选 {n} 封 · Delete 键同样可删（有确认）· Esc 取消选择" style={{ padding: "2px 6px", fontSize: 10, color: "#e5484d", borderColor: "#fecaca", borderRadius: 5, lineHeight: "16px" }}>删({sel.size})</button>}
+            style={{ flex: 1, border: "1px solid #e5e5e5", borderRadius: 5, padding: "3px 8px", fontSize: 11, outline: "none", minWidth: 0, lineHeight: "18px" }} />
+          {sel.size > 1 && <Button size="small" onClick={batchRead} title="Ctrl+A 全选 · ↑↓ 移动（Shift 扩选）· Space 切换选中">已读</Button>}
+          {sel.size > 1 && <Button size="small" danger onClick={batchDel} title="已选 {n} 封 · Delete 键同样可删（有确认）· Esc 取消选择">删({sel.size})</Button>}
         </div>
         {/* 拉取进度弹窗 — 分账号详细显示 */}
         <Modal title="拉取邮件" open={fetching} footer={null} closable={false} width={420}>
@@ -631,7 +631,7 @@ export function InboxList() {
           {(["flat", "sender"] as const).map(v => {
             const on = view === v;
             return (
-              <button key={v} onClick={() => { setView(v); setSenderFilter(null); }}
+              <button key={v} onClick={() => { setView(v); setSenderFilter(null); }} className={`inbox-view-mode${on ? ' is-active' : ''}`}
                 style={{
                   flex: 1, padding: "2px 0", fontSize: 10, cursor: "pointer", border: "1px solid #e5e5e5",
                   borderRadius: 6, background: on ? "#1a1a1a" : "#fff", color: on ? "#fff" : "#666",
@@ -672,7 +672,7 @@ export function InboxList() {
             return (
               <button key={f.key} onClick={() => setFilter(f.key)}
                 style={{
-                  flex: 1, padding: "5px 0", fontSize: 10.5, cursor: "pointer", border: 0, background: "none",
+                  flex: 1, padding: "6px 0", fontSize: 11.5, cursor: "pointer", border: 0, background: "none",
                   color: on ? "#1a1a1a" : "#999", fontWeight: on ? 600 : 400,
                   boxShadow: on ? "inset 0 -1.5px 0 #1a1a1a" : "none",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 3, whiteSpace: "nowrap",
@@ -778,13 +778,13 @@ export function InboxList() {
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 1 }}>
-                        <span style={{ fontSize: 12, fontWeight: isNew ? 500 : 400, color: "#1a1a1a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <span style={{ fontSize: 13, fontWeight: isNew ? 500 : 400, color: "#1a1a1a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {i.subject || i.fromName || i.fromEmail}
                         </span>
-                        <span style={{ fontSize: 10, color: "#bbb", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{shortTime(i.receivedAt)}</span>
+                        <span style={{ fontSize: 11, color: "#bbb", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{shortTime(i.receivedAt)}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 1 }}>
-                        <span style={{ fontSize: 11, color: "#999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{i.fromName || i.fromEmail}</span>
+                        <span style={{ fontSize: 12, color: "#999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{i.fromName || i.fromEmail}</span>
                         {i.classification && i.classification !== "other" && <span style={{ fontSize: 9, padding: "0 6px", borderRadius: 10, background: t.dot + "15", color: t.dot, flexShrink: 0 }}>{t.label}</span>}
                       </div>
                       {/* 已匹配 + 联系人状态（始终显示） */}

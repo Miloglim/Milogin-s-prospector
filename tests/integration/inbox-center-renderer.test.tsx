@@ -9,7 +9,7 @@ import { CenterContactDetail } from '../../src/renderer/pages/customers/CenterCo
 import { ONLINE_CHANNELS } from '../../src/shared/online-crm';
 vi.mock('../../src/renderer/IdentityContext', () => ({ useOptionalIdentity: () => ({ identity: { userId: 'fixture' }, baseUrl: 'http://fixture.invalid', status: 'authenticated' }), useIdentity: () => ({ identity: { userId: 'fixture' }, baseUrl: 'http://fixture.invalid', status: 'authenticated' }) }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn(), useRouterState: () => ({ pathname: '/inbox', searchStr: '' }) }));
-vi.mock('../../src/renderer/components/CompanyBackcheck', () => ({ CompanyBackcheck: () => <div /> }));
+vi.mock('../../src/renderer/components/CompanyBackcheck', () => ({ COMPANY_BACKCHECK_UI_ENABLED: false, CompanyBackcheck: () => <div /> }));
 const reference = { contactId: 7, customerId: 'customer-center' };
 const contact = { ...reference, contactVersion: 4, customerVersion: 1, companyId: 8, companyName: 'Center Company', email: 'buyer@buyer.example', firstName: 'Buyer', lastName: null, tags: [], extra: {}, status: 'replied', touchStatus: 'replied', stage: 'cold' };
 const detail = { contact, company: { companyId: 8, name: 'Center Company', domain: null, backcheckData: null }, activities: [{ id: 'duplicate-activity', actorName: 'fixture', note: 'Duplicate mail activity', occurredAt: '2026-10-14T00:00:00Z' }, { id: 'standalone-note', actorName: 'fixture', note: 'Independent note', occurredAt: '2026-10-13T00:00:00Z' }], canEdit: true, canFollowup: true, canAssign: false, mailAvailable: true, mailEvents: [{ ...reference, eventId: 'mail-event', activityId: 'duplicate-activity', kind: 'replied', direction: 'inbound', occurredAt: '2026-10-14T00:00:00Z', fromEmail: contact.email, toEmails: ['sales@example.test'], ccEmails: [], subject: 'Real mail subject', preview: 'Real mail preview' }] };
@@ -36,16 +36,21 @@ describe('center contact mailbox renderer boundary', () => {
   });
   afterEach(async () => { await act(async () => root.unmount()); qc.clear(); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
   async function mount(node: React.ReactNode) { await act(async () => root.render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>)); await act(flush); }
-  it('distinguishes offline undownloaded supplements without changing the original detail tabs', async () => {
+  it('hides company backcheck while keeping offline contact history guidance', async () => {
     invoke.mockResolvedValue({ ok: true, data: { ...detail, supplementAvailable: false, activities: [], mailEvents: [] } });
     await mount(<CenterContactDetail reference={reference} onClose={() => {}} />);
     const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
-    expect(tabs.map(tab => tab.textContent)).toEqual(['基本信息', '公司背调', '往来记录']);
-    await act(async () => { tabs.find(tab => tab.textContent === '公司背调')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
-    expect(document.body.textContent).toContain('联网后加载公司资料');
+    expect(tabs.map(tab => tab.textContent)).toEqual(['基本信息', '往来记录']);
+    expect(document.body.textContent).not.toContain('公司背调');
     await act(async () => { tabs.find(tab => tab.textContent === '往来记录')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     expect(document.body.textContent).toContain('联网后加载往来记录');
     expect(document.body.textContent).not.toContain('邮件往来暂未接入');
+  });
+  it('renders the board contact card above the board with a blocking layer', async () => {
+    await mount(<CenterContactDetail reference={reference} onClose={() => {}} variant="board" />);
+    const layer = document.querySelector('.customer-classic-floating-detail');
+    expect(layer).not.toBeNull();
+    expect(layer!.querySelector('.ant-drawer-mask')).not.toBeNull();
   });
   it('recognizes center matches and opens the explicit center route', async () => {
     await mount(<InboxList />);

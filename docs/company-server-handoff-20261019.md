@@ -1,6 +1,6 @@
 # Milogin 产品链服务器交接 README
 
-版本：Prospector `0.53.0-alpha.1` 交接候选
+版本：Prospector `0.53.2-alpha.1` 交接候选
 
 这份说明给负责部署和联调的同事阅读。它先说明两个产品是什么，再说明数据怎么流动，最后说明服务器要准备什么、怎样验收。
 
@@ -103,9 +103,11 @@ prospector/
 navigator/
   Database/          Navigator Python 服务运行代码
   Skill/.../freight_identity/  Navigator 身份适配代码
+  Skill/.../config/            空航管名单和空群清单部署模板
+  Skill/navigator-agent-intake/ 外部 Agent 标准 JSON 提交说明与脚本
 
 client/
-  prospecting-email-setup-0.53.0-alpha.1.exe
+  prospecting-email-setup-0.53.2-alpha.1.exe
 
 MANIFEST.json        文件清单和排除项
 ```
@@ -120,7 +122,21 @@ MANIFEST.json        文件清单和排除项
    - `PROSPECTOR_CENTER_MODE=production`
    - `PROSPECTOR_CENTER_PG_DSN`
    - `PROSPECTOR_CENTER_PUBLIC_ORIGIN`
-4. 在 `prospector/` 执行：
+4. 设置客户端中心地址。构建时把正式 HTTPS Origin 写入 `assets/center.json`：
+
+   ```json
+   { "baseUrl": "https://crm.company.internal" }
+   ```
+
+   也可以在受控启动环境中设置 `PROSPECTOR_CENTER_URL` 覆盖。桌面端只接受 HTTPS 中心；回环 HTTP 仅用于本机测试。
+
+   开发机推荐用一条命令完成地址注入、构建和候选打包：
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts/build-deployment.ps1 -CenterUrl https://crm.company.internal
+   ```
+
+5. 在 `prospector/` 执行：
 
    ```powershell
    npm ci --omit=dev
@@ -128,12 +144,59 @@ MANIFEST.json        文件清单和排除项
    node scripts/production-server.mjs status
    ```
 
-5. 检查中心 API 的 `/health/ready`。
-6. 准备 Navigator PostgreSQL，并按 Navigator 的说明配置 `FREIGHT_POSTGRES_DSN`。
-7. 启动 Navigator `manual_server.py`，确认运价接口可访问。
+6. 检查中心 API 的 `/health/ready`。
+7. 初始化正式超级管理员（仅空中心库执行一次）：
+
+   ```powershell
+   $env:PROSPECTOR_ADMIN_EMAIL = 'admin@company.internal'
+   node scripts/bootstrap-production-admin.mjs
+   ```
+
+   密码通过隐藏输入或受控环境变量提供，不得写入脚本、聊天或交接包。已有超级管理员时脚本拒绝创建第二个。
+
+8. 准备 Navigator PostgreSQL，并按 Navigator 的说明配置 `FREIGHT_POSTGRES_DSN`。
+9. 启动 Navigator `manual_server.py`，确认运价接口可访问。
+
+   交付包中的航管账号名单和群清单为空模板，不包含真实姓名或钉钉 ID。启用自动采集前，由受控部署流程写入正式名单和群配置；空名单足以启动查询与审核服务，但不会自动采集任何群。
+
+   外部 Agent 提交已解析群聊记录时，在 Navigator 服务进程中单独设置至少 32 字符的 `NAVIGATOR_AGENT_API_TOKEN`，通过 HTTPS 反向代理访问 `POST /api/agent/intake/v1`。该 Token 与本地人工采集 Token 分开，不进入部署包。随包 `navigator/Skill/navigator-agent-intake/` 提供字段契约和提交脚本。
 
 首次部署也可以在交接包根目录运行 `prospector\scripts\bootstrap-company-server.ps1`。脚本会逐步检查 Node/Python/psql，交互读取两个数据库账号密码，生成 Navigator 的本机配置，安装 PostgreSQL 驱动并初始化表结构；增加 `-StartServices` 才会启动两个服务并执行健康检查。脚本不会删除数据库、不会覆盖已有 DSN 配置，也不会把密码写入项目目录。
-8. 部署 HTTPS 反向代理，再安装 `client/` 中的 Prospector 客户端。
+
+推荐的一体化部署入口是 `prospector\scripts\deploy-company-server.ps1`。部署人员通过受控环境变量提供现有 PostgreSQL 管理员 DSN，脚本不会创建新的数据库管理员；它只创建最小权限应用账号 `milogin_app` 和 `navigator_app` 及各自数据库，随机生成应用密码、写入域名和客户端配置、启动中心、创建拥有全部产品权限的默认超级管理员、初始化 Navigator，并执行中心 API、Navigator 与中心到 Navigator 的产品链健康检查。凭据只写入 `%ProgramData%` 下受 ACL 保护的文件。
+
+```powershell
+$env:MILOGIN_DATABASE_ADMIN_DSN = '<现有 PostgreSQL 管理员 DSN，手动写入受控环境>'
+$env:MILOGIN_DEFAULT_ADMIN_PASSWORD = '<初始应用超级管理员密码，手动写入受控环境>'
+.\prospector\scripts\deploy-company-server.ps1 `
+  -CenterOrigin https://crm.company.internal `
+  -NavigatorOrigin https://rates.company.internal `
+  -AdminEmail zayne_jin@yqn.com
+```
+
+数据库管理员身份和中心应用身份是两类不同账号：前者只用于建库/建应用角色，不会成为产品登录账号；`-AdminEmail` 指定的中心账号才是 CRM、管理端和 Navigator 共用的产品超级管理员，创建后即可直接登录所有产品。密码不得写入脚本、ZIP 或聊天；必须满足现有至少 6 位 ASCII 字母或数字规则。未提供 `MILOGIN_DEFAULT_ADMIN_PASSWORD` 时，部署脚本会随机生成并写入受 ACL 保护的一次性凭据文件。正式使用后仍建议立即更换初始密码。
+
+域名 DNS 和 HTTPS 反向代理必须先指向本机对应端口：中心 `127.0.0.1:55847`、Navigator `127.0.0.1:8795`。脚本验证 `deployment.json` 中的域名配置和产品链；无法控制云厂商 DNS，因此 DNS 记录本身仍由部署现场创建。
+
+已有环境迁移不要复制 PostgreSQL 数据目录。源机运行：
+
+```powershell
+.\prospector\scripts\export-company-deployment.ps1 `
+  -OutputDirectory D:\MiloginMigration -IncludeBusinessImages
+```
+
+目标服务器通过受控加密通道取得该目录后，在空应用数据库上执行同一部署入口并传入迁移包：
+
+```powershell
+.\prospector\scripts\deploy-company-server.ps1 `
+  -CenterOrigin https://crm.company.internal `
+  -NavigatorOrigin https://rates.company.internal `
+  -AdminEmail zayne_jin@yqn.com `
+  -MigrationBundle D:\MiloginMigration
+```
+
+迁移包包含逻辑数据库备份、业务群/发布人配置和可选运价图片，不包含旧登录会话、桌面刷新 Token、管理挑战或本机应用数据库密码。迁移完成后应删除源端迁移目录并轮换正式密码。
+10. 部署 HTTPS 反向代理，再安装 `client/` 中的 Prospector 客户端。
 
 中心 PostgreSQL 和 Navigator PostgreSQL 可以在同一台服务器上，但必须是两个独立数据库，账号权限也应分开。PostgreSQL 的 `5432` 不应直接暴露给客户端。
 

@@ -1,4 +1,4 @@
-﻿﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [switch]$SkipNavigatorDependencies,
     [switch]$SkipNavigatorInit,
@@ -105,8 +105,8 @@ Step '准备 Prospector 生产环境变量'
 $env:PROSPECTOR_CENTER_MODE = 'production'
 $env:PROSPECTOR_CENTER_PUBLIC_ORIGIN = if ($env:PROSPECTOR_CENTER_PUBLIC_ORIGIN) { $env:PROSPECTOR_CENTER_PUBLIC_ORIGIN } else { 'https://crm.test.internal' }
 $env:PROSPECTOR_CENTER_PG_DSN = $centerDsn
-$env:PROSPECTOR_NAVIGATOR_URL = 'http://127.0.0.1:8795'
-$env:PROSPECTOR_NAVIGATOR_ENTRY_URL = 'http://127.0.0.1:8795'
+$env:PROSPECTOR_NAVIGATOR_URL = if ($env:PROSPECTOR_NAVIGATOR_URL) { $env:PROSPECTOR_NAVIGATOR_URL } else { 'http://127.0.0.1:8795' }
+$env:PROSPECTOR_NAVIGATOR_ENTRY_URL = if ($env:PROSPECTOR_NAVIGATOR_ENTRY_URL) { $env:PROSPECTOR_NAVIGATOR_ENTRY_URL } else { 'http://127.0.0.1:8795' }
 Write-Host "PROSPECTOR_CENTER_PUBLIC_ORIGIN=$env:PROSPECTOR_CENTER_PUBLIC_ORIGIN"
 
 if ($StartServices) {

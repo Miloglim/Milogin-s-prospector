@@ -24,6 +24,12 @@ describe('QQ-style login presets without exposing secrets',()=>{
   await mount();await act(async()=>fireEvent.click(host.querySelector('[aria-label="选择账号"]')!));await act(async()=>fireEvent.click(host.querySelector('[data-account-id="b"]')!));
   expect((host.querySelector('#email') as HTMLInputElement).value).toBe(b.email);expect((host.querySelector('#password') as HTMLInputElement).required).toBe(true);expect((host.querySelector('[name=remember]') as HTMLInputElement).checked).toBe(false);
  });
+ it('animates the account list through a mounted controlled panel',async()=>{
+  await mount();const toggle=host.querySelector('[aria-label="选择账号"]')!;const panel=host.querySelector('#login-account-presets')!;
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');expect(panel.getAttribute('aria-hidden')).toBe('true');expect(panel.classList.contains('is-open')).toBe(false);
+  await act(async()=>fireEvent.click(toggle));
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');expect(panel.getAttribute('aria-hidden')).toBe('false');expect(panel.classList.contains('is-open')).toBe(true);
+ });
  it('automatic login implies remembering; disabling remember disables automatic login',async()=>{
   await mount();await act(async()=>fireEvent.click(host.querySelector('[name=autoLogin]')!));expect((host.querySelector('[name=remember]') as HTMLInputElement).checked).toBe(true);
   await act(async()=>fireEvent.click(host.querySelector('[name=remember]')!));expect((host.querySelector('[name=autoLogin]') as HTMLInputElement).checked).toBe(false);expect((host.querySelector('#password') as HTMLInputElement).required).toBe(true);

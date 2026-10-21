@@ -1,6 +1,7 @@
 ﻿$ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $navigatorRoot = 'C:\Users\YQN\Documents\正式版运价库\运价项目\Database'
+$navigatorProjectRoot = 'C:\Users\YQN\Documents\正式版运价库\运价项目'
 $navigatorScripts = 'C:\Users\YQN\Documents\正式版运价库\运价项目\Skill\freight-rate-heartbeat\scripts'
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
 $candidateRoot = Join-Path $projectRoot ".work\deployment-candidate-$stamp"
@@ -21,7 +22,13 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'dist-admin') -Destination (Join-
 Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\server-runtime\package.json') -Destination (Join-Path $prospector 'package.json')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\server-runtime\package-lock.json') -Destination (Join-Path $prospector 'package-lock.json')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\production-server.mjs') -Destination (Join-Path $prospector 'scripts\production-server.mjs')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\center-postgres.mjs') -Destination (Join-Path $prospector 'scripts\center-postgres.mjs')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\provision-company-databases.mjs') -Destination (Join-Path $prospector 'scripts\provision-company-databases.mjs')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\bootstrap-production-admin.mjs') -Destination (Join-Path $prospector 'scripts\bootstrap-production-admin.mjs')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\bootstrap-company-server.ps1') -Destination (Join-Path $prospector 'scripts\bootstrap-company-server.ps1')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\deploy-company-server.ps1') -Destination (Join-Path $prospector 'scripts\deploy-company-server.ps1')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\export-company-deployment.ps1') -Destination (Join-Path $prospector 'scripts\export-company-deployment.ps1')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts\verify-company-deployment.mjs') -Destination (Join-Path $prospector 'scripts\verify-company-deployment.mjs')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\production-deployment.env.example') -Destination (Join-Path $prospector 'production-deployment.env.example')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\company-server-handoff-20261019.md') -Destination (Join-Path $candidateRoot 'README.md')
 
@@ -58,6 +65,16 @@ foreach ($directory in @('', 'core', 'services')) {
   Get-ChildItem -LiteralPath $sourceDirectory -File -Filter '*.py' |
     ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $targetDirectory $_.Name) }
 }
+$identityConfigTarget = Join-Path $candidateRoot 'navigator\Skill\freight-rate-heartbeat\scripts\config'
+New-Item -ItemType Directory -Force -Path $identityConfigTarget | Out-Null
+$deploymentTemplates = Join-Path $navigatorProjectRoot 'Database\deployment-templates'
+foreach ($name in @('publisher_roster.json', 'chat_sources.json')) {
+  Copy-Item -LiteralPath (Join-Path $deploymentTemplates $name) -Destination (Join-Path $identityConfigTarget $name) -ErrorAction Stop
+}
+$agentSkillSource = Join-Path $navigatorProjectRoot 'Skill\navigator-agent-intake'
+$agentSkillTarget = Join-Path $candidateRoot 'navigator\Skill\navigator-agent-intake'
+if (!(Test-Path -LiteralPath (Join-Path $agentSkillSource 'SKILL.md'))) { throw 'Navigator Agent intake skill is unavailable' }
+Copy-Item -LiteralPath $agentSkillSource -Destination $agentSkillTarget -Recurse
 
 $version = (& node -p "require(process.argv[1]).version" (Join-Path $projectRoot 'package.json')).Trim()
 $installerName = "prospecting-email-setup-$version.exe"
@@ -70,7 +87,7 @@ $manifest = [ordered]@{
   candidate = $stamp
   version = $version
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-  contents = @('prospector/dist-server', 'prospector/dist-admin', 'prospector/node_modules (pg runtime only)', 'navigator/Database Python runtime', 'navigator/Skill/freight-rate-heartbeat/scripts/freight_identity', "client/$installerName")
+  contents = @('prospector/dist-server', 'prospector/dist-admin', 'prospector/node_modules (pg runtime only)', 'navigator/Database Python runtime', 'navigator/Skill/freight-rate-heartbeat/scripts/freight_identity', 'navigator/Skill/freight-rate-heartbeat/scripts/config (empty deployment templates)', 'navigator/Skill/navigator-agent-intake', "client/$installerName")
   excludes = @('runtime config', 'tokens', 'passwords', 'database files', 'logs', 'backups', 'business images', 'test fixtures')
   navigatorSourceBoundary = 'Navigator is Python runtime source; no frozen binary build was introduced.'
   electronInstallerSha256 = $installerHash
@@ -78,7 +95,7 @@ $manifest = [ordered]@{
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $candidateRoot 'MANIFEST.json') -Encoding UTF8
 
-$required = @('prospector\dist-server\online.js', 'prospector\dist-admin\index.html', 'prospector\node_modules\pg\package.json', 'navigator\Database\manual_server.py', 'navigator\Database\price_sanitize.py', 'navigator\Database\web\index.html', 'navigator\Skill\freight-rate-heartbeat\scripts\freight_identity\runtime.py', "client\$installerName")
+$required = @('prospector\dist-server\online.js', 'prospector\dist-admin\index.html', 'prospector\node_modules\pg\package.json', 'prospector\scripts\center-postgres.mjs', 'prospector\scripts\provision-company-databases.mjs', 'prospector\scripts\production-server.mjs', 'prospector\scripts\bootstrap-company-server.ps1', 'prospector\scripts\bootstrap-production-admin.mjs', 'prospector\scripts\deploy-company-server.ps1', 'prospector\scripts\export-company-deployment.ps1', 'prospector\scripts\verify-company-deployment.mjs', 'navigator\Database\manual_server.py', 'navigator\Database\price_sanitize.py', 'navigator\Database\web\index.html', 'navigator\Skill\freight-rate-heartbeat\scripts\freight_identity\runtime.py', 'navigator\Skill\freight-rate-heartbeat\scripts\config\publisher_roster.json', 'navigator\Skill\freight-rate-heartbeat\scripts\config\chat_sources.json', 'navigator\Skill\navigator-agent-intake\SKILL.md', 'navigator\Skill\navigator-agent-intake\scripts\submit_intake.py', "client\$installerName")
 foreach ($name in $required) {
   if (!(Test-Path -LiteralPath (Join-Path $candidateRoot $name))) { throw "候选包缺少运行文件：$name" }
 }

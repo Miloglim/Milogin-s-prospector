@@ -10,6 +10,8 @@ const RUNTIME = process.env.PROGRAMDATA
   : path.join(ROOT, ".work", "production-center");
 const STATE = path.join(RUNTIME, "online-process.json");
 const LOG = path.join(RUNTIME, "online.log");
+const DEPLOYMENT = path.join(RUNTIME, "deployment.json");
+const POSTGRES_CONFIG = path.join(RUNTIME, "postgres.json");
 const INSTANCE_MARKER = "prospector-production-instance-v1";
 const API_ORIGIN = "http://127.0.0.1:55847";
 const START_TIMEOUT_MS = 30_000;
@@ -18,6 +20,22 @@ const EXIT_FAILED = 1;
 
 function log(level, message) {
   process.stdout.write(`[${new Date().toISOString()}] [${level}] [production.lifecycle] ${message}\n`);
+}
+
+function loadRuntimeEnvironment() {
+  if (!process.env.PROSPECTOR_CENTER_MODE && fs.existsSync(DEPLOYMENT)) process.env.PROSPECTOR_CENTER_MODE = "production";
+  if (!process.env.PROSPECTOR_CENTER_PUBLIC_ORIGIN && fs.existsSync(DEPLOYMENT)) {
+    const value = JSON.parse(fs.readFileSync(DEPLOYMENT, "utf8"));
+    process.env.PROSPECTOR_CENTER_PUBLIC_ORIGIN = value.centerPublicOrigin;
+    process.env.PROSPECTOR_NAVIGATOR_URL = value.navigatorInternalUrl;
+    process.env.PROSPECTOR_NAVIGATOR_ENTRY_URL = value.navigatorPublicOrigin;
+    if (value.localHttp === true) process.env.PROSPECTOR_CENTER_LOCAL_HTTP = "1";
+  }
+  if (!process.env.PROSPECTOR_CENTER_PG_DSN && fs.existsSync(POSTGRES_CONFIG)) {
+    const value = JSON.parse(fs.readFileSync(POSTGRES_CONFIG, "utf8"));
+    if (!value.app || !value.appPassword || !value.database || !value.host || !value.port) throw new Error("中心数据库运行配置无效");
+    process.env.PROSPECTOR_CENTER_PG_DSN = `postgresql://${encodeURIComponent(value.app)}:${encodeURIComponent(value.appPassword)}@${value.host}:${value.port}/${value.database}`;
+  }
 }
 
 function requireProductionEnvironment() {
@@ -61,6 +79,7 @@ const delay = () => new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS)
 const command = process.argv[2];
 
 try {
+  loadRuntimeEnvironment();
   requireProductionEnvironment();
   fs.mkdirSync(RUNTIME, { recursive: true });
   const state = readState();

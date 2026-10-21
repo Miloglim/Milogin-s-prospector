@@ -54,7 +54,7 @@ export async function importFlatLeadsIn(c: PoolClient, actor: LeadActor, input: 
           customerId=parent?.customer_id ?? randomUUID();
           if (!parent) {
             await c.query('INSERT INTO crm_customers(customer_id,company_id,source,customer_key,source_detail,created_by,origin,state,owner_user_id,business_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[customerId,companyId,input.source,row.customerKey,input.sourceDetail,actor.userId,input.kind,personal?'owned':'draft',personal?actor.userId:null,optional(row.businessType)]);
-            if (personal) await c.query('INSERT INTO identity.outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)',['crm.customer.created',actor.userId,'crm',1,customerId,JSON.stringify({customerId,version:1})]);
+            await c.query('INSERT INTO identity.outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)',['crm.customer.created',actor.userId,'crm',1,customerId,JSON.stringify({customerId,version:1,companyName:row.companyName})]);
           }
           // Email-less records are duplicates only when all supplied contact details match.
           const values=[optional(row.firstName??row.name),optional(row.lastName),optional(row.title),optional(row.phone),optional(row.whatsapp),optional(row.linkedinUrl),optional(row.sourceLevel1),optional(row.sourceLevel2)];

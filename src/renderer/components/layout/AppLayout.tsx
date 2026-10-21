@@ -49,29 +49,31 @@ const btn: React.CSSProperties = {
 };
 
 // ponytail: 无边框窗口自定义标题栏 — 匹配旧 PE 布局
-export function TitleBar() {
+export function TitleBar({ tone = 'dark', transparent = false }: { tone?: 'dark' | 'light'; transparent?: boolean }) {
+  const iconColor = tone === 'light' ? '#666' : '#999';
+  const hoverBackground = tone === 'light' ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
   return (
-    <div className="app-titlebar titlebar-drag">
+    <div className={`app-titlebar titlebar-drag${tone === 'light' ? ' app-titlebar--light' : ''}${transparent ? ' app-titlebar--transparent' : ''}`}>
       <div className="app-titlebar-spacer" aria-hidden="true" />
 
       <div className="app-window-controls titlebar-nodrag">
-        <button onClick={() => window.api.send("window:minimize")} style={btn}
-          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
+        <button onClick={() => window.api.send("window:minimize")} style={{ ...btn, color: iconColor }}
+          onMouseEnter={e => e.currentTarget.style.background = hoverBackground}
           onMouseLeave={e => e.currentTarget.style.background = "transparent"}
           title="最小化"
         >
           <svg width="10" height="10" viewBox="0 0 10 10"><rect y="4" width="10" height="1.5" fill="currentColor"/></svg>
         </button>
-        <button onClick={() => window.api.send("window:maximize")} style={btn}
-          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
+        <button onClick={() => window.api.send("window:maximize")} style={{ ...btn, color: iconColor }}
+          onMouseEnter={e => e.currentTarget.style.background = hoverBackground}
           onMouseLeave={e => e.currentTarget.style.background = "transparent"}
           title="最大化"
         >
           <svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" rx="1"/></svg>
         </button>
-        <button onClick={() => window.api.send("window:close")} style={btn}
+        <button onClick={() => window.api.send("window:close")} style={{ ...btn, color: iconColor }}
           onMouseEnter={e => { e.currentTarget.style.background = "#e81123"; e.currentTarget.style.color = "#fff"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#999"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = iconColor; }}
           title="关闭"
         >
           <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5"/></svg>
@@ -94,12 +96,17 @@ function ScrollArea({ pathname, fullScreen, children }: { pathname: string; full
 
   return (
     <div
-      ref={scrollRef}
       className={fullScreen ? 'app-scroll-area app-scroll-area--edge-to-edge' : 'app-scroll-area'}
-      onScroll={e => posMap.current.set(activePath.current, e.currentTarget.scrollTop)}
-      style={{ height: "100%", minHeight: 0, overflow: fullScreen ? "hidden" : "auto", padding: fullScreen ? 0 : '16px 20px' }}
+      style={{ height: "100%", minHeight: 0, overflow: "hidden", padding: '16px 20px' }}
     >
-      {children}
+      <div
+        ref={scrollRef}
+        className={fullScreen ? 'app-route-content app-route-content--edge-to-edge' : 'app-route-content'}
+        onScroll={e => posMap.current.set(activePath.current, e.currentTarget.scrollTop)}
+        style={{ overflowY: fullScreen ? 'hidden' : 'auto' }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -184,13 +191,10 @@ export function AppLayout() {
       <TitleBar />
       <Layout className="app-body" hasSider>
         <Sidebar />
-        <Layout>
-          <Content style={{ background: "#f5f5f5", minHeight: 0, overflow: "hidden" }}>
+        <Layout className="app-workspace">
+          <Content className="app-content" style={{ minHeight: 0, overflow: "hidden" }}>
             <ScrollArea pathname={pathname} fullScreen={EDGE_TO_EDGE_PATHS.has(pathname)}>
-              <div
-                className={EDGE_TO_EDGE_PATHS.has(pathname) ? 'app-route-content app-route-content--edge-to-edge' : 'app-route-content'}
-                hidden={centerUnavailable}
-              >{!localAvailable && pathname === '/settings' ? <Spin /> : !localAvailable && !['/customers', '/customers-online', '/account', '/messages'].includes(pathname) ? null : <KeepAliveOutlet />}</div>
+              <div className="app-route-host" hidden={centerUnavailable}>{!localAvailable && pathname === '/settings' ? <Spin /> : !localAvailable && !['/customers', '/customers-online', '/account', '/messages'].includes(pathname) ? null : <KeepAliveOutlet />}</div>
             </ScrollArea>
           </Content>
         </Layout>
