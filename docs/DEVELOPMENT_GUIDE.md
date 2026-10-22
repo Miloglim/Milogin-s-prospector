@@ -123,7 +123,8 @@ $env:ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-bu
 1. `package.json` / `package-lock.json` 改版本（`npm version X.Y.Z --no-git-tag-version`）
 2. 提交 → 打 tag：`git tag vX.Y.Z && git push origin vX.Y.Z`
 3. `npm run pack`（产物在 `../dist-release`，含安装包 + `latest.yml`）
-4. 建 Release：`gh release create vX.Y.Z --title "vX.Y.Z" --notes-file release-notes.md --files ../dist-release/prospecting-email-setup-X.Y.Z.exe ../dist-release/prospecting-email-setup-X.Y.Z.exe.blockmap ../dist-release/latest.yml`
-5. **必须挂上 `latest.yml`**——缺它应用内自动更新不生效
+4. 发布前校验三件套：`node scripts/release.js --check-only`
+5. 创建 Release 并上传：`node scripts/release.js "本次更新说明"`。脚本会校验 EXE、blockmap、`latest.yml` 与 SHA-512；Release 已存在时补传当前版本文件。
+6. **必须挂上 `latest.yml`**——缺它应用内自动更新会报 404，并被界面误显示为“更新仓库未找到”。
 
 自动更新依赖仓库 Releases 的 `latest.yml`：`src/main/updater.ts` 的 `GITHUB_API` 与 `package.json` `build.publish` 指向 `Miloglim/Milogin-s-prospector`。
