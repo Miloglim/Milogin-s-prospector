@@ -4,6 +4,8 @@
 
 `POST /admin-api/command` 的 `user.create` 必须在请求体的独立 `password` 字段中携带管理员为账号设置的初始密码；该值只进入密码哈希，不写入管理命令、审计、日志或返回体。账号创建后仍设置 `must_change_password=true`，首次登录必须改成本人密码。服务端拒绝缺失或不符合账号密码规则的初始密码，禁止再用固定默认密码。
 
+`user.delete` 的原因保持可选；页面发送未填写或空字符串时，服务端统一记录“未填写删除原因”，不得返回 `INVALID_INPUT`。
+
 `POST /admin-api/command` 的 `user.reset-password` 会生成一次性恢复链接；`POST /admin-api/challenge` 在生产 HTTPS 环境同样可用，不依赖 `test_mode`。消费时仍校验同源、来源限流、15 分钟有效期、一次性令牌、账号未停用/删除和目标邮箱未变化；成功后更新中心凭据、撤销旧会话并记录审计。账号激活类 `challenge.issue` 仍只保留本机开通流程。
 
 ## 2026-10-21 只读系统运行摘要
@@ -64,6 +66,8 @@ npm.cmd run crm:online:stop
 ### Navigator 产品授权（2026-10-15，测试环境）
 
 复用已有 `navigator` 产品 ID。中心超级管理员在 Navigator 固定为 `admin`；身份超级管理员可通过 `POST /admin-api/command` 的 `navigator.update` 为普通中心账号授予 `operations`（运价库航管）或 `sales`，也可停用准入。CRM 角色不自动产生 Navigator 授权。`GET /api/navigator/access` 使用有效 API bearer，返回 `{ok:true,data:{userId,email,displayName,role}}`，角色为 `admin|operator|sales`；无准入 403，无效/过期会话 401，中心故障 503。每次请求重新核验用户启用、会话、安全版本、强制改密和当前 Navigator grant/access，撤权不等待旧会话到期。此接口供后续运价库服务端核对，不把浏览器角色声明当作凭据。8795 尚未调用此接口；中心仍是回环测试节点。
+
+当会话有效但账号仍处于首次强制改密状态时，`GET /api/navigator/access` 返回 403 `PASSWORD_CHANGE_REQUIRED`；客户端必须提示用户先在管理中心完成初始改密，不得将其解释成账号或 Navigator 产品权限不存在。
 
 ### 正式接入前的身份与环境隔离（2026-10-15，进行中）
 
