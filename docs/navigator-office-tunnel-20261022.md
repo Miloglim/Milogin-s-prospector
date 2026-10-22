@@ -18,7 +18,8 @@
 - 服务器专用账号为 `navigator-tunnel`，无登录 shell。
 - 专用公钥只允许监听服务器回环 `127.0.0.1:18795`；不能执行普通服务器命令或其他端口转发。
 - 家庭或公司路由器不开放 Navigator 入站端口。
-- Windows 计划任务名为 `Milogin Navigator Office Tunnel`，用户登录时启动，SSH 退出后自动重试。
+- Windows 计划任务名为 `Milogin Navigator Office Tunnel`，运行 [守护脚本](<D:/Agent Basement/Milogin-s-prospector/scripts/navigator-office-tunnel.ps1>) 的安装副本 `%LOCALAPPDATA%\Milogin\navigator-office-tunnel.ps1`。
+- SSH 正常退出或连接断开后，守护脚本等待 10 秒自动重连；日志位于 `%LOCALAPPDATA%\Milogin\Logs\navigator-office-tunnel.log`。
 
 ## 检查与恢复
 
@@ -29,6 +30,8 @@ Invoke-RestMethod 'https://rates-office.47.96.159.26.sslip.io/api/health/live'
 ```
 
 如果健康检查失败，先确认本机 `8795`、电脑联网和 Windows 登录状态，再停止并启动同名计划任务。服务器端可检查 `ss -ltnp | grep 18795`，不直接开放该端口。
+
+已验证直接结束隧道 `ssh.exe` 后入口短暂不可用，守护脚本随后自动建立新进程并恢复健康，无需人工重启任务。
 
 ## 已知边界
 
