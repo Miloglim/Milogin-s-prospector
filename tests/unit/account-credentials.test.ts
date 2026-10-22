@@ -34,6 +34,6 @@ describe('account creation character policy', () => {
     const f = fixture();
     expect((await f.desktop.register({ email, password: 'Abc123' })).ok).toBe(true);
     expect(f.createSalesAccount).toHaveBeenCalledWith({ email: email.toLowerCase(), passwordHash: 'synthetic-hash', product: 'crm' });
-    expect((await f.admin.mutate('session', { action: 'user.create', email, role: 'sales', reason: 'test' })).ok).toBe(true);
+    expect((await f.admin.mutate('session', { action: 'user.create', email, role: 'sales', reason: 'test' }, 'Abc123')).ok).toBe(true);
   });
 });

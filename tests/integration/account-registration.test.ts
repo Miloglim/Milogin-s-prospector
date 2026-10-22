@@ -41,20 +41,26 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('registration real
     expect((await register(`中文${randomUUID()}@example.invalid`, 'Abc123')).status).toBe(400);
     const email = `New.Name+${randomUUID()}@example.invalid`;
     expect((await register(email, 'Abc123')).status).toBe(200);
-    const rows = (await pool.query(`SELECT u.identity_admin,g.role FROM identity.users u JOIN identity.login_emails e USING(user_id)
-      JOIN identity.product_grants g USING(user_id) WHERE e.email=$1`, [email.toLowerCase()])).rows;
-    expect(rows).toEqual([{ identity_admin: false, role: 'sales' }]);
+    const rows = (await pool.query(`SELECT u.identity_admin,g.product_id,g.role FROM identity.users u JOIN identity.login_emails e USING(user_id)
+      JOIN identity.product_grants g USING(user_id) WHERE e.email=$1 ORDER BY g.product_id`, [email.toLowerCase()])).rows;
+    expect(rows).toEqual([
+      { identity_admin: false, product_id: 'crm', role: 'sales' },
+      { identity_admin: false, product_id: 'navigator', role: 'sales' },
+    ]);
     const response = await fetch(`${base}/api/auth/desktop/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'Abc123' }) });
     expect(response.status).toBe(200);
     expect((await response.json() as any).data.identity.crmRoles).toEqual(['sales']);
   });
-  it('creates Navigator-only sales access when registration comes from Navigator', async () => {
+  it('creates both sales products when registration comes from Navigator', async () => {
     const email = `Navigator.${randomUUID()}@example.invalid`.toLowerCase();
     expect((await register(email, 'Abc123', 'navigator')).status).toBe(200);
     const grants = (await pool.query(`SELECT g.product_id,g.role,a.active,a.scope FROM identity.users u JOIN identity.login_emails e USING(user_id)
       JOIN identity.product_grants g USING(user_id) LEFT JOIN identity.product_access a ON a.user_id=u.user_id AND a.product_id=g.product_id
       WHERE e.email=$1 ORDER BY g.product_id`, [email])).rows;
-    expect(grants).toEqual([{ product_id: 'navigator', role: 'sales', active: true, scope: 'own' }]);
+    expect(grants).toEqual([
+      { product_id: 'crm', role: 'sales', active: true, scope: 'own' },
+      { product_id: 'navigator', role: 'sales', active: true, scope: 'own' },
+    ]);
     const login = await fetch(`${base}/api/auth/desktop/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'Abc123' }) });
     const token = (await login.json() as any).data.token;
     const access = await fetch(`${base}/api/navigator/access`, { headers: { Authorization: `Bearer ${token}` } });

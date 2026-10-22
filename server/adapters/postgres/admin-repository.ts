@@ -3,7 +3,7 @@ import {readFile,statfs} from 'node:fs/promises';
 import path from 'node:path';
 import type {Pool,PoolClient} from 'pg';
 import {success,failure,type Result,type LogSink} from '../../core/crm';
-import {capabilitiesFor,effectiveCapabilitiesFor,productPermissionsFor,type AdminRepository,type AdminCommand,type ChallengeDraft,type ManagedUser,type UserPage,type UserQuery,type ProductInfo,type SessionInfo,type AuditInfo,type DataScope} from '../../core/admin';
+import {capabilitiesFor,effectiveCapabilitiesFor,navigatorGrantRoleFor,productPermissionsFor,type AdminRepository,type AdminCommand,type ChallengeDraft,type ManagedUser,type UserPage,type UserQuery,type ProductInfo,type SessionInfo,type AuditInfo,type DataScope} from '../../core/admin';
 import type {CrmRole} from '../../core/auth';
 import {ADMIN_SQL,ADMIN_VERSION,ADMIN_LOCK} from './admin-schema';
 import {USER_LIFECYCLE_SQL,USER_LIFECYCLE_VERSION} from './user-lifecycle-schema';
@@ -196,6 +196,9 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
    await c.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')",[targetId,initialPasswordHash]);
    for(const role of roles)await c.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[targetId,role]);
    await c.query("INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities) VALUES($1,'crm',true,$2,$3)",[targetId,scope,JSON.stringify(capabilities)]);
+    const navigatorRole=navigatorGrantRoleFor(cmd.role);
+    await c.query("INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,'navigator',$2,true)",[targetId,navigatorRole]);
+    await c.query("INSERT INTO identity.product_access(user_id,product_id,active,scope) VALUES($1,'navigator',true,'own')",[targetId]);
   }else if(cmd.action==='challenge.issue'){
    if(!challenge)return failure('INVALID_INPUT','缺少用途绑定挑战');
    const existing=await c.query(`SELECT e.user_id,u.active,u.deleted_at,EXISTS(SELECT 1 FROM identity.credentials c WHERE c.user_id=e.user_id) AS credentialed FROM identity.login_emails e JOIN identity.users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u`,[cmd.email]);

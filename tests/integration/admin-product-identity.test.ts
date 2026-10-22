@@ -66,8 +66,13 @@ describe.runIf(process.env.PROSPECTOR_A2_TEST === '1')('A2 PostgreSQL rollback-o
       expect((await repo.mutate(hash, { action: 'user.create', role, email, reason: 'A2 rollback verification' }, undefined, 'synthetic-hash')).ok).toBe(true);
       const user = (await client.query('SELECT u.user_id,u.must_change_password FROM identity.users u JOIN identity.login_emails e USING(user_id) WHERE e.email=$1', [email])).rows[0];
       expect(user.must_change_password).toBe(true);
-      expect((await client.query('SELECT role FROM identity.product_grants WHERE user_id=$1', [user.user_id])).rows).toEqual([{ role }]);
+      const navigatorRole = role === 'operations' ? 'operations' : 'sales';
+      expect((await client.query('SELECT product_id,role FROM identity.product_grants WHERE user_id=$1 ORDER BY product_id', [user.user_id])).rows).toEqual([
+        { product_id: 'crm', role },
+        { product_id: 'navigator', role: navigatorRole },
+      ]);
       expect((await client.query("SELECT scope,capabilities FROM identity.product_access WHERE user_id=$1 AND product_id='crm'", [user.user_id])).rows[0]).toEqual({ scope: productPermissionsFor(role).scope, capabilities: productPermissionsFor(role).capabilities });
+      expect((await client.query("SELECT active,scope FROM identity.product_access WHERE user_id=$1 AND product_id='navigator'", [user.user_id])).rows[0]).toEqual({ active: true, scope: 'own' });
     }
   });
 });

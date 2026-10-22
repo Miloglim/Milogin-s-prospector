@@ -181,8 +181,8 @@ export class PostgresAuthRepository implements AuthRepository {
       await client.query('INSERT INTO identity.users(user_id,display_name,identity_admin) VALUES($1,$2,false)', [userId, input.email.split('@')[0]]);
       await client.query('INSERT INTO identity.login_emails(user_id,email,verified_at) VALUES($1,$2,NULL)', [userId, input.email]);
       await client.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')", [userId, input.passwordHash]);
-      await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,$2,'sales')", [userId, input.product]);
-      await client.query("INSERT INTO identity.product_access(user_id,product_id,scope) VALUES($1,$2,'own')", [userId, input.product]);
+      for(const product of ["crm","navigator"]) await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,$2,'sales')", [userId, product]);
+      for(const product of ["crm","navigator"]) await client.query("INSERT INTO identity.product_access(user_id,product_id,scope) VALUES($1,$2,'own')", [userId, product]);
       await client.query("INSERT INTO identity.management_audit(actor_id,target_id,action,product_id,reason) VALUES($1,$1,'identity.register',$2,'邮箱自助注册；邮箱未验证')", [userId, input.product]);
       await client.query("INSERT INTO identity.outbox(event_type,user_id,product_id,revision) VALUES('identity.register',$1,$2,1)", [userId, input.product]);
       return success({ email: input.email });

@@ -46,6 +46,8 @@ export interface AdminRepository {
   consume(tokenHash:string,passwordHash:string):Promise<Result<void>>;
 }
 export function capabilitiesFor(roles:CrmRole[]):string[] { return [...new Set(roles.flatMap(role=>[...ROLE_CAPABILITIES[role]]))].sort(); }
+/** New accounts receive both products; operations maps to Navigator operations, others get sales access. */
+export function navigatorGrantRoleFor(role:CrmRole):"operations"|"sales" { return role==="operations"?"operations":"sales"; }
 /** Deterministic legacy display only; reading never rewrites persisted grants. */
 export function productRoleFor(roles:readonly CrmRole[]):CrmRole|undefined { return CRM_ROLES.find(role=>roles.includes(role)); }
 /** New explicit identity grants have one role and server-owned permissions. */
