@@ -22,7 +22,7 @@ function validCommand(v:unknown):v is AdminCommand {
  };
  if(typeof v.action!=='string'||!allowed[v.action]||Object.keys(v).some(k=>!allowed[v.action as string]!.includes(k)))return false;
  if(v.action!=='user.delete'&&!string(v.reason,ADMIN_LIMITS.reasonMax))return false;
- if(v.action==='user.delete'&&v.reason!==undefined&&!string(v.reason,ADMIN_LIMITS.reasonMax))return false;
+ if(v.action==='user.delete'&&v.reason!==undefined&&(typeof v.reason!=='string'||v.reason.length>ADMIN_LIMITS.reasonMax))return false;
  if(v.action==='user.create')return isAccountEmail(v.email)&&CRM_ROLES.includes(v.role as any);
  if(v.action==='challenge.issue')return (v.purpose==='activate'||v.purpose==='recover')&&isAccountEmail(v.email)&&string(v.displayName,ADMIN_LIMITS.displayNameMax);
  if(typeof v.userId!=='string'||!UUID.test(v.userId))return false;

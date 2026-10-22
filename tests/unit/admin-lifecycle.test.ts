@@ -34,6 +34,11 @@ describe('user lifecycle command boundary',()=>{
   expect((await service.mutate('session',{action:'user.delete',userId,revision:1},'synthetic-password')).ok).toBe(true);
   expect(mutate).toHaveBeenCalledWith('session',expect.objectContaining({action:'user.delete',reason:'未填写删除原因'}));
  });
+ it('accepts the blank optional deletion reason sent by the management form',async()=>{
+   const {service,mutate}=setup();
+   expect((await service.mutate('session',{action:'user.delete',userId,revision:1,reason:''},'synthetic-password')).ok).toBe(true);
+   expect(mutate).toHaveBeenCalledWith('session',expect.objectContaining({action:'user.delete',reason:'未填写删除原因'}));
+ });
  it('binds password reset to an immutable account ID and one-time challenge',async()=>{
   const {service,mutate}=setup();const command={action:'user.reset-password',userId,revision:1,reason:'requested'};
   const result=await service.mutate('session',command,'synthetic-password');

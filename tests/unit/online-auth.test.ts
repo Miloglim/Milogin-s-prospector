@@ -69,4 +69,14 @@ describe("online boundary guards",()=> {
     expect(await service.accountProfile(token)).toEqual(success(profile));
     expect(await service.accountProfile(token.slice(1))).toMatchObject({ok:false,error:{code:"UNAUTHORIZED"}});
   });
+  it('reports initial-password change before Navigator product access',async()=>{
+    const token='b'.repeat(43);
+    const repo={
+      identity:async()=>success({userId:'user-a',email:'new@example.invalid',mustChangePassword:true}),
+      navigatorAccess:async()=>{throw new Error('product access lookup must not run first');},
+    } as unknown as AuthRepository;
+    const service=createAuthService(repo,{verify:async()=>true},{create:()=>token,hash:()=>'hash'},{now:()=>0},1);
+    const result=await service.navigatorAccess(token);
+    expect(result).toMatchObject({ok:false,error:{code:'PASSWORD_CHANGE_REQUIRED'}});
+  });
 });
