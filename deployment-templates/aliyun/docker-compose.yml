@@ -40,7 +40,7 @@ services:
       - PROSPECTOR_CENTER_MODE=production
       - PROSPECTOR_CENTER_PG_DSN=postgresql://milogin_app:${CENTER_APP_PASSWORD}@127.0.0.1:55846/milogin_center
       - PROSPECTOR_CENTER_PUBLIC_ORIGIN=https://${CENTER_HOST}
-      - PROSPECTOR_NAVIGATOR_URL=http://127.0.0.1:8795
+      - PROSPECTOR_NAVIGATOR_URL=http://127.0.0.1:${NAVIGATOR_BRIDGE_PORT}
       - PROSPECTOR_NAVIGATOR_ENTRY_URL=https://${NAVIGATOR_HOST}
       - PROSPECTOR_ONLINE_INSTANCE=${PROSPECTOR_ONLINE_INSTANCE}
     depends_on:
@@ -50,6 +50,7 @@ services:
 
   nav-api:
     image: logistics-nav:6.50.0
+    profiles: ["legacy-navigator"]
     build:
       context: ${RELEASE_ROOT}/navigator/Database
     container_name: nav-api
@@ -80,7 +81,6 @@ services:
       - caddy_config:/config
     depends_on:
       - center-api
-      - nav-api
     restart: always
 
 volumes:

@@ -3,15 +3,17 @@
 ## 当前拓扑
 
 ```text
-外部用户
-  -> https://rates-office.47.96.159.26.sslip.io
+外部用户 / 中心后台
+  -> https://rates.47.96.159.26.sslip.io（兼容入口 rates-office）
   -> 阿里云 Caddy :443
   -> 阿里云回环 127.0.0.1:18795
   -> SSH 反向隧道
   -> 本机 Navigator 127.0.0.1:8795
 ```
 
-本机中心与 Navigator 的原有端口不变。阿里云 Caddy 配置文件位于 `/opt/logistics-api/releases/20261021T083709Z/Caddyfile`，新入口加入前备份为同目录 `Caddyfile.before-office-tunnel-20261022T145500+0800`。
+服务器 `nav-api` 已停止并退出自动启动，只保留为 compose 的 `legacy-navigator` 手动回退 profile。中心容器内部 `PROSPECTOR_NAVIGATOR_URL` 和 Caddy 的 `rates.47…` 都指向桥接端口 `18795`。本机 Navigator 的原端口不变。
+
+阿里云 Caddy 配置文件位于 `/opt/logistics-api/releases/20261021T083709Z/Caddyfile`；桥接切换前备份为同目录 `Caddyfile.before-local-bridge-20261022T153000+0800`。compose 备份为同目录 `docker-compose.before-local-bridge-20261022T153000+0800.yml`。
 
 ## 安全边界
 
@@ -43,6 +45,7 @@ Invoke-RestMethod 'http://127.0.0.1:8795/api/health/live'
 Get-ScheduledTask -TaskName 'Milogin Navigator Office Tunnel'
 Get-ScheduledTaskInfo -TaskName 'Milogin Navigator Office Tunnel'
 Invoke-RestMethod 'https://rates-office.47.96.159.26.sslip.io/api/health/live'
+Invoke-RestMethod 'https://rates.47.96.159.26.sslip.io/api/health/live'
 ```
 
 如果健康检查失败，先确认本机 `8795`、电脑联网和 Windows 登录状态，再停止并启动同名计划任务。服务器端可检查 `ss -ltnp | grep 18795`，不直接开放该端口。
@@ -54,5 +57,5 @@ Invoke-RestMethod 'https://rates-office.47.96.159.26.sslip.io/api/health/live'
 ## 已知边界
 
 - 本机、网络或登录会话离线时，外部入口立即不可用；这是过渡方案，不是最终高可用生产部署。
-- 本机 Navigator 已切换为服务器中心身份源。本机与外部同事统一使用中心账号及其 Navigator 产品准入；本机中心服务仍可供其他本机开发链路使用，但不再是该 Navigator 的登录真源。
+- 本机 Navigator 已切换为服务器中心身份源。本机与外部同事统一使用中心账号及其 Navigator 产品准入；本机中心服务仍可供 Prospector 开发端等其他本机开发链路使用，但不再是 Navigator 的登录真源。
 - 该入口不应绕过 Navigator 自身账号权限。管理员账号只发给授权管理员，普通分公司人员使用独立销售账号。

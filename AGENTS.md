@@ -70,6 +70,7 @@
 - 正式 Windows 包禁止直接运行普通 `npm run pack` 后发布，因为会把开发用 `assets/center.json` 和 `127.0.0.1` 带进安装包。必须使用 `scripts/package-formal-download.ps1`，显式传入不同的中心与 Navigator HTTPS Origin，并核对 `dist-release/win-unpacked/resources/assets/center.json` 后发布。
 - 安装包里的 Navigator 地址对其他电脑必须是可访问的固定 Origin；`127.0.0.1` 只指向每台用户自己的电脑。当前本机 Navigator 的外部过渡入口为 `https://rates-office.47.96.159.26.sslip.io`，依赖本机、Windows 登录会话和反向隧道在线。
 - 本机 Navigator 的本地 `Database/ops/runtime.json` 必须保持服务器中心 `center_auth_url=https://crm.47.96.159.26.sslip.io` 与 `trusted_proxy_https=true`；watchdog 会把后者转换为服务进程的 `NAVIGATOR_TRUSTED_PROXY_HTTPS=1`。不要依赖用户级环境变量或手工命令行碰巧带上该标记。重启后应验证 `/api/prospector/authorize` 返回 200，无效登录由服务器中心拒绝，异源登录仍返回 403。
+- 阿里云正式环境的 `nav-api` 已停用并只保留为 `legacy-navigator` 手动回退 profile；中心内部和 Caddy 的 Navigator 入口都指向 SSH 桥接端口 `127.0.0.1:18795`。常规部署不得让 `rates.47…` 重新落到服务器 `8795`，否则会恢复为无法连接公司知识库的旧架构。
 
 ## 跟进看板详情陷阱（2026-10-21）
 
