@@ -1,5 +1,11 @@
 # 本机中心账号与 API
 
+## 2026-10-22 管理账号创建与密码重置
+
+`POST /admin-api/command` 的 `user.create` 必须在请求体的独立 `password` 字段中携带管理员为账号设置的初始密码；该值只进入密码哈希，不写入管理命令、审计、日志或返回体。账号创建后仍设置 `must_change_password=true`，首次登录必须改成本人密码。服务端拒绝缺失或不符合账号密码规则的初始密码，禁止再用固定默认密码。
+
+`POST /admin-api/command` 的 `user.reset-password` 会生成一次性恢复链接；`POST /admin-api/challenge` 在生产 HTTPS 环境同样可用，不依赖 `test_mode`。消费时仍校验同源、来源限流、15 分钟有效期、一次性令牌、账号未停用/删除和目标邮箱未变化；成功后更新中心凭据、撤销旧会话并记录审计。账号激活类 `challenge.issue` 仍只保留本机开通流程。
+
 ## 2026-10-21 只读系统运行摘要
 
 `GET /admin-api/operations` 只接受有效浏览器管理会话，返回统一 `{ok:true,data:OperationsSummary}`。`OperationsSummary` 包含中心版本、`uptime_seconds`、检查时间和中心/数据库/磁盘/备份检查；transport 在读取中心快照后附加 Navigator `/api/health/live` 结果，Navigator 不可用时单项返回 `offline`，不影响其余中心状态返回。

@@ -6,8 +6,6 @@ import type { AuthService } from "./auth";
 interface AdminPasswords { verify(password:string,hash:string):Promise<boolean>; hash(password:string):Promise<string>; }
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MILLISECONDS=1000;
-// Public initial credential explicitly requested by the administrator; stored only hashed.
-const INITIAL_PASSWORD='123456';
 function object(v:unknown):v is Record<string,unknown> {return !!v && typeof v==='object' && !Array.isArray(v);}
 function string(v:unknown,max:number):v is string {return typeof v==='string' && !!v.trim() && v.length<=max;}
 function validCommand(v:unknown):v is AdminCommand {
@@ -57,7 +55,8 @@ export function createAdminService(repo:AdminRepository,authRepo:AuthRepository,
    const actor=await authenticated(token);if(!actor.ok)return actor;
    if(input.action==='user.create'){
     if(!actor.data.identityAdmin)return failure('FORBIDDEN','无创建用户权限');
-    try{const result=await repo.mutate(tokens.hash(token),{...input,email:input.email.trim().toLowerCase()},undefined,await passwords.hash(INITIAL_PASSWORD));return result.ok?success({}):result;}
+    if(!isNewAccountPassword(password))return failure('INVALID_INPUT','初始密码至少6位，仅允许英文字母和数字');
+    try{const result=await repo.mutate(tokens.hash(token),{...input,email:input.email.trim().toLowerCase()},undefined,await passwords.hash(password));return result.ok?success({}):result;}
     catch{return failure('UNAVAILABLE','创建用户暂不可用');} // never expose the password/hash
    }
    if(input.action==='user.update'||input.action==='product.update'||input.action==='navigator.update'){

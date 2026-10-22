@@ -67,6 +67,11 @@ describe('same-origin browser administration boundary',()=>{
   expect((await fetch(base+'/admin-api/challenge',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status).toBe(403);
   expect((await fetch(base+'/admin-api/users?limit=0',{headers:{Cookie:`milogin_admin=${token}`}})).status).toBe(400);
  });
+ it('allows a same-origin one-time password challenge in production',async()=>{
+  const base=await setup({test_mode:false,local_http:true});
+  const response=await fetch(base+'/admin-api/challenge',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({token:'b'.repeat(43),password:'Abc123'})});
+  expect(response.status).toBe(200);
+ });
  it('accepts only the configured HTTPS origin and marks production cookies Secure',async()=>{
   const base=await setup({test_mode:false,public_origin:'https://center.example.test'});
   const headers={'Content-Type':'application/json'};

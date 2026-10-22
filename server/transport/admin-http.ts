@@ -75,7 +75,6 @@ export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:To
    send(response,success({identity:result.data.identity,expiresAt:result.data.expiresAt,csrf:tokens.hash(`csrf:${result.data.token}`)}));return;
   }
   if(method==='POST'&&path===ADMIN_ROUTES.consume){
-   if(!config.test_mode){send(response,failure('FORBIDDEN','一次性凭据仅用于本机测试'));return;}
    if(!gate.allow('challenge-consume',address)){send(response,failure('RATE_LIMITED','密码设置尝试过多'));return;}
    const input=await body(request,config.request_body_bytes);send(response,input.ok?await admin.consume(input.data):input);return;
   }
@@ -109,7 +108,7 @@ export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:To
    if(!gate.allow(`management:${tokens.hash(token)}`,address)){send(response,failure('RATE_LIMITED','重新认证尝试过多'));return;}
    const input=await body(request,config.request_body_bytes);if(!input.ok){send(response,input);return;}
    if(!record(input.data)||Object.keys(input.data).some(k=>k!=='command'&&k!=='password')){send(response,failure('INVALID_INPUT','管理请求无效'));return;}
-   if(record(input.data.command)&&input.data.command.action==='challenge.issue'&&!config.test_mode){send(response,failure('FORBIDDEN','一次性凭据仅用于本机测试'));return;}
+   if(record(input.data.command)&&input.data.command.action==='challenge.issue'&&!config.test_mode){send(response,failure('FORBIDDEN','账号激活链接仅用于本机开通流程'));return;}
    send(response,await admin.mutate(token,input.data.command,input.data.password));return;
   }
   send(response,failure('NOT_FOUND','管理接口不存在'));

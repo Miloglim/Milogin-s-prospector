@@ -280,7 +280,7 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
   await c.query(`UPDATE identity.users SET active=true,must_change_password=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1`,[challenge.user_id]);
   await c.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[challenge.user_id]);
   await c.query('UPDATE identity.management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[challenge.user_id]);
-  await c.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,reason) VALUES($1,$2,$3,'测试用途绑定挑战已消费；邮箱未验证')`,[challenge.issuer_id,challenge.user_id,`challenge.${challenge.purpose}`]);
+  await c.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,reason) VALUES($1,$2,$3,'管理挑战已消费；邮箱未验证')`,[challenge.issuer_id,challenge.user_id,`challenge.${challenge.purpose}`]);
   await c.query(`INSERT INTO identity.outbox(event_type,user_id,revision) SELECT 'identity.password.changed',user_id,management_revision FROM identity.users WHERE user_id=$1`,[challenge.user_id]);
   return success(undefined);
  }));}

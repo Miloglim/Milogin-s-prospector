@@ -4,17 +4,25 @@ import { success } from '../../server/core/crm';
 const userId='11111111-1111-4111-8111-111111111111';
 function setup(){
  const mutate=vi.fn().mockResolvedValue(success(undefined));
+ const hash=vi.fn(async(value:string)=>`hash:${value}`);
  const service=createAdminService({mutate} as any,{credential:async()=>success({active:true,passwordHash:'hash'})} as any,
-  {verify:async()=>true,hash:async()=>''},{create:()=> 'a'.repeat(43),hash:v=>v},{now:()=>0},
+  {verify:async()=>true,hash},{create:()=> 'a'.repeat(43),hash:v=>v},{now:()=>0},
   {me:async()=>success({email:'actor@example.invalid',identityAdmin:true,mustChangePassword:false})} as any);
- return {service,mutate};
+ return {service,mutate,hash};
 }
 describe('user lifecycle command boundary',()=>{
- it('creates a role-selected account and saves permissions without reauthentication',async()=>{
-  const {service,mutate}=setup();
-  expect((await service.mutate('session',{action:'user.create',email:'new@example.invalid',role:'operations',reason:'create'},undefined)).ok).toBe(true);
-  expect(mutate).toHaveBeenCalledWith('session',expect.objectContaining({action:'user.create'}),undefined,expect.any(String));
+ it('creates a role-selected account with the administrator-provided initial password',async()=>{
+  const {service,mutate,hash}=setup();
+  expect((await service.mutate('session',{action:'user.create',email:'new@example.invalid',role:'operations',reason:'create'},'Abc123')).ok).toBe(true);
+  expect(hash).toHaveBeenCalledWith('Abc123');
+  expect(mutate).toHaveBeenCalledWith('session',expect.objectContaining({action:'user.create'}),undefined,'hash:Abc123');
   expect((await service.mutate('session',{action:'user.update',userId,revision:1,active:true,identityAdmin:false,reason:'save'},undefined)).ok).toBe(true);
+ });
+ it('rejects account creation without a valid initial password',async()=>{
+  const {service,mutate}=setup();
+  expect((await service.mutate('session',{action:'user.create',email:'new@example.invalid',role:'operations',reason:'create'},undefined)).ok).toBe(false);
+  expect((await service.mutate('session',{action:'user.create',email:'new@example.invalid',role:'operations',reason:'create'},'123')).ok).toBe(false);
+  expect(mutate).not.toHaveBeenCalled();
  });
  it('accepts deletion with version and audit reason',async()=>{
   const {service,mutate}=setup();const command={action:'user.delete',userId,revision:1,reason:'departed'};

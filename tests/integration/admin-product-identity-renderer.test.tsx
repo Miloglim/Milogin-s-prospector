@@ -44,6 +44,22 @@ describe('A2 management single identity renderer', () => {
     await editor(); await click('保存配置');
     expect(api.command).toHaveBeenCalledWith(expect.objectContaining({ action: 'product.update', userId: 'target', role: 'operations', ...productPermissionsFor('operations') }));
   });
+  it('requires the administrator to set an initial password when creating a user', async () => {
+    await act(async () => { root.render(<AdminApp initialChallenge={null} />); await flush(); });
+    await click('创建用户');
+    const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(element => element.textContent?.includes('初始密码'))!;
+    const email = Array.from(dialog.querySelectorAll<HTMLInputElement>('input')).find(input => input.type !== 'password' && input.getAttribute('role') !== 'combobox')!;
+    const passwords = Array.from(dialog.querySelectorAll<HTMLInputElement>('input[type="password"]'));
+    expect(passwords).toHaveLength(2);
+    await act(async () => {
+      setInput(email, 'operator@example.invalid');
+      setInput(passwords[0]!, 'Init123');
+      setInput(passwords[1]!, 'Init123');
+      await flush();
+    });
+    await act(async () => { Array.from(dialog.querySelectorAll('button')).find(button => button.textContent?.trim() === '创建用户')!.click(); await flush(); });
+    expect(api.command).toHaveBeenCalledWith(expect.objectContaining({ action: 'user.create', email: 'operator@example.invalid' }), 'Init123');
+  });
   it('offers password change after login and signs out after it succeeds', async () => {
     vi.spyOn(api, 'password').mockResolvedValue(undefined);
     await act(async () => { root.render(<AdminApp initialChallenge={null} />); await flush(); });
