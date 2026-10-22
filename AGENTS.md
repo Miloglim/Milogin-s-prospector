@@ -69,7 +69,7 @@
 
 - 正式 Windows 包禁止直接运行普通 `npm run pack` 后发布，因为会把开发用 `assets/center.json` 和 `127.0.0.1` 带进安装包。必须使用 `scripts/package-formal-download.ps1`，显式传入不同的中心与 Navigator HTTPS Origin，并核对 `dist-release/win-unpacked/resources/assets/center.json` 后发布。
 - 安装包里的 Navigator 地址对其他电脑必须是可访问的固定 Origin；`127.0.0.1` 只指向每台用户自己的电脑。当前本机 Navigator 的外部过渡入口为 `https://rates-office.47.96.159.26.sslip.io`，依赖本机、Windows 登录会话和反向隧道在线。
-- 本机 Navigator 通过反向代理对外提供服务时，启动环境必须保留用户级 `NAVIGATOR_TRUSTED_PROXY_HTTPS=1`；否则浏览器登录和设备授权会被误判为非 HTTPS。该变量只信任本机反向代理传递的 `X-Forwarded-Proto`，不是关闭来源校验。重启 Navigator 后应验证 `/api/prospector/authorize` 返回 200，异源登录仍返回 403。
+- 本机 Navigator 的本地 `Database/ops/runtime.json` 必须保持服务器中心 `center_auth_url=https://crm.47.96.159.26.sslip.io` 与 `trusted_proxy_https=true`；watchdog 会把后者转换为服务进程的 `NAVIGATOR_TRUSTED_PROXY_HTTPS=1`。不要依赖用户级环境变量或手工命令行碰巧带上该标记。重启后应验证 `/api/prospector/authorize` 返回 200，无效登录由服务器中心拒绝，异源登录仍返回 403。
 
 ## 跟进看板详情陷阱（2026-10-21）
 

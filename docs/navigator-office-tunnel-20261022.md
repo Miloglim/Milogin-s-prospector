@@ -20,19 +20,15 @@
 - 家庭或公司路由器不开放 Navigator 入站端口。
 - Windows 计划任务名为 `Milogin Navigator Office Tunnel`，运行 [守护脚本](<D:/Agent Basement/Milogin-s-prospector/scripts/navigator-office-tunnel.ps1>) 的安装副本 `%LOCALAPPDATA%\Milogin\navigator-office-tunnel.ps1`。
 - SSH 正常退出或连接断开后，守护脚本等待 10 秒自动重连；日志位于 `%LOCALAPPDATA%\Milogin\Logs\navigator-office-tunnel.log`。
-- 本机 Navigator 的用户级环境变量 `NAVIGATOR_TRUSTED_PROXY_HTTPS=1` 必须保留。它让 Navigator 接受由本机 Caddy/SSH 链路传来的 `X-Forwarded-Proto: https`，同时继续拒绝异源浏览器请求。
+- 本机 `Database/ops/runtime.json` 必须配置服务器中心 `center_auth_url=https://crm.47.96.159.26.sslip.io` 和 `trusted_proxy_https=true`。watchdog 启动服务时会传递受信代理设置；不要只改用户级环境变量。
 
 ## Navigator 重启
 
-重启 Navigator 时必须让新进程继承受信代理变量。当前网络入口使用以下原参数，不得改成其他端口或数据库：
+重启 Navigator 必须通过项目 watchdog，确保服务器中心身份和受信代理设置同时生效。不得改成其他端口或数据库：
 
 ```powershell
-$env:NAVIGATOR_TRUSTED_PROXY_HTTPS = '1'
 Set-Location 'C:\Users\YQN\Documents\正式版运价库\运价项目\Database'
-& '.\.runtime\python\python.exe' '.\manual_server.py' --daemon --host 0.0.0.0 --port 8795 `
-  --db '.\freight_manual.db' --backend postgres `
-  --postgres-env-file 'C:\ProgramData\FreightRate\freight-postgres.env' `
-  --center-auth-url 'http://127.0.0.1:55847'
+& '.\.runtime\python\python.exe' '.\ops\watchdog.py' --force
 ```
 
 启动后应同时验证本机健康和设备授权页：
@@ -53,10 +49,10 @@ Invoke-RestMethod 'https://rates-office.47.96.159.26.sslip.io/api/health/live'
 
 已验证直接结束隧道 `ssh.exe` 后入口短暂不可用，守护脚本随后自动建立新进程并恢复健康，无需人工重启任务。
 
-已验证外部设备授权页返回 200；同源浏览器登录进入 Navigator 业务校验，异源请求仍返回 `origin_rejected`。尚未使用外部分公司真实账号完成登录、设备授权和查价的完整点击链。
+已验证外部设备授权页返回 200；无效账号登录由服务器中心拒绝，异源请求仍返回 `origin_rejected`。尚未使用外部分公司真实账号完成登录、设备授权和查价的完整点击链。
 
 ## 已知边界
 
 - 本机、网络或登录会话离线时，外部入口立即不可用；这是过渡方案，不是最终高可用生产部署。
-- 当前本机 Navigator 仍以本机中心为身份源。外部同事使用 Navigator 本地账号，不自动使用服务器中心单点登录。
+- 本机 Navigator 已切换为服务器中心身份源。本机与外部同事统一使用中心账号及其 Navigator 产品准入；本机中心服务仍可供其他本机开发链路使用，但不再是该 Navigator 的登录真源。
 - 该入口不应绕过 Navigator 自身账号权限。管理员账号只发给授权管理员，普通分公司人员使用独立销售账号。
