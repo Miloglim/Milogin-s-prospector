@@ -6,6 +6,7 @@ import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContactPicker } from "./ContactPicker";
 import { takeDevLetterPreset } from "../../lib/homeCards";
+import { nextCampaignName } from "../../../shared/campaign-name";
 
 /**
  * 开发任务创建向导（定时器式任务组营销）：子窗口内完成 5 步 —— 选人 → 发送模式 → 触点计划 → 定时与账号 → 确认。
@@ -101,6 +102,12 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
   });
   const templates = templateData?.success ? templateData.data || [] : [];
   const accounts = accountsData?.success ? accountsData.data || [] : [];
+  const { data: campaignsData } = useQuery({
+    queryKey: ["campaigns"],
+    queryFn: () => window.api.invoke("send:campaigns") as Promise<{ success: boolean; data?: Array<{ name: string }> }>,
+  });
+  const automaticName = nextCampaignName(campaignsData?.success ? (campaignsData.data || []).map(row => row.name) : []);
+  const effectiveName = name.trim() || automaticName;
 
   // 草稿编辑：拉详情预填（名单/计划/账号/调度全量回填，保存时全量替换）
   useEffect(() => {
@@ -153,7 +160,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
     selectedIds.length > 0,                                          // 1 选人
     true,                                                            // 2 模式
     rounds.length > 0 && rounds.every(r => r.stage),                 // 3 计划
-    !!name.trim() && (acctMode === "rotate" || acctIds.length > 0),  // 4 定时账号
+    acctMode === "rotate" || acctIds.length > 0,                       // 4 定时账号
     true,                                                            // 5 确认
   ][step] ?? false;
 
@@ -163,15 +170,14 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
     if (i === 1) return selectedIds.length > 0;
     if (i === 2) return true;
     if (i === 3) return rounds.length > 0 && rounds.every(r => !!r.stage && !roundInvalid(r));
-    return !!name.trim() && (acctMode === "rotate" || acctIds.length > 0)
+    return (acctMode === "rotate" || acctIds.length > 0)
       && rounds.length > 0 && rounds.every(r => !!r.stage && !roundInvalid(r));
   };
   const goStep = (i: number) => {
     if (i === step) return;
     if (i < step) { setStep(i); return; }
     if (!stepReady(i)) {
-      message.warning(i >= 4 && !name.trim() ? "任务名还没填（第 4 步）"
-        : rounds.some(roundInvalid) ? "有轮次的内容/模板没填完（第 3 步）" : "还有必填项没配齐");
+      message.warning(rounds.some(roundInvalid) ? "有轮次的内容/模板没填完（第 3 步）" : "还有必填项没配齐");
       return;
     }
     setStep(i);
@@ -200,7 +206,6 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
 
   /** 添加任务 = 创建草稿（不排触点）；启动由用户在任务卡片上手动点（startNow 恒 false） */
   const submit = async () => {
-    if (!name.trim()) { message.warning("任务名必填"); setStep(3); return; }
     if (rounds.some(roundInvalid)) { message.warning("有轮次的内容/模板未填完（第 3 步）"); setStep(2); return; }
     setSubmitting(true);
     try {
@@ -217,10 +222,11 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
       // 只添加不启动：任何 IPC 异常必须显形（曾被静默吞掉 → 按钮"点不动"无任何反馈）
       const ch = draftId ? "send:campaignUpdateDraft" : "send:campaignCreate";
       const r = await window.api.invoke(ch, { ...payload, startNow: false }) as
-        { success: boolean; error?: string; data?: { eligible: number; excluded: number } };
+        { success: boolean; error?: string; data?: { name: string; eligible: number; excluded: number } };
       if (!r?.success) { message.error(r?.error || "保存失败"); return; }
       const eligible = r.data?.eligible ?? selectedIds.length;
-      message.success(`已添加任务「${name.trim()}」：${eligible} 人 × ${rounds.length} 轮——到任务卡片点「启动」开始执行`);
+      const finalName = r.data?.name || effectiveName;
+      message.success(`已添加任务「${finalName}」：${eligible} 人 × ${rounds.length} 轮——到任务卡片点「启动」开始执行`);
       invalidateDomain(qc, "send");
       // 名单已归属任务 → 首页推荐与选人器灰显一起重算（漏一条就会"还在推荐同一批人"，规范 §5）
       void invalidateDomain(qc, "send");
@@ -383,8 +389,8 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
 >
           <div className="space-y-4">
             <div>
-              <div className="text-[11px] text-gray-500 mb-1">任务名（必填）</div>
-              <Input size="small" style={{ width: 320 }} placeholder="如：巴西冷客户·4 触点"
+              <div className="text-[11px] text-gray-500 mb-1">任务名</div>
+              <Input size="small" style={{ width: 320 }} placeholder={`留空自动生成：${automaticName}`}
                 value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div>
@@ -453,7 +459,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
 >
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[12px]">
-              <div className="flex justify-between"><span className="text-gray-500">任务名</span><span className="font-medium text-gray-800">{name}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">任务名</span><span className="font-medium text-gray-800">{effectiveName}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">发送模式</span><span className="text-gray-800">{modeLabel}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">投递方式</span><span className="text-gray-800">{sendMode === "individual" ? "单独发送（每人一封）" : "合并一封（BCC）"}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">触点计划</span><span className="text-gray-800">{rounds.length} 轮</span></div>

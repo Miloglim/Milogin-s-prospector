@@ -43,6 +43,7 @@ function ContactTableSkeleton() {
 function readView(): LegacyView {
   const value = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('view');
   if (value === 'board') return 'board';
+  if (value === 'table') return 'table';
   if (value === 'company') return 'company';
   if (value === 'assignments') return 'assignments';
   return 'board';

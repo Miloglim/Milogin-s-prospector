@@ -122,6 +122,24 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('B1 synthetic Post
   const followup = unwrap(await service.followup(ops.token, { customerId: id, expectedVersion: clear.version + 1, idempotencyKey: randomUUID(), note }));
   expect(followup).toMatchObject({ customerId: id, version: clear.version + 2, contacts: [], activities: [{ note, method: 'other', contactId: null, contactStatus: null }] });
  });
+ it('restores a mapped soft-deleted contact without changing its original source', async () => {
+  const email=`restore-${randomUUID()}@example.invalid`;
+  const request=input([
+   row('restore-parent'),
+   row('restore-contact',{entity:'contact',customerRef:'restore-parent',email,name:'Restore Candidate',sheetName:'contacts',rowNumber:3}),
+  ]);
+  const created=unwrap(await service.importWorkbook(ops.token,request));
+  const customerId=created.rows[0]!.customerId!,detail=unwrap(await service.detail(ops.token,customerId));
+  const contact=detail.contacts[0]!,version=(await pool.query('SELECT crm_contact_version FROM contacts WHERE id=$1',[contact.contactId])).rows[0].crm_contact_version;
+  unwrap(await contactActions.deleteContacts(ops.token,{contacts:[{contactId:contact.contactId,customerId,expectedVersion:version}],idempotencyKey:randomUUID()}));
+  const restored=unwrap(await service.importWorkbook(ops.token,{...request,idempotencyKey:randomUUID()}));
+  expect(restored.rows.map(row=>row.status)).toEqual(['duplicate','appended']);
+  const current=(await pool.query('SELECT id,source,crm_deleted_at,crm_contact_version FROM contacts WHERE id=$1',[contact.contactId])).rows[0];
+  expect(current).toMatchObject({id:contact.contactId,source});
+  expect(current.crm_deleted_at).toBeNull();
+  expect(current.crm_contact_version).toBeGreaterThan(version);
+  expect((await pool.query("SELECT count(*)::int AS n FROM identity.outbox WHERE event_type='crm.contact.updated' AND payload->>'contactId'=$1",[String(contact.contactId)])).rows[0].n).toBeGreaterThan(0);
+ });
  it('rolls back company, customer, mapping and evidence together when atomic outbox insertion fails', async () => {
   await pool.query("CREATE OR REPLACE FUNCTION crm_b1_synthetic_outbox_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic failure'; RETURN NEW; END $$");
   const trigger = `b1_test_${sales.id.replace(/-/g, '')}`;

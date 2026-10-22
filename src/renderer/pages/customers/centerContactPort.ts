@@ -96,7 +96,10 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
       if (!isCurrent()) return {success:false,error:'账号或权限已变化'};
       if (!result.ok) return { success: false, error: result.error.message };
       const receipt = result.data.rows[0];
-      if (receipt?.status !== 'created') return { success: false, error: receipt?.status === 'duplicate' ? '联系人已存在' : receipt?.message ?? '联系人未创建' };
+      if (receipt?.status !== 'created') {
+        creation = null;
+        return { success: false, error: receipt?.status === 'duplicate' ? '联系人已存在' : receipt?.message ?? '联系人未创建' };
+      }
       creation = null; return { success: true };
     },
     async export(kind, filters) {

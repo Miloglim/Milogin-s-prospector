@@ -6,6 +6,7 @@ export const ADMIN_ROUTES = {
   users: "/admin-api/users", products: "/admin-api/products", sessions: "/admin-api/sessions",
   audit: "/admin-api/audit", mutate: "/admin-api/command", consume: "/admin-api/challenge",
   password: "/admin-api/password", dashboard: "/admin-api/dashboard",
+  operations: "/admin-api/operations",
   navigatorDashboard: "/admin-api/navigator/dashboard",
 } as const;
 export const ADMIN_LIMITS = { page:25, pageMax:100, searchMax:254, reasonMax:500, displayNameMax:80, challenge_ttl_seconds:900 } as const;

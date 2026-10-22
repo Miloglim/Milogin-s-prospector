@@ -1,6 +1,6 @@
 import type {ContactPermissions} from './contact-sharing';
 import { CRM_STAGES, failure, success, type JsonObject, type Result } from './crm';
-import type { ContactTouchStatus, CustomerStage, LeadState } from './leads';
+import { CONTACT_TOUCH_STATUSES, type ContactTouchStatus, type CustomerStage, type LeadState } from './leads';
 
 export const CENTER_CONTACT_ROUTE = '/api/crm/contacts';
 export const CENTER_CONTACT_LIMITS = { page: 50, pageMax: 100, text: 500 } as const;
@@ -63,7 +63,7 @@ export function centerContactQuery(value: unknown): Result<CenterContactQuery> {
     query.crmStage = input.crmStage as CustomerStage;
   }
   if (input.touchStatus !== undefined) {
-    if (!['uncontacted', 'contacted', 'replied', 'unreachable'].includes(input.touchStatus as string)) return failure('INVALID_INPUT', '联系人联系状态无效');
+    if (!CONTACT_TOUCH_STATUSES.includes(input.touchStatus as ContactTouchStatus)) return failure('INVALID_INPUT', '联系人联系状态无效');
     query.touchStatus = input.touchStatus as ContactTouchStatus;
   }
   for (const key of CENTER_CONTACT_FILTERS) {

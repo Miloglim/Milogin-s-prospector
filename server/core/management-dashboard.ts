@@ -33,8 +33,28 @@ export interface ManagementDashboard {
   alerts: DashboardAlert[];
   receipts: DashboardReceipt[];
 }
+export type OperationsCheckId = "center" | "navigator" | "database" | "disk" | "backup";
+export interface OperationsCheck {
+  id: OperationsCheckId;
+  label: string;
+  state: DashboardState;
+  value: string;
+  valueLabel: string;
+  detail: string;
+}
+export interface OperationsSummary {
+  generatedAt: string;
+  version: string;
+  uptime_seconds: number;
+  checks: OperationsCheck[];
+}
+export const OPERATIONS_LIMITS = {
+  disk_attention_usage_percent: 85,
+  disk_offline_usage_percent: 95,
+} as const;
 export interface ManagementDashboardRepository {
   dashboard(tokenHash: string): Promise<Result<ManagementDashboard>>;
+  operations(tokenHash: string): Promise<Result<OperationsSummary>>;
 }
 /** Global operational counts must never expand an own/shared business scope. */
 export function canReadManagementDashboard(actor: { identityAdmin: boolean; scope: string; roles: string[]; capabilities: string[] }): boolean {

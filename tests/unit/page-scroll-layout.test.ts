@@ -18,11 +18,11 @@ describe('page scroll containment', () => {
     expect(globalCss).toMatch(/\.app-titlebar\s*\{[^}]*border-bottom:\s*0;/s);
   });
 
-  it('provides a persisted black workspace preference in settings', () => {
+  it('provides a persisted workspace appearance preference in settings', () => {
     const settings = readFileSync(resolve(root, 'src/renderer/pages/settings/SettingsPage.tsx'), 'utf8');
     const preferences = readFileSync(resolve(root, 'src/renderer/lib/workspace-preferences.ts'), 'utf8');
-    expect(settings).toContain('title="工作区外观"');
-    expect(settings).toContain('黑色工作区');
+    expect(settings).toContain('title="界面与启动"');
+    expect(settings).toContain('深浅色切换');
     expect(preferences).toContain("prospector:workspace-dark");
     expect(globalCss).toMatch(/body\.workspace-dark\s*\{[^}]*--workspace-canvas:\s*#0b0d0f;[^}]*--workspace-surface:\s*#15181b;[^}]*--workspace-control:\s*#202328;/s);
   });

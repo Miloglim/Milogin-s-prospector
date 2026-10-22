@@ -187,10 +187,17 @@ describe("campaign IPC 端到端（向导 payload → transport → 落库）", 
     expect(JSON.parse(c.touchPlanJson)).toHaveLength(1);
   });
 
+  it("任务名为空时按现有任务自动生成任务1、任务2", () => {
+    const first = invoke<{ name: string }>(IPC.SEND.CAMPAIGN_CREATE, { ...wizardPayload, name: "   ", startNow: false });
+    const second = invoke<{ name: string }>(IPC.SEND.CAMPAIGN_CREATE, { ...wizardPayload, name: "", startNow: false });
+    expect(first).toMatchObject({ success: true, data: { name: "任务1" } });
+    expect(second).toMatchObject({ success: true, data: { name: "任务2" } });
+  });
+
   it("失败也走 Result 包络（不抛异常、renderer 能拿到 error 文案）", () => {
-    const r = invoke(IPC.SEND.CAMPAIGN_CREATE, { ...wizardPayload, name: "   " });
+    const r = invoke(IPC.SEND.CAMPAIGN_CREATE, { ...wizardPayload, contactIds: [] });
     expect(r.success).toBe(false);
-    expect(r.error).toContain("任务名必填");
+    expect(r.error).toContain("名单为空");
   });
 });
 

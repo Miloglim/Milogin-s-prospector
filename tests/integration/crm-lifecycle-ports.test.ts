@@ -12,6 +12,15 @@ describe('original CRM lifecycle adapters',()=>{
  it('rejects mixed protected batches and stale-account operations before IPC',async()=>{
   let active=true;const invoke=vi.fn(async()=>({ok:true,data:{items:[row,{...row,contactId:43,canDelete:false}],total:2}}));const port=createCenterContactPort({key:'k',invoke:invoke as never,isCurrent:()=>active});await port.list();expect(await port.deleteBatch!([42,43])).toMatchObject({success:false});active=false;expect(await port.delete(42)).toMatchObject({success:false});expect(invoke).toHaveBeenCalledTimes(1);
  });
+ it('starts a fresh add request after a terminal duplicate receipt',async()=>{
+  let attempt=0;const calls:Array<Record<string,unknown>>=[];
+  const invoke=vi.fn(async(channel,input)=>{if(channel!==ONLINE_CHANNELS.IMPORT)throw Error(channel);calls.push(input as Record<string,unknown>);const status=++attempt===1?'duplicate':'created';return {ok:true,data:{batchId:'batch',version:1,rows:[{status,customerId:row.customerId}]}};});
+  const port=createCenterContactPort({key:'k',invoke:invoke as never});
+  const input={companyName:'Example',email:'restore@example.invalid',firstName:'Restore'};
+  expect(await port.upsert(input)).toMatchObject({success:false,error:'联系人已存在'});
+  expect(await port.upsert(input)).toMatchObject({success:true});
+  expect(calls[0]!.idempotencyKey).not.toBe(calls[1]!.idempotencyKey);
+ });
  it('creates empty company via a dedicated contract, preserves errors and blocks offline writes',async()=>{
   const invoke=vi.fn(async()=>({ok:false,error:{code:'UNAVAILABLE',message:'unknown'}}));const contacts=createCenterContactPort({key:'k',invoke:invoke as never});const port=createCenterCompanyPort(contacts,false,invoke as never);
   const input={name:'Empty',domain:'example.invalid'};expect(await port.update!(input)).toMatchObject({success:false,error:'unknown'});await port.update!(input);expect(invoke.mock.calls[0]).toEqual(invoke.mock.calls[1]);expect(invoke.mock.calls[0]?.[0]).toBe(ONLINE_CHANNELS.COMPANY_CREATE);

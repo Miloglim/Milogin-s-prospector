@@ -1,4 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {readFile,statfs} from 'node:fs/promises';
+import path from 'node:path';
 import type {Pool,PoolClient} from 'pg';
 import {success,failure,type Result,type LogSink} from '../../core/crm';
 import {capabilitiesFor,effectiveCapabilitiesFor,productPermissionsFor,type AdminRepository,type AdminCommand,type ChallengeDraft,type ManagedUser,type UserPage,type UserQuery,type ProductInfo,type SessionInfo,type AuditInfo,type DataScope} from '../../core/admin';
@@ -7,11 +9,16 @@ import {ADMIN_SQL,ADMIN_VERSION,ADMIN_LOCK} from './admin-schema';
 import {USER_LIFECYCLE_SQL,USER_LIFECYCLE_VERSION} from './user-lifecycle-schema';
 import {NAVIGATOR_ACCESS_SQL,NAVIGATOR_ACCESS_VERSION,NAVIGATOR_PRODUCT_SQL,NAVIGATOR_PRODUCT_VERSION} from './navigator-access-schema';
 import {assertCenterDatabasePool} from './config';
-import { canReadManagementDashboard, DASHBOARD_LIMITS, type ManagementDashboard, type ManagementDashboardRepository } from '../../core/management-dashboard';
+import { canReadManagementDashboard, DASHBOARD_LIMITS, OPERATIONS_LIMITS, type ManagementDashboard, type ManagementDashboardRepository, type OperationsCheck, type OperationsSummary } from '../../core/management-dashboard';
 
 type DB=Pool|PoolClient;
 interface Actor {userId:string;identityAdmin:boolean;roles:CrmRole[];capabilities:string[];scope:DataScope;}
 const MAX_AUDIT_ROWS=100;
+const BYTES_PER_KIBIBYTE=1024;
+const PERCENT_SCALE=100;
+const DECIMAL_PLACES=1;
+const PACKAGE_FILE='package.json';
+const DISK_PATH=process.platform==='win32'?path.parse(process.cwd()).root:'/';
 const PERSON=`u.user_id AS "userId",u.display_name AS "displayName",e.email,e.verified_at IS NOT NULL AS "emailVerified",
  u.identity_admin AS "identityAdmin",u.active,u.management_revision AS revision,
  COALESCE(a.active,true) AS "accessActive",COALESCE(a.scope,CASE
@@ -21,6 +28,33 @@ const PERSON=`u.user_id AS "userId",u.display_name AS "displayName",e.email,e.ve
  (SELECT g.role FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='navigator' AND g.active AND g.role IN ('operations','sales') ORDER BY CASE g.role WHEN 'operations' THEN 0 ELSE 1 END LIMIT 1) AS "navigatorRole",
  COALESCE((SELECT na.active FROM identity.product_access na WHERE na.user_id=u.user_id AND na.product_id='navigator'),false) AS "navigatorActive"`;
 function managed(row:any):ManagedUser {return {...row,capabilities:effectiveCapabilitiesFor(row.crmRoles,row.capabilities)};}
+function formatBytes(bytes:number):string {
+ const units=['B','KB','MB','GB','TB'];
+ let value=bytes,index=0;
+ while(value>=BYTES_PER_KIBIBYTE&&index<units.length-1){value/=BYTES_PER_KIBIBYTE;index++;}
+ return `${value.toFixed(index===0?0:DECIMAL_PLACES)} ${units[index]}`;
+}
+async function applicationVersion():Promise<string> {
+ try {
+  const value=JSON.parse(await readFile(path.resolve(process.cwd(),PACKAGE_FILE),'utf8')) as {version?:unknown};
+  return typeof value.version==='string'&&value.version?value.version:'unknown';
+ } catch {
+  // Version metadata is diagnostic only and must not hide the remaining health checks.
+  return 'unknown';
+ }
+}
+async function diskCheck():Promise<OperationsCheck> {
+ try {
+  const disk=await statfs(DISK_PATH);
+  const total=disk.blocks*disk.bsize,free=disk.bavail*disk.bsize;
+  const usedPercent=total>0?(total-free)/total*PERCENT_SCALE:PERCENT_SCALE;
+  const state=usedPercent>=OPERATIONS_LIMITS.disk_offline_usage_percent?'offline':usedPercent>=OPERATIONS_LIMITS.disk_attention_usage_percent?'attention':'healthy';
+  return {id:'disk',label:'服务器磁盘',state,value:`${usedPercent.toFixed(DECIMAL_PLACES)}%`,valueLabel:'已使用',detail:`可用 ${formatBytes(free)} / ${formatBytes(total)}`};
+ } catch {
+  // Capacity probing is optional and must not hide database or Navigator health.
+  return {id:'disk',label:'服务器磁盘',state:'not_connected',value:'不可读',valueLabel:'已使用',detail:'当前运行环境未提供磁盘容量'};
+ }
+}
 export class PostgresAdminRepository implements AdminRepository, ManagementDashboardRepository {
  constructor(private readonly pool:Pool,private readonly log:LogSink){
   assertCenterDatabasePool(pool);
@@ -108,6 +142,24 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
   ];
   return success({generatedAt:new Date().toISOString(),overview:{databases:databases.length,healthy:databases.filter(row=>row.state==='healthy').length,activeUsers:value(users),customers:customerCount,openTasks:taskCount,pendingEvents:pendingCount},databases,flows,alerts,receipts});
  });}
+  operations(hash:string):Promise<Result<OperationsSummary>> {return this.read(hash,async(c,actor)=>{
+   if(!canReadManagementDashboard(actor))return failure('FORBIDDEN','无系统运行读取权限');
+   const [database,disk,version]=await Promise.all([
+    c.query('SELECT pg_database_size(current_database())::bigint AS bytes'),
+    diskCheck(),
+    applicationVersion(),
+   ]);
+   const databaseBytes=Number(database.rows[0]?.bytes??0);
+   return success({
+    generatedAt:new Date().toISOString(),version,uptime_seconds:Math.floor(process.uptime()),
+    checks:[
+     {id:'center',label:'中心服务',state:'healthy',value:`v${version}`,valueLabel:'当前版本',detail:'中心 API 与管理工作台正常响应'},
+     {id:'database',label:'PostgreSQL',state:'healthy',value:formatBytes(databaseBytes),valueLabel:'数据库大小',detail:'中心业务库连接正常'},
+     disk,
+     {id:'backup',label:'自动备份',state:'not_connected',value:'未接入',valueLabel:'备份监控',detail:'尚未读取服务器备份目录'},
+    ],
+   });
+  });}
  sessions(hash:string,userId:string):Promise<Result<SessionInfo[]>>{return this.read(hash,async(c,actor)=>{
   if(!actor.identityAdmin&&actor.userId!==userId)return failure('FORBIDDEN','无会话管理权限');
   const rows=await c.query(`SELECT session_id AS "sessionId",client,created_at AS "createdAt",expires_at AS "expiresAt",(revoked_at IS NOT NULL OR expires_at<=now()) AS revoked FROM identity.sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2`,[userId,MAX_AUDIT_ROWS]);

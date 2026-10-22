@@ -43,7 +43,7 @@ export function getStats(): Result<DashboardStats> {
   for (const k of STAGE_KEYS) pipelineSummary[k] = 0;
   if (center?.ok) {
     for (const row of center.data.contacts) {
-      if (!['contacted', 'replied'].includes(row.touchStatus)) continue;
+      if (!['contacted', 'replied', 'bounced', 'autoreply'].includes(row.touchStatus)) continue;
       const stage = row.relationshipStage && row.relationshipStage !== 'cold' ? row.relationshipStage : 'reaching';
       if (STAGE_KEYS.includes(stage)) pipelineSummary[stage] = (pipelineSummary[stage] || 0) + 1;
     }

@@ -1446,15 +1446,22 @@ export function SettingsPage() {
         styles={{ body: { overflow: "hidden" } }}
         onCancel={() => { setAddOpen(false); setEditingAccount(null); form.resetFields(); }}
         onOk={async () => {
-          const values = await form.validateFields();
-          const payload: Record<string, unknown> = { ...values };
-          if (editingAccount) payload.id = editingAccount.id;
-          if (!values.password) delete payload.password;
-          const result = await upsertMut.mutateAsync(payload);
-          if (result && typeof result === "object" && "success" in result) {
-            const r = result as { success: boolean; error?: string };
-            r.success ? (setAddOpen(false), setEditingAccount(null), form.resetFields(), message.success(editingAccount ? "已更新" : "账号已保存，连接验证通过"))
-              : message.error(r.error || "保存失败");
+          try {
+            const values = await form.validateFields();
+            const payload: Record<string, unknown> = { ...values };
+            if (editingAccount) payload.id = editingAccount.id;
+            if (!values.password) delete payload.password;
+            const result = await upsertMut.mutateAsync(payload) as { success?: boolean; error?: string } | undefined;
+            if (!result?.success) {
+              message.error(result?.error || "保存失败");
+              return;
+            }
+            setAddOpen(false);
+            setEditingAccount(null);
+            form.resetFields();
+            message.success(editingAccount ? "账号已更新" : "账号已保存，连接验证通过");
+          } catch (error) {
+            message.error(error instanceof Error ? error.message : "保存失败");
           }
         }}
         confirmLoading={upsertMut.isPending}
@@ -1462,7 +1469,8 @@ export function SettingsPage() {
         <Form form={form} layout="vertical" size="small" className="settings-account-form">
           <Form.Item name="displayName" label="发件人名称"><Input placeholder="客户收到的名称，如 Zayne Jin" /></Form.Item>
           <Form.Item name="email" label="邮箱地址" rules={[{ required: true, type: "email" }]}><Input placeholder="your@email.com" /></Form.Item>
-          <Form.Item name="password" label="密码 / 授权码"
+          <Form.Item name="password" label="邮箱密码 / 授权码"
+            extra="这是邮箱服务商提供的密码或授权码，不是中心登录密码。"
             rules={editingAccount ? [] : [{ required: true, message: "新增时密码必填" }]}>
             <Input.Password placeholder={editingAccount ? "留空则不变；第三方登录填授权码" : "密码或第三方登录授权码"} />
           </Form.Item>

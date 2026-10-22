@@ -7,6 +7,10 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src/renderer", import.meta.url)) } },
   test: {
+    // JSDOM + Ant Design integration files are CPU-heavy. Unbounded workers
+    // produced widespread 5s timeouts that disappeared at four workers.
+    minWorkers: 1,
+    maxWorkers: 4,
     exclude: ["**/node_modules/**", "**/dist/**", "**/.trash/**", "**/checkpoints/**", "**/*.bak", "**/scripts/check.test.mjs"],
   },
 });

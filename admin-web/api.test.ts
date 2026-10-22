@@ -4,6 +4,13 @@ import { api, configureSession, readChallenge } from "./api";
 
 afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
 describe("browser admin session boundaries", () => {
+  it("reads the system operations summary through the admin origin", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, data: { version: "0.55.0-alpha.1", checks: [] } }) });
+    vi.stubGlobal("fetch", fetch);
+    await api.operations();
+    const url = new URL(fetch.mock.calls[0]![0], "http://localhost");
+    expect(url.pathname).toBe("/admin-api/operations");
+  });
   it("queries user management audit by immutable identity and selected product", async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, data: [] }) });
     vi.stubGlobal("fetch", fetch);

@@ -285,7 +285,7 @@ function scopeContacts(o: {
   const statuses = o.statuses?.length
     ? o.statuses
     : o.scope === "contacts" ? ["", "reached", "replied"] : (o.includeReplied ? ["reached", "replied"] : ["reached"]);
-  const rows = o.center ? o.center.filter(row => canSendToContact(row) && statuses.includes(centerContactDisplayStatus(row)) && (o.scope !== 'board' || ['contacted','replied'].includes(row.touchStatus))).map(row => ({ ...row, id:row.contactId, email:row.email ?? '', status:centerContactDisplayStatus(row), tags:JSON.stringify([row.relationshipStage === 'cold' ? 'reaching' : row.relationshipStage ?? 'reaching']) })) : db.select(select).from(contacts)
+  const rows = o.center ? o.center.filter(row => canSendToContact(row) && statuses.includes(centerContactDisplayStatus(row)) && (o.scope !== 'board' || ['contacted','replied','bounced','autoreply'].includes(row.touchStatus))).map(row => ({ ...row, id:row.contactId, email:row.email ?? '', status:centerContactDisplayStatus(row), tags:JSON.stringify([row.relationshipStage === 'cold' ? 'reaching' : row.relationshipStage ?? 'reaching']) })) : db.select(select).from(contacts)
     .where(inArray(dsql`coalesce(${contacts.status}, '')`, statuses)).all();
   const want = o.ids !== undefined ? new Set(o.ids) : null;
   const countryProbe = o.country?.trim().toLowerCase() ?? "";

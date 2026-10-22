@@ -2,12 +2,12 @@ import { invalidateDomain } from "../../lib/cacheDeps";
 import { useRouterState } from "@tanstack/react-router";
 import { useState, useEffect, useRef, type ReactNode, type ComponentRef } from "react";
 import { createPortal } from "react-dom";
-import { Table, Button, Input, Space, Drawer, Tag, message, Form, Select, Popover, Checkbox, Modal } from "antd";
-import { PlusOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, ImportOutlined, PartitionOutlined, MailOutlined, ExportOutlined, MoreOutlined, LeftOutlined } from "@ant-design/icons";
+import { Table, Button, Input, Space, Tag, message, Form, Select, Popover, Checkbox, Modal } from "antd";
+import { PlusOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, ImportOutlined, PartitionOutlined, MailOutlined, ExportOutlined, MoreOutlined, LeftOutlined, CloseOutlined } from "@ant-design/icons";
 import type { TableColumnsType } from "antd";
 import { useQueryClient } from "@tanstack/react-query";
 import { useContacts, useUpsertContact, useDeleteContact, type Contact, type ContactDataPort } from "../../hooks/useContacts";
-import { ContactDetailDrawer, CLIENT_TYPE, STATUS_META, STAGE_META, CRM_STAGES, COUNTRIES } from "../../components/ContactDetail";
+import { ContactDetailDrawer, ContactDetailLayout, SectionTitle, CLIENT_TYPE, STATUS_META, STAGE_META, CRM_STAGES, COUNTRIES } from "../../components/ContactDetail";
 import { ImportDrawer, type ImportDrawerPort } from "../../components/ImportDrawer";
 
 /* ---------- 可配置列定义 ---------- */
@@ -33,12 +33,13 @@ const parseTags = (s: string | null): string[] => {
   if (!s) return [];
   try { const a = JSON.parse(s); return Array.isArray(a) ? a.map(String) : []; } catch { return []; }
 };
-const inCrm = (contact: Contact) => contact.dataSource === 'center' ? ['contacted', 'replied'].includes(contact.touchStatus ?? '') : contact.status === 'reached';
+const inCrm = (contact: Contact) => contact.dataSource === 'center' ? ['contacted', 'replied', 'bounced', 'autoreply'].includes(contact.touchStatus ?? '') : contact.status === 'reached';
 const TOUCH_STATUS_META: Record<string, { label: string; color: string }> = {
   uncontacted: { label: '未触达', color: 'default' },
   contacted: { label: '已触达', color: 'blue' },
   replied: { label: '已回复', color: 'green' },
-  unreachable: { label: '无法联系', color: 'red' },
+  bounced: { label: '退信', color: 'red' },
+  autoreply: { label: '自动回复', color: 'orange' },
 };
 
 const COLUMN_DEFS: ColDef[] = [
@@ -122,6 +123,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [addOpen, setAddOpen] = useState(false);
+  const [returnInboxId, setReturnInboxId] = useState<number | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsView, setActionsView] = useState<"main" | "columns" | "export">("main");
@@ -332,6 +334,8 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
 
     // 新增预填
     if (sp.get("add") === "1" && sp.get("email")) {
+      const inboxId = Number(sp.get("inbox"));
+      setReturnInboxId(Number.isSafeInteger(inboxId) && inboxId > 0 ? inboxId : null);
       form.setFieldsValue({
         email: sp.get("email") || "",
         companyName: sp.get("company") || "",
@@ -435,7 +439,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   const actionsPanel = <div className={`${actionsView === "columns" ? "w-56" : "w-48"} flex flex-col gap-0.5`}>
     {actionsView !== "main" && actionItem("返回", <LeftOutlined />, () => setActionsView("main"))}
     {actionsView === "main" && <>
-      {actionItem("新增", <PlusOutlined />, () => { closeActions(); form.resetFields(); setAddOpen(true); }, !!dataPort && !online)}
+      {actionItem("新增", <PlusOutlined />, () => { closeActions(); form.resetFields(); setReturnInboxId(null); setAddOpen(true); }, !!dataPort && !online)}
       {actionItem("导入", <ImportOutlined />, () => { closeActions(); setImportOpen(true); }, !!dataPort && (!importPort || !online))}
       {actionItem("导出", <ExportOutlined />, () => setActionsView("export"), !!dataPort && !dataPort.export)}
       {actionItem("列设置", <SettingOutlined />, () => setActionsView("columns"))}
@@ -458,28 +462,34 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
     {headerActionsTarget && searchInput}
     <Popover trigger="click" placement="bottomRight" open={actionsOpen}
       onOpenChange={open => { setActionsOpen(open); if (!open) setActionsView("main"); }} content={actionsPanel}>
-      <Button type="text" size="small" icon={<MoreOutlined />} aria-label="更多操作" title="更多操作" />
+      <Button type="text" size="small" icon={<MoreOutlined />} aria-label="更多操作" title="更多操作">更多</Button>
     </Popover>
   </Space>;
 
   return (
     <div className="prospector-table-page customer-contacts-page">
       {headerActionsTarget && createPortal(headerActions, headerActionsTarget)}
+      {!headerActionsTarget && <div className="flex items-center justify-between">
+        {searchInput}
+        {headerActions}
+      </div>}
+
       {/* 选中记录后的批量操作 */}
-      {(!headerActionsTarget || selectedRowKeys.length > 0) && <div className={`flex items-center ${headerActionsTarget ? "justify-end" : "justify-between"}`}>
-        {!headerActionsTarget && searchInput}
-        <Space size="small">
-          {!headerActionsTarget && headerActions}
-          {selectedRowKeys.length > 0 && selectedRowKeys.length < total && (
-            <Button size="small" type="link" style={{ padding: 0, height: "auto" }}
-              onClick={selectAllMatched}>选择全部 {total} 个匹配项</Button>
+      {selectedRowKeys.length > 0 && <div className="flex min-h-9 flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span>已选择 <strong className="font-semibold text-gray-800">{selectedRowKeys.length}</strong> 项</span>
+          <Button type="link" size="small" className="px-0" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
+        </div>
+        <Space size="small" wrap>
+          {selectedRowKeys.length < total && (
+            <Button size="small" type="link" className="px-0" onClick={selectAllMatched}>全选 {total} 项</Button>
           )}
-          {selectedRowKeys.length > 0 && (
-            <Button size="small" danger icon={<DeleteOutlined />}
-              disabled={!!dataPort && (!online || !dataPort.deleteBatch || selectedRowKeys.some(id=>!dataPort.canDelete?.(Number(id))))}
-              onClick={batchDelete}>删除选中 ({selectedRowKeys.length})</Button>
-          )}
-          {onAssign && selectedRowKeys.length > 0 && <Button size="small" onClick={() => onAssign(selectedRowKeys.map(Number))}>分配线索 ({selectedRowKeys.length})</Button>}
+          {onAssign && <Button size="small" onClick={() => onAssign(selectedRowKeys.map(Number))}
+            title={`将选中的 ${selectedRowKeys.length} 个联系人分配线索`}>分配线索</Button>}
+          <Button size="small" danger icon={<DeleteOutlined />}
+            title={`删除选中的 ${selectedRowKeys.length} 个联系人`}
+            disabled={!!dataPort && (!online || !dataPort.deleteBatch || selectedRowKeys.some(id=>!dataPort.canDelete?.(Number(id))))}
+            onClick={batchDelete}>删除</Button>
         </Space>
       </div>}
 
@@ -525,39 +535,51 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
         rowClassName="cursor-pointer"
       />
 
-      {/* 新增弹窗 — 紧凑 */}
-      <Drawer rootClassName="app-drawer-below-titlebar" title="新增联系人" open={addOpen} onClose={() => setAddOpen(false)} width={400}>
-        <Form form={form} layout="vertical" size="small"
+      {/* 新增联系人复用联系人详情的浮层和字段密度 */}
+      <ContactDetailLayout open={addOpen} onClose={() => { setAddOpen(false); setReturnInboxId(null); }} destroyOnClose>
+        <div className="contact-add-header">
+          <div className="contact-add-heading">
+            <span className="contact-add-title">新增联系人</span>
+            <Button type="text" size="small" icon={<CloseOutlined />} aria-label="关闭新增联系人" onClick={() => { setAddOpen(false); setReturnInboxId(null); }} />
+          </div>
+        </div>
+        <Form form={form} layout="vertical" size="small" className="contact-add-form"
           onFinish={async (v) => {
             const r = await upsertContact.mutateAsync(v);
-            r?.success ? (setAddOpen(false), message.success("已保存")) : message.error(r?.error || "失败");
+            if (r?.success) {
+              setAddOpen(false);
+              message.success("已保存");
+              if (returnInboxId) window.location.hash = `#/inbox?detail=${returnInboxId}`;
+              setReturnInboxId(null);
+            } else message.error(r?.error || "失败");
           }}
         >
-          {dataPort && <div className="text-xs font-semibold text-gray-500 mb-3">公司资料</div>}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="contact-add-scroll">
+          {dataPort && <SectionTitle>公司资料</SectionTitle>}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0">
             <Form.Item name="companyName" label="公司名" rules={dataPort ? [{ required: true, whitespace: true, message: "请输入公司名称" }] : []}><Input size="small" placeholder="公司名称" /></Form.Item>
             <Form.Item name={dataPort ? "customerType" : "clientType"} label="客户类型"><Select size="small" allowClear options={[{value:dataPort ? "代理" : "agent",label:"代理"},{value:dataPort ? "直客" : "direct",label:"直客"}]} /></Form.Item>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0">
             <Form.Item name="country" label="国家">
               <Select size="small" showSearch optionFilterProp="label" allowClear placeholder="搜索选择国家"
                 options={COUNTRIES.map(c => ({ value: c.code, label: `${c.code} ${c.label}` }))} />
             </Form.Item>
           </div>
-          {dataPort && <div className="grid grid-cols-2 gap-3">
+          {dataPort && <div className="grid grid-cols-2 gap-x-3 gap-y-0">
             <Form.Item name="businessType" label="业务类型"><Input size="small" /></Form.Item>
             <Form.Item name="website" label="网站"><Input size="small" /></Form.Item>
           </div>}
-          {dataPort && <div className="text-xs font-semibold text-gray-500 mb-3">联系人与线索来源</div>}
-          <div className="grid grid-cols-2 gap-3">
+          {dataPort && <SectionTitle>联系人与线索来源</SectionTitle>}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0">
             <Form.Item name="firstName" label="名"><Input size="small" /></Form.Item>
             <Form.Item name="lastName" label="姓"><Input size="small" /></Form.Item>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0">
             <Form.Item name="title" label="职位 / Title"><Input size="small" /></Form.Item>
             <Form.Item name="linkedinUrl" label="LinkedIn"><Input size="small" /></Form.Item>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0">
             <Form.Item name="language" label="语言">
                 <Select size="small" allowClear placeholder="匹配发信模板"
                   options={[
@@ -567,23 +589,26 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
                   ]} />
               </Form.Item>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0">
             <Form.Item name="phone" label="电话"><Input size="small" /></Form.Item>
             {dataPort && <Form.Item name="whatsapp" label="WhatsApp"><Input size="small" /></Form.Item>}
           </div>
           <Form.Item name="email" label="邮箱" rules={[{ required: !dataPort, type: "email" }]}><Input size="small" /></Form.Item>
           {dataPort && <>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0">
               <Form.Item name="sourceLevel1" label="一级来源"><Input size="small" /></Form.Item>
               <Form.Item name="sourceLevel2" label="二级来源"><Input size="small" /></Form.Item>
             </div>
             <Form.Item name="stage" label="发送阶段"><Select size="small" allowClear options={Object.entries(STAGE_META).map(([value,meta])=>({value,label:meta.label}))} /></Form.Item>
           </>}
-          <Button type="primary" htmlType="submit" size="small" block loading={upsertContact.isPending}>
-            保存
-          </Button>
+          </div>
+          <div className="contact-add-footer">
+            <Button type="primary" htmlType="submit" size="small" block loading={upsertContact.isPending}>
+              保存联系人
+            </Button>
+          </div>
         </Form>
-      </Drawer>
+      </ContactDetailLayout>
 
       {/* 导入抽屉 */}
       <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} port={importPort} disabled={!!dataPort && !online} />

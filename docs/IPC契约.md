@@ -1,5 +1,26 @@
 # IPC 契约
 
+## 2026-10-22 发送任务自动命名
+
+`send:campaignCreate` 与 `send:campaignUpdateDraft` 的 `CreateCampaignInput.name` 改为可选；空字符串或纯空白表示自动命名。主进程按现有 `send_campaigns.name` 使用 `src/shared/campaign-name.ts` 生成首个未占用的 `任务N`。成功结果新增 `name`：创建返回 `{id,name,eligible,excluded}`，草稿编辑返回 `{name,eligible,excluded}`；原字段保留。
+
+## 2026-10-21 本地发信账号配置
+
+`accounts:list` 返回本机发信账号投影，永远省略 `encryptedPass`。`accounts:upsert` 由设置页明确提交 `email`、`smtpHost`、`smtpPort`、可选 `imapHost/imapPort`、`displayName`、`signature` 和可选 `password`；新增必须带密码，编辑密码为空表示保留原凭据。编辑可修改邮箱，主进程按账号 ID 更新并拒绝与另一账号重复。
+
+中心登录成功不会调用 `accounts:upsert`，中心账号资料接口也不承载 SMTP/IMAP、邮箱密码或授权码。`accounts:validate` 只验证已保存账号，`accounts:delete` 和 `accounts:resetCircuit` 保持原通道。该行为不改变统一返回结构。
+
+## 2026-10-21 收件箱刷新进度事件
+
+复用原 `inbox:fetch` 请求与 `inbox:fetchProgress` 推送，不新增通道。进度载荷唯一类型为 `src/shared/inbox.ts` 的 `InboxFetchProgress`：
+
+```text
+accountId, email?, phase, scanned, total, newCount, remaining, message?
+phase = connecting | searching | scanning | calibrating | processing | post_processing | complete | failed
+```
+
+`scanned/total` 表示当前账号本轮扫描批次，不是邮箱总量，也不保证等于新增数；`newCount` 才是本轮已落库新邮件，`remaining` 是受 500 封单轮上限约束、留待下次刷新的候选量。renderer 按账号合并快照并保留扫描计数；失败账号不得被后续 post-processing/complete 覆盖成成功。原统一返回、健康度 `inbox:health` 与新邮件 `inbox:newMail` 契约不变。
+
 ## 2026-10-16 联系人离线命令（0.49）
 
 复用online:contact-update、online:contact-followup及原POST /api/crm/contacts/:id/update、/followups；不增加IPC或HTTP。主进程先持久化命令，再调用原HTTP；返回ok可表示本地已保存，必须用CenterContactDetail.localSync区分中心确认。localSync={pending:number,state:'pending'|'conflict'|'failed',message?:string}仅客户端派生，不能作为服务端权限或版本事实。无localSync表示当前返回为中心确认视图。
@@ -97,7 +118,7 @@ OnlineLogin新增可选autoLogin，与remember分离：自动登录必须remembe
 
 上一轮将“未触达客户不能入板”误读为“普通用户不得使用看板”，该身份限制已全部撤回。crm:listPipeline恢复旧服务查询；原全局中心身份、账号目录隔离与权限边界保留，不新增管理角色检查。
 
-在线列表继续使用online:list与GET /api/crm/leads，LeadQuery新增可选followupOnly:boolean，严格解析true/false，公共池不支持此筛选。中心count和page使用相同的已触达联系人EXISTS条件，在分页前排除未触达客户。LeadPreview只读派生hasContacted来自联系人crm_touch_status为contacted/replied，不新增持久化列，不用客户阶段冒充触达事实；公共池不返回该字段。已触达且客户阶段cold的客户只在看板归入reaching，不修改中心阶段。
+在线列表继续使用online:list与GET /api/crm/leads，LeadQuery新增可选followupOnly:boolean，严格解析true/false，公共池不支持此筛选。中心count和page使用相同的有效触达联系人EXISTS条件，在分页前排除未触达客户。`ContactTouchStatus` 为 `uncontacted/contacted/replied/bounced/autoreply`；`hasContacted` 对后四者为 true。收件箱回复、退信、自动回复和人工详情修改统一走该字段，公共池不返回 `hasContacted`。已触达且客户阶段cold的客户只在看板归入reaching，不修改中心阶段。
 
 离线查询用同一core触达口径与联系人缓存派生筛选，计数和分页在筛选后计算；联网同步仍走原投影/outbox协议。普通用户、管理员、超级管理员按既有可见范围使用看板；未触达客户在普通客户列表和详情保留，但行内入板快捷按钮禁用。无新增IPC、HTTP路径、表、角色字段或依赖。
 

@@ -1,9 +1,9 @@
 import { askAssistant } from '../../lib/ask-ai';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Input, Modal, Select, Space, Spin, Tabs, Timeline, Tooltip, message } from 'antd';
+import { Alert, Button, Input, Modal, Select, Space, Spin, Tabs, Tag, Timeline, Tooltip, message } from 'antd';
 import { CloseOutlined, SearchOutlined, PartitionOutlined, DeleteOutlined, ShareAltOutlined } from '@ant-design/icons';
-import { ContactDetailLayout, InfoTab, CRM_STAGES } from '../../components/ContactDetail';
+import { ContactDetailLayout, InfoTab, CRM_STAGES, STATUS_META } from '../../components/ContactDetail';
 import { DiamondLogo } from '../../components/DiamondLogo';
 import { CompanyBackcheck, COMPANY_BACKCHECK_UI_ENABLED, type BackcheckReport } from '../../components/CompanyBackcheck';
 import { ONLINE_CHANNELS, FOLLOWUP_METHODS, FOLLOWUP_METHOD_LABELS, CONTACT_TOUCH_STATUSES, CONTACT_TOUCH_LABELS, type ContactDelete, type ContactDeleteReceipt, type CenterCompanyUpdate, type CenterContactRef, type CenterContactDetail as Detail, type CenterContactUpdate, type CenterContactFollowup, type FollowupMethod, type ContactTouchStatus, type CustomerStage } from '../../../shared/online-crm';
@@ -81,14 +81,18 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
     if (!hasCurrentAccess() || !reference || !detail || !canEditField(field) || busy) return false;
     const startedScope = backcheckScope;
     const isCurrent = () => hasCurrentAccess() && currentBackcheckScope.current === startedScope;
-    if (detail.permissions && field === 'status' && ![null, '', 'reached', 'replied'].includes(value)) return;
-    if (field === 'relationshipStage' || field === 'status' && [null, '', 'reached', 'replied'].includes(value)) {
+    if (detail.permissions && field === 'status' && ![null, '', 'reached', 'replied', 'bounced', 'autoreply'].includes(value)) return;
+    if (field === 'relationshipStage' || field === 'status' && [null, '', 'reached', 'replied', 'bounced', 'autoreply'].includes(value)) {
       if (field === 'relationshipStage' ? !(detail.permissions?.canChangeStage ?? detail.canFollowup) : !detail.canFollowup) return;
       const nextStage = CRM_STAGES.find(item => item.key === value);
       if (field === 'relationshipStage' && !nextStage) return;
       const content = field === 'relationshipStage'
         ? { note: `跟进阶段：${nextStage!.label}`, method: 'note' as const, stage: nextStage!.key as CustomerStage }
-        : { note: `触达状态：${value === 'reached' ? '已触达' : value === 'replied' ? '已回复' : '未触达'}`, method: 'other' as const, contactStatus: (value === 'reached' ? 'contacted' : value === 'replied' ? 'replied' : 'uncontacted') as ContactTouchStatus };
+        : {
+            note: `联系状态：${value ? STATUS_META[value]?.label ?? value : '未触达'}`,
+            method: 'other' as const,
+            contactStatus: (value === 'reached' ? 'contacted' : value || 'uncontacted') as ContactTouchStatus,
+          };
       const signature = JSON.stringify({ reference, content });
       if (followupRetry.current?.signature !== signature) followupRetry.current = { signature, payload: { ...reference, ...content, expectedVersion: detail.contact.contactVersion ?? detail.contact.customerVersion, idempotencyKey: crypto.randomUUID() } };
       setBusy(true);
@@ -143,39 +147,44 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
     companyRetry.current=null; changed(saved.data); return {success:true};
   }
   const contact = detail ? displayCenterContact(detail.contact) : undefined;
-  const reached = detail && ['contacted','replied'].includes(detail.contact.touchStatus);
+  const reached = detail && ['contacted','replied','bounced','autoreply'].includes(detail.contact.touchStatus);
   const history = useMemo(() => {
     if (!detail) return [];
-    const labels: Record<string, string> = { received: '收到邮件', sent: '已发送', replied: '回复', autoreply: '自动回复', bounced: '退信', cc: '抄送' };
+    const labels: Record<string, string> = { received: '收到邮件', sent: '已发送', replied: '已回复', autoreply: '自动回复', bounced: '退信', cc: '抄送' };
+    const colors: Record<string, string> = { received: '#2563eb', sent: '#2563eb', replied: '#22a644', autoreply: '#ff9800', bounced: '#d93025', cc: '#0891b2' };
+    const item = (key: string, time: string, color: string, label: string, title: string | null, preview: string | null) => ({
+      key,
+      color,
+      children: <div className="text-[11px]">
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-gray-700">{label}</span>
+          <span className="text-gray-400">{new Date(time).toLocaleDateString('zh-CN')}</span>
+        </div>
+        {title && <div className="text-[11px] text-gray-600 mt-0.5">{title}</div>}
+        {preview && <div className="text-[10px] text-gray-400 mt-0.5 line-clamp-2">{preview}</div>}
+      </div>,
+    });
     const mailEvents = detail.mailEvents || [];
     const projected = projectContactMailHistory(mailEvents);
     const mailActivities = projected.activityIds;
-    const mailItems = projected.mail.map(event => ({
-      time: event.occurredAt, key: event.eventId,
-      children: <div className="text-xs"><div className="text-gray-400">{labels[event.kind] || event.kind} · {new Date(event.occurredAt).toLocaleString('zh-CN')}</div><div>{event.subject || '无主题'}</div><div className="whitespace-pre-wrap">{event.preview}</div></div>,
-    }));
+    const mailItems = projected.mail.map(event => ({ time: event.occurredAt, ...item(event.eventId, event.occurredAt, colors[event.kind] || '#8c8c8c', labels[event.kind] || event.kind, event.subject || '无主题', event.preview) }));
     const correctionLabels: Record<string, string> = { other: '其他', replied: '回复', autoreply: '自动回复', bounced: '退信' };
-    const corrections = projected.corrections.map(event => ({
-      time: event.recordedAt,
-      key: `classification:${event.eventId}`,
-      children: <div className="text-xs text-gray-400">
-        邮件分类更正为{correctionLabels[event.correction!.classification]} · {new Date(event.recordedAt).toLocaleString('zh-CN')}
-      </div>,
-    }));
+    const corrections = projected.corrections.map(event => ({ time: event.recordedAt, ...item(`classification:${event.eventId}`, event.recordedAt, '#8c8c8c', '邮件分类更正', `更正为${correctionLabels[event.correction!.classification]}`, null) }));
     const loadedEventIds = new Set(mailEvents.map(event => event.eventId));
-    const activities = detail.activities.filter(activity => !mailActivities.has(activity.id) && !(activity.mailEventId && loadedEventIds.has(activity.mailEventId))).map(activity => ({
-      time: activity.occurredAt ?? activity.createdAt, key: activity.id,
-      children: <div className="text-xs"><div className="text-gray-400">{activity.actorName ?? ''}{activity.mailSuperseded ? ' · 历史记录（已更正）' : ''} · {new Date(activity.occurredAt ?? activity.createdAt).toLocaleString('zh-CN')}</div><div className="whitespace-pre-wrap">{activity.note}</div></div>,
-    }));
+    const activities = detail.activities.filter(activity => !mailActivities.has(activity.id) && !(activity.mailEventId && loadedEventIds.has(activity.mailEventId))).map(activity => {
+      const time = activity.occurredAt ?? activity.createdAt;
+      const label = activity.method && activity.method !== 'legacy' ? FOLLOWUP_METHOD_LABELS[activity.method] : '跟进';
+      return { time, ...item(activity.id, time, '#8c8c8c', `${label}${activity.mailSuperseded ? ' · 历史记录（已更正）' : ''}`, activity.actorName || null, activity.note) };
+    });
     return [...mailItems, ...corrections, ...activities].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
   }, [detail]);
   return <ContactDetailLayout open={open} onClose={onClose} destroyOnClose {...(variant === 'board' ? { mask: true, rootClassName: 'customer-classic-floating-detail', width: 'clamp(360px, 44vw, 620px)', rootStyle: { top: 36 }, styles: { body: { padding: 12, height: '100%', overflow: 'hidden' } } } : {})}>
-    <div className="flex-shrink-0 pb-3 mb-2 border-b border-gray-100"><div className="flex items-center gap-1.5 flex-wrap"><span className="text-base font-semibold text-gray-900">{contact ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '未命名联系人' : '联系人'}</span><Tooltip title="在收件箱中搜索"><Button type="text" aria-label="在收件箱中搜索" size="small" icon={<SearchOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} disabled={!contact?.email} onClick={() => { window.location.hash = `#/inbox?search=${encodeURIComponent(contact?.email ?? '')}`; }} /></Tooltip><Tooltip title={reached ? '在CRM中查看' : '未进入CRM管线'}><Button type="text" aria-label="在CRM中查看" size="small" icon={<PartitionOutlined />} disabled={!reached} className="btn-hover-color" style={{ color: reached ? '#bbb' : '#d9d9d9', padding: 0, minWidth: 20, height: 20 }} onClick={() => { window.location.hash = '#/customers?view=board'; onClose(); }} /></Tooltip><Tooltip title="带着这位联系人问 AI"><Button type="text" aria-label="带着这位联系人问 AI" size="small" disabled={!contact} onClick={() => { if (contact) askAssistant({ question: `请查询中心联系人 #${contact.contactId}（客户编号 ${contact.customerId}），分析最近情况与跟进建议。` }); }} icon={<DiamondLogo size={14} state="static" />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="共享线索"><Button type="text" aria-label="共享线索" size="small" disabled={!detail?.permissions?.canShare || busy || status === 'offline'} onClick={() => setSharing(true)} icon={<ShareAltOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="删除"><Button type="text" aria-label="删除联系人" size="small" disabled={!detail?.canDelete || busy || status === 'offline'} onClick={remove} icon={<DeleteOutlined />} className="btn-hover-color" style={{ padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} className="ml-auto" /></div><div className="text-[11px] text-gray-500 font-mono mt-1">{contact?.email}</div></div>
+    <div className="flex-shrink-0 pb-3 mb-2 border-b border-gray-100"><div className="flex items-center gap-1.5 flex-wrap"><span className="text-base font-semibold text-gray-900">{contact ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '未命名联系人' : '联系人'}</span><Tooltip title="在收件箱中搜索"><Button type="text" aria-label="在收件箱中搜索" size="small" icon={<SearchOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} disabled={!contact?.email} onClick={() => { window.location.hash = `#/inbox?search=${encodeURIComponent(contact?.email ?? '')}`; }} /></Tooltip><Tooltip title={reached ? '在CRM中查看' : '未进入CRM管线'}><Button type="text" aria-label="在CRM中查看" size="small" icon={<PartitionOutlined />} disabled={!reached} className="btn-hover-color" style={{ color: reached ? '#bbb' : '#d9d9d9', padding: 0, minWidth: 20, height: 20 }} onClick={() => { const target = new URLSearchParams({ view: 'board', centerContact: String(contact?.contactId ?? ''), centerCustomer: contact?.customerId ?? '' }); window.location.hash = '#/customers?' + target.toString(); onClose(); }} /></Tooltip><Tooltip title="带着这位联系人问 AI"><Button type="text" aria-label="带着这位联系人问 AI" size="small" disabled={!contact} onClick={() => { if (contact) askAssistant({ question: `请查询中心联系人 #${contact.contactId}（客户编号 ${contact.customerId}），分析最近情况与跟进建议。` }); }} icon={<DiamondLogo size={14} state="static" />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="共享线索"><Button type="text" aria-label="共享线索" size="small" disabled={!detail?.permissions?.canShare || busy || status === 'offline'} onClick={() => setSharing(true)} icon={<ShareAltOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="删除"><Button type="text" aria-label="删除联系人" size="small" disabled={!detail?.canDelete || busy || status === 'offline'} onClick={remove} icon={<DeleteOutlined />} className="btn-hover-color" style={{ padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} className="ml-auto" /></div><div className="text-[11px] text-gray-500 font-mono mt-1">{contact?.email}</div></div>
     {query.isFetching && !detail && <Spin />}{error && <Alert type="error" message={error} />}
     {contact && detail && <Tabs activeKey={tab} onChange={setTab} size="small" className="contact-detail-tabs" items={[
       { key: 'info', label: '基本信息', children: <InfoTab key={backcheckScope} contact={contact} canEdit={(detail.permissions ? !!(detail.permissions.editableFields.length || detail.permissions.canFollowup || detail.permissions.canChangeStage) : detail.canEdit)} canEditField={canEditField} onSaveField={save} /> },
       { key: 'company', label: '公司背调', children: detail.supplementAvailable === false ? <div className="text-xs text-gray-400">联网后加载公司资料</div> : <CompanyBackcheck companyId={null} run={canBackcheck && status !== 'offline' ? backcheck : undefined} centerCompany={{ id: detail.company.companyId, name: detail.company.name, domain: detail.company.domain, backcheckData: transientReport?.scope === backcheckScope ? JSON.stringify(transientReport.report) : detail.company.backcheckData ? JSON.stringify(detail.company.backcheckData) : null }} /> },
-      { key: 'history', label: '往来记录', children: <div className="space-y-3">{(detail.supplementAvailable === false || !detail.mailAvailable) && <div className="text-xs text-gray-400">{detail.supplementAvailable === false ? '联网后加载往来记录' : '邮件往来暂未接入'}</div>}{detail.canFollowup && <div className="space-y-2"><Space wrap><Select size="small" value={method} onChange={setMethod} options={FOLLOWUP_METHODS.map(value => ({ value, label: FOLLOWUP_METHOD_LABELS[value] }))} /><Select size="small" placeholder="触达结果" allowClear value={contactStatus} disabled={method === 'note'} onChange={setContactStatus} options={CONTACT_TOUCH_STATUSES.map(value => ({ value, label: CONTACT_TOUCH_LABELS[value] }))} /><Select size="small" placeholder="跟进阶段" disabled={detail.permissions ? !detail.permissions.canChangeStage : false} allowClear value={stage} onChange={setStage} options={CRM_STAGES.map(item => ({ value: item.key, label: item.label }))} /></Space><Input.TextArea rows={3} value={note} onChange={event => setNote(event.target.value)} placeholder="跟进记录" /><Button type="primary" size="small" block loading={busy} disabled={!note.trim()} onClick={followup}>保存</Button></div>}<Timeline items={history} /></div> },
+      { key: 'history', label: '往来记录', children: <div className="space-y-3">{(detail.supplementAvailable === false || !detail.mailAvailable) && <div className="text-xs text-gray-400">{detail.supplementAvailable === false ? '联网后加载往来记录' : '邮件往来暂未接入'}</div>}{detail.canFollowup && <div className="space-y-2"><Space wrap><Select size="small" value={method} onChange={setMethod} options={FOLLOWUP_METHODS.map(value => ({ value, label: FOLLOWUP_METHOD_LABELS[value] }))} /><Select size="small" placeholder="联系状态" allowClear value={contactStatus} disabled={method === 'note'} onChange={setContactStatus} options={CONTACT_TOUCH_STATUSES.filter(value => value !== 'uncontacted').map(value => ({ value, label: CONTACT_TOUCH_LABELS[value] }))} /><Select size="small" placeholder="跟进阶段" disabled={detail.permissions ? !detail.permissions.canChangeStage : false} allowClear value={stage} onChange={setStage} options={CRM_STAGES.map(item => ({ value: item.key, label: item.label }))} /></Space><Input.TextArea rows={3} value={note} onChange={event => setNote(event.target.value)} placeholder="跟进记录" /><Button type="primary" size="small" block loading={busy} disabled={!note.trim()} onClick={followup}>保存</Button></div>}<div><div className="text-[11px] font-semibold text-gray-600 mb-2 flex items-center gap-2">互动历史<Tag className="text-[9px] px-1 my-0">{history.length} 条</Tag></div>{history.length ? <Timeline items={history.slice(0, 20)} /> : <div className="text-xs text-gray-400 p-3 bg-gray-50 rounded text-center">暂无互动记录</div>}</div></div> },
     ].filter(item => COMPANY_BACKCHECK_UI_ENABLED || item.key !== 'company')} />}
     {sharing && reference && detail && <ContactSharingModal key={`${baseUrl}:${identity?.userId}:${reference.contactId}`} reference={reference} detail={detail} close={() => setSharing(false)} />}
   </ContactDetailLayout>;

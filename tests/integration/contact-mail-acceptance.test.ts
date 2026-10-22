@@ -65,17 +65,21 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail even
       const reply = unwrap(await mail.recordContactMailEvent(sales.hash, replyInput)); expect(reply.contact.touchStatus).toBe('replied');
       const older = unwrap(await mail.recordContactMailEvent(sales.hash, { ...event, eventKey: randomUUID(), occurredAt: '2019-01-02T00:00:00.000Z' }));
       expect(older.contact).toMatchObject({ touchStatus: 'replied', lastFollowupAt: replyInput.occurredAt });
-      for (const kind of ['cc', 'autoreply', 'bounced', 'received'] as const) {
+      for (const kind of ['cc', 'received'] as const) {
         const harmless = unwrap(await mail.recordContactMailEvent(sales.hash, { ...replyInput, kind, eventKey: randomUUID(), messageKey: `<${kind}>`, occurredAt: '2022-01-02T00:00:00.000Z' }));
         expect(harmless.contact).toMatchObject({ touchStatus: 'replied', lastFollowupAt: replyInput.occurredAt }); expect(harmless.event.activityId).toBeNull();
       }
+      for (const [kind, touchStatus] of [['autoreply', 'autoreply'], ['bounced', 'bounced']] as const) {
+        const outcome = unwrap(await mail.recordContactMailEvent(sales.hash, { ...replyInput, kind, eventKey: randomUUID(), messageKey: `<${kind}>`, occurredAt: '2022-01-03T00:00:00.000Z' }));
+        expect(outcome.contact.touchStatus).toBe(touchStatus); expect(outcome.event.activityId).not.toBeNull();
+      }
       const falseReply = unwrap(await mail.recordContactMailEvent(sales.hash, { ...replyInput, fromEmail: 'stranger@example.invalid', eventKey: randomUUID(), occurredAt: '2023-01-02T00:00:00.000Z' }));
-      expect(falseReply.contact.touchStatus).toBe('replied'); expect(falseReply.event.activityId).toBeNull();
+      expect(falseReply.contact.touchStatus).toBe('bounced'); expect(falseReply.event.activityId).toBeNull();
       const ccSent = unwrap(await mail.recordContactMailEvent(sales.hash, { ...event, toEmails: ['someone@example.invalid'], ccEmails: [primary], eventKey: randomUUID(), occurredAt: '2023-01-02T00:00:00.000Z' }));
       expect(ccSent.event.activityId).toBeNull();
       const detail = unwrap(await repo.contactDetail(sales.hash, { contactId, customerId }));
       expect(detail).toMatchObject({ mailAvailable: true }); expect(detail.mailEvents[0]!.occurredAt).toBe('2023-01-02T00:00:00.000Z');
-      expect(detail.mailEvents).toHaveLength(10); expect(detail.activities).toHaveLength(4);
+      expect(detail.mailEvents).toHaveLength(10); expect(detail.activities).toHaveLength(6);
       expect(unwrap(await repo.contactDetail(ops.hash, { contactId: sibling, customerId })).mailEvents).toHaveLength(1);
       const manual = unwrap(await repo.contactFollowup(sales.hash, { contactId, customerId, expectedVersion: detail.contact.contactVersion!, idempotencyKey: randomUUID(), method: 'phone', note: 'manual call stays visible', contactStatus: 'contacted', occurredAt: '2024-06-01T00:00:00.000Z' }));
       expect(manual.contact.status).toBe('reached');
@@ -90,9 +94,11 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail even
       expect(siblingReply.contact).toMatchObject({ status: 'replied', touchStatus: 'replied', tags: [], relationshipStage: 'trial' });
       const stageClear = unwrap(await repo.contactFollowup(ops.hash, { contactId: sibling, customerId, expectedVersion: siblingReply.contact.contactVersion!, idempotencyKey: randomUUID(), method: 'note', note: 'clear stage only', stage: 'cold' }));
       expect(stageClear.contact).toMatchObject({ status: 'replied', touchStatus: 'replied', tags: [], relationshipStage: 'cold' });
-      const unreachable = unwrap(await repo.contactFollowup(ops.hash, { contactId: sibling, customerId, expectedVersion: stageClear.contact.contactVersion!, idempotencyKey: randomUUID(), method: 'phone', note: 'phone unreachable', contactStatus: 'unreachable' }));
-      expect(unreachable.contact).toMatchObject({ status: 'replied', touchStatus: 'unreachable', tags: [] });
-      const touchClear = unwrap(await repo.contactFollowup(ops.hash, { contactId: sibling, customerId, expectedVersion: unreachable.contact.contactVersion!, idempotencyKey: randomUUID(), method: 'other', note: 'explicit clear', contactStatus: 'uncontacted' }));
+      const bounced = unwrap(await repo.contactFollowup(ops.hash, { contactId: sibling, customerId, expectedVersion: stageClear.contact.contactVersion!, idempotencyKey: randomUUID(), method: 'email', note: 'mailbox bounced', contactStatus: 'bounced' }));
+      expect(bounced.contact).toMatchObject({ status: 'bounced', touchStatus: 'bounced', tags: [] });
+      const board = unwrap(await repo.list(ops.hash, { view: 'operations', search: '', limit: 100, offset: 0, followupOnly: true }));
+      expect(board.items.some(item => item.customerId === customerId)).toBe(true);
+      const touchClear = unwrap(await repo.contactFollowup(ops.hash, { contactId: sibling, customerId, expectedVersion: bounced.contact.contactVersion!, idempotencyKey: randomUUID(), method: 'other', note: 'explicit clear', contactStatus: 'uncontacted' }));
       expect(touchClear.contact).toMatchObject({ status: '', touchStatus: 'uncontacted', tags: [] });
       expect((await client.query("SELECT count(*)::int AS n FROM identity.outbox WHERE payload->>'mailEventId'=$1", [sent.eventId])).rows[0].n).toBe(1);
       const outbox = (await client.query("SELECT payload,recipient_user_ids FROM identity.outbox WHERE payload->>'mailEventId'=$1", [sent.eventId])).rows[0];

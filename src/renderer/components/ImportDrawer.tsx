@@ -214,10 +214,22 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
   const newCount = preview ? preview.totalRows - dupCount : 0;
   const emailMapped = preview?.headers.some(h => mapping[h] === "email");
   const readyToImport = port ? Object.values(mapping).includes('companyName') && ['email','name','firstName','lastName','phone','whatsapp'].some(field=>Object.values(mapping).includes(field)) : emailMapped;
+  const drawerWidth = step === "input" ? "min(620px, calc(100vw - 24px))" : "min(1180px, calc(100vw - 24px))";
 
   return (
     <Drawer rootClassName="app-drawer-below-titlebar" title="导入联系人" open={open} onClose={handleClose}
-      width={step === "input" ? 560 : Math.max(800, (preview?.headers.length || 5) * 130 + 48)}
+      width={drawerWidth}
+      footer={step === "preview" && preview ? <div className="flex justify-end">
+        <Space>
+          <Button size="small" onClick={() => setStep("input")}>返回</Button>
+          <Button type="primary" size="small"
+            loading={importing}
+            disabled={!readyToImport || disabled}
+            onClick={executeImport}>
+            确认导入 {newCount} 条
+          </Button>
+        </Space>
+      </div> : undefined}
     >
       {step === "input" && (
         <div className="space-y-4">
@@ -264,10 +276,13 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
         />
 
         {/* 字段识别指南（自 ImportPage 移植） */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <p className="text-xs font-semibold text-gray-500 mb-3">字段识别说明</p>
-          <p className="text-[11px] text-gray-400 mb-3">
-            程序读取 Excel/CSV 的<strong>第一行作为表头</strong>，通过匹配列名自动识别字段。中英文列名均可，忽略大小写与空格。
+        <details className="rounded-lg border border-gray-200 bg-white p-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold text-gray-500 [&::-webkit-details-marker]:hidden">
+            <span>字段识别说明</span>
+            <span className="text-[11px] font-normal text-gray-400">查看支持的列名</span>
+          </summary>
+          <p className="mb-3 mt-3 text-[11px] text-gray-400">
+            第一行为表头，系统会自动匹配中英文列名并忽略大小写与空格。
             {port ? '其他列保留为导入原始记录。' : '未匹配的列保留在「额外信息」中。'}
           </p>
           {(port ? [
@@ -282,7 +297,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
               </div>)}
             </div>
           </section>)}
-        </div>
+        </details>
         </div>
       )}
 
@@ -311,15 +326,6 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
             className="[&_.ant-table-thead>tr>th]:!text-[10px] [&_.ant-table-thead>tr>th]:!p-1"
           />
 
-          <Space className="w-full justify-end">
-            <Button size="small" onClick={() => setStep("input")}>返回</Button>
-            <Button type="primary" size="small"
-              loading={importing}
-              disabled={!readyToImport || disabled}
-              onClick={executeImport}>
-              确认导入 {newCount} 条
-            </Button>
-          </Space>
         </div>
       )}
     </Drawer>

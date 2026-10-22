@@ -20,6 +20,7 @@ import { ONLINE_LIMITS } from '../../../shared/online-crm';
 
 export interface PipelineContact {
   id: number; email: string; firstName: string | null; lastName: string | null;
+  customerId?: string;
   title: string | null; phone: string | null; linkedinUrl: string | null;
   companyName: string | null; companyId: number | null;
   stage: string; sendStage: string;
@@ -34,7 +35,7 @@ export interface PipelineContact {
 }
 
 export interface StageData { key: string; label: string; color: string; contacts: PipelineContact[]; }
-export interface PipelineDataPort { key: string; list(): Promise<{ success: boolean; data?: StageData[]; error?: string }>; renderDetail(id: number | null, close: () => void): ReactNode; }
+export interface PipelineDataPort { key: string; list(): Promise<{ success: boolean; data?: StageData[]; error?: string }>; renderDetail(contact: PipelineContact | null, close: () => void): ReactNode; }
 
 const STAGES = [
   { key: "reaching", label: "触达中", color: "#ff9800" },
@@ -530,7 +531,10 @@ export function CrmPipeline({ dataPort }: { dataPort?: PipelineDataPort } = {}) 
       </div>
 
       {/* 详情作为独立上层，列表保持完整宽度并退到遮罩下。 */}
-      {dataPort && dataPort.renderDetail(detailId, () => setDetailId(null))}
+      {dataPort && dataPort.renderDetail(
+        detailId === null ? null : stages.flatMap(stage => stage.contacts).find(contact => contact.id === detailId) ?? null,
+        () => setDetailId(null),
+      )}
       {!dataPort && detailId && (
         <div className="fixed inset-0 z-20 bg-black/50" aria-label="关闭联系人详情" onClick={() => setDetailId(null)} />
       )}

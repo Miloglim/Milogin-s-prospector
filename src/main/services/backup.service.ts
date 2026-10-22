@@ -6,6 +6,20 @@ import { Log } from "../logger";
 
 const BACKUP_DIR = path.join(APP_ROOT, "data", "backups");
 const KEEP_DAYS = 7;
+const INVALID_BACKUP_SUFFIX = "invalid";
+
+function pruneBackups(dir: string): void {
+  const keep = new Set<string>();
+  for (let i = 0; i < KEEP_DAYS; i++) {
+    const d = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+    keep.add(`prospector-${d}.db`);
+  }
+  for (const f of fs.readdirSync(dir)) {
+    if (/^prospector-\d{4}-\d{2}-\d{2}\.db$/.test(f) && !keep.has(f)) {
+      try { fs.unlinkSync(path.join(dir, f)); } catch { /* Best-effort retention cleanup must not fail the backup. */ }
+    }
+  }
+}
 
 /** 每日备份：VACUUM INTO 生成一致性快照，并 TRUNCATE 收 WAL。失败只记日志，不阻断应用。 */
 export function dailyBackup(): void {
@@ -18,19 +32,17 @@ export function dailyBackup(): void {
     try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch { /* 忽略 */ }
     const date = new Date().toISOString().slice(0, 10);
     const target = path.join(dir, `prospector-${date}.db`);
+    if (fs.existsSync(target)) {
+      if (fs.statSync(target).size > 0) {
+        pruneBackups(dir);
+        Log.info("db.backup", `今日备份已存在，跳过: ${target}`);
+        return;
+      }
+      fs.renameSync(target, `${target}.${INVALID_BACKUP_SUFFIX}-${Date.now()}`);
+    }
     db.exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
     Log.info("db.backup", `每日备份完成: ${target}`);
-    // 清理 7 天前的备份
-    const keep = new Set<string>();
-    for (let i = 0; i < KEEP_DAYS; i++) {
-      const d = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
-      keep.add(`prospector-${d}.db`);
-    }
-    for (const f of fs.readdirSync(dir)) {
-      if (/^prospector-\d{4}-\d{2}-\d{2}\.db$/.test(f) && !keep.has(f)) {
-        try { fs.unlinkSync(path.join(dir, f)); } catch { /* 忽略 */ }
-      }
-    }
+    pruneBackups(dir);
   } catch (err) {
     Log.warn("db.backup", `每日备份失败: ${err instanceof Error ? err.message : String(err)}`);
   }

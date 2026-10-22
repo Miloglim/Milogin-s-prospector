@@ -6,17 +6,27 @@ import * as imapflow from "imapflow";
 import { simpleParser } from "mailparser";
 import { Log } from "../logger";
 import { failResult, okResult, type Result } from "../errors";
-import { getDb, saveDatabase } from "../db";
+import { getDb, getRawDb, saveDatabase } from "../db";
 import { inboxMessages } from "../db/schema/inbox";
 import { emailAccounts } from "../db/schema/accounts";
 import { interactions } from "../db/schema/interactions";
 import { eq, and, sql } from "drizzle-orm";
 import { getDecryptedPassword } from "./account.service";
 import * as InboxService from "./inbox.service";
+import {
+  INBOX_IMAP_BATCH_LIMIT,
+  INBOX_RECENT_BACKFILL_COUNT,
+  mergeInboxScanUids,
+  needsRecentInboxBackfill,
+  selectInboxUidBatch,
+} from "../core/inbox-fetch";
+import { INBOX_FETCH_PHASES, type InboxFetchPhase } from "../../shared/inbox";
 
 // ── 拉取时间窗口（天）──
-// ponytail: 只拉最近 N 天，替代 uid 增量（uid 增量在大量历史邮件下会卡死停在一个日期）
+// 只拉最近 N 天；批量内用账号 UID 游标继续，避免历史全量扫描或重复扫同一批。
 const FETCH_DAYS = 5;
+const PROGRESS_PUSH_EVERY = 5;
+const POP3_FETCH_LIMIT = 40;
 
 // ── POP3 端口检测 ──
 
@@ -169,6 +179,7 @@ async function doPop3Fetch(accountId: number): Promise<Result<InboxService.Inbox
 
   let sock: Pop3Socket | undefined;
   try {
+    pushProgress(accountId, account.email, INBOX_FETCH_PHASES.CONNECTING, 0, 0, 0, 0, "正在连接 POP3 服务器");
     sock = await pop3Connect(host, port);
     await pop3ReadLine(sock, 15000); // greeting
 
@@ -178,6 +189,7 @@ async function doPop3Fetch(accountId: number): Promise<Result<InboxService.Inbox
     const passRes2 = await pop3Cmd(sock, `PASS ${passRes.data}`);
     if (!passRes2[0]?.startsWith("+OK")) { sock.destroy(); return failResult(`POP3 认证失败: ${passRes2[0]}`); }
 
+    pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SEARCHING, 0, 0, 0, 0, "正在读取服务器邮件数量");
     const statRes = await pop3Cmd(sock, "STAT");
     const statMatch = statRes[0]?.match(/^\+OK\s+(\d+)/);
     const total = statMatch ? parseInt(statMatch[1]!, 10) : 0;
@@ -211,13 +223,20 @@ async function doPop3Fetch(accountId: number): Promise<Result<InboxService.Inbox
       }
     }
 
-    // 获取最近 40 封
-    const fetchCount = Math.min(total, 40);
+    // POP3 没有稳定可续的全局 UID 窗口，只检查服务器最新 40 个序号。
+    const fetchCount = Math.min(total, POP3_FETCH_LIMIT);
     const startIdx = Math.max(1, total - fetchCount + 1);
     const parsed: InboxService.InboxMessageRow[] = [];
     const bounceSeen = new Set<string>();
+    let scanned = 0;
+
+    pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SCANNING, 0, fetchCount, 0, 0);
 
     for (let i = startIdx; i <= total; i++) {
+      scanned++;
+      if (scanned % PROGRESS_PUSH_EVERY === 0) {
+        pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SCANNING, scanned, fetchCount, parsed.length, 0);
+      }
       const uid = uidMap.get(i) || `pop3-${accountId}-${i}`;
 
       // 去重 + 已删除集过滤
@@ -284,6 +303,7 @@ async function doPop3Fetch(accountId: number): Promise<Result<InboxService.Inbox
     }
 
     if (parsed.length > 0) saveDatabase();
+    pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SCANNING, scanned, fetchCount, parsed.length, 0);
     sock.write("QUIT\r\n");
     sock.destroy();
     Log.info("inbox.pop3", `${account.email}: ${parsed.length} 封新邮件`);
@@ -292,6 +312,7 @@ async function doPop3Fetch(accountId: number): Promise<Result<InboxService.Inbox
     try { sock?.destroy(); } catch { /* */ }
     const msg = err instanceof Error ? err.message : String(err);
     Log.error("inbox.pop3", msg);
+    pushProgress(accountId, account.email, INBOX_FETCH_PHASES.FAILED, 0, 0, 0, 0, msg);
     return failResult(msg);
   }
 }
@@ -322,6 +343,7 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
     });
     await client.connect();
     await client.mailboxOpen("INBOX");
+    pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SEARCHING, 0, 0, 0, 0, "正在查找最近邮件");
 
     // 回写程序内标读（\Seen）：校准前先把用户在本程序里点开/标读的邮件同步到服务器，
     // 否则下面的未读校准会按服务器视角把这些行改回未读 —— 已读"复活"的根因。
@@ -345,13 +367,26 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
     // 拉近 FETCH_DAYS 天：SEARCH SINCE 按时间窗口，替代 uid 增量（+1 天缓冲时区差）
     const since = new Date(Date.now() - (FETCH_DAYS + 1) * 86400_000);
     const uids = (await client.search({ since }, { uid: true })) || [];
-    // P1-4: 单轮抓取封顶 — 积压大时分多轮消化（下轮 search 重复返回，existing 集去重后只插新信）
-    const MAX_FETCH_PER_ROUND = 500;
-    const scanUids = uids.length > MAX_FETCH_PER_ROUND ? uids.slice(0, MAX_FETCH_PER_ROUND) : uids;
-    if (uids.length > MAX_FETCH_PER_ROUND) {
-      Log.warn("inbox.imap", `${account.email}: 待抓 ${uids.length} 封超单轮上限，本轮处理最早的 ${MAX_FETCH_PER_ROUND} 封，其余下轮继续`);
+    const mailbox = client.mailbox;
+    const uidValidity = mailbox ? mailbox.uidValidity.toString() : "";
+    const fetchCursor = readImapFetchCursor(accountId);
+    const lastUid = fetchCursor.uidValidity === uidValidity ? fetchCursor.lastUid : null;
+    const uidBatch = selectInboxUidBatch(uids, lastUid, INBOX_IMAP_BATCH_LIMIT);
+    const localIncomingCount = incomingMessageCount(accountId);
+    const recentUids = needsRecentInboxBackfill(localIncomingCount)
+      ? await latestInboxUids(client, INBOX_RECENT_BACKFILL_COUNT)
+      : [];
+    const recentCandidates = recentUids.filter(uid => !uidBatch.batch.includes(uid));
+    const scanUids = mergeInboxScanUids(uidBatch.batch, recentCandidates, INBOX_IMAP_BATCH_LIMIT);
+    const deferredRecent = Math.max(0, uidBatch.batch.length + recentCandidates.length - scanUids.length);
+    const remaining = uidBatch.remaining + deferredRecent;
+    if (recentUids.length > 0) {
+      Log.info("inbox.imap.backfill", `${account.email}: 本地入站 ${localIncomingCount}/${INBOX_RECENT_BACKFILL_COUNT} 封，补查服务器最近 ${recentUids.length} 封`);
     }
-    Log.info("inbox.imap", `${account.email}: 近 ${FETCH_DAYS} 天共 ${uids.length} 封`);
+    if (remaining > 0) {
+      Log.warn("inbox.imap", `${account.email}: 本轮待扫描 ${scanUids.length} 封，余 ${remaining} 封下轮继续`);
+    }
+    Log.info("inbox.imap", `${account.email}: 近 ${FETCH_DAYS} 天共 ${uids.length} 封，本轮待扫描 ${scanUids.length} 封`);
     if (scanUids.length === 0) {
       await client!.logout();
       client = null;
@@ -362,6 +397,8 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
     const parsed: InboxService.InboxMessageRow[] = [];
     let scanned = 0;
     let inserted = 0;
+
+    pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SCANNING, 0, scanUids.length, 0, remaining);
 
     // 一次性载入已存在 messageId → 内存 Set，避免逐封查库（拉全部时关键）
     const existing = new Set(
@@ -379,6 +416,9 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
     const stream = client.fetch(scanUids, { uid: true, envelope: true, flags: true }, { uid: true });
     for await (const msg of stream) {
       scanned++;
+      if (scanned % PROGRESS_PUSH_EVERY === 0) {
+        pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SCANNING, scanned, scanUids.length, inserted, remaining);
+      }
       // 已读状态跟服务器对齐：抓取时就认 \Seen 标志（此前一律落未读，服务器读过的
       // 邮件在本程序里永远显示未读 ——「1650 封未读」假象的来源之一）
       const seen = (msg.flags as Set<string> | undefined)?.has("\\seen") ?? false;
@@ -442,16 +482,29 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
         createdAt: new Date().toISOString(),
       });
 
-      if (scanned % 25 === 0) pushProgress(accountId, scanned, scanUids.length, account.email);
     }
 
     if (inserted > 0) saveDatabase();
-    pushProgress(accountId, scanned, scanUids.length, account.email);
+    if (uidValidity && uidBatch.nextCursor !== null) {
+      saveImapFetchCursor(accountId, uidValidity, uidBatch.nextCursor);
+      saveDatabase();
+    }
+    pushProgress(
+      accountId,
+      account.email,
+      INBOX_FETCH_PHASES.SCANNING,
+      scanned,
+      scanUids.length,
+      inserted,
+      remaining,
+      remaining > 0 ? `本轮完成，另有 ${remaining} 封将在下次刷新继续` : undefined,
+    );
     Log.info("inbox.imap", `${account.email}: 扫描 ${scanned} 封，新增 ${inserted} 封`);
 
     // ── 未读校准（治「本地 1650 封未读、服务器一封未读都没有」的假象）──
     // 此前抓取从不读 \Seen 标志，历史邮件在本地一律未读。以服务器为准：
     // SEARCH UNSEEN 只回真未读集（便宜）；本地未读行里不在该集的全部标已读，在集内的标回未读。
+    pushProgress(accountId, account.email, INBOX_FETCH_PHASES.CALIBRATING, scanned, scanUids.length, inserted, remaining, "正在校准服务器未读状态");
     try {
       const unseenUids = (await client.search({ seen: false }, { uid: true })) || [];
       const unseenMsgIds = new Set<string>();
@@ -515,6 +568,7 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
     const msg = err instanceof Error ? err.message : String(err);
     Log.error("inbox.imap", msg, err instanceof Error ? err.stack : undefined);
     if (client) { try { client.logout(); } catch { /* */ } }
+    pushProgress(accountId, account.email, INBOX_FETCH_PHASES.FAILED, 0, 0, 0, 0, msg);
     return failResult(msg);
   }
 }
@@ -731,8 +785,51 @@ export function setNetPushFn(fn: (channel: string, data: unknown) => void): void
   _pushToRenderer = fn;
 }
 
-function pushProgress(accountId: number, scanned: number, total: number, email?: string): void {
-  try { _pushToRenderer?.("inbox:fetchProgress", { accountId, email, scanned, total }); } catch { /* */ }
+function pushProgress(
+  accountId: number,
+  email: string | undefined,
+  phase: InboxFetchPhase,
+  scanned: number,
+  total: number,
+  newCount: number,
+  remaining: number,
+  message?: string,
+): void {
+  try {
+    _pushToRenderer?.("inbox:fetchProgress", { accountId, email, phase, scanned, total, newCount, remaining, message });
+  } catch { /* 进度推送失败不影响邮件抓取 */ }
+}
+
+function readImapFetchCursor(accountId: number): { uidValidity: string | null; lastUid: number | null } {
+  const row = getRawDb().prepare(
+    "SELECT imap_fetch_uid_validity AS uidValidity, imap_fetch_last_uid AS lastUid FROM email_accounts WHERE id = ?",
+  ).get(accountId) as { uidValidity?: string | null; lastUid?: number | null } | undefined;
+  return { uidValidity: row?.uidValidity ?? null, lastUid: row?.lastUid ?? null };
+}
+
+function incomingMessageCount(accountId: number): number {
+  const row = getRawDb().prepare(
+    "SELECT COUNT(*) AS count FROM inbox_messages WHERE account_id = ? AND COALESCE(classification, '') <> 'sent'",
+  ).get(accountId) as { count?: number } | undefined;
+  return Number(row?.count ?? 0);
+}
+
+async function latestInboxUids(client: imapflow.ImapFlow, limit: number): Promise<number[]> {
+  const mailbox = client.mailbox;
+  if (!mailbox || mailbox.exists <= 0) return [];
+  const firstSequence = Math.max(1, mailbox.exists - limit + 1);
+  const uids: number[] = [];
+  const stream = client.fetch(`${firstSequence}:*`, { uid: true }, { uid: false });
+  for await (const message of stream) {
+    if (typeof message.uid === "number") uids.push(message.uid);
+  }
+  return [...new Set(uids)].sort((left, right) => left - right);
+}
+
+function saveImapFetchCursor(accountId: number, uidValidity: string, lastUid: number): void {
+  getRawDb().prepare(
+    "UPDATE email_accounts SET imap_fetch_uid_validity = ?, imap_fetch_last_uid = ? WHERE id = ?",
+  ).run(uidValidity, lastUid, accountId);
 }
 
 // 定位 Sent 文件夹：优先 specialUse=\Sent 标记，兜底常见名字（阿里邮箱中文名「已发送」）

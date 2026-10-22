@@ -1,8 +1,9 @@
 import {CRM_STAGES} from '../../core/crm';
-import {CONTACT_TOUCH_STATUSES,FOLLOWUP_METHODS} from '../../core/leads';
+import {FOLLOWUP_METHODS} from '../../core/leads';
 export const FOLLOWUP_VERSION='012-customer-followup';
 const stages=['cold',...CRM_STAGES].map(value=>`'${value}'`).join(',');
-const statuses=CONTACT_TOUCH_STATUSES.map(value=>`'${value}'`).join(',');
+// Historical migration checksums depend on the original four-value enum; later migrations expand it.
+const statuses=['uncontacted','contacted','replied','unreachable'].map(value=>`'${value}'`).join(',');
 const methods=['legacy',...FOLLOWUP_METHODS].map(value=>`'${value}'`).join(',');
 /** One-time migration: preserve sending columns and record ambiguous legacy evidence. */
 export const FOLLOWUP_SQL=`

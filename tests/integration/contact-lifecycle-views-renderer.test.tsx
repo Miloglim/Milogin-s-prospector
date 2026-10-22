@@ -19,7 +19,7 @@ describe('existing contact and company views after remote lifecycle changes', ()
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   });
   afterEach(async () => { vi.useRealTimers(); await act(async () => root.unmount()); client.clear(); host.remove(); });
-  it('places search and borderless actions beside the customer tabs without a count', async () => {
+  it('places search and a labeled more menu beside the customer tabs without a count', async () => {
     const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }) } as unknown as ContactDataPort;
     function WithHeader() {
       const [target, setTarget] = useState<HTMLDivElement | null>(null);
@@ -30,11 +30,13 @@ describe('existing contact and company views after remote lifecycle changes', ()
     const header = host.querySelector('[data-testid="customer-tabs-row"]')!;
     expect(header.querySelector('input[placeholder="搜索邮箱、姓名、公司..."]')).not.toBeNull();
     expect(header.textContent).not.toContain('共 1 人');
+    expect(header.querySelector('button[aria-label="更多操作"]')?.textContent).toContain('更多');
     expect(header.querySelector('button[aria-label="更多操作"]')?.classList.contains('ant-btn-text')).toBe(true);
     expect(host.querySelector('.customer-contacts-page button[aria-label="更多操作"]')).toBeNull();
     expect(host.querySelector('.customer-contacts-page input[placeholder="搜索邮箱、姓名、公司..."]')).toBeNull();
     await act(async () => { header.querySelector<HTMLButtonElement>('button[aria-label="更多操作"]')!.click(); await flush(); });
     expect(document.querySelector('.ant-popover')?.textContent).toContain('列设置');
+    expect(document.querySelector('.ant-popover')?.textContent).toContain('导入');
   });
   it('shows the contact table without a filter row or hidden filter query', async () => {
     const list = vi.fn(async (_query: unknown) => ({ success: true, data: { items: [contact], total: 1 } }));
@@ -47,7 +49,21 @@ describe('existing contact and company views after remote lifecycle changes', ()
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ search: '', page: 1 }));
     expect(list.mock.calls[0]?.[0]).not.toHaveProperty('touchStatus');
   });
-  it('keeps table actions in one compact menu with the existing offline limits', async () => {
+  it('shows one compact selection toolbar without duplicate action counts', async () => {
+    const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }), canDelete: () => true } as unknown as ContactDataPort;
+    await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} onAssign={() => {}} /></QueryClientProvider>));
+    await act(flush);
+    await act(async () => { (host.querySelectorAll('input[type="checkbox"]')[1] as HTMLInputElement).click(); await flush(); });
+    expect(host.textContent).toContain('已选择 1 项');
+    expect(host.textContent).toContain('取消选择');
+    expect(host.textContent).toContain('分配线索');
+    expect(host.textContent).toContain('删除');
+    expect(host.textContent).not.toContain('分配线索 (1)');
+    expect(host.textContent).not.toContain('删除选中 (1)');
+    await act(async () => { Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '取消选择')!.click(); await flush(); });
+    expect(host.textContent).not.toContain('已选择 1 项');
+  });
+  it('keeps import and column controls in more operations with the existing offline limits', async () => {
     const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }), export: async () => ({ success: true, data: '' }) } as unknown as ContactDataPort;
     await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} online={false} /></QueryClientProvider>));
     await act(flush);
@@ -66,13 +82,13 @@ describe('existing contact and company views after remote lifecycle changes', ()
     const port = { key: 'fixture', list: vi.fn(async () => failed ? { success: false, error: '离线' } : { success: true, data: { items: visible ? [contact] : [], total: visible ? 1 : 0 } }), listIds: vi.fn(async () => failed ? { success: false, error: '离线' } : { success: true, data: { ids: visible ? [42] : [] } }), canDelete: () => true } as unknown as ContactDataPort;
     await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} renderDetail={() => null} /></QueryClientProvider>)); await act(flush);
     await act(async () => { (host.querySelectorAll('input[type="checkbox"]')[1] as HTMLInputElement).click(); await flush(); });
-    expect(host.textContent).toContain('删除选中 (1)');
+    expect(host.textContent).toContain('已选择 1 项');
     failed = true;
     await act(async () => { await client.invalidateQueries({ queryKey: ['center-contacts'] }); await flush(); });
-    expect(host.textContent).toContain('删除选中 (1)');
+    expect(host.textContent).toContain('已选择 1 项');
     failed = false; visible = false;
     await act(async () => { await client.invalidateQueries({ queryKey: ['center-contacts'] }); await flush(); });
-    expect(host.textContent).not.toContain('删除选中 (1)');
+    expect(host.textContent).not.toContain('已选择 1 项');
   }, 20000);
   it('refreshes an already open company detail when a remote contact disappears', async () => {
     let visible = true;

@@ -21,7 +21,7 @@ interface ProjectionFact {
   touch: ContactTouchStatus | null;
   manual: boolean;
 }
-const TOUCH_STATUS = { replied: 'replied', contacted: 'reached', uncontacted: '', unreachable: null } as const;
+const TOUCH_STATUS = { replied: 'replied', contacted: 'reached', bounced: 'bounced', autoreply: 'autoreply', uncontacted: '' } as const;
 
 /** Replayed facts retain their occurrence time; recording a correction is never a new contact. */
 export function projectContactMail(
@@ -40,10 +40,9 @@ export function projectContactMail(
     const status = fact.kind === 'bounced' ? 'bounced'
       : fact.kind === 'autoreply' ? 'autoreply'
       : reply ? 'replied' : sent ? 'reached' : null;
-    timeline.push({
-      ...fact, manual: false, status,
-      touch: reply ? 'replied' : sent ? 'contacted' : null,
-    });
+    const touch = reply ? 'replied' : fact.kind === 'bounced' ? 'bounced'
+      : fact.kind === 'autoreply' ? 'autoreply' : sent ? 'contacted' : null;
+    timeline.push({ ...fact, manual: false, status, touch });
   }
   for (const fact of manual) {
     timeline.push({
@@ -58,7 +57,7 @@ export function projectContactMail(
   let touchStatus: ContactTouchStatus = 'uncontacted';
   let status = '';
   for (const fact of timeline) {
-    if (fact.touch && (fact.manual || !(fact.touch === 'contacted' && touchStatus === 'replied'))) {
+    if (fact.touch && (fact.manual || !(fact.touch === 'contacted' && ['replied','bounced','autoreply'].includes(touchStatus)))) {
       touchStatus = fact.touch;
     }
     if (fact.status !== null && !(fact.status === 'reached' && !fact.manual && touchStatus === 'replied')) {

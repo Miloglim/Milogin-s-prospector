@@ -9,6 +9,7 @@ import { createContactMailSyncService } from '../services/contact-mail-sync.serv
 import { setInboxCenterContactPort, reconcileInboxCenterContacts, replayInboxCenterClassificationChanges } from '../services/inbox.service';
 import { readMailboxSnapshot } from './inbox-center-contact.adapter';
 import { centerContactPath } from '../../../server/core/center-contacts';
+import { readAllCenterContactsForMatch } from '../services/contact-match-reader.service';
 import { CONTACT_MAIL_ROUTE } from '../../../server/core/contact-mail';
 import { SEND_ACCEPTANCE_ROUTES } from '../../../server/core/send-acceptance';
 import { failure, success } from '../../../server/core/crm';
@@ -39,6 +40,7 @@ const REFRESH_INTERVAL_MS=60000;
 const MAIL_FLUSH_DELAY_MS=500;
 const RECONCILE_PAGE_SIZE=500;
 const MILLISECONDS_PER_SECOND=1000;
+const MATCH_CONTACTS_CACHE_TTL_MS=2000;
 /** Loaded only after the user's local DB/profile is selected; never captures an anonymous DB. */
 export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,changed:()=>void) {
   const mirror=createContactMirrorStore(parent);
@@ -89,6 +91,23 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
   };
   let flushTimer:ReturnType<typeof setTimeout>|undefined;
   const context=()=>stopped?null:adapter.contactReadContext();
+  let matchContactsCache:{key:string;expiresAt:number;rows:CenterContact[]}|undefined;
+  let matchContactsForceLive=false;
+  const clearMatchContactsCache=()=>{matchContactsCache=undefined;};
+  const invalidateMatchContacts=()=>{clearMatchContactsCache();matchContactsForceLive=true;};
+  const matchContextActive=(ctx:ContactMirrorContext)=>{
+    const current=context();
+    return !!current&&current.userId===ctx.userId&&current.baseUrl===ctx.baseUrl&&current.permissionKey===ctx.permissionKey;
+  };
+  const liveMatchContacts=async(ctx:ContactMirrorContext):Promise<CenterContact[]>=>{
+    const key=JSON.stringify([ctx.baseUrl,ctx.userId,ctx.permissionKey]);
+    if(matchContactsCache?.key===key&&matchContactsCache.expiresAt>Date.now())return matchContactsCache.rows;
+    const result=await readAllCenterContactsForMatch(input=>adapter.contacts(input),()=>matchContextActive(ctx));
+    if(!result.ok)throw new Error(result.error.message);
+    if(!matchContextActive(ctx))throw new Error('账号已切换');
+    matchContactsCache={key,expiresAt:Date.now()+MATCH_CONTACTS_CACHE_TTL_MS,rows:result.data};
+    return result.data;
+  };
   const sync=createContactMailSyncService({
     context,online:()=>!stopped&&adapter.isOnline(),
     query:async input=>{
@@ -103,6 +122,8 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
         :adapter.request('POST',CONTACT_MAIL_ROUTE,event,true);
     },
     replace:(ctx,rows)=>{
+      clearMatchContactsCache();
+      matchContactsForceLive=false;
       const previous=mirror.store.contacts(ctx),next=new Map(rows.map(row=>[lifecycleKey(ctx,row),row])),old=new Map(previous.map(row=>[lifecycleKey(ctx,row),row]));
       mirror.store.replaceContacts(ctx,rows);
       legacyContactMap.reconcile(rows, new Date().toISOString());
@@ -149,6 +170,7 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
         },
         saveCursor: (ctx, cursor) => mirror.store.saveIncrementalCursor?.(ctx, cursor),
         invalidate: ctx => {
+          clearMatchContactsCache();
           mirror.store.invalidateContacts(ctx);
           sync.invalidate(ctx);
         },
@@ -247,9 +269,15 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
   };
   const centerSender=bindCenterSendRuntime(adapter,mirror.store,changed,scheduleFlush,ctx=>sync.invalidate(ctx));
   setInboxCenterContactPort({
-    context,contacts:ctx=>mirror.store.ready(ctx)?mirror.store.contacts(ctx):[],findByEmail:(ctx,email)=>mirror.store.ready(ctx)?mirror.store.findByEmail(ctx,email):[],
+    context,
+    contacts:ctx=>mirror.store.ready(ctx)&&!matchContactsForceLive?mirror.store.contacts(ctx):liveMatchContacts(ctx),
+    findByEmail:async(ctx,email)=>{
+      const rows=mirror.store.ready(ctx)&&!matchContactsForceLive?mirror.store.findByEmail(ctx,email):await liveMatchContacts(ctx);
+      const normalized=email.trim().toLowerCase();
+      return rows.filter(row=>row.email?.trim().toLowerCase()===normalized);
+    },
     getLinks:(ctx,id)=>mirror.store.linksForLocalMessage(ctx,id).flatMap(link=>{
-      const row=mirror.store.ready(ctx)?mirror.store.contact(ctx,link):undefined;return row?[{...link,status:centerContactDisplayStatus(row),tags:row.relationshipStage?row.relationshipStage==='cold'?[]:[row.relationshipStage]:row.tags}]:[];
+      const row=mirror.store.ready(ctx)?mirror.store.contact(ctx,link):undefined;return row?[{...link,status:centerContactDisplayStatus(row),tags:row.relationshipStage?row.relationshipStage==='cold'?[]:[row.relationshipStage]:row.tags,email:row.email??undefined,companyName:row.companyName,contactVersion:row.contactVersion,canDelete:row.canDelete}]:[];
     }),
     storeMail:(ctx,input)=>{
       try {
@@ -266,6 +294,7 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
   });
   const observe=adapter.onResponse((ctx,method,path,data)=>{
     if(method!=='GET'&&path.startsWith('/api/crm/')){
+      invalidateMatchContacts();
       const current=context();if(!current||current.userId!==ctx.userId||current.baseUrl!==ctx.baseUrl)return;
       if(path.startsWith('/api/crm/contact-shares'))sync.invalidate(current);
       // Command receipts are persisted only after the command service checks its captured authorization.

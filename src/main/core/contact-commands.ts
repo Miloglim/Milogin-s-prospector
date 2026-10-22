@@ -1,11 +1,12 @@
 import type { CenterContactDetail, CenterContactUpdate, CenterContactFollowup } from '../../../server/core/contact-assignments';
 import type { ContactMirrorContext } from './contact-mirror';
 import type { ErrorCode } from '../../../server/core/crm';
+import type { ContactTouchStatus } from '../../../server/core/leads';
 import { canEditContactFields } from './contact-permissions';
 export const CONTACT_COMMAND_LIMITS = { batch: 50 } as const;
 export const CONTACT_COMMAND_PREFIX = 'contact-command:';
 export const CONTACT_COMMAND_RETENTION = { days: 30, batch: 100, millisecondsPerDay: 86_400_000 } as const;
-const FOLLOWUP_STATUS = {contacted:'reached',replied:'replied',uncontacted:'',unreachable:null} as const;
+const FOLLOWUP_STATUS: Record<ContactTouchStatus,string> = {contacted:'reached',replied:'replied',bounced:'bounced',autoreply:'autoreply',uncontacted:''};
 export type ContactCommandAction = 'update' | 'followups';
 export type ContactCommandInput = CenterContactUpdate | CenterContactFollowup;
 export interface ContactCommandContext extends ContactMirrorContext { active(): boolean; online(): boolean; }
@@ -78,7 +79,7 @@ export function contactCommandDetail(confirmed: CenterContactDetail, rows: Conta
      detail.contact.lastFollowupAt = occurredAt; detail.contact.lastFollowupNote = input.note;
      if (input.contactStatus) {
       detail.contact.touchStatus = input.contactStatus;
-      const status=FOLLOWUP_STATUS[input.contactStatus];if(status!==null)detail.contact.status=status;
+      detail.contact.status=FOLLOWUP_STATUS[input.contactStatus];
      }
     }
    }

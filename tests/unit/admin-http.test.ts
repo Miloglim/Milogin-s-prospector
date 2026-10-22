@@ -9,15 +9,32 @@ const token='a'.repeat(43), csrf=tokenAdapter.hash(`csrf:${token}`);
 const identity={userId:'test',email:'test@example.invalid',identityAdmin:true,crmRoles:[]};
 let server:Server;
 afterEach(async()=>{if(server)await new Promise<void>(resolve=>server.close(()=>resolve()));});
-async function setup(configOverride: Record<string, unknown> = {}){
+async function setup(configOverride: Record<string, unknown> = {}, dashboard?: any){
  const auth:any={login:async(_:unknown,client:string)=>success({token,identity,expiresAt:new Date().toISOString(),client}),me:async()=>success(identity),logout:async()=>success(undefined)};
  const admin:any={users:async()=>success({items:[],total:0}),products:async()=>success([]),mutate:async()=>success({}),consume:async()=>success(undefined)};
  const gate={allow:()=>true},config={...ONLINE_DEFAULTS,test_mode:true,...configOverride};
- server=createOnlineServer(auth,gate,config,{write:()=>{}},'test',createAdminHandler(auth,admin,tokenAdapter,gate,config,async(_req,res)=>{res.end('workbench');}));
+ server=createOnlineServer(auth,gate,config,{write:()=>{}},'test',createAdminHandler(auth,admin,tokenAdapter,gate,config,async(_req,res)=>{res.end('workbench');},undefined,dashboard));
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
  const address=server.address() as {port:number};return `http://127.0.0.1:${address.port}`;
 }
 describe('same-origin browser administration boundary',()=>{
+  it('combines the authenticated operations snapshot with Navigator health',async()=>{
+   const realFetch=globalThis.fetch;
+   const upstream=vi.spyOn(globalThis,'fetch').mockImplementation((input,init) => {
+    if(String(input)==='http://127.0.0.1:8795/api/health/live') return Promise.resolve(new Response(JSON.stringify({ok:true,data:{status:'ok',backend:'postgres'}}),{status:200,headers:{'content-type':'application/json'}}));
+    return realFetch(input,init);
+   });
+   const dashboard={operations:vi.fn(async()=>success({generatedAt:new Date().toISOString(),version:'0.55.0-alpha.1',uptime_seconds:42,checks:[{id:'center',label:'中心服务',state:'healthy',value:'v0.55.0-alpha.1',valueLabel:'当前版本',detail:'正常'}]}))};
+   try {
+    const base=await setup({},dashboard);
+    const response=await fetch(base+'/admin-api/operations',{headers:{Cookie:`milogin_admin=${token}`}});
+    expect(response.status).toBe(200);
+    const payload=await response.json();
+    expect(payload.data.version).toBe('0.55.0-alpha.1');
+    expect(payload.data.checks).toEqual(expect.arrayContaining([expect.objectContaining({id:'navigator',state:'healthy'})]));
+    expect(dashboard.operations).toHaveBeenCalledWith(token);
+   } finally { upstream.mockRestore(); }
+  });
  it('proxies Navigator business summary with the current center session only',async()=>{
   const realFetch=globalThis.fetch;
   const upstream=vi.spyOn(globalThis,'fetch').mockImplementation((input,init) => {

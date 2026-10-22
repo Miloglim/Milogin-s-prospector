@@ -8,7 +8,6 @@ import { DiamondLogo } from './DiamondLogo';
 import { TitleBar } from './layout/AppLayout';
 import './OnboardingWizard.css';
 import './ProductLogin.css';
-import { DEFAULT_MAIL_SERVERS } from '../../shared/mail-defaults';
 import { subscribeWorkspaceDark, workspaceDarkEnabled } from '../lib/workspace-preferences';
 
 const PASSWORD_MIN_LENGTH = AUTH_LIMITS.passwordMin;
@@ -31,25 +30,6 @@ export function ProductLogin() {
   const accounts = (session.accounts ?? []).filter(account => !!account.email);
   const selected = accounts.find(account => account.accountId === accountId && account.email === email);
   const savedCredential = Boolean(!creating && selected?.remembered && remember && !password);
-  async function provisionMailAccount(accountEmail: string, accountPassword: string): Promise<void> {
-    const payload = {
-      email: accountEmail,
-      password: accountPassword,
-      smtpHost: DEFAULT_MAIL_SERVERS.smtpHost,
-      smtpPort: DEFAULT_MAIL_SERVERS.smtpPort,
-      imapHost: DEFAULT_MAIL_SERVERS.imapHost,
-      imapPort: DEFAULT_MAIL_SERVERS.imapPort,
-      validateConnection: false,
-    };
-    const attempts = 8;
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        const result = await window.api.invoke('accounts:upsert', payload) as { success?: boolean };
-        if (result?.success) return;
-      } catch { /* 本地资料库可能仍在绑定，稍后重试；登录结果不受影响。 */ }
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-  }
   useEffect(() => subscribeWorkspaceDark(setWorkspaceDark), []);
   function chooseAccount(account: LoginAccount) {
     initialAccountChosen.current = true;setEmail(account.email);setPassword('');setAccountId(account.accountId);
@@ -94,7 +74,7 @@ export function ProductLogin() {
         const accountEmail = String(form.get('email') ?? '').trim();
         const accountPassword = String(form.get('password') ?? '');
         const loggedIn = await session.login({ baseUrl: session.baseUrl, email: accountEmail, password: accountPassword, remember, autoLogin:remember&&autoLogin });
-        if (loggedIn) void provisionMailAccount(accountEmail, accountPassword);
+        if (loggedIn) setNotice('登录成功。发信邮箱请在设置中单独配置。');
       }
     }
   }

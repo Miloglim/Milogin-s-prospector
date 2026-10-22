@@ -55,6 +55,29 @@ describe('formal customer page reuses original presentation with center identity
     expect(drawer.textContent).toContain('公司资料');
     expect(drawer.textContent).toContain('联系人与线索来源');
   });
+  it('opens a prefilled add drawer from inbox and saves only through center import', async () => {
+    const fallback = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (channel, input) => channel === ONLINE_CHANNELS.IMPORT
+      ? { ok: true, data: { batchId: 'fixture-batch', version: 1, rows: [{ status: 'created', customerId: fixture.customerId }] } }
+      : fallback(channel, input));
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    window.location.hash = '#/customers?view=table&add=1&inbox=91&email=lead%40example.invalid&company=Acme&firstName=Ana&lastName=Silva';
+    await mount();
+    await vi.waitFor(() => expect(document.querySelector('.ant-drawer-open')).not.toBeNull(), { timeout: 2000 });
+    const drawer = document.querySelector('.ant-drawer-open')!;
+    expect(drawer.querySelector<HTMLInputElement>('#email')?.value).toBe('lead@example.invalid');
+    expect(drawer.querySelector<HTMLInputElement>('#companyName')?.value).toBe('Acme');
+    expect(drawer.querySelector<HTMLInputElement>('#firstName')?.value).toBe('Ana');
+    expect(drawer.querySelector<HTMLInputElement>('#lastName')?.value).toBe('Silva');
+    await act(async () => { drawer.querySelector<HTMLButtonElement>('button[type="submit"]')!.click(); await flush(); });
+    expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.IMPORT, expect.objectContaining({
+      source: 'manual', sourceDetail: '', companyMatching: true,
+      rows: [expect.objectContaining({ email: 'lead@example.invalid', companyName: 'Acme', firstName: 'Ana', lastName: 'Silva' })],
+    }));
+    expect(invoke.mock.calls.every(call => String(call[0]).startsWith('online:') || call[0] === 'system:getConfig')).toBe(true);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['contacts'] });
+    expect(window.location.hash).toBe('#/inbox?detail=91');
+  });
   it('keeps original board and company presentation while all queries remain center scoped', async () => {
     invoke.mockImplementation(async (channel, input) => channel === ONLINE_CHANNELS.COMPANY_LIST ? {ok:true,data:{items:[{companyId:1,name:fixture.companyName,domain:null,industry:null,country:null,size:null,createdAt:fixture.createdAt,updatedAt:fixture.updatedAt,contactCount:1,canDelete:false,revision:'revision'}],total:1}} : channel === 'system:getConfig' ? {success:true,data:{crm:{}}} : channel === ONLINE_CHANNELS.CONTACT_DETAIL ? { ok: true, data: { contact: fixture, company: { companyId: 1, name: fixture.companyName, domain: null, backcheckData: null }, activities: [], canEdit: true, canFollowup: true, canAssign: false, mailAvailable: false } } : { ok: true, data: { items: [fixture], total: (input as { limit?: number } | undefined)?.limit === 100 ? 1 : 51 } });
     await mount();

@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { CenterContact, CenterContactPage, CenterContactQuery } from '../../../server/core/center-contacts';
@@ -8,6 +8,19 @@ import { CONTACT_COMMAND_PREFIX, CONTACT_COMMAND_RETENTION, contactCommandFinger
 import { contactDetailSnapshot, contactMirrorPage } from '../core/contact-mirror';
 import { accountProfileRoot } from './desktop-local-scope.adapter';
 import { CONTACT_MIRROR_LIMITS, normalizedContactEmail, type QueuedContactMailEvent, type ContactMirrorContext, type ContactMirrorStore, type ContactMailLink, type ContactMailLinkInput } from '../core/contact-mirror';
+import { Log } from '../logger';
+
+function corruptSqlite(error: unknown): boolean {
+  return !!error && typeof error === 'object' && ['SQLITE_CORRUPT', 'SQLITE_NOTADB'].includes(String((error as { code?: unknown }).code));
+}
+
+function quarantineMirror(file: string): void {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  for (const suffix of ['', '-wal', '-shm']) {
+    const source = `${file}${suffix}`;
+    if (existsSync(source)) renameSync(source, `${file}.corrupt-${stamp}${suffix}`);
+  }
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS crm_contact_mirror_meta (
@@ -47,10 +60,11 @@ CREATE INDEX IF NOT EXISTS crm_contact_commands_retention ON crm_contact_command
 `;
 const LINKS_SELECT = `SELECT message_key AS messageKey,local_mail_id AS localMailId,mail_account_id AS mailAccountId,
   mailbox,contact_id AS contactId,customer_id AS customerId,role FROM crm_contact_mail_links`;
-const READ_FORMAT_VERSION = 1;
+// Bump when a center projection fix requires one authoritative full rescan.
+const READ_FORMAT_VERSION = 2;
 const contactValue = (field: string) => `json_extract(snapshot,'$.${field}')`;
 const UPDATED_ORDER = `crm_contact_time(${contactValue('updatedAt')}) DESC,contact_id DESC`;
-const FOLLOWUP_PREDICATE = `${contactValue('touchStatus')} IN ('contacted','replied')`;
+const FOLLOWUP_PREDICATE = `${contactValue('touchStatus')} IN ('contacted','replied','bounced','autoreply')`;
 const FOLLOWUP_ORDER = `crm_contact_time(${contactValue('lastFollowupAt')}) DESC,${UPDATED_ORDER}`;
 const SEARCH_FIELDS = ['email', 'firstName', 'lastName', 'title', 'companyName'] as const;
 const searchValue = (field: string) => `crm_contact_lower(${contactValue(field)})`;
@@ -230,8 +244,9 @@ export class SqliteContactMirrorStore implements ContactMirrorStore {
   }
 
   incrementalState(ctx: ContactMirrorContext): { cursor: string | null; permissionKey: string } {
-    const row = this.database(ctx).prepare('SELECT permission_key,sync_cursor FROM crm_contact_mirror_meta WHERE id=1').get() as { permission_key: string; sync_cursor: string | null } | undefined;
-    return { cursor: row?.sync_cursor ?? null, permissionKey: row?.permission_key ?? '' };
+    const row = this.database(ctx).prepare('SELECT permission_key,format_version,sync_cursor FROM crm_contact_mirror_meta WHERE id=1').get() as { permission_key: string; format_version: number; sync_cursor: string | null } | undefined;
+    const usable = row?.format_version === READ_FORMAT_VERSION && row.permission_key === (ctx.permissionKey ?? '');
+    return { cursor: usable ? row.sync_cursor : null, permissionKey: row?.permission_key ?? '' };
   }
 
   saveIncrementalCursor(ctx: ContactMirrorContext, cursor: string): void {
@@ -420,7 +435,17 @@ export function createContactMirrorStore(parent: string) {
       mkdirSync(root, { recursive: true });
       // Native driver is loaded only when a verified account first uses the mirror.
       const Constructor = require('better-sqlite3') as typeof import('better-sqlite3');
-      db = new Constructor(file);
+      try {
+        db = new Constructor(file);
+        const check = db.pragma('quick_check', { simple: true });
+        if (check !== 'ok') throw Object.assign(new Error(String(check)), { code: 'SQLITE_CORRUPT' });
+      } catch (error) {
+        if (db) { try { db.close(); } catch { /* The original corruption remains quarantined below. */ } }
+        if (!corruptSqlite(error)) throw error;
+        quarantineMirror(file);
+        Log.error('contact.mirror', `联系人镜像损坏，已备份并重建: ${file}`);
+        db = new Constructor(file);
+      }
       db.pragma('journal_mode=WAL'); db.pragma('synchronous=FULL'); db.pragma(`busy_timeout=${CONTACT_MIRROR_LIMITS.busyTimeoutMs}`);
       databases.set(file, db);
     }

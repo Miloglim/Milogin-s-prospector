@@ -22,6 +22,14 @@ import { loadConfig, DEFAULT_SCHEDULE } from "../config";
 import { writeBodyForLastInsert } from "./inbox.service";
 import { assembleEmail, type Lang, type ClientType, type Stage } from "./sentence-library";
 
+function notifyCampaign(action: 'sent' | 'failed', contactId: number, centerReference?: CenterContactRef, campaignId?: string): void {
+  void import('./campaign.service').then(cm => {
+    const notify = action === 'sent' ? cm.onCampaignSendSent : cm.onCampaignSendFailed;
+    if (typeof notify !== 'function') throw new Error(`campaign hook missing: ${action}`);
+    notify(contactId, centerReference, campaignId);
+  }).catch(error => Log.error('send.campaignHook', error instanceof Error ? error.stack ?? error.message ?? String(error) : String(error)));
+}
+
 
 // ── 类型 ──
 
@@ -1481,7 +1489,7 @@ async function runBatchLoop(): Promise<void> {
       it.error = `账号 ${acctEmails.get(aid) || aid} 熔断，本组未发送（账号恢复后由任务扫描自动重排）`;
       for (const rc of it.recipients) {
         if (isCenterItem(it)) {
-          if (it.campaignId) void import('./campaign.service').then(cm => cm.onCampaignSendFailed(rc.contactId, rc.centerReference, it.campaignId)).catch(err => Log.error('send.centerCampaign', String(err)));
+          if (it.campaignId) notifyCampaign('failed', rc.contactId, rc.centerReference, it.campaignId);
         } else touched.add(rc.contactId);
       }
       try { getDb().update(sendQueue).set({ status: "failed", error: it.error, errorKind: "blocked" }).where(eq(sendQueue.id, it.id)).run(); } catch { /* */ }
@@ -1499,7 +1507,7 @@ async function runBatchLoop(): Promise<void> {
     // 触点当场回 pending（不等 24h 僵尸对账）：熔断路径此前不调 onCampaignSendFailed，
     // 触点卡 queued 要等 24h 才对账回来——这是「熔断误伤」的第二个缺口。
     if (touched.size > 0) {
-      try { void import("./campaign.service").then(cm => { for (const cid of touched) cm.onCampaignSendFailed(cid); }); } catch { /* 回退失败不阻塞发送主流程 */ }
+      for (const cid of touched) notifyCampaign('failed', cid);
     }
     push(EVENTS.CIRCUIT_CHANGED, { accountId: aid, email: acctEmails.get(aid), batchId: state.batchId });
   };
@@ -1585,7 +1593,7 @@ async function runBatchLoop(): Promise<void> {
               Log.error('send.centerReceipt', synced.error); if (loopGen === myGen) { saveDatabase(); pauseSend(); }
             }
             for (const rc of (loopGen === myGen ? confirmedRecipients : [])) {
-              if (item.campaignId) void import('./campaign.service').then(cm => cm.onCampaignSendSent(rc.contactId, rc.centerReference, item.campaignId)).catch(err => Log.error('send.centerCampaign', String(err)));
+              if (item.campaignId) notifyCampaign('sent', rc.contactId, rc.centerReference, item.campaignId);
             }
             const account = loopGen === myGen ? state.accountStats.find(x => x.accountId === accountId) : undefined; if (account) account.sent++;
           } else {
@@ -1639,7 +1647,7 @@ async function runBatchLoop(): Promise<void> {
               } catch { /* 推进失败不影响发送记录 */ }
               // 智能发信任务推进（docs/smart-send-spec.md §3.1）：真实发出 → 任务触点记一轮、排下一轮。
               // 惰性 import 防循环依赖（campaign.service 引本服务的 buildDynamicQueue/类型）。
-              try { void import("./campaign.service").then(cm => cm.onCampaignSendSent(rc.contactId)); } catch { /* 任务推进失败不影响发送记录 */ }
+              notifyCampaign('sent', rc.contactId);
               // v4.0: 发信不再自动标已触达 — reached 只能用户手动设置/改标签触发
             } catch (err) {
               Log.error("send.record", rc.email, err instanceof Error ? err.stack : undefined);
@@ -1672,7 +1680,7 @@ async function runBatchLoop(): Promise<void> {
           item.status = "failed"; item.errorKind = "smtp_fail"; item.error = r.error; state.failedCount++;
           try { getDb().update(sendQueue).set({ status: "failed", error: r.error, errorKind: "smtp_fail" }).where(eq(sendQueue.id, item.id)).run(); } catch { /* */ }
           // 智能发信任务失败回退（docs/smart-send-spec.md §3.2）：重试耗尽的目标回 pending 明天再试，不无声丢触点
-          try { for (const rc of item.recipients) void import("./campaign.service").then(cm => cm.onCampaignSendFailed(rc.contactId)); } catch { /* */ }
+          for (const rc of item.recipients) notifyCampaign('failed', rc.contactId);
           saveDatabase(); // P0-2: 失败态同样即时落盘，崩溃恢复不会重发已判定失败的组
           const s = state.accountStats.find(x => x.accountId === accountId);
           if (s) s.failed++;

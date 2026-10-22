@@ -136,6 +136,13 @@ export function runMigrations(): void {
     }
   });
 
+  // IMAP 分轮游标：任务被 500 封截断后，下一轮从已处理 UID 之后继续。
+  step("v0.55-accounts-imap-fetch-cursor", () => {
+    const columns = tableCols("email_accounts");
+    if (!columns.includes("imap_fetch_uid_validity")) raw.exec("ALTER TABLE email_accounts ADD COLUMN imap_fetch_uid_validity text;");
+    if (!columns.includes("imap_fetch_last_uid")) raw.exec("ALTER TABLE email_accounts ADD COLUMN imap_fetch_last_uid integer;");
+  });
+
   // v4.2/v4.4: send_queue 补列
   step("v4.2-send-queue-cols", () => {
     const qcols = tableCols("send_queue");

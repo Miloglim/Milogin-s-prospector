@@ -16,5 +16,5 @@ describe('mail classification correction contracts',()=>{
  const cleared={kind:'received' as const,direction:'inbound',occurredAt:mail.occurredAt,recordedAt:'2026-01-02T00:00:00.000Z',fromEmail:mail.fromEmail,toEmails:mail.toEmails};
  expect(projectContactMail('customer@example.invalid',[sent,cleared],[])).toEqual({status:'reached',touchStatus:'contacted'});
  });
- it('does not manufacture contact from autoreply or bounce classification',()=>{for(const kind of ['autoreply','bounced'] as const){expect(projectContactMail('customer@example.invalid',[{kind,direction:'inbound',occurredAt:mail.occurredAt,recordedAt:mail.occurredAt,fromEmail:mail.fromEmail,toEmails:mail.toEmails}],[])).toEqual({status:kind,touchStatus:'uncontacted'});}});
+ it('preserves autoreply and bounce outcomes without relabeling them as only contacted',()=>{for(const kind of ['autoreply','bounced'] as const){expect(projectContactMail('customer@example.invalid',[{kind,direction:'inbound',occurredAt:mail.occurredAt,recordedAt:mail.occurredAt,fromEmail:mail.fromEmail,toEmails:mail.toEmails}],[])).toEqual({status:kind,touchStatus:kind});}});
 });

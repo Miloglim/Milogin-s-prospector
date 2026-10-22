@@ -11,7 +11,7 @@ vi.mock('../../src/renderer/components/ContactDetail', async importOriginal => (
   ...await importOriginal<typeof import('../../src/renderer/components/ContactDetail')>(),
   ContactDetailLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   InfoTab: ({ onSaveField, canEdit }: { onSaveField: (field: string, value: string | null) => void; canEdit: boolean }) => <div>
-    {['reached', 'replied', 'bounced', 'clear'].map(value => <button key={value} disabled={!canEdit} onClick={() => onSaveField('status', value === 'clear' ? null : value)}>{value}</button>)}
+    {['reached', 'replied', 'bounced', 'autoreply', 'clear'].map(value => <button key={value} disabled={!canEdit} onClick={() => onSaveField('status', value === 'clear' ? null : value)}>{value}</button>)}
   </div>,
 }));
 const reference = { contactId: 42, customerId: '00000000-0000-4000-8000-000000000042' };
@@ -34,14 +34,18 @@ describe('original contact detail status contract', () => {
     await act(flush);
     await act(async () => { Array.from(host.querySelectorAll('button')).find(button => button.textContent === label)!.click(); await flush(); });
   }
-  it.each([['reached', 'contacted'], ['replied', 'replied'], ['clear', 'uncontacted']])('writes %s through authoritative touch and activity rather than legacy status', async (label, contactStatus) => {
+  it.each([['reached', 'contacted'], ['replied', 'replied'], ['bounced', 'bounced'], ['autoreply', 'autoreply'], ['clear', 'uncontacted']])('writes %s through authoritative touch and activity rather than legacy status', async (label, contactStatus) => {
     await click(label);
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.CONTACT_FOLLOWUP, expect.objectContaining({ ...reference, expectedVersion: 7, method: 'other', contactStatus, idempotencyKey: expect.any(String) }));
     expect(invoke.mock.calls.some(([channel]) => channel === ONLINE_CHANNELS.CONTACT_UPDATE)).toBe(false);
   });
-  it('keeps a manual mail classification separate from contact touch', async () => {
-    await click('bounced');
-    expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.CONTACT_UPDATE, expect.objectContaining({ ...reference, fields: { status: 'bounced' } }));
-    expect(invoke.mock.calls.some(([channel]) => channel === ONLINE_CHANNELS.CONTACT_FOLLOWUP)).toBe(false);
+  it('opens the board with an explicit center contact reference', async () => {
+    invoke.mockResolvedValue({ ok: true, data: { ...detail, contact: { ...detail.contact, touchStatus: 'contacted' } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><CenterContactDetail reference={reference} onClose={() => {}} /></QueryClientProvider>); });
+    await act(flush);
+    const button=host.querySelector<HTMLButtonElement>('[aria-label="在CRM中查看"]')!;
+    expect(button.disabled).toBe(false);
+    await act(async () => { button.click(); await flush(); });
+    expect(window.location.hash).toBe(`#/customers?view=board&centerContact=42&centerCustomer=${encodeURIComponent(reference.customerId)}`);
   });
 });

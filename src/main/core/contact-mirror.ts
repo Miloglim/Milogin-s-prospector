@@ -1,4 +1,5 @@
 import type { CenterContact, CenterContactPage, CenterContactQuery } from '../../../server/core/center-contacts';
+import { FOLLOWUP_TOUCH_STATUSES } from '../../../server/core/leads';
 import type { CenterContactRef, CenterContactDetail } from '../../../server/core/contact-assignments';
 import { CONTACT_MAIL_LIMITS, type ContactMailEventInput } from '../../../server/core/contact-mail';
 
@@ -57,7 +58,7 @@ export function contactDetailSnapshot(contact: CenterContact, cached?: CenterCon
 /** The input is already the account-authorized projection, never an unfiltered center dump. */
 export function contactMirrorPage(rows: CenterContact[], query: CenterContactQuery, userId: string): CenterContactPage {
   const search = query.search.trim().toLowerCase();
-  const stage = (row: CenterContact) => row.relationshipStage ?? (['contacted', 'replied'].includes(row.touchStatus) ? 'reaching' : 'cold');
+  const stage = (row: CenterContact) => row.relationshipStage ?? (FOLLOWUP_TOUCH_STATUSES.includes(row.touchStatus) ? 'reaching' : 'cold');
   const time = (value: string | null | undefined) => value ? Date.parse(value) : Number.NEGATIVE_INFINITY;
   const descendingTime = (left: string | null | undefined, right: string | null | undefined) => {
     const a = time(left), b = time(right); return a === b ? 0 : a > b ? -1 : 1;
@@ -66,7 +67,7 @@ export function contactMirrorPage(rows: CenterContact[], query: CenterContactQue
     if (query.scope === 'personal' && (row.origin !== 'personal' || row.ownerUserId !== userId)) return false;
     if (query.scope === 'assigned' && ((row.origin !== 'operations' || row.ownerUserId !== userId) && row.isShared !== true)) return false;
     if (query.assignment === 'accepted' && row.assignmentStatus !== 'accepted') return false;
-    if (query.followupOnly && !['contacted', 'replied'].includes(row.touchStatus)) return false;
+    if (query.followupOnly && !FOLLOWUP_TOUCH_STATUSES.includes(row.touchStatus)) return false;
     if (query.crmStage && stage(row) !== query.crmStage) return false;
     if (query.touchStatus && row.touchStatus !== query.touchStatus) return false;
     if (query.stage && row.stage !== query.stage || query.status && row.status !== query.status || query.tags && !row.tags.includes(query.tags) || query.clientType && row.clientType !== query.clientType || query.country && row.country !== query.country || query.language && row.language !== query.language) return false;

@@ -1,5 +1,9 @@
 # Prospector Database Schema
 
+## 2026-10-21 收件箱 IMAP 续抓游标
+
+本账号 `prospector.db` 的 `email_accounts` 增加两个可空列：`imap_fetch_uid_validity TEXT` 与 `imap_fetch_last_uid INTEGER`。两者必须成组解释：UIDVALIDITY 与当前邮箱一致时才使用最后 UID 继续下一批；UIDVALIDITY 变化视为服务器 UID 空间重建，从最近时间窗口重新开始。列由基础 `schema-sql.ts` 和幂等迁移 `v0.55-accounts-imap-fetch-cursor` 同源补齐，迁移不删除、不改写邮件或账号数据。中心 PostgreSQL 无结构变化。
+
 ## 2026-10-16 联系人索引分页（0.50.1，无中心迁移）
 
 原crm-offline.db的crm_contact_mirror四列保持：contact_id INTEGER PK、customer_id TEXT NOT NULL、email_normalized TEXT可空、snapshot TEXT NOT NULL。新增page、followup_page、source_page、search_page四个crm_contact_mirror_前缀表达式索引。使用原JSON时间/来源/归属/搜索字段，无派生业务列或新副本。运行时先注册crm_contact_lower/time，再按唯一adapter DDL建索引。外部只读SELECT正常；不注册函数的镜像写入/integrity_check受限，旧版回滚先移除4索引。完整字段、索引、磁盘/写入成本和回滚SQL见[0.50.1交付](contact-pagination-delivery-20261016.md)。PostgreSQL无结构变更。
@@ -83,7 +87,7 @@ Statuses are pending, accepted, rejected and cancelled. Pending confers no conta
 
 | Table | Purpose | Key fields |
 |---|---|---|
-| `email_accounts` | Configured sending and receiving accounts | `email`, SMTP/IMAP settings, encrypted password, circuit-breaker state |
+| `email_accounts` | Configured sending and receiving accounts | `email`, SMTP/IMAP settings, encrypted password, circuit-breaker state, IMAP UIDVALIDITY/last-UID fetch cursor |
 | `send_block_events` | Auditable reasons a sender is blocked | `account_id`, `reason`, `created_at` |
 | `send_queue` | Legacy and standalone delivery queue | `contact_id`, `account_id`, `status`, `scheduled_at`, `error_kind` |
 | `send_campaigns` | Campaign definition and lifecycle | `name`, `status`, `sequence_json`, `started_at`, `completed_at` |
@@ -175,9 +179,15 @@ Account prospector.db adds nullable send_campaign_targets.center_reference_json 
 
 新增 PostgreSQL `crm_contact_change_seq` 序列和 `crm_contact_changes` 表：`change_seq`、`event_id`、`recipient_user_id`、`contact_id`、`customer_id`、`event_type`、`version`、`created_at`，唯一键为 `event_id + recipient_user_id + contact_id`，索引为 `(recipient_user_id, change_seq)`。`007-contact-change-feed-n6` 迁移由服务启动时按 checksum 执行，并由 `identity.outbox` 触发器记录联系人投影变化。变化接口只返回当前授权快照或墓碑；本地 `contact-incremental-sync` 仅提供事务顺序应用器，运行时完整扫描仍是当前实际路径。历史事件不回填，启用时先做完整基线。
 
+`008-contact-change-import-capture` 将上述迁移改为可重复执行，并把变化触发器收件人补充为 outbox 操作者本人。平面导入必须先插入联系人关联，再写客户创建/更新 outbox，确保触发器能看到新联系人；联系人本地镜像读取格式同时升到 v2，旧镜像首次启动会丢弃增量游标并做一次完整授权基线同步。
+
 ## 2026-10-16 N6-2 本地增量游标
 
 `crm_contact_mirror_meta` 新增 `sync_cursor TEXT`，旧 SQLite 在打开时通过加法迁移补列。完整替换先清空游标，成功取得中心 `headCursor` 后写入；增量页成功应用后更新游标。该游标按账号资料库隔离，不改变旧联系人表或邮件表。
+
+## 2026-10-22 联系状态与收件箱分类统一（031，工作区）
+
+`031-contact-touch-outcomes` 把 `contacts.crm_touch_status` 和 `crm_shared_activities.contact_status` 扩展为 `uncontacted/contacted/replied/bounced/autoreply`。迁移按旧 `status` 回填回复、退信和自动回复，旧 `unreachable` 保守归一为 `uncontacted`；不新增列或重复状态表。跟进看板准入读取后四类中的任一类，已回复/退信/自动回复在 UI 额外显示“已触达”。
 
 ## 2026-10-18 统一账号资料与成长域（026/027，工作区）
 

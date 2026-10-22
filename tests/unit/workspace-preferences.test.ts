@@ -8,19 +8,26 @@ describe('workspace appearance preference', () => {
     document.body.className = '';
   });
 
-  it('defaults to the dark-gray workspace', () => {
-    expect(workspaceDarkEnabled()).toBe(true);
+  it('defaults to the light workspace', () => {
+    expect(workspaceDarkEnabled()).toBe(false);
+  });
+
+  it('treats pre-versioned automatic dark values as light once', () => {
+    window.localStorage.setItem(WORKSPACE_DARK_STORAGE_KEY, '1');
+    expect(workspaceDarkEnabled()).toBe(false);
+    applyWorkspaceDark(workspaceDarkEnabled());
+    expect(window.localStorage.getItem(WORKSPACE_DARK_STORAGE_KEY)).toBe('2:light');
   });
 
   it('applies and persists both workspace tones', () => {
     applyWorkspaceDark(false);
     expect(document.body.classList.contains(WORKSPACE_DARK_CLASS)).toBe(false);
-    expect(window.localStorage.getItem(WORKSPACE_DARK_STORAGE_KEY)).toBe('0');
+    expect(window.localStorage.getItem(WORKSPACE_DARK_STORAGE_KEY)).toBe('2:light');
     expect(workspaceDarkEnabled()).toBe(false);
 
     applyWorkspaceDark(true);
     expect(document.body.classList.contains(WORKSPACE_DARK_CLASS)).toBe(true);
-    expect(window.localStorage.getItem(WORKSPACE_DARK_STORAGE_KEY)).toBe('1');
+    expect(window.localStorage.getItem(WORKSPACE_DARK_STORAGE_KEY)).toBe('2:dark');
     expect(workspaceDarkEnabled()).toBe(true);
   });
 });

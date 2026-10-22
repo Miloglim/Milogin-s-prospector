@@ -49,7 +49,10 @@ export async function recordContactMailEventIn(client: PoolClient, actor: LeadAc
   const recorded = (await client.query('SELECT clock_timestamp() AS stamp')).rows[0].stamp as Date, occurred = new Date(input.occurredAt);
   if (!Number.isFinite(occurred.getTime()) || occurred.getTime() > recorded.getTime() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND) return failure('INVALID_INPUT', '邮件发生时间无效');
   const revision=await correctionRevisionIn(client,actor.userId,input);if(!revision.ok)return revision;
-  const touch = primary && input.kind === 'replied' && input.direction === 'inbound' && input.fromEmail.toLowerCase() === primary && input.toEmails.length > 0 ? 'replied' : matchingSent ? 'contacted' : null;
+  const touch = primary && input.kind === 'replied' && input.direction === 'inbound' && input.fromEmail.toLowerCase() === primary && input.toEmails.length > 0 ? 'replied'
+    : primary && input.kind === 'bounced' ? 'bounced'
+    : primary && input.kind === 'autoreply' ? 'autoreply'
+    : matchingSent ? 'contacted' : null;
   let activityId: string | null = null;
   const correctedStream = input.correction || (await client.query(`
     SELECT 1 FROM crm_contact_mail_events
@@ -61,7 +64,7 @@ export async function recordContactMailEventIn(client: PoolClient, actor: LeadAc
     const latest = (await client.query("SELECT max(occurred_at) AS stamp FROM crm_shared_activities WHERE contact_id=$1 AND customer_id=$2 AND opportunity_id IS NULL AND contact_status IS NOT NULL AND method IN ('email','phone','visit','other')", [input.contactId, input.customerId])).rows[0].stamp;
     activityId = (await client.query('INSERT INTO crm_shared_activities(customer_id,interaction_id,actor_id,note,method,occurred_at,recorded_at,created_at,contact_id,contact_status) VALUES($1,NULL,$2,$3,\'email\',$4,$5,$5,$6,$7) RETURNING id::text', [input.customerId, actor.userId, input.subject || input.preview, occurred, recorded, input.contactId, touch])).rows[0].id;
     // A backfill may add evidence without replacing newer manual or mail contact status.
-    if (!(touch === 'contacted' && contact.touchStatus === 'replied') && (!latest || occurred.getTime() > new Date(latest).getTime() || occurred.getTime() === new Date(latest).getTime() && (touch === 'replied' || contact.touchStatus !== 'replied'))) await client.query('UPDATE contacts SET crm_touch_status=$2 WHERE id=$1', [input.contactId, touch]);
+    if (!(touch === 'contacted' && ['replied','bounced','autoreply'].includes(contact.touchStatus)) && (!latest || occurred.getTime() > new Date(latest).getTime() || occurred.getTime() === new Date(latest).getTime() && contact.touchStatus !== touch)) await client.query('UPDATE contacts SET crm_touch_status=$2 WHERE id=$1', [input.contactId, touch]);
   }
   // Delivery classification is derived from mail facts, never a generic contact field edit.
   // Older backfills must not replace a newer mail classification or manual contact result.

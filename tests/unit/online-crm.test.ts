@@ -5,7 +5,7 @@ vi.mock('../../src/main/logger',()=>({Log:{error:vi.fn()}}));
 import {OnlineCrmAdapter} from '../../src/main/adapters/online-crm.adapter';
 import {validateCenterBase} from '../../src/main/core/center-endpoint';
 import {createOnlineCrmService} from '../../src/main/services/online-crm.service';
-import {success} from '../../server/core/crm';
+import {failure,success} from '../../server/core/crm';
 const identity={userId:'synthetic-user',displayName:'Synthetic',email:'synthetic@example.invalid',emailVerified:true,identityAdmin:false,crmRoles:['sales']};
 const json=(data:unknown)=>new Response(JSON.stringify(success(data)));
 describe('desktop center isolation',()=>{
@@ -63,5 +63,20 @@ describe('desktop center isolation',()=>{
     finish!(json({items:[],nextCursor:'99',hasMore:false}));expect((await late).ok).toBe(false);
     await adapter.feed();expect(feedPaths.at(-1)).toContain('after=8&');
     expect((await adapter.feed({reset:'invalid'} as never)).ok).toBe(false);
+  });
+  it('falls back to live center reads when the local contact mirror is corrupt',async()=>{
+    const token=randomBytes(32).toString('base64url');
+    const paths:string[]=[];
+    const page={items:[],total:0};
+    const detail={contact:{contactId:7,customerId:'customer-7'}};
+    const fetcher=vi.fn(async(url:string)=>{if(url.endsWith('/login'))return json({token,identity});if(url.endsWith('/me'))return json(identity);paths.push(url);return url.includes('/api/crm/contacts/7')?json(detail):json(page);});
+    const adapter=new OnlineCrmAdapter(fetcher as unknown as typeof fetch);
+    await adapter.login({baseUrl:'http://127.0.0.1:55844',email:identity.email,password:randomBytes(24).toString('base64url')});
+    adapter.setContactReader(async()=>failure('DATABASE_ERROR','本地镜像损坏'));
+    adapter.setDetailReader(async()=>failure('DATABASE_ERROR','本地详情损坏'));
+    expect(await adapter.contacts({search:'buyer',limit:25,offset:0})).toMatchObject({ok:true,data:page});
+    expect(await adapter.contactDetail({contactId:7,customerId:'customer-7'})).toMatchObject({ok:true,data:detail});
+    expect(paths[0]).toContain('/api/crm/contacts?search=buyer&limit=25&offset=0');
+    expect(paths[1]).toContain('/api/crm/contacts/7?customerId=customer-7');
   });
 });

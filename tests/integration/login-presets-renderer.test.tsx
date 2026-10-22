@@ -38,4 +38,14 @@ describe('QQ-style login presets without exposing secrets',()=>{
   await mount();await act(async()=>fireEvent.click(host.querySelector('[aria-label="选择账号"]')!));await act(async()=>fireEvent.click(host.querySelector('[aria-label="移除 b@example.invalid"]')!));
   expect(fixture.session.removeAccount).toHaveBeenCalledWith('b');expect(fixture.session.loginAccount).not.toHaveBeenCalled();
  });
+ it('does not create a mail-sending account from the center login password',async()=>{
+  fixture.session.accounts=[];fixture.session.login=vi.fn(async()=>true);
+  const invoke=vi.fn(async()=>({success:true}));
+  Object.defineProperty(window,'api',{configurable:true,value:{invoke}});
+  await mount();
+  const email=host.querySelector('#email') as HTMLInputElement;const password=host.querySelector('#password') as HTMLInputElement;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(email,'user@example.invalid');email.dispatchEvent(new Event('input',{bubbles:true}));Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(password,'CenterPassword1');password.dispatchEvent(new Event('input',{bubbles:true}));});
+  await act(async()=>fireEvent.submit(host.querySelector('form')!));
+  expect(fixture.session.login).toHaveBeenCalled();expect(invoke).not.toHaveBeenCalledWith('accounts:upsert',expect.anything());
+ });
 });

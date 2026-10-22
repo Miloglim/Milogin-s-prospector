@@ -197,6 +197,7 @@ export function InfoTab({ contact, onSaveField, canEdit = true, canEditField }: 
   const allowed = (field: string) => canEdit && (canEditField?.(field) ?? true);
   const clientMeta = contact.clientType ? CLIENT_TYPE[contact.clientType] : null;
   const statusMeta = STATUS_META[contact.status || ""];
+  const reachedOutcome = contact.dataSource === 'center' && ['replied', 'bounced', 'autoreply'].includes(contact.status || '');
   const stageMeta = STAGE_META[contact.stage || ""];
   const tagKey = contact.dataSource === 'center' ? contact.relationshipStage === 'cold' ? null : contact.relationshipStage ?? null : parseTags(contact.tags)[0] || null;
   const tagMeta = tagKey ? CRM_STAGES.find(s => s.key === tagKey) : null;
@@ -232,13 +233,13 @@ export function InfoTab({ contact, onSaveField, canEdit = true, canEditField }: 
       <FieldRow label="联系状态">
         <EditSelect readOnly={!allowed("status")} value={contact.status || null}
           onSave={v => onSaveField("status", v || null)}
-          allowClear options={Object.entries(STATUS_META).filter(([key]) => !canEditField || ['reached', 'replied'].includes(key)).map(([k, m]) => ({ value: k, label: m.label }))}
-          readNode={statusMeta ? <Tag color={statusMeta.color} className="text-[10px] my-0 leading-none py-0.5">{statusMeta.label}</Tag> : undefined} />
+          allowClear options={Object.entries(STATUS_META).map(([k, m]) => ({ value: k, label: m.label }))}
+          readNode={statusMeta ? <span className="inline-flex gap-1"><Tag color={statusMeta.color} className="text-[10px] my-0 leading-none py-0.5">{statusMeta.label}</Tag>{reachedOutcome && <Tag color="blue" className="text-[10px] my-0 leading-none py-0.5">已触达</Tag>}</span> : undefined} />
       </FieldRow>
       <FieldRow label={contact.dataSource === 'center' ? '客户阶段' : '标签'}>
         <EditSelect readOnly={!allowed(contact.dataSource === 'center' ? 'relationshipStage' : 'tags')} value={tagKey} onSave={v => onSaveField(contact.dataSource === 'center' ? "relationshipStage" : "tags", contact.dataSource === 'center' ? v ?? "reaching" : v ? JSON.stringify([v]) : null)}
           allowClear options={CRM_STAGES.map(s => ({ value: s.key, label: s.label }))}
-          disabled={contact.dataSource === 'center' ? !['contacted', 'replied'].includes(contact.touchStatus ?? '') : contact.status !== "reached"}
+          disabled={contact.dataSource === 'center' ? !['contacted', 'replied', 'bounced', 'autoreply'].includes(contact.touchStatus ?? '') : contact.status !== "reached"}
           readNode={tagMeta ? <Tag color={tagMeta.color} className="text-[10px] my-0 leading-none py-0.5">{tagMeta.label}</Tag> : undefined} />
       </FieldRow>
 

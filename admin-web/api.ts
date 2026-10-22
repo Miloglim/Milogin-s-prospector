@@ -1,6 +1,6 @@
 import { ADMIN_ROUTES, type AdminCommand, type AuditInfo, type ManagedUser, type MutationResult, type ProductInfo, type SessionInfo, type UserPage } from "../server/core/admin";
 import type { Identity } from "../server/core/auth";
-import type { ManagementDashboard } from "../server/core/management-dashboard";
+import type { ManagementDashboard, OperationsSummary } from "../server/core/management-dashboard";
 import type { NavigatorDashboard } from "../server/core/navigator";
 
 type AuthState = { identity: Identity; csrf: string; expiresAt?: string };
@@ -30,6 +30,7 @@ export const api = {
   users: (search: string, limit: number, offset: number, productId?: string) => request<UserPage>(`${ADMIN_ROUTES.users}?${new URLSearchParams({ search, limit: String(limit), offset: String(offset), ...(productId ? { productId } : {}) })}`),
   products: () => request<ProductInfo[]>(ADMIN_ROUTES.products),
   dashboard: () => request<ManagementDashboard>(ADMIN_ROUTES.dashboard),
+  operations: () => request<OperationsSummary>(ADMIN_ROUTES.operations),
   navigatorDashboard: () => request<NavigatorDashboard>(ADMIN_ROUTES.navigatorDashboard),
   sessions: (userId: string) => request<SessionInfo[]>(`${ADMIN_ROUTES.sessions}?${new URLSearchParams({ userId })}`),
   audit: (productId?: string, userId?: string) => request<AuditInfo[]>(`${ADMIN_ROUTES.audit}?${new URLSearchParams({ ...(productId ? { productId } : {}), ...(userId ? { userId } : {}) })}`),

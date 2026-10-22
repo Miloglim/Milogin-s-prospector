@@ -33,10 +33,10 @@ export interface MemberPage {items:CrmMember[];total:number;}
 export interface PublishRequest {rowIds:string[];expectedVersion:number;idempotencyKey:string;}
 export const FOLLOWUP_METHODS = ['email','phone','visit','other','note'] as const;
 export type FollowupMethod = typeof FOLLOWUP_METHODS[number];
-export const CONTACT_TOUCH_STATUSES = ['uncontacted','contacted','replied','unreachable'] as const;
+export const CONTACT_TOUCH_STATUSES = ['uncontacted','contacted','replied','bounced','autoreply'] as const;
 export type ContactTouchStatus = typeof CONTACT_TOUCH_STATUSES[number];
 /** Contact state is the admission criterion; a relationship stage is not proof of contact. */
-export const FOLLOWUP_TOUCH_STATUSES: readonly ContactTouchStatus[] = ['contacted', 'replied'];
+export const FOLLOWUP_TOUCH_STATUSES: readonly ContactTouchStatus[] = ['contacted', 'replied', 'bounced', 'autoreply'];
 export function hasContactedCustomer(contacts: readonly {touchStatus?:ContactTouchStatus}[]):boolean {
  return contacts.some(contact => contact.touchStatus !== undefined && FOLLOWUP_TOUCH_STATUSES.includes(contact.touchStatus));
 }
@@ -44,7 +44,7 @@ export function customerBoardStage(customer: Pick<LeadPreview,'stage'|'hasContac
  return customer.hasContacted ? customer.stage && customer.stage !== 'cold' ? customer.stage : 'reaching' : undefined;
 }
 export const FOLLOWUP_METHOD_LABELS: Record<FollowupMethod | 'legacy',string> = {email:'邮件',phone:'电话',visit:'拜访',other:'其他联系',note:'备注',legacy:'历史记录'};
-export const CONTACT_TOUCH_LABELS: Record<ContactTouchStatus,string> = {uncontacted:'未触达',contacted:'已触达',replied:'已回复',unreachable:'无法联系'};
+export const CONTACT_TOUCH_LABELS: Record<ContactTouchStatus,string> = {uncontacted:'未触达',contacted:'已触达',replied:'已回复',bounced:'退信',autoreply:'自动回复'};
 export type CustomerStage = CrmStage | 'cold';
 export const FOLLOWUP_TIME_LIMITS = {future_skew_seconds:60} as const;
 export interface FollowupRequest extends LeadCommand {opportunityId?:string;note:string;stage?:CustomerStage;method?:FollowupMethod;occurredAt?:string;contactId?:number;contactStatus?:ContactTouchStatus;}

@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import { success, type Result } from '../../core/crm';
 import { normalizeSourceDate, workbookRowIssue, type WorkbookImportRequest, type WorkbookImportReceipt, type WorkbookImportRow, type WorkbookReceiptRow } from '../../core/customer-import';
 import type { LeadActor } from './lead-repository';
+import { canDeleteContact, loadContactIn } from './contact-assignment-repository';
 
 type CustomerRecord = { customer_id: string; company_id: number; created_by: string; origin: string; owner_user_id: string | null; state: string; version: number; company_name: string; country: string | null; customer_type: string | null; business_type: string | null; development_restriction: string | null; source_created_at: Date | null };
 function value(input: string | undefined): string | null { return input?.trim() || null; }
@@ -43,6 +44,19 @@ function contactValues(row:WorkbookImportRow):Record<string,unknown>{return {ema
 function contactMatches(row: WorkbookImportRow, current: Record<string, unknown>): boolean {
  return Object.entries(contactValues(row)).every(([key,v])=>key==='tags'?JSON.stringify(current[key])===JSON.stringify(v):current[key]===v);
 }
+async function restoreContact(c:PoolClient,actor:LeadActor,input:WorkbookImportRequest,row:WorkbookImportRow,customerId:string,contactId:number):Promise<Pick<WorkbookReceiptRow,'status'|'customerId'|'message'>>{
+ const existing=await loadContactIn(c,{contactId,customerId},true,true);
+ if(!existing||!canDeleteContact(actor,existing))return {status:'restricted_conflict',customerId,message:'原联系人不可恢复，请核实删除权限或分配状态'};
+ const fields=contactValues(row);
+ const restored=await c.query(`UPDATE contacts SET company_id=(SELECT company_id FROM crm_customers WHERE customer_id=$2),
+  first_name=COALESCE($3,first_name),last_name=COALESCE($4,last_name),country=COALESCE($5,country),phone=COALESCE($6,phone),whatsapp=COALESCE($7,whatsapp),title=COALESCE($8,title),linkedin=COALESCE($9,linkedin),language=COALESCE($10,language),client_type=COALESCE($11,client_type),source_level1=COALESCE($12,source_level1),source_level2=COALESCE($13,source_level2),stage=COALESCE($14,stage),status=COALESCE($15,status),tags=CASE WHEN $16::jsonb='[]'::jsonb THEN tags ELSE $16::jsonb END,
+  crm_deleted_at=NULL,crm_deleted_by=NULL,crm_contact_version=crm_contact_version+1,updated_at=clock_timestamp()
+  WHERE id=$1 AND crm_deleted_at IS NOT NULL RETURNING crm_contact_version`,[contactId,customerId,fields.first_name,fields.last_name,fields.country,fields.phone,fields.whatsapp,fields.title,fields.linkedin,fields.language,fields.client_type,fields.source_level1,fields.source_level2,fields.stage,fields.status,JSON.stringify(fields.tags)]);
+ if(!restored.rows.length)return {status:'ambiguous',customerId,message:'联系人恢复状态已变化，请刷新后重试'};
+ await c.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2) ON CONFLICT(contact_id) DO NOTHING',[customerId,contactId]);
+ await event(c,actor,customerId,restored.rows[0].crm_contact_version,'crm.contact.updated',contactId);
+ return {status:'appended',customerId};
+}
 async function importContact(c: PoolClient, actor: LeadActor, input: WorkbookImportRequest, row: WorkbookImportRow, blocked: Set<string>): Promise<Pick<WorkbookReceiptRow, 'status' | 'customerId' | 'message'>> {
  const parentRef = row.customerRef!.trim();
  if (blocked.has(parentRef)) return { status: 'ambiguous', message: '来源客户资料待核对' };
@@ -54,6 +68,7 @@ async function importContact(c: PoolClient, actor: LeadActor, input: WorkbookImp
  if (linked) {
   if (linked.customer_id !== current.customer_id || linked.customer_ref !== parentRef) return { status: 'ambiguous', message: '联系人所属客户已变化，请核对关联' };
   const co = (await c.query('SELECT * FROM contacts WHERE id=$1', [linked.contact_id])).rows[0];
+  if(co?.crm_deleted_at)return restoreContact(c,actor,input,row,current.customer_id,co.id);
   if (co&&(await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE contact_id=$1 AND status IN ('pending','accepted')",[co.id])).rows.length)return {status:'restricted_conflict',message:'联系人已进入独立分配流程'};
   if (!co || !contactMatches(row, co)) return { status: 'ambiguous', customerId: current.customer_id, message: '来源联系人资料已变化，请核对后修改主档' };
   return { status: 'duplicate', customerId: current.customer_id };
@@ -63,6 +78,11 @@ async function importContact(c: PoolClient, actor: LeadActor, input: WorkbookImp
   const existing = (await c.query('SELECT co.*,cc.customer_id FROM contacts co LEFT JOIN crm_customer_contacts cc ON cc.contact_id=co.id WHERE co.email=$1', [email])).rows[0];
   if (existing) {
    if (existing.customer_id !== current.customer_id) return { status: 'restricted_conflict', message: '联系人信息冲突，请核实来源' };
+   if (existing.crm_deleted_at) {
+    const result=await restoreContact(c,actor,input,row,current.customer_id,existing.id);
+    if(result.status==='appended')await saveMapping(c,actor,input,row,current.customer_id,existing.id);
+    return result;
+   }
    if (!contactMatches(row, existing)) return { status: 'ambiguous', customerId: current.customer_id, message: '已有联系人资料不一致，请核对' };
    await saveMapping(c, actor, input, row, current.customer_id, existing.id);
    return { status: 'duplicate', customerId: current.customer_id };
@@ -75,8 +95,8 @@ async function importContact(c: PoolClient, actor: LeadActor, input: WorkbookImp
  if (input.kind === 'personal') await event(c, actor, current.customer_id, current.version + 1, 'crm.customer.updated');
  return { status: 'appended', customerId: current.customer_id };
 }
-async function event(c: PoolClient, actor: LeadActor, id: string, version: number, type: string) {
- await c.query('INSERT INTO identity.outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)', [type, actor.userId, 'crm', version, id, JSON.stringify({ customerId: id, version })]);
+async function event(c: PoolClient, actor: LeadActor, id: string, version: number, type: string, contactId?:number) {
+ await c.query('INSERT INTO identity.outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)', [type, actor.userId, 'crm', version, id, JSON.stringify({ customerId: id, version, ...(contactId?{contactId}:{}) })]);
 }
 /** Caller owns authorization, advisory serialization, idempotency and the transaction. */
 export async function importWorkbookIn(c: PoolClient, actor: LeadActor, input: WorkbookImportRequest): Promise<Result<WorkbookImportReceipt>> {

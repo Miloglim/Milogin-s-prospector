@@ -22,6 +22,8 @@ import type { OfflineCrmContext } from '../core/offline-crm';
 import type { CrmSyncResolve, CrmSyncStatus } from '../../shared/online-crm';
 import { CONTACT_COMMAND_PREFIX } from '../core/contact-commands';
 import { validateCenterBase } from '../core/center-endpoint';
+import { centerContactPath, type CenterContactPage, type CenterContactQuery } from '../../../server/core/center-contacts';
+import { CONTACT_ASSIGNMENT_ROUTES, type CenterContactDetail, type CenterContactRef } from '../../../server/core/contact-assignments';
 
 const FALLBACK_ACCESS_MS = 3600000;
 const RENEW_BEFORE_MS = 30000;
@@ -42,13 +44,24 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   contactFollowup(input: import('../../../server/core/contact-assignments').CenterContactFollowup) { return this.contactWriter?.followup(input) ?? Promise.resolve(failure('UNAVAILABLE', '跟进保存尚未就绪')); }
   private detailReader: ((reference: import('../../../server/core/contact-assignments').CenterContactRef) => Promise<Result<import('../../../server/core/contact-assignments').CenterContactDetail>>) | undefined;
   setDetailReader(reader: typeof this.detailReader): void { this.detailReader = reader; }
-  contactDetail(reference: import('../../../server/core/contact-assignments').CenterContactRef): Promise<Result<import('../../../server/core/contact-assignments').CenterContactDetail>> {
-    return this.detailReader?.(reference) ?? Promise.resolve(failure('UNAVAILABLE', '联系人详情读取尚未就绪'));
+  async contactDetail(reference: CenterContactRef): Promise<Result<CenterContactDetail>> {
+    const local: Result<CenterContactDetail> = this.detailReader
+      ? await this.detailReader(reference)
+      : failure('UNAVAILABLE', '联系人详情读取尚未就绪');
+    if (local.ok || !this.identity || !this.isOnline() || !['DATABASE_ERROR', 'UNAVAILABLE'].includes(local.error.code)) return local;
+    Log.error('online.contacts', `本地联系人详情不可用，回退中心实时查询: ${local.error.message}`);
+    return this.requestLive<CenterContactDetail>('GET',
+      `${CONTACT_ASSIGNMENT_ROUTES.contact}/${encodeURIComponent(String(reference.contactId))}?customerId=${encodeURIComponent(reference.customerId)}`);
   }
   private contactReader: ((query: import('../../../server/core/center-contacts').CenterContactQuery) => Promise<Result<import('../../../server/core/center-contacts').CenterContactPage>>) | undefined;
   setContactReader(reader: typeof this.contactReader): void { this.contactReader = reader; }
-  contacts(query: import('../../../server/core/center-contacts').CenterContactQuery): Promise<Result<import('../../../server/core/center-contacts').CenterContactPage>> {
-    return this.contactReader?.(query) ?? Promise.resolve(failure('UNAVAILABLE', '联系人本地读取尚未就绪'));
+  async contacts(query: CenterContactQuery): Promise<Result<CenterContactPage>> {
+    const local: Result<CenterContactPage> = this.contactReader
+      ? await this.contactReader(query)
+      : failure('UNAVAILABLE', '联系人本地读取尚未就绪');
+    if (local.ok || !this.identity || !this.isOnline() || !['DATABASE_ERROR', 'UNAVAILABLE'].includes(local.error.code)) return local;
+    Log.error('online.contacts', `本地联系人列表不可用，回退中心实时查询: ${local.error.message}`);
+    return this.requestLive<CenterContactPage>('GET', centerContactPath(query));
   }
   contactReadContext():OfflineCrmContext|null { return this.crmContext(); }
   /** Legacy SQLite migration is limited to ordinary sales identities. */

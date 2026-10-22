@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS email_accounts (
   circuit_open_at text, circuit_reset_after text, circuit_reason text,
   last_fetch_error text, last_fetch_at text,
   fetch_fail_count integer DEFAULT 0 NOT NULL,
+  imap_fetch_uid_validity text, imap_fetch_last_uid integer,
   is_active integer DEFAULT 1 NOT NULL,
   created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );

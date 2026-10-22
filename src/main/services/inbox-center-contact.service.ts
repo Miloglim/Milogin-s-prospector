@@ -11,7 +11,7 @@ export interface MailboxSnapshot {
   folder?: string; uid?: string | number;
 }
 export type CenterMailRole = 'primary' | 'to' | 'cc' | 'bounce';
-export interface InboxCenterLink extends CenterContactRef { role?: CenterMailRole; status?: string; tags?: string[] }
+export interface InboxCenterLink extends CenterContactRef { role?: CenterMailRole; status?: string; tags?: string[]; email?: string; companyName?: string; contactVersion?: number; canDelete?: boolean }
 export interface InboxCenterMailInput { localMessageId: number; role: CenterMailRole; event: ContactMailEventInput; recordEvent?: boolean; }
 export interface InboxCenterContactPort {
   context(): InboxCenterContext | null;

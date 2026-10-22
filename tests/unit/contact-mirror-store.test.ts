@@ -199,6 +199,14 @@ describe('account scoped structured contact mirror', () => {
     expect(store.findByEmail(alice, 'new@example.test')).toEqual([updated]);
     expect(store.contacts(alice)).toHaveLength(2);
   });
+  it('discards an incremental cursor when the mirror format is obsolete', () => {
+    const store = new SqliteContactMirrorStore(open);
+    store.replaceContacts(alice, [{ ...contact(), assignmentStatus: null }]);
+    store.saveIncrementalCursor(alice, '42');
+    expect(store.incrementalState(alice)).toMatchObject({ cursor: '42' });
+    open(alice).prepare('UPDATE crm_contact_mirror_meta SET format_version=1 WHERE id=1').run();
+    expect(store.incrementalState(alice).cursor).toBeNull();
+  });
   it('isolates accounts and centers, including matching center IDs', () => {
     const store = new SqliteContactMirrorStore(open);
     store.replaceContacts(alice, [contact()]); store.replaceContacts(bob, [{ ...contact(), email: 'bob@example.test' }]);

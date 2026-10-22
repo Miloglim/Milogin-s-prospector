@@ -7,10 +7,10 @@ describe('center contact display status', () => {
     expect(centerContactDisplayStatus({ status: 'replied', touchStatus: 'contacted' })).toBe('reached');
     expect(centerContactDisplayStatus({ status: 'reached', touchStatus: 'uncontacted' })).toBe('');
   });
-  it('retains explicit invalid-email and automatic-reply facts independently', () => {
-    expect(centerContactDisplayStatus({ status: 'bounced', touchStatus: 'replied' })).toBe('bounced');
-    expect(centerContactDisplayStatus({ status: 'autoreply', touchStatus: 'uncontacted' })).toBe('autoreply');
-    expect(centerContactDisplayStatus({ status: '', touchStatus: 'unreachable' })).toBe('');
+  it('uses canonical bounced and automatic-reply outcomes', () => {
+    expect(centerContactDisplayStatus({ status: 'replied', touchStatus: 'bounced' })).toBe('bounced');
+    expect(centerContactDisplayStatus({ status: 'bounced', touchStatus: 'autoreply' })).toBe('autoreply');
+    expect(centerContactDisplayStatus({ status: 'bounced', touchStatus: 'uncontacted' })).toBe('');
   });
   it('keeps compatibility for old fixtures without touch status', () => {
     expect(centerContactDisplayStatus({ status: 'replied' })).toBe('replied');

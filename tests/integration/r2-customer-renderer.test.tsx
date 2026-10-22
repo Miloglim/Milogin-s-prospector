@@ -43,10 +43,14 @@ describe('R2 customer center renderer', () => {
     invoke.mockImplementation(async(channel,...args)=>channel===CHANNEL.PREVIEW?{ok:true,data:{headers:['公司','邮箱'],rows:[{'公司':'Synthetic Co','邮箱':'lead@example.invalid'}],fileName:'test.csv'}}:channel===CHANNEL.IMPORT?{ok:true,data:{batchId:'batch',rows:[{status:'created'}]}}:normal(channel,...args));
     await mount();await click('导入');
     expect(document.body.textContent).toContain('上传文件');expect(document.body.textContent).toContain('粘贴数据');
+    expect(document.querySelector('.ant-drawer details')?.hasAttribute('open')).toBe(false);
+    expect(document.body.textContent).toContain('查看支持的列名');
     expect(document.querySelector('[aria-label="导入来源"]')).toBeNull();expect(document.querySelector('[aria-label="导入去向"]')).toBeNull();
     await act(async()=>{Array.from(document.querySelectorAll('[role="tab"]')).find(x=>x.textContent==='粘贴数据')!.dispatchEvent(new MouseEvent('click',{bubbles:true}));});
     await act(async()=>{const input=document.querySelector('textarea')!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(input,'公司\t邮箱\nSynthetic Co\tlead@example.invalid');input.dispatchEvent(new Event('input',{bubbles:true}));});
-    await click('解析预览');await click('确认导入1条');
+    await click('解析预览');
+    expect(document.querySelector('.ant-drawer-footer')?.textContent).toContain('确认导入 1 条');
+    await click('确认导入1条');
     expect(invoke).toHaveBeenCalledWith(CHANNEL.IMPORT,expect.objectContaining({kind:'personal',source:'desktop-import',rows:[expect.objectContaining({companyName:'Synthetic Co',email:'lead@example.invalid'})]}));
     expect(invoke.mock.calls.every(call=>String(call[0]).startsWith('online:'))).toBe(true);
   });

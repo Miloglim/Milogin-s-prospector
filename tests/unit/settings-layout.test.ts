@@ -30,6 +30,7 @@ describe('settings information architecture', () => {
     expect(settings).not.toContain('accountColumns');
     expect(settings).toContain('config?.sendQuota?.dailyLimit ?? 800');
     expect(settings).not.toContain('发送预估');
+    expect(settings).toContain('这是邮箱服务商提供的密码或授权码，不是中心登录密码。');
     expect(settings).not.toContain('label="开始时段"');
     expect(settings).not.toContain('label="结束时段"');
     expect(config).toContain('sendQuota: { dailyLimit: 800, firstSendAt: null, sentToday: 0 }');
@@ -37,6 +38,9 @@ describe('settings information architecture', () => {
 
   it('keeps send windows per campaign and removes the task daily cap input', () => {
     expect(campaign).toContain('发送时段（仅本任务，不勾选 = 不限时段）');
+    expect(campaign).toContain('留空自动生成');
+    expect(campaign).not.toContain('任务名（必填）');
+    expect(campaign).not.toContain('任务名必填');
     expect(campaign).not.toContain('dailyCap');
     expect(campaign).not.toContain('单日上限');
     expect(campaign).not.toContain('单日放行上限');

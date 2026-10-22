@@ -15,9 +15,10 @@ export type { CustomerCreate, CustomerUpdate, CustomerContactInput } from '../..
 export type { CenterContact, CenterContactPage, CenterContactQuery } from '../../server/core/center-contacts';
 /** Display is derived from contact facts; it never writes an imported legacy status or invents an invalid-email result. */
 export function centerContactDisplayStatus(row: { status?: string | null; touchStatus?: string | null }): string {
-  if (row.status === 'autoreply' || row.status === 'bounced') return row.status;
   if (row.touchStatus === 'contacted') return 'reached';
   if (row.touchStatus === 'replied') return 'replied';
+  if (row.touchStatus === 'bounced') return 'bounced';
+  if (row.touchStatus === 'autoreply') return 'autoreply';
   if (row.touchStatus === 'uncontacted') return '';
   return row.status ?? '';
 }

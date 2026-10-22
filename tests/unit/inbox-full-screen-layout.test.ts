@@ -32,16 +32,33 @@ describe('inbox full-screen layout', () => {
     expect(css).toMatch(/\.inbox-workspace\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*min-height:\s*0;/s);
   });
 
+  it('keeps the detail header and metadata on the same themed layout system', () => {
+    expect(inbox).toContain('function InboxDetailRow');
+    expect(inbox).toContain('className="inbox-detail-header selectable"');
+    expect(inbox).toContain('className="inbox-detail-meta-grid"');
+    expect(css).toMatch(/\.inbox-detail-header\s*\{[^}]*background:\s*var\(--workspace-surface\);/s);
+    expect(css).toMatch(/\.inbox-detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/s);
+  });
+
+  it('keeps the right detail rows compact without shrinking content width', () => {
+    expect(css).toMatch(/\.inbox-detail-header\s*\{[^}]*padding:\s*12px 16px 8px;/s);
+    expect(css).toMatch(/\.inbox-detail-sender-row\s*\{[^}]*min-height:\s*32px;[^}]*margin-top:\s*6px;[^}]*padding-top:\s*6px;/s);
+    expect(css).toMatch(/\.inbox-detail-row\s*\{[^}]*min-height:\s*28px;[^}]*padding:\s*4px 10px 4px 0;/s);
+    expect(css).toMatch(/\.inbox-detail-value\s*\{[^}]*line-height:\s*16px;/s);
+  });
+
   it('uses the shared small control size and themed segmented options in the inbox toolbar', () => {
     expect(inbox).toContain('className="inbox-action-bar"');
     expect(inbox).toContain('<Input');
     expect(inbox).toContain('size="small"');
     expect(inbox).toContain('<Segmented');
     expect(inbox).toContain('block');
-    expect(inbox).toContain('<Button size="small" onClick={doFetch}');
+    expect(inbox).toContain('className={`inbox-filter-tab${filter === f.key ? " is-active" : ""}`}');
+    expect(inbox).toContain('onClick={fetching ? () => setFetchProgressOpen(true) : doFetch}');
     expect(inbox).toContain('<Button size="small" onClick={batchRead}');
     expect(inbox).toContain('<Button size="small" danger onClick={batchDel}');
     expect(css).toMatch(/\.inbox-action-bar\s*\{[^}]*gap:\s*8px;[^}]*padding:\s*10px 12px 8px;/s);
     expect(css).toMatch(/\.inbox-action-bar \.ant-btn,[\s\S]*?font-size:\s*12px;/);
+    expect(css).toMatch(/\.inbox-filter-tab\.is-active\s*\{[^}]*box-shadow:\s*inset 0 -1\.5px 0 var\(--workspace-text\);/s);
   });
 });

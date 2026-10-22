@@ -93,7 +93,7 @@ function createWindow() {
     minHeight: 660,   // 低于此值对话区与能力面板会被挤压；1366×768 屏仍有充分余量
     title: "Milogin's Prospector.",
     icon: appIcon,
-    backgroundColor: "#09090b",
+    backgroundColor: "#f4f5f6",
     frame: false,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),

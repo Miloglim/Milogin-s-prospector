@@ -94,7 +94,7 @@ export function useUpsertContact(port?: ContactDataPort) {
         data?: Contact;
         error?: string;
       }>,
-    onSuccess: () => { if (port) {for(const key of ['center-contacts','center-companies','center-company-detail','center-contact-detail','dashboard','search','center-assignment','inbox'])void qc.invalidateQueries({queryKey:[key]});} else invalidateDomain(qc, "contacts"); },
+    onSuccess: () => void invalidateDomain(qc, "contacts"),
   });
 }
 

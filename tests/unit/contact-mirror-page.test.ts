@@ -82,11 +82,11 @@ describe('indexed SQLite contact pages', () => {
       row(2, { origin: 'operations', assignmentStatus: 'accepted', touchStatus: 'replied', lastFollowupAt: '2026-10-15T03:00:00Z', updatedAt: '2026-10-15T03:00:00Z' }),
       row(3, { origin: 'operations', ownerUserId: 'bob', isShared: true, touchStatus: 'contacted', lastFollowupAt: null }),
       row(4, { lastName: 'İSTANBUL', companyName: 'Vitória', updatedAt: '2026-10-15T02:00:00Z' }),
-      row(5, { title: 'Σ ΑΒΓ', touchStatus: 'unreachable' }),
+      row(5, { title: 'Σ ΑΒΓ', touchStatus: 'autoreply' }),
       row(6, { origin: 'operations', ownerUserId: 'bob', assignmentStatus: 'accepted', touchStatus: 'contacted', lastFollowupAt: '2026-10-15T03:00:00.001Z' }),
     ];
     store.replaceContacts(ctx, rows);
-    const variants: Partial<CenterContactQuery>[] = [{}, { offset: 99 }, { scope: 'personal' }, { scope: 'assigned' }, { assignment: 'accepted' }, { followupOnly: true }, { crmStage: 'reaching' }, { touchStatus: 'unreachable' }, { search: 'müller' }, { search: 'vitória' }, { search: 'i̇stanbul' }, { search: 'σ αβγ' }, { search: '100%_!' }, { search: "o'neil" }, { search: '100X' }, { tags: 'priority' }, { stage: 'f2', status: 'replied', country: 'Brazil', language: 'PT', clientType: 'agent', touchStatus: 'contacted', crmStage: 'cooperating' }, { followupOnly: true, scope: 'assigned', assignment: 'accepted' }];
+    const variants: Partial<CenterContactQuery>[] = [{}, { offset: 99 }, { scope: 'personal' }, { scope: 'assigned' }, { assignment: 'accepted' }, { followupOnly: true }, { crmStage: 'reaching' }, { touchStatus: 'autoreply' }, { search: 'müller' }, { search: 'vitória' }, { search: 'i̇stanbul' }, { search: 'σ αβγ' }, { search: '100%_!' }, { search: "o'neil" }, { search: '100X' }, { tags: 'priority' }, { stage: 'f2', status: 'replied', country: 'Brazil', language: 'PT', clientType: 'agent', touchStatus: 'contacted', crmStage: 'cooperating' }, { followupOnly: true, scope: 'assigned', assignment: 'accepted' }];
     for (const variant of variants) for (const offset of [0, 1, 9]) {
       const input = { ...query, ...variant, offset };
       expect(store.page(ctx, input), JSON.stringify(input)).toEqual(contactMirrorPage(rows, input, ctx.userId));

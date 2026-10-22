@@ -1,5 +1,5 @@
 import { htmlToText } from "../core/html-text";
-import type { InboxListRequest } from "../../shared/inbox";
+import { INBOX_FETCH_PHASES, type InboxFetchPhase, type InboxListRequest } from "../../shared/inbox";
 import { getDb } from "../db";
 import { inboxMessages, inboxBounceMatches, type InboxMessageRow, type InsertInboxMessageRow } from "../db/schema/inbox";
 import { emailAccounts } from "../db/schema/accounts";
@@ -47,7 +47,7 @@ export async function listInboxCenterMatchContacts() {
     return okResult(rows.map(row => ({
       id: row.contactId, email: row.email || '', companyName: row.companyName,
       centerReference: { contactId: row.contactId, customerId: row.customerId },
-      contactVersion: row.contactVersion, status: centerContactDisplayStatus(row), tags: JSON.stringify(row.relationshipStage?row.relationshipStage==='cold'?[]:[row.relationshipStage]:row.tags),
+      contactVersion: row.contactVersion, canDelete: row.canDelete, status: centerContactDisplayStatus(row), tags: JSON.stringify(row.relationshipStage?row.relationshipStage==='cold'?[]:[row.relationshipStage]:row.tags),
     })));
   } catch (error) {
     Log.error('inbox.centerMatch', '中心联系人匹配列表读取失败', error instanceof Error ? error.stack : undefined);
@@ -437,6 +437,25 @@ export function setInboxPushFn(fn: (channel: string, data: unknown) => void) {
   pushFn = fn;
 }
 
+function pushFetchProgress(
+  account: { id: number; email: string },
+  phase: InboxFetchPhase,
+  values: { scanned?: number; total?: number; newCount?: number; remaining?: number; message?: string } = {},
+): void {
+  try {
+    pushFn?.(EVENTS.INBOX_FETCH_PROGRESS, {
+      accountId: account.id,
+      email: account.email,
+      phase,
+      scanned: values.scanned ?? 0,
+      total: values.total ?? 0,
+      newCount: values.newCount ?? 0,
+      remaining: values.remaining ?? 0,
+      message: values.message,
+    });
+  } catch { /* 进度推送失败不影响抓取 */ }
+}
+
 interface PostFetchAdapters {
   isPop3Port: (port: number) => boolean;
   backfillBounceDeep: (accountId: number) => Promise<number>;
@@ -470,6 +489,10 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
   if (!accountId && excludeIds?.length) accounts = accounts.filter(a => !excludeIds.includes(a.id));
   if (!accounts.length) return okResult([]);
 
+  for (const account of accounts) {
+    pushFetchProgress(account, INBOX_FETCH_PHASES.CONNECTING, { message: "正在连接收件服务器" });
+  }
+
   const allNew: InboxMessageRow[] = [];
 
   // ponytail: 并行抓取所有账号；单账号异常也收敛为失败结果（保证健康度能对上账号）
@@ -492,6 +515,7 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
     if (r.status === "rejected") { Log.warn("inbox.fetch", "账号抓取异常"); continue; }
     const { account, result } = r.value;
     if (!result.success) {
+      pushFetchProgress(account, INBOX_FETCH_PHASES.FAILED, { message: result.error || "抓取失败" });
       db.update(emailAccounts)
         .set({ fetchFailCount: sql`${emailAccounts.fetchFailCount} + 1`, lastFetchError: (result.error || "抓取失败").slice(0, 300), lastFetchAt: now })
         .where(eq(emailAccounts.id, account.id)).run();
@@ -503,6 +527,7 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
       .set({ fetchFailCount: 0, lastFetchError: null, lastFetchAt: now })
       .where(eq(emailAccounts.id, account.id)).run();
     health.push({ accountId: account.id, email: account.email, ok: true });
+    pushFetchProgress(account, INBOX_FETCH_PHASES.PROCESSING, { message: "正在去重、分类并保存邮件" });
 
     // The protocol already persisted these inbox rows. Center matching uses persisted metadata, independently of local IDs.
     if (inboxCenterContactPort) for (const mail of result.data) {
@@ -570,6 +595,10 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
         }
       saveDatabase();
     }
+    pushFetchProgress(account, INBOX_FETCH_PHASES.PROCESSING, {
+      newCount: newItems.length,
+      message: `本轮已保存 ${newItems.length} 封新邮件`,
+    });
   }
 
   // 收信健康度落库并推送（前端设置页状态列 / 账号列表据此点亮异常）
@@ -619,13 +648,35 @@ export async function refreshInbox(accountId?: number): Promise<Result<InboxMess
   await fetchInbox(accountId);
   if (!inboxNetworkAllowed()) return failResult('当前离线，无法刷新邮件。');
   cleanupInbox();
-  void prefetchRecentBodies(20);
 
-  if (postFetchAdapters) {
-    void backfillAfterFetch(accountId, postFetchAdapters);
-    void detectSentAfterFetch(postFetchAdapters);
-  } else {
-    Log.warn("inbox.refresh", "抓取后网络适配器未配置，跳过退信与 Sent 补齐");
+  const accounts = accountId
+    ? getDb().select().from(emailAccounts).where(eq(emailAccounts.id, accountId)).all()
+    : getDb().select().from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all();
+  const receivingAccounts = accounts.filter(account => !!account.imapHost);
+  for (const account of receivingAccounts) {
+    pushFetchProgress(account, INBOX_FETCH_PHASES.POST_PROCESSING, { message: "正在补齐退信关联和已发送记录" });
+  }
+
+  try {
+    // Body caching stays off the refresh critical path; the visible post-processing
+    // phase covers bounded network work that affects inbox facts.
+    void prefetchRecentBodies(20);
+    const postFetchTasks: Promise<unknown>[] = [];
+    if (postFetchAdapters) {
+      postFetchTasks.push(backfillAfterFetch(accountId, postFetchAdapters));
+      postFetchTasks.push(detectSentAfterFetch(postFetchAdapters));
+    } else {
+      Log.warn("inbox.refresh", "抓取后网络适配器未配置，跳过退信与 Sent 补齐");
+    }
+    await Promise.all(postFetchTasks);
+    for (const account of receivingAccounts) {
+      pushFetchProgress(account, INBOX_FETCH_PHASES.COMPLETE, { message: "刷新完成" });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    Log.error("inbox.refresh", "抓取后处理失败", error instanceof Error ? error.stack : undefined);
+    for (const account of receivingAccounts) pushFetchProgress(account, INBOX_FETCH_PHASES.FAILED, { message });
+    return failResult(message);
   }
 
   return listInbox();

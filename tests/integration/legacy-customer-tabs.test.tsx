@@ -35,4 +35,10 @@ describe('restored original customer view switch', () => {
     expect(host.textContent).not.toContain('隔离预览');expect(host.textContent).toContain('分配管理');
     expect(window.location.hash).toBe('#/customers'); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
   });
+  it('opens the contact table directly from a deep link', async () => {
+    window.history.replaceState(null, '', '#/customers?view=table&add=1&email=buyer%40example.invalid');
+    await mount();
+    expect(host.querySelector('[data-view="table"]')).not.toBeNull();
+    expect(host.querySelector('[data-view="board"]')).toBeNull();
+  });
 });

@@ -170,20 +170,21 @@ export async function upsertAccount(
   input: InsertEmailAccountRow & { password?: string; id?: number; validateConnection?: boolean }
 ): Promise<Result<AccountProjection>> {
   const isEdit = !!input.id;
-  Log.debug("account.upsert", `email=${input.email} isEdit=${isEdit}`);
+  const email = input.email?.trim().toLowerCase() ?? "";
+  Log.debug("account.upsert", `email=${email} isEdit=${isEdit}`);
 
-  if (!input.email || !input.smtpHost) return failResult("email、smtpHost 必填");
+  if (!email || !input.smtpHost) return failResult("email、smtpHost 必填");
   if (!isEdit && !input.password) return failResult("新增时密码必填");
 
   let receiveVerified = false;
   // ponytail: 编辑模式无密码 → 跳过验证，保留原密码；有密码 → 重新验证+加密
   if ((!isEdit || input.password) && input.validateConnection !== false) {
     const pass = input.password!;
-    const smtpResult = await validateSmtp(input.smtpHost, input.smtpPort || 587, input.email, pass);
+    const smtpResult = await validateSmtp(input.smtpHost, input.smtpPort || 587, email, pass);
     if (!smtpResult.ok) return failResult(`SMTP 连接失败: ${smtpResult.error}`);
 
     if (input.imapHost) {
-      const imapResult = await validateImap(input.imapHost, input.imapPort || 993, input.email, pass);
+      const imapResult = await validateImap(input.imapHost, input.imapPort || 993, email, pass);
       if (!imapResult.ok) return failResult(`IMAP 连接失败: ${imapResult.error}`);
       receiveVerified = true;
     }
@@ -194,12 +195,18 @@ export async function upsertAccount(
 
   const existing = isEdit
     ? getDb().select().from(emailAccounts).where(eq(emailAccounts.id, input.id!)).get()
-    : getDb().select().from(emailAccounts).where(eq(emailAccounts.email, input.email)).get();
+    : getDb().select().from(emailAccounts).where(eq(emailAccounts.email, email)).get();
 
   const now = new Date().toISOString();
 
   if (existing) {
+    const duplicate = getDb().select({ id: emailAccounts.id }).from(emailAccounts)
+      .where(eq(emailAccounts.email, email)).get();
+    if (duplicate && duplicate.id !== existing.id) {
+      return failResult("该邮箱已被其他发信账号使用");
+    }
     const updateData: Record<string, unknown> = {
+      email,
       smtpHost: input.smtpHost, smtpPort: input.smtpPort,
       imapHost: input.imapHost, imapPort: input.imapPort,
       displayName: input.displayName, signature: input.signature,
@@ -220,13 +227,14 @@ export async function upsertAccount(
 
   getDb().insert(emailAccounts).values({
     ...input,
+    email,
     encryptedPass: encryptedPass!,
     createdAt: now,
   }).run();
   saveDatabase();
 
   const created = getDb().select().from(emailAccounts)
-    .where(eq(emailAccounts.email, input.email)).get()!;
+    .where(eq(emailAccounts.email, email)).get()!;
   Log.info("account.upsert", `${input.email} 已创建`);
   const { encryptedPass: _c, ...createdRest } = created;
   return okResult(createdRest);

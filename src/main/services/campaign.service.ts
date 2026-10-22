@@ -16,6 +16,7 @@ import { assembleEmail, type Stage } from "./sentence-library";
 import { isCircuitOpen } from "./sender-block.service";
 import { Log } from "../logger";
 import { okResult, failResult, type Result } from "../errors";
+import { nextCampaignName } from "../../shared/campaign-name";
 
 export interface CampaignTouch {
   stage: string;
@@ -41,7 +42,7 @@ export interface CampaignSchedule {
   dailyGroupCap?: number;
 }
 export interface CreateCampaignInput {
-  name: string;
+  name?: string;
   contactIds: number[];
   centerContactRefs?: CenterContactRef[];
   /** 触点计划按数组顺序执行：第 1 项=首信（立即），之后每项在上封发出 delayDays 天后发 */
@@ -153,8 +154,9 @@ function buildCampaignCore(input: CreateCampaignInput): Result<{
   name: string; touches: CampaignTouch[]; eligible: number[]; excluded: number; centerRows?: CenterSendContact[];
   accountPolicy: CampaignAccountPolicy; schedule: CampaignSchedule; sendMode: "individual" | "bcc";
 }> {
-  const name = input.name?.trim();
-  if (!name) return failResult("任务名必填");
+  const name = input.name?.trim() || nextCampaignName(
+    getDb().select({ name: sendCampaigns.name }).from(sendCampaigns).all().map(row => row.name),
+  );
   const touchesRes = normalizeTouches(input.touches);
   if (!touchesRes.success) return failResult(touchesRes.error);
   const touches = touchesRes.data;
@@ -181,7 +183,7 @@ function buildCampaignCore(input: CreateCampaignInput): Result<{
     sendMode: input.sendMode === "bcc" ? "bcc" : "individual" });
 }
 
-export function createCampaign(input: CreateCampaignInput): Result<{ id: string; eligible: number; excluded: number }> {
+export function createCampaign(input: CreateCampaignInput): Result<{ id: string; name: string; eligible: number; excluded: number }> {
   if (input.startNow !== false && !campaignNetworkAllowed()) return failResult('当前离线，无法启动发送任务。');
   const core = buildCampaignCore(input);
   if (!core.success) return failResult(core.error);
@@ -208,7 +210,7 @@ export function createCampaign(input: CreateCampaignInput): Result<{ id: string;
   }))).run();
   Log.info("campaign.create", `任务 ${id}「${name}」：名单 ${eligible.length} 人（排除 ${excluded}），${touches.length} 触点，${isDraft ? "草稿" : "运行"}，autoSend=${input.autoSend !== false}，账号=${accountPolicy.mode}`);
   if (!isDraft) automaticSchedulingAllowed = true;
-  return okResult({ id, eligible: eligible.length, excluded });
+  return okResult({ id, name, eligible: eligible.length, excluded });
 }
 
 /** Attach a prepared manual queue to the existing task UI, without scheduling or sending. */
@@ -246,7 +248,7 @@ export async function enqueuePreparedCampaign(
 }
 
 /** 草稿编辑（发送中心向导）：仅 draft 态可改，名单与计划全量替换（草稿从未排触点，无在途状态可保） */
-export function updateCampaignDraft(id: string, input: CreateCampaignInput): Result<{ eligible: number; excluded: number }> {
+export function updateCampaignDraft(id: string, input: CreateCampaignInput): Result<{ name: string; eligible: number; excluded: number }> {
   const c = getDb().select().from(sendCampaigns).where(eq(sendCampaigns.id, id)).get();
   if (!c) return failResult(`任务不存在: ${id}`);
   if (c.status !== "draft") return failResult("只有草稿可以编辑");
@@ -269,7 +271,7 @@ export function updateCampaignDraft(id: string, input: CreateCampaignInput): Res
     campaignId: id, contactId: cid, centerReferenceJson: centerRows ? JSON.stringify({ reference: centerRows.find(r => r.id === cid)!.centerReference, scope: centerRows.find(r => r.id === cid)!.centerScope }) : null, status: "pending", round: 0, nextTouchAt: null, updatedAt: nowIso(),
   }))).run();
   Log.info("campaign.updateDraft", `草稿 ${id}「${name}」已更新：${eligible.length} 人 × ${touches.length} 轮`);
-  return okResult({ eligible: eligible.length, excluded });
+  return okResult({ name, eligible: eligible.length, excluded });
 }
 
 // ── 生命周期控制（Phase B 工具与发送中心按钮共用）──────────────────

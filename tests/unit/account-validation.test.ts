@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import initSqlJs, { type Database as SqlJsDatabase } from "sql.js";
 import { drizzle } from "drizzle-orm/sql-js";
 import * as path from "path";
+import { eq } from "drizzle-orm";
 import * as schema from "../../src/main/db/schema";
 import { BASE_SCHEMA_SQL } from "../../src/main/db/schema-sql";
 import { emailAccounts } from "../../src/main/db/schema/accounts";
@@ -76,5 +77,33 @@ describe("账号连接测试", () => {
     expect(result).toMatchObject({ success: true, data: { imapHost: "imap.example.com", imapPort: 993 } });
     expect(await Account.listAccounts()).toMatchObject({ success: true, data: [{ imapHost: "imap.example.com", imapPort: 993 }] });
     expect(h.createTransport).not.toHaveBeenCalled();
+  });
+
+  it("编辑账号时邮箱地址会实际更新", async () => {
+    const db = h.db as ReturnType<typeof drizzle<typeof schema>>;
+    db.insert(emailAccounts).values({
+      email: "old@example.com", encryptedPass: "plain-password",
+      smtpHost: "smtp.example.com", smtpPort: 465,
+    }).run();
+    const id = db.select({ id: emailAccounts.id }).from(emailAccounts).get()!.id;
+
+    const result = await Account.upsertAccount({
+      id, email: " New@Example.com ", smtpHost: "smtp.example.com", smtpPort: 465,
+      imapHost: null,
+    });
+    expect(result).toMatchObject({ success: true, data: { email: "new@example.com" } });
+    expect(await Account.listAccounts()).toMatchObject({ success: true, data: [{ email: "new@example.com" }] });
+  });
+
+  it("编辑账号时不能改成另一个账号已使用的邮箱", async () => {
+    const db = h.db as ReturnType<typeof drizzle<typeof schema>>;
+    db.insert(emailAccounts).values([
+      { email: "one@example.com", encryptedPass: "plain-password", smtpHost: "smtp.example.com", smtpPort: 465 },
+      { email: "two@example.com", encryptedPass: "plain-password", smtpHost: "smtp.example.com", smtpPort: 465 },
+    ]).run();
+    const id = db.select({ id: emailAccounts.id }).from(emailAccounts).where(eq(emailAccounts.email, "one@example.com")).get()!.id;
+
+    const result = await Account.upsertAccount({ id, email: "two@example.com", smtpHost: "smtp.example.com", smtpPort: 465, imapHost: null });
+    expect(result).toMatchObject({ success: false, error: "该邮箱已被其他发信账号使用" });
   });
 });

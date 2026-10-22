@@ -1,5 +1,6 @@
 import type { IncomingMessage,ServerResponse } from 'node:http';
 import { ADMIN_ROUTES,ADMIN_LIMITS } from '../core/admin';
+import type { OperationsCheck } from '../core/management-dashboard';
 import type { NavigatorDashboard } from '../core/navigator';
 import type { OnlineConfig,TokenPort,LoginGate } from '../core/auth';
 import { failure,success } from '../core/crm';
@@ -32,6 +33,19 @@ async function navigatorDashboard(config: OnlineConfig, token: string) {
   if(response.status===403) return failure('FORBIDDEN','当前中心账号没有 Navigator 管理权限');
   return failure('UNAVAILABLE','Navigator 服务暂不可用');
  } catch { return failure('UNAVAILABLE','Navigator 服务暂不可用'); }
+}
+async function navigatorHealth(config: OnlineConfig):Promise<OperationsCheck> {
+ try {
+  const response=await fetch(`${config.navigator_url.replace(/\/$/,'')}/api/health/live`,{
+   headers:{Accept:'application/json'},signal:AbortSignal.timeout(config.request_timeout_seconds*1000),
+  });
+  const payload=await response.json() as {ok?:boolean;data?:{status?:string;backend?:string}};
+  if(response.ok&&payload.ok===true&&payload.data?.status==='ok')return {id:'navigator',label:'Navigator',state:'healthy',value:'正常',valueLabel:'服务状态',detail:`${payload.data.backend==='postgres'?'PostgreSQL':'业务'}后端可用`};
+  return {id:'navigator',label:'Navigator',state:'offline',value:'异常',valueLabel:'服务状态',detail:'健康接口返回异常'};
+ } catch {
+  // Upstream details stay out of the browser; the read-only check records the outage itself.
+  return {id:'navigator',label:'Navigator',state:'offline',value:'离线',valueLabel:'服务状态',detail:'暂无法连接 Navigator 服务'};
+ }
 }
 export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:TokenPort,gate:LoginGate,config:OnlineConfig,staticHandler:BrowserHandler,passwordChange?:PasswordChangeService,dashboard?:ReturnType<typeof createManagementDashboardService>):BrowserHandler {
  const cookieFlags=`HttpOnly; SameSite=Strict; Path=/`+(config.test_mode||config.local_http?'':'; Secure');
@@ -82,6 +96,12 @@ export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:To
   }
   if(method==='GET'&&path===ADMIN_ROUTES.products){send(response,await admin.products(token));return;}
   if(method==='GET'&&path===ADMIN_ROUTES.dashboard){send(response,dashboard?await dashboard.dashboard(token):failure('UNAVAILABLE','数据看板暂不可用'));return;}
+  if(method==='GET'&&path===ADMIN_ROUTES.operations){
+   if(!dashboard){send(response,failure('UNAVAILABLE','系统运行服务暂不可用'));return;}
+   const result=await dashboard.operations(token);
+   if(!result.ok){send(response,result);return;}
+   send(response,success({...result.data,checks:[...result.data.checks,await navigatorHealth(config)]}));return;
+  }
   if(method==='GET'&&path===ADMIN_ROUTES.navigatorDashboard){send(response,await navigatorDashboard(config,token));return;}
   if(method==='GET'&&path===ADMIN_ROUTES.sessions){send(response,await admin.sessions(token,url.searchParams.get('userId')??''));return;}
   if(method==='GET'&&path===ADMIN_ROUTES.audit){send(response,await admin.audit(token,url.searchParams.get('productId')??undefined,url.searchParams.get('userId')??undefined));return;}

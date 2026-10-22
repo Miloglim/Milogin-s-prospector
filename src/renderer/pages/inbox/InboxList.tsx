@@ -13,12 +13,23 @@ import { askAssistant } from "../../lib/ask-ai";
 import { DiamondLogo } from "../../components/DiamondLogo";
 import { STATUS_META, CRM_STAGES } from "../../components/ContactDetail";
 import { useOptionalIdentity } from '../../IdentityContext';
-import { ONLINE_CHANNELS, centerContactDisplayStatus, type CenterContactRef, type CenterContactDetail, type ContactTouchStatus, type CustomerStage } from '../../../shared/online-crm';
+import { ONLINE_CHANNELS, centerContactDisplayStatus, type ContactDelete, type ContactDeleteReceipt, type CenterContactRef, type CenterContactDetail, type ContactTouchStatus, type CustomerStage } from '../../../shared/online-crm';
+import { INBOX_FETCH_PHASES, type InboxFetchPhase, type InboxFetchProgress } from '../../../shared/inbox';
 import { centerInvoke } from '../customers/centerContactPort';
 
-interface MatchedContact { id: number; email: string; company: string; centerReference?: CenterContactRef }
-interface MatchContactRow { id: number; email: string; companyName: string | null; centerReference?: CenterContactRef }
-const CENTER_STATUS: Record<string, ContactTouchStatus> = { reached: 'contacted', replied: 'replied', '': 'uncontacted' };
+interface MatchedContact { id: number; email: string; company: string; contactVersion?: number; canDelete?: boolean; centerReference?: CenterContactRef }
+interface MatchContactRow { id: number; email: string; companyName: string | null; contactVersion?: number; canDelete?: boolean; centerReference?: CenterContactRef }
+const CENTER_STATUS: Record<string, ContactTouchStatus> = { reached: 'contacted', replied: 'replied', bounced: 'bounced', autoreply: 'autoreply', '': 'uncontacted' };
+const FETCH_PHASE_LABEL: Record<InboxFetchPhase, string> = {
+  [INBOX_FETCH_PHASES.CONNECTING]: "连接中",
+  [INBOX_FETCH_PHASES.SEARCHING]: "查找邮件",
+  [INBOX_FETCH_PHASES.SCANNING]: "扫描中",
+  [INBOX_FETCH_PHASES.CALIBRATING]: "校准未读",
+  [INBOX_FETCH_PHASES.PROCESSING]: "保存与匹配",
+  [INBOX_FETCH_PHASES.POST_PROCESSING]: "收尾处理",
+  [INBOX_FETCH_PHASES.COMPLETE]: "已完成",
+  [INBOX_FETCH_PHASES.FAILED]: "失败",
+};
 function openMatchedContact(contact: { id: number; centerReference?: CenterContactRef }): void {
   const reference = contact.centerReference;
   window.location.hash = reference
@@ -38,14 +49,17 @@ interface InboxItem {
   _contactStatus?: string | null;
   _contactTags?: string | null;
   _centerContact?: CenterContactRef | null;
+  _centerContacts?: Array<CenterContactRef & { role?: string; status?: string; tags?: string[]; email?: string; companyName?: string; contactVersion?: number; canDelete?: boolean }>;
 }
 
-const TYPE: Record<string, { label: string; dot: string }> = {
+type MailTypeMeta = { label: string; dot: string };
+const OTHER_MAIL_TYPE: MailTypeMeta = { label: "其他", dot: "#8b8b8b" };
+const TYPE: Record<string, MailTypeMeta> = {
   replied: { label: "回复", dot: "#22a644" },
   bounce: { label: "退信", dot: "#e5484d" },
   autoreply: { label: "自动回复", dot: "#e6a817" },
   sent: { label: "已发送", dot: "#2563eb" },
-  other: { label: "其他", dot: "#8b8b8b" },
+  other: OTHER_MAIL_TYPE,
 };
 
 const FILTERS = [
@@ -89,6 +103,15 @@ function guessName(fromName: string | null): { firstName: string; lastName: stri
   return { firstName: parts[0] || "", lastName: parts[parts.length - 1] || "" };
 }
 
+function InboxDetailRow({ label, children, wide = false }: {
+  label: string; children: React.ReactNode; wide?: boolean;
+}) {
+  return <div className={"inbox-detail-row" + (wide ? " is-wide" : "")}>
+    <span className="inbox-detail-label">{label}</span>
+    <div className="inbox-detail-value">{children}</div>
+  </div>;
+}
+
 export function InboxList() {
   const identity = useOptionalIdentity();
   const offline = identity?.status === 'offline';
@@ -107,15 +130,19 @@ export function InboxList() {
   const [search, setSearch] = useState("");
   const [body, setBody] = useState<string | null>(null);
   const [bl, setBl] = useState(false);
+  const centerDeleteRequests = useRef(new Map<string, ContactDelete>());
   // 前端正文缓存：点开过的邮件切回秒开，不重复 invoke / 不闪 loading
   const bodyCache = useRef<Map<number, string | null>>(new Map());
 
   // 联系人库（选中邮件后才加载）
-  const { data: contactsData, isLoading: contactsLoading } = useQuery({
+  const { data: contactsData, isLoading: contactsLoading, isError: contactsFailed, error: contactsError } = useQuery({
     queryKey: ["contacts", "match", identity?.baseUrl, identity?.identity?.userId],
-    queryFn: () => window.api.invoke("contacts:listForMatch") as Promise<{ success: boolean; data?: MatchContactRow[] }>,
+    queryFn: () => window.api.invoke("contacts:listForMatch") as Promise<{ success: boolean; data?: MatchContactRow[]; error?: string }>,
     enabled: sid !== null,
   });
+  const contactMatchError = contactsFailed
+    ? contactsError instanceof Error ? contactsError.message : '联系人读取失败'
+    : contactsData?.success === false ? contactsData.error || '联系人读取失败' : null;
 
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [last, setLast] = useState<number | null>(null);
@@ -137,10 +164,12 @@ export function InboxList() {
   });
 
   const [fetching, setFetching] = useState(false);
+  const [fetchProgressOpen, setFetchProgressOpen] = useState(false);
   // 多账号进度按 accountId 聚合，避免并行拉取时互相覆盖导致进度条跳变
-  const [fetchProgress, setFetchProgress] = useState<Record<string, { email?: string; scanned: number; total: number }>>({});
+  const [fetchProgress, setFetchProgress] = useState<Record<string, InboxFetchProgress>>({});
   const doFetch = async () => {
     setFetching(true);
+    setFetchProgressOpen(true);
     setFetchProgress({});
     try { await window.api.invoke("inbox:fetch"); } finally { setFetching(false); setFetchProgress({}); }
     invalidateDomain(qc, "inbox");
@@ -240,21 +269,31 @@ export function InboxList() {
     queryFn: () => window.api.invoke("inbox:bounceMatches", sid) as Promise<{ success: boolean; data?: MatchContactRow[] }>,
     enabled: !!sid,
   });
-  const bounceMatches = bounceMatchesData?.success ? bounceMatchesData.data || [] : [];
 
   /** 删除单个联系人（详情两栏共用：被退栏 / 正文提及栏）；级联与孤儿公司清理在主进程 */
-  const confirmDeleteContact = (c: { id: number; email: string; centerReference?: CenterContactRef }) => {
-    if (c.centerReference) { message.info('中心联系人删除暂未开放'); return; }
+  const confirmDeleteContact = (c: { id: number; email: string; contactVersion?: number; canDelete?: boolean; centerReference?: CenterContactRef }) => {
+    if (c.canDelete === false) { message.error('该联系人已分配或当前无删除权限'); return; }
+    if (c.centerReference && (!Number.isSafeInteger(c.contactVersion) || (c.contactVersion ?? 0) < 1)) {
+      message.error('联系人版本未加载，请刷新后重试'); return;
+    }
     Modal.confirm({
       title: `删除联系人 ${c.email}？`,
-      content: "其往来记录一并删除，此操作不可撤销。",
+      content: c.centerReference ? "删除后不再参与匹配和新发送任务，历史记录保留。" : "其往来记录一并删除，此操作不可撤销。",
       okText: "删除", okType: "danger", cancelText: "取消",
       onOk: async () => {
-        const r = await window.api.invoke("contacts:delete", c.id) as { success: boolean; error?: string };
-        if (r?.success) {
-          message.success("已删除");
-          void invalidateDomain(qc, "inbox", "contacts");
-        } else message.error(r?.error || "删除失败");
+        if (c.centerReference) {
+          const center={...c.centerReference,expectedVersion:c.contactVersion!};
+          const signature=JSON.stringify(center);
+          let request=centerDeleteRequests.current.get(signature);
+          if(!request){request={contacts:[center],idempotencyKey:crypto.randomUUID()};centerDeleteRequests.current.set(signature,request);}
+          const r=await centerInvoke<ContactDeleteReceipt>(ONLINE_CHANNELS.CONTACT_DELETE,request);
+          if(r.ok){centerDeleteRequests.current.delete(signature);message.success('已删除');void invalidateDomain(qc,'inbox','contacts');}
+          else {if(r.error.code==='CONFLICT')centerDeleteRequests.current.delete(signature);message.error(r.error.message||'删除失败');}
+          return;
+        }
+        const r=await window.api.invoke("contacts:delete",c.id) as {success:boolean;error?:string};
+        if(r?.success){message.success('已删除');void invalidateDomain(qc,'inbox','contacts');}
+        else message.error(r?.error||'删除失败');
       },
     });
   };
@@ -291,6 +330,16 @@ export function InboxList() {
     items = [...items].sort((a, b) => (b.matchedContactId || b._centerContact ? 1 : 0) - (a.matchedContactId || a._centerContact ? 1 : 0));
   }
   const sel_ = items.find(i => i.id === sid) || null;
+  const legacyBounceMatches = bounceMatchesData?.success ? bounceMatchesData.data || [] : [];
+  const centerBounceMatches: MatchContactRow[] = (sel_?._centerContacts ?? []).filter(link => link.role === 'bounce').map(link => ({
+    id: link.contactId,
+    email: link.email || '',
+    companyName: link.companyName || null,
+    contactVersion: link.contactVersion,
+    canDelete: link.canDelete,
+    centerReference: { contactId: link.contactId, customerId: link.customerId },
+  }));
+  const bounceMatches = Array.isArray(sel_?._centerContacts) ? centerBounceMatches : legacyBounceMatches;
 
   // 虚拟滚动可视区计算
   const startIdx = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
@@ -320,7 +369,7 @@ export function InboxList() {
         if (previous && c.centerReference && (previous.contactId !== c.centerReference.contactId || previous.customerId !== c.centerReference.customerId)) {
           delete idx[key]; ambiguous.add(key); continue;
         }
-        idx[key] = { company: c.companyName || "", id: c.id, email: c.email, centerReference: c.centerReference };
+        idx[key] = { company: c.companyName || "", id: c.id, email: c.email, contactVersion: c.contactVersion, canDelete: c.canDelete, centerReference: c.centerReference };
       }
       // ① 发件人
       if (sel_) {
@@ -345,6 +394,16 @@ export function InboxList() {
         const c = idx[key];
         if (c) matched.push({ ...c, email: em });
         else unmatched.push(em);
+      }
+      // Address headers may contain colleagues or customer contacts that never appear in the body.
+      // Only surface those that already exist; internal addresses must not become add-contact prompts.
+      for (const em of [sel_?.to, sel_?.cc].flatMap(value => value?.match(EMAIL_RE) || [])) {
+        if (matched.length >= 20) break;
+        const key = em.toLowerCase().trim();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const c = idx[key];
+        if (c) matched.push({ ...c, email: em });
       }
     }
     return { matchedContacts: matched, unmatchedEmails: unmatched, senderContact: sender, matchReady: ready };
@@ -433,9 +492,25 @@ export function InboxList() {
   }, [qc]);
   useEffect(() => {
     const off = window.api.on("inbox:fetchProgress", (p: unknown) => {
-      const pp = p as { accountId: number; email?: string; scanned: number; total: number };
-      if (pp && typeof pp.scanned === "number") {
-        setFetchProgress(prev => ({ ...prev, [String(pp.accountId ?? 0)]: { email: pp.email, scanned: pp.scanned, total: pp.total || 0 } }));
+      const pp = p as InboxFetchProgress;
+      if (pp && typeof pp.accountId === "number" && typeof pp.phase === "string") {
+        setFetchProgress(prev => {
+          const key = String(pp.accountId);
+          const current = prev[key];
+          if (current?.phase === INBOX_FETCH_PHASES.FAILED && pp.phase !== INBOX_FETCH_PHASES.FAILED) return prev;
+          const scanning = pp.phase === INBOX_FETCH_PHASES.SCANNING;
+          return {
+            ...prev,
+            [key]: {
+              ...current,
+              ...pp,
+              scanned: scanning || pp.scanned > 0 ? pp.scanned : current?.scanned ?? 0,
+              total: scanning || pp.total > 0 ? pp.total : current?.total ?? 0,
+              newCount: scanning || pp.newCount > 0 ? pp.newCount : current?.newCount ?? 0,
+              remaining: scanning || pp.remaining > 0 ? pp.remaining : current?.remaining ?? 0,
+            },
+          };
+        });
       }
     });
     return off;
@@ -586,6 +661,7 @@ export function InboxList() {
   allItems.forEach(i => { const t = i.classification || "other"; if (counts[t] !== undefined) counts[t]++; });
   const nCounts: Record<string, number> = { bounce: 0, replied: 0, autoreply: 0, other: 0 };
   allItems.forEach(i => { if (!i.isRead) { const t = i.classification || "other"; if (nCounts[t] !== undefined) nCounts[t]++; } });
+  const selectedType: MailTypeMeta = TYPE[sel_?.classification || "other"] ?? OTHER_MAIL_TYPE;
 
   // ── 渲染 ──
 
@@ -597,9 +673,9 @@ export function InboxList() {
 
         {/* 顶部 */}
         <div className="inbox-action-bar">
-          <Button size="small" onClick={doFetch} disabled={fetching || offline}
+          <Button size="small" onClick={fetching ? () => setFetchProgressOpen(true) : doFetch} disabled={!fetching && offline}
             icon={<ReloadOutlined className={fetching ? "animate-spin" : ""} />}>
-            刷新
+            {fetching && !fetchProgressOpen ? "后台拉取中" : "刷新"}
           </Button>
           <Input
             size="small"
@@ -611,20 +687,41 @@ export function InboxList() {
           {sel.size > 1 && <Button size="small" danger onClick={batchDel} title="已选 {n} 封 · Delete 键同样可删（有确认）· Esc 取消选择">删({sel.size})</Button>}
         </div>
         {/* 拉取进度弹窗 — 分账号详细显示 */}
-        <Modal title="拉取邮件" open={fetching} footer={null} closable={false} width={420}>
+        <Modal title="刷新邮件" open={fetching && fetchProgressOpen} width={440}
+          onCancel={() => setFetchProgressOpen(false)}
+          maskClosable={false}
+          footer={<Button onClick={() => setFetchProgressOpen(false)}>转入后台</Button>}>
           <div className="space-y-3">
+            {Object.keys(fetchProgress).length > 0 && (
+              <div className="flex justify-between text-[11px] text-gray-400">
+                <span>{Object.values(fetchProgress).filter(p => p.phase === INBOX_FETCH_PHASES.COMPLETE).length}/{Object.keys(fetchProgress).length} 个账号完成</span>
+                {Object.values(fetchProgress).some(p => p.phase === INBOX_FETCH_PHASES.FAILED) && <span className="text-red-500">部分账号失败</span>}
+              </div>
+            )}
             {Object.entries(fetchProgress).map(([aid, p]) => (
-              <div key={aid}>
+              <div key={aid} className="rounded border border-gray-100 px-3 py-2.5">
                 <div className="flex justify-between text-[11px] mb-1">
                   <span className="text-gray-600 font-mono">{p.email || `账号 #${aid}`}</span>
-                  <span className="text-gray-400">{p.scanned}/{p.total}</span>
+                  <span className={p.phase === INBOX_FETCH_PHASES.FAILED ? "text-red-500" : "text-gray-500"}>{FETCH_PHASE_LABEL[p.phase] || p.phase}</span>
                 </div>
-                <Progress percent={p.total > 0 ? Math.round((p.scanned / p.total) * 100) : 0}
-                  size="small" status="active" strokeColor="#2563eb" />
+                {p.phase === INBOX_FETCH_PHASES.SCANNING ? (
+                  <>
+                    <Progress percent={p.total > 0 ? Math.round((p.scanned / p.total) * 100) : 0}
+                      showInfo={false} size="small" status="normal" strokeColor="#2563eb" />
+                    <div className="flex justify-between text-[11px] text-gray-400 mt-1">
+                      <span>已扫描 {p.scanned} 封 · 新增 {p.newCount} 封</span>
+                      {p.remaining > 0 && <span>另有 {p.remaining} 封待后续处理</span>}
+                    </div>
+                  </>
+                ) : (
+                  <div className={`text-[11px] ${p.phase === INBOX_FETCH_PHASES.FAILED ? "text-red-500" : "text-gray-400"}`}>
+                    {p.message || "处理中"}
+                  </div>
+                )}
               </div>
             ))}
             {Object.keys(fetchProgress).length === 0 && (
-              <div className="text-xs text-gray-400 text-center py-4">正在连接服务器...</div>
+              <div className="text-xs text-gray-400 text-center py-4">正在启动刷新...</div>
             )}
           </div>
         </Modal>
@@ -664,20 +761,12 @@ export function InboxList() {
 
         {/* 筛选 */}
         <div className="inbox-filter-bar">
-          <Segmented
-            block
-            size="small"
-            value={filter}
-            onChange={value => setFilter(value as typeof filter)}
-            options={FILTERS.map(f => ({
-              value: f.key,
-              label: <span className="inbox-filter-option">
-                {"dot" in f && <span style={{ fontSize: 8, color: f.dot, lineHeight: 1 }}>●</span>}
-                {f.label}
-                {f.key !== "all" && (nCounts[f.key] ?? 0) > 0 && <span style={{ fontSize: 8, color: "#e5484d", lineHeight: 1 }}>●</span>}
-              </span>,
-            }))}
-          />
+          {FILTERS.map(f => <button key={f.key} type="button" onClick={() => setFilter(f.key)}
+            className={`inbox-filter-tab${filter === f.key ? " is-active" : ""}`}>
+            {"dot" in f && <span style={{ color: f.dot }}>●</span>}
+            {f.label}
+            {f.key !== "all" && (nCounts[f.key] ?? 0) > 0 && <span className="inbox-filter-unread">●</span>}
+          </button>)}
         </div>
 
         {/* 退信删除：计数/弹窗/执行同一数据源（后端全库），所见即所删；删除前主进程先归档 */}
@@ -811,10 +900,10 @@ export function InboxList() {
       {/* ══ 右侧 ══ */}
       <div className="inbox-reader-pane flex-1 flex flex-col overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
         {!sel_ ? (
-          <div className="flex-1 flex flex-col items-center justify-center" style={{ color: "#ddd" }}>
+          <div className="inbox-reader-empty flex-1 flex flex-col items-center justify-center">
             <MailOutlined style={{ fontSize: 32, marginBottom: 10 }} />
             {/* 原先左侧列表顶部那行计数条迁到这里：左栏少一行、多出一屏邮件 */}
-            <div style={{ fontSize: 11, color: "#c4c4c4", display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", lineHeight: 1.9 }}>
+            <div className="inbox-reader-empty-stats">
               <span>退信 {counts.bounce ?? 0}</span>
               <span>回复 {counts.replied ?? 0}</span>
               <span>已发送 {counts.sent ?? 0}</span>
@@ -824,83 +913,56 @@ export function InboxList() {
           </div>
         ) : (
           <>
-            {/* 头部 — 紧凑双列网格（label 宽度压缩，账号+关联一行，状态+标签一行） */}
-            <div className="selectable" style={{ borderBottom: "1px solid #e8e8e8", flexShrink: 0 }}>
-              {[
-                ["发件人", `${sel_.fromName || ""} <${sel_.fromEmail}>`, true],
-                ["收件人", sel_.to || (sel_.classification === "sent" ? `${sel_.fromName || ""} <${sel_.fromEmail}>` : "—"), true],
-                ["抄送", sel_.cc || "—", true],
-                ["主题", sel_.subject || "无主题", true],
-                ["时间", new Date(sel_.receivedAt).toLocaleString("zh-CN"), false],
-                ["分类", sel_.classification || "other", false],
-              ].map(([label, value, full], idx) => (
-                <div key={idx}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", borderBottom: "1px solid #f5f5f5", width: full ? "100%" : "50%" }}>
-                  <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>{label}</span>
-                  <span style={{ wordBreak: "break-all", lineHeight: 1.4, minWidth: 0 }}>
-                    {label === "分类" ? (
-                      <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: (TYPE as Record<string, {dot: string}>)[String(value)]?.dot || "#8b8b8b" }} />
-                        {(TYPE as Record<string, {label: string}>)[String(value)]?.label || String(value)}
-                      </span>
-                    ) : String(value)}
-                    {/* 菱形 = 引用这封邮件让 AI 起草回复（原「AI」整行两按钮收敛成一个图标） */}
-                    {label === "发件人" && (
-                      <Tooltip title="引用这封邮件，让 AI 起草回复" placement="top">
-                        <span
-                          onClick={() => askAssistant({
-                            ctx: `message:${sel_.id}`,
-                            question: "根据这封邮件帮我起草一封回复，语气专业简洁",
-                          })}
-                          style={{ display: "inline-flex", alignItems: "center", verticalAlign: "-1px", marginLeft: 5, cursor: "pointer", color: "#00bfa5", opacity: 0.9 }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "0.9"; }}
-                        >
-                          <DiamondLogo size={11} state="static"   /* 静态：不呼吸、无中心点，只做入口标识 */ />
-                        </span>
-                      </Tooltip>
-                    )}
-                  </span>
-                </div>
-              ))}
-              {/* 账号 + 关联 一行两栏 */}
-              <div style={{ display: "flex", borderBottom: "1px solid #f5f5f5" }}>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: senderContact ? "50%" : "100%" }}>
-                  <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>账号</span>
-                  <span style={{ fontSize: 11, color: (sel_ as InboxItem & { _accountEmail?: string })._accountEmail ? "#555" : "#ccc", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {(sel_ as InboxItem & { _accountEmail?: string })._accountEmail || "—"}
-                  </span>
-                </div>
-                {senderContact && (
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
-                    <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>关联</span>
-                    <span
-                      onClick={() => openMatchedContact(senderContact)}
-                      style={{ color: "#1565c0", fontWeight: 500, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "2px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                      title="点击打开联系人详情"
-                    >{senderContact.company || "已匹配联系人"}</span>
-                  </div>
-                )}
+            {/* 邮件详情头部 */}
+            <div className="inbox-detail-header selectable">
+              <div className="inbox-detail-subject-row">
+                <h2>{sel_.subject || "无主题"}</h2>
+                <span className="inbox-detail-classification">
+                  <span style={{ background: selectedType.dot }} />{selectedType.label}
+                </span>
               </div>
-              {/* 状态 + 标签 一行两栏 — 已匹配联系人时可点击下拉覆盖（写回联系人库） */}
-              {sel_ && (() => {
+
+              <div className="inbox-detail-sender-row">
+                <span className="inbox-detail-label">发件人</span>
+                <div className="inbox-detail-sender-copy">
+                  <strong>{sel_.fromName || sel_.fromEmail}</strong>
+                  {!!sel_.fromName && sel_.fromName !== sel_.fromEmail && <span>&lt;{sel_.fromEmail}&gt;</span>}
+                </div>
+                <Tooltip title="引用这封邮件，让 AI 起草回复" placement="top">
+                  <button type="button" className="inbox-detail-ai" aria-label="引用邮件让 AI 起草回复"
+                    onClick={() => askAssistant({ ctx: `message:${sel_.id}`, question: "根据这封邮件帮我起草一封回复，语气专业简洁" })}>
+                    <DiamondLogo size={12} state="static" />
+                  </button>
+                </Tooltip>
+                <time>{new Date(sel_.receivedAt).toLocaleString("zh-CN")}</time>
+              </div>
+
+              <div className="inbox-detail-meta-grid">
+                <InboxDetailRow label="收件人" wide>{sel_.to || (sel_.classification === "sent" ? `${sel_.fromName || ""} <${sel_.fromEmail}>` : "—")}</InboxDetailRow>
+                <InboxDetailRow label="抄送" wide>{sel_.cc || "—"}</InboxDetailRow>
+                <InboxDetailRow label="账号">{(sel_ as InboxItem & { _accountEmail?: string })._accountEmail || "—"}</InboxDetailRow>
+                <InboxDetailRow label="关联">
+                  {senderContact
+                    ? <button type="button" className="inbox-detail-link" onClick={() => openMatchedContact(senderContact)} title="点击打开联系人详情">{senderContact.company || "已匹配联系人"}</button>
+                    : <span className="inbox-detail-empty">—</span>}
+                  {senderContact && senderContact.canDelete !== false && <DeleteOutlined
+                    style={{ fontSize: 11, color: "#ccc", cursor: "pointer", marginLeft: 6 }}
+                    title="删除该联系人"
+                    onClick={(event) => { event.stopPropagation(); confirmDeleteContact(senderContact); }}
+                  />}
+                </InboxDetailRow>
+              </div>
+
+              {(() => {
                 const center = senderDetail.data?.ok ? senderDetail.data.data : undefined;
                 const status = center ? centerContactDisplayStatus(center.contact) : sel_._contactStatus ?? null;
                 const rawTags = center ? JSON.stringify(center.contact.relationshipStage && center.contact.relationshipStage !== 'cold' ? [center.contact.relationshipStage] : center.contact.tags) : sel_._contactTags || "[]";
                 const tags: string[] = (() => { try { const t = JSON.parse(rawTags); return Array.isArray(t) ? t : []; } catch { return []; } })();
                 const statusMeta = STATUS_META as Record<string, { label: string; color: string }>;
                 const statusLabel = (s: string) => statusMeta[s]?.label || s;
-                const statusDot: Record<string, string> = {
-                  replied: "#22a644", bounced: "#e5484d", autoreply: "#e6a817", reached: "#2563eb",
-                };
-                const statusItems = [
-                  { key: "__clear__", label: <span style={{ color: "#999" }}>清除状态</span> },
-                  ...Object.entries(statusMeta).filter(([key]) => !senderReference || key in CENTER_STATUS).map(([k, m]) => ({ key: k, label: m.label })),
-                ];
-                const tagItems = [
-                  { key: "__clear__", label: <span style={{ color: "#999" }}>清除标签</span> },
-                  ...CRM_STAGES.map(s => ({ key: s.key, label: s.label })),
-                ];
+                const statusDot: Record<string, string> = { replied: "#22a644", bounced: "#e5484d", autoreply: "#e6a817", reached: "#2563eb" };
+                const statusItems = [{ key: "__clear__", label: <span style={{ color: "#999" }}>清除状态</span> }, ...Object.entries(statusMeta).filter(([key]) => !senderReference || key in CENTER_STATUS).map(([k, m]) => ({ key: k, label: m.label }))];
+                const tagItems = [{ key: "__clear__", label: <span style={{ color: "#999" }}>清除标签</span> }, ...CRM_STAGES.map(s => ({ key: s.key, label: s.label }))];
                 const editable = !!senderContact && !offline && !overwriteMut.isPending;
                 const statusEditable = editable && (!senderReference || !!center?.canFollowup);
                 const stageEditable = editable && (!senderReference || !!(center?.permissions?.canChangeStage ?? center?.canFollowup));
@@ -911,44 +973,30 @@ export function InboxList() {
                   if (field === "tags" && (value === null ? tags.length === 0 : tags[0] === value)) return;
                   overwriteMut.mutate({ id: senderContact.id, email: senderContact.email, centerReference: senderContact.centerReference, field, value });
                 };
-                return (
-                  <div style={{ display: "flex", borderBottom: "1px solid #f5f5f5" }}>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
-                      <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>状态</span>
-                      {statusEditable ? (
-                        <Dropdown menu={{ items: statusItems, onClick: ({ key }) => pick("status", key) }} trigger={["click"]} placement="bottomLeft">
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", borderBottom: "1px dashed #d0d5dd", padding: "0 2px", userSelect: "none" }} title="点击修改状态">
-                            {status && <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusDot[status] || "#ccc" }} />}
-                            <span style={{ fontSize: 11, color: status ? "#555" : "#ccc" }}>{status ? statusLabel(status) : "—"}</span>
-                          </span>
-                        </Dropdown>
-                      ) : (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                          {status && <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusDot[status] || "#ccc" }} />}
-                          <span style={{ fontSize: 11, color: status ? "#555" : "#ccc" }}>{status ? statusLabel(status) : "—"}</span>
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 12px", width: "50%" }}>
-                      <span style={{ color: "#999", fontWeight: 600, fontSize: 10, minWidth: 36, flexShrink: 0 }}>标签</span>
-                      {stageEditable ? (
-                        <Dropdown menu={{ items: tagItems, onClick: ({ key }) => pick("tags", key) }} trigger={["click"]} placement="bottomLeft">
-                          <span style={{ fontSize: 11, color: tags.length > 0 ? "#555" : "#ccc", cursor: "pointer", borderBottom: "1px dashed #d0d5dd", padding: "0 2px", userSelect: "none", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="点击修改标签">
-                            {tags.length > 0 ? tags.join(", ") : "—"}
-                          </span>
-                        </Dropdown>
-                      ) : (
-                        <span style={{ fontSize: 11, color: tags.length > 0 ? "#555" : "#ccc", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tags.length > 0 ? tags.join(", ") : "—"}</span>
-                      )}
-                    </div>
-                  </div>
-                );
+                const statusValue = statusEditable
+                  ? <Dropdown menu={{ items: statusItems, onClick: ({ key }) => pick("status", key) }} trigger={["click"]} placement="bottomLeft">
+                      <button type="button" className="inbox-detail-inline-action" title="点击修改状态">
+                        {status && <span className="inbox-detail-dot" style={{ background: statusDot[status] || "#ccc" }} />}
+                        {status ? statusLabel(status) : "—"}
+                      </button>
+                    </Dropdown>
+                  : <span className={status ? "inbox-detail-value-text" : "inbox-detail-empty"}>
+                      {status && <span className="inbox-detail-dot" style={{ background: statusDot[status] || "#ccc" }} />}{status ? statusLabel(status) : "—"}
+                    </span>;
+                const tagValue = stageEditable
+                  ? <Dropdown menu={{ items: tagItems, onClick: ({ key }) => pick("tags", key) }} trigger={["click"]} placement="bottomLeft">
+                      <button type="button" className="inbox-detail-inline-action" title="点击修改标签">{tags.length ? tags.join(" · ") : "—"}</button>
+                    </Dropdown>
+                  : <span className={tags.length ? "inbox-detail-value-text" : "inbox-detail-empty"}>{tags.length ? tags.join(" · ") : "—"}</span>;
+                return <div className="inbox-detail-meta-grid inbox-detail-meta-grid--pair">
+                  <InboxDetailRow label="状态">{statusValue}</InboxDetailRow>
+                  <InboxDetailRow label="标签">{tagValue}</InboxDetailRow>
+                </div>;
               })()}
             </div>
-
             {/* 联系人匹配栏 — 始终显示 */}
             {sid && (
-              <div style={{ borderBottom: "1px solid #e8e8e8", flexShrink: 0, padding: "6px 18px", fontSize: 11 }}>
+              <div className="inbox-match-bar">
                 {/* 被退联系人：一键删除同源名单（红色段）——不依赖正文扫描，正文未加载也在 */}
                 {bounceMatches.length > 0 && (
                   <div style={{ marginBottom: 4 }}>
@@ -972,16 +1020,19 @@ export function InboxList() {
                   </div>
                 )}
                 {!matchReady ? (
-                  <span style={{ fontSize: 10, color: "#ccc" }}>{contactsLoading || bl ? "加载中..." : "未提取"}</span>
+                  <span style={{ fontSize: 10, color: contactMatchError ? "#d93025" : "#ccc" }}>{contactsLoading || bl ? "加载中..." : contactMatchError ? `联系人读取失败：${contactMatchError}` : "未提取"}</span>
                 ) : (() => {
                   // 松口径扫描（正文里出现的在库地址：签名/抄送/被引用者都可能在）排除已入「被退」段的，避免两栏重复+误导
                   const bset = new Set(bounceMatches.map(b => b.id));
-                  const others = matchedContacts.filter(c => !bset.has(c.id));
+                  const others = matchedContacts.filter(c => !bset.has(c.id)
+                    && !(senderContact && (senderContact.centerReference
+                      ? c.centerReference?.contactId === senderContact.centerReference.contactId && c.centerReference.customerId === senderContact.centerReference.customerId
+                      : c.id === senderContact.id)));
                   return (
                   <>
                     {others.length > 0 && (
                       <div style={{ marginBottom: unmatchedEmails.length > 0 ? 4 : 0 }}>
-                        <span style={{ fontSize: 10, color: "#999", textTransform: "uppercase", letterSpacing: ".5px" }}>正文提到的其他联系人 {others.length} 人</span>
+                        <span style={{ fontSize: 10, color: "#999", textTransform: "uppercase", letterSpacing: ".5px" }}>邮件中的其他联系人 {others.length} 人</span>
                         {others.map((c, i) => (
                           <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0", fontSize: 11 }}>
                             <span
@@ -991,11 +1042,11 @@ export function InboxList() {
                             >{c.email}</span>
                             <span style={{ color: "#ccc" }}>→</span>
                             <b>{c.company || "未知公司"}</b>
-                            <DeleteOutlined
+                            {c.canDelete !== false && <DeleteOutlined
                               style={{ fontSize: 11, color: "#ccc", cursor: "pointer", marginLeft: 4 }}
                               title="删除该联系人"
                               onClick={(e) => { e.stopPropagation(); confirmDeleteContact(c); }}
-                            />
+                            />}
                           </div>
                         ))}
                       </div>
@@ -1006,14 +1057,18 @@ export function InboxList() {
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 6px", marginTop: 2 }}>
                           {unmatchedEmails.slice(0, 10).map((e, i) => {
                             const company = guessCompanyFromEmail(e);
-                            const name = sel_ ? guessName(sel_.fromName) : { firstName: "", lastName: "" };
+                            const senderEmail = sel_?.fromEmail.toLowerCase().trim();
+                            const name = sel_ && e.toLowerCase().trim() === senderEmail
+                              ? guessName(sel_.fromName)
+                              : { firstName: "", lastName: "" };
                             return (
-                              <Tooltip key={i} title={company ? `推测公司: ${company}` : "添加为联系人"}>
+                              <Tooltip key={`${e}-${i}`} title={company ? `推测公司: ${company}` : "添加为联系人"}>
                                 <span
                                   onClick={() => {
                                     const params = new URLSearchParams();
                                     params.set("view", "table");
                                     params.set("add", "1");
+                                    if (sel_) params.set("inbox", String(sel_.id));
                                     params.set("email", e);
                                     if (company) params.set("company", company);
                                     if (name.firstName) params.set("firstName", name.firstName);
