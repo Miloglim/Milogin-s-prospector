@@ -65,6 +65,11 @@
 
 - `start.bat` 使用的开发启动器命名管道可能被“无 Electron 窗口的后端进程”继续占用。此状态必须以“短暂等待正常构建 → 清理确认无窗口的项目启动器 → 重新获取锁”自愈；无法确认占用者时要报错并让窗口停住，禁止打印警告后以成功码退出，否则用户只会看到闪退。
 
+## 正式安装包端点陷阱（2026-10-22）
+
+- 正式 Windows 包禁止直接运行普通 `npm run pack` 后发布，因为会把开发用 `assets/center.json` 和 `127.0.0.1` 带进安装包。必须使用 `scripts/package-formal-download.ps1`，显式传入不同的中心与 Navigator HTTPS Origin，并核对 `dist-release/win-unpacked/resources/assets/center.json` 后发布。
+- 安装包里的 Navigator 地址对其他电脑必须是可访问的固定 Origin；`127.0.0.1` 只指向每台用户自己的电脑。当前本机 Navigator 的外部过渡入口为 `https://rates-office.47.96.159.26.sslip.io`，依赖本机、Windows 登录会话和反向隧道在线。
+
 ## 跟进看板详情陷阱（2026-10-21）
 
 - 首次切到跟进看板时可能先用 React Query 缓存瞬时渲染联系人，此时中心联系人端口的 `records` 映射尚未来得及重新填充。详情入口必须把当前点击到的 `PipelineContact`（含 `customerId`）直接传给上层，不能只传数字 ID 再反查端口缓存，否则首次点击打不开，切换视图后才恢复。
