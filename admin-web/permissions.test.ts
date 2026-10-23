@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { delegationCapabilities, scopesFor } from "./permissions";
 import type { ManagedUser } from "../server/core/admin";
 
-const actor: ManagedUser = { userId: "test", displayName: "Test", email: "test@example.invalid", emailVerified: true, identityAdmin: false, crmRoles: ["admin"], active: true, revision: 1, accessActive: true, scope: "summary", capabilities: ["access.manage", "roles.manage"], navigatorRole: null, navigatorActive: false };
+const actor: ManagedUser = { userId: "test", displayName: "Test", email: "test@example.invalid", emailVerified: true, identityAdmin: false, crmRoles: ["admin"], active: true, revision: 1, deletedAt: null, accessActive: true, scope: "summary", capabilities: ["access.manage", "roles.manage"], navigatorRole: null, navigatorActive: false };
 describe("fixed CRM delegation preview", () => {
   it("bounds delegation by the current manager, except explicit super administrators", () => {
     expect(delegationCapabilities(actor)).toEqual(actor.capabilities);

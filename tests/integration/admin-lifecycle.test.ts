@@ -95,11 +95,19 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
   expect((await repo.consume(draft.tokenHash,'bad')).ok).toBe(false);
   expect((await repo.mutate(hash,{action:'user.update',userId:t.id,revision:3,active:true,identityAdmin:false,reason:'reactivate'})).ok).toBe(false);
  });
- it('restores the deleted identity when the same email is created again',async()=>{
+ it('requires explicit restore for an archived identity and keeps active creation blocked',async()=>{
   const t=await target();
+  await c.query("INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,'crm','sales',true),($1,'navigator','sales',true)",[t.id]);
   expect((await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:1,reason:'departed'})).ok).toBe(true);
-  const recreated=await repo.mutate(hash,{action:'user.create',email:t.email,role:'sales',reason:'recreate'},undefined,'new-synthetic-hash');
-  expect(recreated.ok).toBe(true);
+  expect((await repo.users(hash,{search:t.email,limit:25,offset:0})).ok).toBe(true);
+  const active=await repo.users(hash,{search:t.email,limit:25,offset:0});
+  expect(active.ok&&active.data.total).toBe(0);
+  const archived=await repo.users(hash,{search:t.email,limit:25,offset:0,state:'archived'});
+  expect(archived.ok).toBe(true);if(archived.ok)expect(archived.data.items[0]).toMatchObject({userId:t.id,deletedAt:expect.any(Date)});
+  const duplicate=await repo.mutate(hash,{action:'user.create',email:t.email,role:'sales',reason:'recreate'},undefined,'new-synthetic-hash');
+  expect(duplicate.ok).toBe(false);if(!duplicate.ok)expect(duplicate.error.message).toContain('已归档');
+  const restored=await repo.mutate(hash,{action:'user.restore',userId:t.id,revision:2,reason:'restore'},undefined,'new-synthetic-hash');
+  expect(restored.ok,JSON.stringify(restored)).toBe(true);
   const row=(await c.query('SELECT user_id,active,deleted_at,must_change_password,management_revision FROM identity.users WHERE user_id=$1',[t.id])).rows[0];
   expect(row).toMatchObject({user_id:t.id,active:true,deleted_at:null,must_change_password:true,management_revision:3});
   expect((await c.query('SELECT password_hash FROM identity.credentials WHERE user_id=$1',[t.id])).rows[0].password_hash).toBe('new-synthetic-hash');

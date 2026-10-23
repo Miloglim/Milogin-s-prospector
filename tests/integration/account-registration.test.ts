@@ -67,19 +67,17 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('registration real
     expect(access.status).toBe(200);
     expect((await access.json() as any).data).toMatchObject({ email, role: 'sales' });
   });
-  it('restores a soft-deleted identity when registering the same email again', async () => {
+  it('refuses self-registration for an archived identity', async () => {
     const email = `restore.${randomUUID()}@example.invalid`.toLowerCase();
     expect((await register(email, 'Abc123')).status).toBe(200);
     const before = (await pool.query('SELECT user_id,security_revision FROM identity.users u JOIN identity.login_emails e USING(user_id) WHERE e.email=$1', [email])).rows[0];
     await pool.query('UPDATE identity.users SET deleted_at=now(),active=false WHERE user_id=$1',[before.user_id]);
     await pool.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[before.user_id]);
-    expect((await register(email, 'Def456', 'navigator')).status).toBe(200);
+    const response=await register(email, 'Def456', 'navigator');
+    expect(response.status).toBe(409);
+    expect((await response.json() as any).error.message).toContain('已归档');
     const after = (await pool.query('SELECT user_id,active,deleted_at,security_revision FROM identity.users u JOIN identity.login_emails e USING(user_id) WHERE e.email=$1', [email])).rows[0];
-    expect(after).toMatchObject({ user_id:before.user_id,active:true,deleted_at:null });
-    expect(after.security_revision).toBeGreaterThan(before.security_revision);
-    const grants = (await pool.query('SELECT product_id,role FROM identity.product_grants WHERE user_id=$1 ORDER BY product_id',[before.user_id])).rows;
-    expect(grants).toEqual([{product_id:'crm',role:'sales'},{product_id:'navigator',role:'sales'}]);
-    const login = await fetch(`${base}/api/auth/desktop/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'Def456' }) });
-    expect(login.status).toBe(200);
+    expect(after).toMatchObject({ user_id:before.user_id,active:false,deleted_at:expect.any(Date) });
+    expect(after.security_revision).toBe(before.security_revision);
   });
 });

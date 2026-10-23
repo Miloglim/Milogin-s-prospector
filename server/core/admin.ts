@@ -20,11 +20,12 @@ export const ROLE_CAPABILITIES: Record<CrmRole, readonly string[]> = {
   auditor:["members.read","audit.read","interactions.read","metrics.read"],
 };
 export interface ProductInfo { productId:string; name:string; connected:boolean; description:string; capabilities:string[]; roles:CrmRole[]; scope:DataScope; }
-export interface ManagedUser extends Identity { active:boolean; revision:number; accessActive:boolean; scope:DataScope; capabilities:string[]; navigatorRole:"operations"|"sales"|null; navigatorActive:boolean; }
+export interface ManagedUser extends Identity { active:boolean; revision:number; deletedAt:string|null; accessActive:boolean; scope:DataScope; capabilities:string[]; navigatorRole:"operations"|"sales"|null; navigatorActive:boolean; }
 export interface UserPage { items:ManagedUser[]; total:number; }
-export interface UserQuery { search:string; limit:number; offset:number; productId?:string; }
+export interface UserQuery { search:string; limit:number; offset:number; productId?:string; state?:"active"|"archived"; }
 export type AdminCommand =
   | { action:"user.create"; email:string; role:CrmRole; reason:string }
+  | { action:"user.restore"; userId:string; revision:number; reason:string }
   | { action:"user.delete"; userId:string; revision:number; reason?:string }
   | { action:"user.reset-password"; userId:string; revision:number; reason:string }
   | { action:"user.update"; userId:string; revision:number; active:boolean; identityAdmin:boolean; reason:string }
