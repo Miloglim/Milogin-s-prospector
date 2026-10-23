@@ -95,6 +95,17 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
   expect((await repo.consume(draft.tokenHash,'bad')).ok).toBe(false);
   expect((await repo.mutate(hash,{action:'user.update',userId:t.id,revision:3,active:true,identityAdmin:false,reason:'reactivate'})).ok).toBe(false);
  });
+ it('restores the deleted identity when the same email is created again',async()=>{
+  const t=await target();
+  expect((await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:1,reason:'departed'})).ok).toBe(true);
+  const recreated=await repo.mutate(hash,{action:'user.create',email:t.email,role:'sales',reason:'recreate'},undefined,'new-synthetic-hash');
+  expect(recreated.ok).toBe(true);
+  const row=(await c.query('SELECT user_id,active,deleted_at,must_change_password,management_revision FROM identity.users WHERE user_id=$1',[t.id])).rows[0];
+  expect(row).toMatchObject({user_id:t.id,active:true,deleted_at:null,must_change_password:true,management_revision:3});
+  expect((await c.query('SELECT password_hash FROM identity.credentials WHERE user_id=$1',[t.id])).rows[0].password_hash).toBe('new-synthetic-hash');
+  const grants=(await c.query("SELECT product_id,role,active FROM identity.product_grants WHERE user_id=$1 ORDER BY product_id,role",[t.id])).rows;
+  expect(grants).toEqual([{product_id:'crm',role:'sales',active:true},{product_id:'navigator',role:'sales',active:true}]);
+ });
  it('sorts users by permission priority before creation time',async()=>{
   const prefix=`sort-${randomUUID()}`;
   const users=[

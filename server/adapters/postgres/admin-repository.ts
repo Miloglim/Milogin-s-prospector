@@ -192,11 +192,22 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
   let targetId:string,productId:string|null=null;
   if(cmd.action==='user.create'){
    if(!initialPasswordHash)return failure('INVALID_INPUT','缺少初始密码摘要');
-   if((await c.query('SELECT 1 FROM identity.login_emails WHERE email=$1',[cmd.email])).rows.length)return failure('CONFLICT','该邮箱已注册');
-   targetId=randomUUID();productId='crm';
+   const existing=await c.query(`SELECT e.user_id,u.deleted_at FROM identity.login_emails e JOIN identity.users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u`,[cmd.email]);
+   if(existing.rows.length&&!existing.rows[0].deleted_at)return failure('CONFLICT','该邮箱已注册');
+   const restoring=existing.rows.length===1;
+   targetId=existing.rows[0]?.user_id??randomUUID();productId='crm';
    const {roles,scope,capabilities}=productPermissionsFor(cmd.role);
-   await c.query('INSERT INTO identity.users(user_id,display_name,identity_admin,must_change_password) VALUES($1,$2,$3,true)',[targetId,cmd.email.split('@')[0],cmd.role==='admin']);
-   await c.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[targetId,cmd.email]);
+   if(restoring){
+    await c.query(`UPDATE identity.users SET display_name=$2,active=true,identity_admin=$3,must_change_password=true,
+     deleted_at=NULL,created_at=now(),security_revision=security_revision+1,management_revision=management_revision+1
+     WHERE user_id=$1`,[targetId,cmd.email.split('@')[0],cmd.role==='admin']);
+    await c.query('DELETE FROM identity.credentials WHERE user_id=$1',[targetId]);
+    await c.query('DELETE FROM identity.product_grants WHERE user_id=$1',[targetId]);
+    await c.query('DELETE FROM identity.product_access WHERE user_id=$1',[targetId]);
+   }else{
+    await c.query('INSERT INTO identity.users(user_id,display_name,identity_admin,must_change_password) VALUES($1,$2,$3,true)',[targetId,cmd.email.split('@')[0],cmd.role==='admin']);
+    await c.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[targetId,cmd.email]);
+   }
    await c.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')",[targetId,initialPasswordHash]);
    for(const role of roles)await c.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[targetId,role]);
    await c.query("INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities) VALUES($1,'crm',true,$2,$3)",[targetId,scope,JSON.stringify(capabilities)]);
