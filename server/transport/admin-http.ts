@@ -91,7 +91,7 @@ export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:To
   if(method==='GET'&&path===ADMIN_ROUTES.users){
    const limit=Number(url.searchParams.get('limit')??ADMIN_LIMITS.page),offset=Number(url.searchParams.get('offset')??0);
    if(!Number.isSafeInteger(limit)||limit<1||limit>ADMIN_LIMITS.pageMax||!Number.isSafeInteger(offset)||offset<0){send(response,failure('INVALID_INPUT','分页参数无效'));return;}
-   send(response,await admin.users(token,{search:url.searchParams.get('search')??'',limit,offset,...(url.searchParams.has('productId')?{productId:url.searchParams.get('productId')}: {})}));return;
+   send(response,await admin.users(token,{search:url.searchParams.get('search')??'',limit,offset,...(url.searchParams.has('productId')?{productId:url.searchParams.get('productId')}: {}),...(url.searchParams.has('state')?{state:url.searchParams.get('state')}: {})}));return;
   }
   if(method==='GET'&&path===ADMIN_ROUTES.products){send(response,await admin.products(token));return;}
   if(method==='GET'&&path===ADMIN_ROUTES.dashboard){send(response,dashboard?await dashboard.dashboard(token):failure('UNAVAILABLE','数据看板暂不可用'));return;}

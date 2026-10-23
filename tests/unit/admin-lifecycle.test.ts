@@ -37,6 +37,15 @@ describe('user lifecycle command boundary',()=>{
   expect(verify).not.toHaveBeenCalled();
   expect(mutate).toHaveBeenCalledWith('session',expect.objectContaining({action:'user.delete',reason:'用户管理中心删除'}));
  });
+ it('restores an archived account with a new initial password',async()=>{
+  const {service,mutate,hash,verify}=setup();
+  const command={action:'user.restore',userId,revision:2,reason:'restore'};
+  expect((await service.mutate('session',command,'New123')).ok).toBe(true);
+  expect(hash).toHaveBeenCalledWith('New123');
+  expect(verify).not.toHaveBeenCalled();
+  expect(mutate).toHaveBeenCalledWith('session',command,undefined,'hash:New123');
+  expect((await service.mutate('session',command,undefined)).ok).toBe(false);
+ });
  it('binds password reset to an immutable account ID and one-time challenge',async()=>{
   const {service,mutate}=setup();const command={action:'user.reset-password',userId,revision:1,reason:'requested'};
   const result=await service.mutate('session',command,'synthetic-password');

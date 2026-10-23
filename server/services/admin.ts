@@ -12,6 +12,7 @@ function validCommand(v:unknown):v is AdminCommand {
  if(!object(v))return false;
  const allowed:Record<string,string[]>={
   'user.create':['action','email','role','reason'],
+   'user.restore':['action','userId','revision','reason'],
   'user.update':['action','userId','revision','active','identityAdmin','reason'],
   'navigator.update':['action','userId','revision','active','role','reason'],
   'user.delete':['action','userId','revision','reason'],
@@ -28,7 +29,7 @@ function validCommand(v:unknown):v is AdminCommand {
  if(typeof v.userId!=='string'||!UUID.test(v.userId))return false;
  if(v.action==='session.revoke')return typeof v.sessionId==='string'&&UUID.test(v.sessionId);
  if(!Number.isSafeInteger(v.revision)||(v.revision as number)<1)return false;
- if(v.action==='user.delete'||v.action==='user.reset-password')return true;
+  if(v.action==='user.delete'||v.action==='user.reset-password'||v.action==='user.restore')return true;
  if(typeof v.active!=='boolean')return false;
  if(v.action==='user.update')return typeof v.identityAdmin==='boolean';
  if(v.action==='navigator.update')return v.role==='operations'||v.role==='sales';
@@ -43,8 +44,9 @@ export function createAdminService(repo:AdminRepository,authRepo:AuthRepository,
  async function authenticated(token:string) {const result=await auth.me(token,'browser');return result.ok&&result.data.mustChangePassword?failure('PASSWORD_CHANGE_REQUIRED','请先修改初始密码'):result;}
  return {
   async users(token:string,input:unknown) {
-   if(!object(input)||typeof input.search!=='string'||input.search.length>ADMIN_LIMITS.searchMax||!Number.isSafeInteger(input.limit)||(input.limit as number)<1||(input.limit as number)>ADMIN_LIMITS.pageMax
-    ||!Number.isSafeInteger(input.offset)||(input.offset as number)<0||(input.productId!==undefined&&input.productId!=='crm'&&input.productId!=='navigator'))return failure('INVALID_INPUT','用户查询无效');
+    if(!object(input)||typeof input.search!=='string'||input.search.length>ADMIN_LIMITS.searchMax||!Number.isSafeInteger(input.limit)||(input.limit as number)<1||(input.limit as number)>ADMIN_LIMITS.pageMax
+     ||!Number.isSafeInteger(input.offset)||(input.offset as number)<0||(input.productId!==undefined&&input.productId!=='crm'&&input.productId!=='navigator')
+     ||(input.state!==undefined&&input.state!=='active'&&input.state!=='archived'))return failure('INVALID_INPUT','用户查询无效');
    const actor=await authenticated(token);return actor.ok?repo.users(tokens.hash(token),input as unknown as UserQuery):actor;
   },
   async products(token:string) {const actor=await authenticated(token);return actor.ok?repo.products(tokens.hash(token)):actor;},
@@ -59,6 +61,12 @@ export function createAdminService(repo:AdminRepository,authRepo:AuthRepository,
     try{const result=await repo.mutate(tokens.hash(token),{...input,email:input.email.trim().toLowerCase()},undefined,await passwords.hash(password));return result.ok?success({}):result;}
     catch{return failure('UNAVAILABLE','创建用户暂不可用');} // never expose the password/hash
    }
+    if(input.action==='user.restore'){
+     if(!actor.data.identityAdmin)return failure('FORBIDDEN','无账号恢复权限');
+     if(!isNewAccountPassword(password))return failure('INVALID_INPUT','初始密码至少6位，仅允许英文字母和数字');
+     try{const result=await repo.mutate(tokens.hash(token),input,undefined,await passwords.hash(password));return result.ok?success({}):result;}
+     catch{return failure('UNAVAILABLE','恢复用户暂不可用');} // never expose password/hash
+    }
    if(input.action==='user.update'||input.action==='product.update'||input.action==='navigator.update'){
     const command=input.action==='product.update'&&input.role!==undefined?{...input,...productPermissionsFor(input.role)}:input;
     const result=await repo.mutate(tokens.hash(token),command);return result.ok?success({}):result;

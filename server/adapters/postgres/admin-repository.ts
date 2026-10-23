@@ -19,7 +19,7 @@ const PERCENT_SCALE=100;
 const DECIMAL_PLACES=1;
 const PACKAGE_FILE='package.json';
 const DISK_PATH=process.platform==='win32'?path.parse(process.cwd()).root:'/';
-const PERSON=`u.user_id AS "userId",u.display_name AS "displayName",e.email,e.verified_at IS NOT NULL AS "emailVerified",
+const PERSON=`u.user_id AS "userId",u.display_name AS "displayName",e.email,e.verified_at IS NOT NULL AS "emailVerified",u.deleted_at AS "deletedAt",
  u.identity_admin AS "identityAdmin",u.active,u.management_revision AS revision,
  COALESCE(a.active,true) AS "accessActive",COALESCE(a.scope,CASE
   WHEN EXISTS(SELECT 1 FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role='admin') THEN 'summary'
@@ -93,15 +93,17 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
  }
  users(hash:string,q:UserQuery):Promise<Result<UserPage>> {return this.read(hash,async(c,actor)=>{
   if(!actor.identityAdmin&&(q.productId!=='crm'||!actor.capabilities.includes('members.read')))return failure('FORBIDDEN','无成员读取权限');
-  const filter=`WHERE u.deleted_at IS NULL AND ($1='' OR u.user_id::text=$1 OR e.email ILIKE $2 ESCAPE '\\' OR u.display_name ILIKE $2 ESCAPE '\\')
+   const state=q.state??'active';
+   if(state==='archived'&&!actor.identityAdmin)return failure('FORBIDDEN','无归档账号读取权限');
+   const filter=`WHERE (($4::text='archived' AND u.deleted_at IS NOT NULL) OR ($4::text='active' AND u.deleted_at IS NULL)) AND ($1='' OR u.user_id::text=$1 OR e.email ILIKE $2 ESCAPE '\\' OR u.display_name ILIKE $2 ESCAPE '\\')
    AND ($3::text IS NULL OR EXISTS(SELECT 1 FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id=$3 AND g.active))`;
-  const p=[q.search,`%${q.search.replace(/[\\%_]/g,'\\$&')}%`,q.productId??null];
-  const count=await c.query(`SELECT count(*)::int AS n FROM identity.users u JOIN identity.login_emails e USING(user_id) ${filter}`,p);
+   const p=[q.search,`%${q.search.replace(/[\\%_]/g,'\\$&')}%`,q.productId??null];
+   const count=await c.query(`SELECT count(*)::int AS n FROM identity.users u JOIN identity.login_emails e USING(user_id) ${filter}`,[...p,state]);
    const rows=await c.query(`SELECT ${PERSON} FROM identity.users u JOIN identity.login_emails e USING(user_id) LEFT JOIN identity.product_access a ON a.user_id=u.user_id AND a.product_id='crm' ${filter}
     ORDER BY CASE WHEN u.identity_admin THEN 0 ELSE COALESCE((
-     SELECT MIN(array_position($6::text[],g.role)) FROM identity.product_grants g
+     SELECT MIN(array_position($5::text[],g.role)) FROM identity.product_grants g
      WHERE g.user_id=u.user_id AND g.product_id=COALESCE($3,'crm') AND g.active
-    ),array_length($6::text[],1)+1) END,u.created_at DESC,u.user_id LIMIT $4 OFFSET $5`,[...p,q.limit,q.offset,[...CRM_ROLES]]);
+    ),array_length($5::text[],1)+1) END,u.created_at DESC,u.user_id LIMIT $6 OFFSET $7`,[...p,state,[...CRM_ROLES],q.limit,q.offset]);
   return success({items:rows.rows.map(managed),total:count.rows[0].n});
  });}
  products(hash:string):Promise<Result<ProductInfo[]>>{return this.read(hash,async(c,actor)=>{
@@ -193,21 +195,11 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
   if(cmd.action==='user.create'){
    if(!initialPasswordHash)return failure('INVALID_INPUT','缺少初始密码摘要');
    const existing=await c.query(`SELECT e.user_id,u.deleted_at FROM identity.login_emails e JOIN identity.users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u`,[cmd.email]);
-   if(existing.rows.length&&!existing.rows[0].deleted_at)return failure('CONFLICT','该邮箱已注册');
-   const restoring=existing.rows.length===1;
-   targetId=existing.rows[0]?.user_id??randomUUID();productId='crm';
+   if(existing.rows.length)return failure('CONFLICT',existing.rows[0].deleted_at?'该邮箱已归档，请到已归档账号中恢复':'该邮箱已注册');
+   targetId=randomUUID();productId='crm';
    const {roles,scope,capabilities}=productPermissionsFor(cmd.role);
-   if(restoring){
-    await c.query(`UPDATE identity.users SET display_name=$2,active=true,identity_admin=$3,must_change_password=true,
-     deleted_at=NULL,created_at=now(),security_revision=security_revision+1,management_revision=management_revision+1
-     WHERE user_id=$1`,[targetId,cmd.email.split('@')[0],cmd.role==='admin']);
-    await c.query('DELETE FROM identity.credentials WHERE user_id=$1',[targetId]);
-    await c.query('DELETE FROM identity.product_grants WHERE user_id=$1',[targetId]);
-    await c.query('DELETE FROM identity.product_access WHERE user_id=$1',[targetId]);
-   }else{
-    await c.query('INSERT INTO identity.users(user_id,display_name,identity_admin,must_change_password) VALUES($1,$2,$3,true)',[targetId,cmd.email.split('@')[0],cmd.role==='admin']);
-    await c.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[targetId,cmd.email]);
-   }
+   await c.query('INSERT INTO identity.users(user_id,display_name,identity_admin,must_change_password) VALUES($1,$2,$3,true)',[targetId,cmd.email.split('@')[0],cmd.role==='admin']);
+   await c.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[targetId,cmd.email]);
    await c.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')",[targetId,initialPasswordHash]);
    for(const role of roles)await c.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[targetId,role]);
    await c.query("INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities) VALUES($1,'crm',true,$2,$3)",[targetId,scope,JSON.stringify(capabilities)]);
@@ -229,9 +221,10 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
     await c.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
    }
   }else{
-   targetId=cmd.userId;const target=await c.query('SELECT active,identity_admin,management_revision,deleted_at FROM identity.users WHERE user_id=$1 FOR UPDATE',[targetId]);if(!target.rows.length||target.rows[0].deleted_at)return failure('NOT_FOUND','目标用户不存在或已删除');
+    targetId=cmd.userId;const target=await c.query('SELECT active,identity_admin,management_revision,deleted_at FROM identity.users WHERE user_id=$1 FOR UPDATE',[targetId]);
+    if(!target.rows.length||target.rows[0].deleted_at&&cmd.action!=='user.restore')return failure('NOT_FOUND','目标用户不存在或已删除');
    if('revision'in cmd&&target.rows[0].management_revision!==cmd.revision)return failure('CONFLICT','资料已更新，请刷新后重试');
-   if(cmd.action==='user.delete'){
+    if(cmd.action==='user.delete'){
     if(targetId===actor.userId)return failure('FORBIDDEN','不能删除当前登录账号');
     if(target.rows[0].active&&target.rows[0].identity_admin){
      const count=await c.query(`SELECT count(*)::int AS n FROM identity.users u JOIN identity.credentials c USING(user_id) JOIN identity.login_emails e USING(user_id) WHERE u.active AND u.identity_admin AND u.deleted_at IS NULL`);
@@ -250,7 +243,15 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
     await c.query('UPDATE identity.users SET deleted_at=now(),active=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
     await c.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
     await c.query('UPDATE identity.management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
-   }else if(cmd.action==='user.reset-password'){
+    }else if(cmd.action==='user.restore'){
+     if(!target.rows[0].deleted_at)return failure('CONFLICT','目标账号未归档');
+     if(!initialPasswordHash)return failure('INVALID_INPUT','缺少恢复密码摘要');
+     await c.query('UPDATE identity.users SET active=true,deleted_at=NULL,must_change_password=true,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
+     await c.query(`INSERT INTO identity.credentials(user_id,password_hash,hash_scheme,changed_at) VALUES($1,$2,'scrypt-v1',now())
+      ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash,hash_scheme=EXCLUDED.hash_scheme,changed_at=now()`,[targetId,initialPasswordHash]);
+     await c.query('UPDATE identity.sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1',[targetId]);
+     await c.query('UPDATE identity.management_challenges SET consumed_at=COALESCE(consumed_at,now()) WHERE user_id=$1',[targetId]);
+    }else if(cmd.action==='user.reset-password'){
     if(!challenge||challenge.userId!==targetId||challenge.purpose!=='recover')return failure('INVALID_INPUT','缺少账号绑定挑战');
     if(!target.rows[0].active)return failure('FORBIDDEN','停用账号不能重置密码');
     const email=await c.query('SELECT email FROM identity.login_emails WHERE user_id=$1',[targetId]);
