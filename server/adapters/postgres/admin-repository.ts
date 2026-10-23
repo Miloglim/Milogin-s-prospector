@@ -4,7 +4,7 @@ import path from 'node:path';
 import type {Pool,PoolClient} from 'pg';
 import {success,failure,type Result,type LogSink} from '../../core/crm';
 import {capabilitiesFor,effectiveCapabilitiesFor,navigatorGrantRoleFor,productPermissionsFor,type AdminRepository,type AdminCommand,type ChallengeDraft,type ManagedUser,type UserPage,type UserQuery,type ProductInfo,type SessionInfo,type AuditInfo,type DataScope} from '../../core/admin';
-import type {CrmRole} from '../../core/auth';
+import {CRM_ROLES,type CrmRole} from '../../core/auth';
 import {ADMIN_SQL,ADMIN_VERSION,ADMIN_LOCK} from './admin-schema';
 import {USER_LIFECYCLE_SQL,USER_LIFECYCLE_VERSION} from './user-lifecycle-schema';
 import {NAVIGATOR_ACCESS_SQL,NAVIGATOR_ACCESS_VERSION,NAVIGATOR_PRODUCT_SQL,NAVIGATOR_PRODUCT_VERSION} from './navigator-access-schema';
@@ -97,7 +97,11 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
    AND ($3::text IS NULL OR EXISTS(SELECT 1 FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id=$3 AND g.active))`;
   const p=[q.search,`%${q.search.replace(/[\\%_]/g,'\\$&')}%`,q.productId??null];
   const count=await c.query(`SELECT count(*)::int AS n FROM identity.users u JOIN identity.login_emails e USING(user_id) ${filter}`,p);
-  const rows=await c.query(`SELECT ${PERSON} FROM identity.users u JOIN identity.login_emails e USING(user_id) LEFT JOIN identity.product_access a ON a.user_id=u.user_id AND a.product_id='crm' ${filter} ORDER BY u.created_at DESC,u.user_id LIMIT $4 OFFSET $5`,[...p,q.limit,q.offset]);
+   const rows=await c.query(`SELECT ${PERSON} FROM identity.users u JOIN identity.login_emails e USING(user_id) LEFT JOIN identity.product_access a ON a.user_id=u.user_id AND a.product_id='crm' ${filter}
+    ORDER BY CASE WHEN u.identity_admin THEN 0 ELSE COALESCE((
+     SELECT MIN(array_position($6::text[],g.role)) FROM identity.product_grants g
+     WHERE g.user_id=u.user_id AND g.product_id=COALESCE($3,'crm') AND g.active
+    ),array_length($6::text[],1)+1) END,u.created_at DESC,u.user_id LIMIT $4 OFFSET $5`,[...p,q.limit,q.offset,[...CRM_ROLES]]);
   return success({items:rows.rows.map(managed),total:count.rows[0].n});
  });}
  products(hash:string):Promise<Result<ProductInfo[]>>{return this.read(hash,async(c,actor)=>{
