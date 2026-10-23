@@ -10,7 +10,7 @@ import { OperationsManagement } from './operations-management';
 
 const ROLE_NAMES = CRM_ROLE_LABELS;
 type Section = "identity" | "products" | "operations";
-type Pending = { title: string; targetEmail?: string; deletion?: boolean; command: (reason?: string) => AdminCommand };
+type Pending = { title: string; targetEmail?: string; command: (reason?: string) => AdminCommand };
 const errorText = (error: unknown) => error instanceof Error ? error.message : "请求失败";
 const date = (value: string) => new Date(value).toLocaleString("zh-CN");
 
@@ -122,11 +122,37 @@ function Workspace({ dark, toggleTheme, initialChallenge }: { dark: boolean; tog
     catch (e) { if (version === sessionVersion.current) setError(errorText(e)); }
     finally { if (version === sessionVersion.current) setBusy(false); }
   };
-  const queue = (title: string, command: Pending["command"], targetEmail?: string, deletion = false) => { setError(""); reauthForm.resetFields(); setPending({ title, command, targetEmail, deletion }); };
+  const queue = (title: string, command: Pending["command"], targetEmail?: string) => { setError(""); reauthForm.resetFields(); setPending({ title, command, targetEmail }); };
   const mutate = async (values: { password: string; reason?: string }) => {
     if (!pending) return; const version = sessionVersion.current; setBusy(true); setError("");
-    try { const result = await api.command(pending.command(pending.deletion ? values.reason ?? "" : values.reason!), values.password); if (version !== sessionVersion.current) return; setPending(null); reauthForm.resetFields(); setSelected(null); setIssuedTitle(pending.title); setIssued(result.challengeToken ? result : null); void message.success("操作已完成，已记录审计原因"); await refresh(); if (identity && version === sessionVersion.current) { const state = await api.me(); if (version === sessionVersion.current) { configureSession(state.csrf, expired); setIdentity(state.identity); } } }
+    try { const result = await api.command(pending.command(values.reason!), values.password); if (version !== sessionVersion.current) return; setPending(null); reauthForm.resetFields(); setSelected(null); setIssuedTitle(pending.title); setIssued(result.challengeToken ? result : null); void message.success("操作已完成，已记录审计原因"); await refresh(); if (identity && version === sessionVersion.current) { const state = await api.me(); if (version === sessionVersion.current) { configureSession(state.csrf, expired); setIdentity(state.identity); } } }
     catch (e) { if (version === sessionVersion.current) setError(errorText(e)); } finally { if (version === sessionVersion.current) setBusy(false); }
+  };
+  const deleteAccount = () => {
+    const target = selected;
+    if (!target || target.userId === identity?.userId || !identity?.identityAdmin) return;
+    Modal.confirm({
+      title: "删除账号？",
+      content: `删除 ${target.email} 后，该账号将无法登录，历史业务记录保留。`,
+      okText: "删除账号",
+      okType: "danger",
+      cancelText: "取消",
+      onOk: async () => {
+        const version = sessionVersion.current; setBusy(true); setError("");
+        try {
+          await api.command({ action: "user.delete", userId: target.userId, revision: target.revision });
+          if (version !== sessionVersion.current) return;
+          setSelected(null);
+          void message.success("账号已删除");
+          await refresh();
+        } catch (e) {
+          if (version === sessionVersion.current) { const detail = errorText(e); setError(detail); void message.error(detail); }
+          throw e;
+        } finally {
+          if (version === sessionVersion.current) setBusy(false);
+        }
+      },
+    });
   };
   const logout = async () => {
     const version = sessionVersion.current; setBusy(true);
@@ -174,14 +200,14 @@ function Workspace({ dark, toggleTheme, initialChallenge }: { dark: boolean; tog
       <div className="product-selector"><Select aria-label="审计范围" value={detailProduct} onChange={setDetailProduct} options={[...(identity?.identityAdmin ? [{ value: "identity", label: "账号与安全" }] : []), { value: "crm", label: "Prospector" }, { value: "navigator", label: "Navigator" }]}/></div>
       {detailError && <Alert type="error" message={detailError} showIcon/>}
       <Table size="small" rowKey="id" loading={detailLoading} dataSource={detailAudit} pagination={{ pageSize: ADMIN_LIMITS.page }} locale={{ emptyText: "暂无该用户的管理审计记录" }} columns={[{ title: "时间", dataIndex: "createdAt", render: date }, { title: "操作人", dataIndex: "actorName" }, { title: "操作", dataIndex: "action" }, { title: "原因", dataIndex: "reason" }]}/>
-    </> }]}/>{identity?.identityAdmin && <div className="danger-zone"><Button danger disabled={selected.userId === identity.userId} onClick={() => queue("删除用户", reason => ({ action: "user.delete", userId: selected.userId, revision: selected.revision, reason }), selected.email, true)}>删除用户</Button></div>}</div></section>}
+    </> }]}/>{identity?.identityAdmin && <div className="danger-zone"><Button danger loading={busy} disabled={selected.userId === identity.userId} onClick={deleteAccount}>删除用户</Button></div>}</div></section>}
       </main>
     </div>}
 
 
     <Modal title="修改密码" open={passwordOpen} onCancel={() => { setPasswordOpen(false); setError(""); }} footer={null} destroyOnClose><Alert className="section-gap" type="info" message="修改后，当前账号的所有设备都会退出登录。"/>{error && <Alert className="section-gap" type="error" message={error} showIcon/>}<Form layout="vertical" onFinish={changePassword}><Form.Item name="currentPassword" label="当前密码" rules={[{required:true,message:"请输入当前密码"}]}><Input.Password autoComplete="current-password" maxLength={AUTH_LIMITS.passwordMax}/></Form.Item><Form.Item name="newPassword" label="新密码" rules={[{required:true,message:"请输入新密码"},{min:AUTH_LIMITS.passwordMin,message:`至少 ${AUTH_LIMITS.passwordMin} 位`},{pattern:PASSWORD_PATTERN,message:"仅允许英文字母和数字"}]}><Input.Password autoComplete="new-password" maxLength={AUTH_LIMITS.passwordMax}/></Form.Item><Form.Item name="confirm" label="确认新密码" dependencies={["newPassword"]} rules={[{required:true,message:"请再次输入新密码"},({getFieldValue})=>({validator:(_,value)=>value===getFieldValue("newPassword")?Promise.resolve():Promise.reject(new Error("两次密码不一致"))})]}><Input.Password autoComplete="new-password" maxLength={AUTH_LIMITS.passwordMax}/></Form.Item><Button type="primary" htmlType="submit" loading={busy} block>修改密码并重新登录</Button></Form></Modal>
 
-    <Modal title={pending?.title} open={!!pending} onCancel={() => { setPending(null); reauthForm.resetFields(); }} footer={null} destroyOnClose>{pending?.deletion && <Alert className="section-gap" type="warning" message="删除后无法登录，历史业务记录保留。"/>}{pending?.deletion && <Typography.Text>请二次确认用户邮箱：{pending.targetEmail}</Typography.Text>}{pending?.title !== "删除用户" && <Typography.Text>{pending?.targetEmail}</Typography.Text>}{pending?.title === "重置密码" && <Alert className="section-gap" type="warning" message="该用户所有设备将退出登录。"/>}{error && <Alert type="error" message={error}/>}<Form form={reauthForm} layout="vertical" onFinish={mutate}>{pending?.deletion && <Form.Item name="confirmEmail" label="再次输入用户邮箱" rules={[{ required: true, message: "请再次输入用户邮箱" }, { validator: (_, value) => value === pending.targetEmail ? Promise.resolve() : Promise.reject(new Error("邮箱不一致")) }]}><Input autoComplete="off" spellCheck={false}/></Form.Item>}<Form.Item name="password" label="请验证管理员密码" rules={[{ required: true, message: "请输入当前管理员密码" }]}><Input.Password autoComplete="current-password" maxLength={AUTH_LIMITS.passwordMax}/></Form.Item><Form.Item name="reason" label="操作原因（可选）" rules={pending?.deletion ? [] : [{ required: true, whitespace: true, message: "请填写原因" }]}><Input.TextArea maxLength={ADMIN_LIMITS.reasonMax} showCount/></Form.Item><Button type="primary" htmlType="submit" loading={busy}>确认变更</Button></Form></Modal>
+    <Modal title={pending?.title} open={!!pending} onCancel={() => { setPending(null); reauthForm.resetFields(); }} footer={null} destroyOnClose>{pending?.targetEmail && <Typography.Text>{pending.targetEmail}</Typography.Text>}{pending?.title === "重置密码" && <Alert className="section-gap" type="warning" message="该用户所有设备将退出登录。"/>}{error && <Alert type="error" message={error}/>}<Form form={reauthForm} layout="vertical" onFinish={mutate}><Form.Item name="password" label="请验证管理员密码" rules={[{ required: true, message: "请输入当前管理员密码" }]}><Input.Password autoComplete="current-password" maxLength={AUTH_LIMITS.passwordMax}/></Form.Item><Form.Item name="reason" label="操作原因" rules={[{ required: true, whitespace: true, message: "请填写原因" }]}><Input.TextArea maxLength={ADMIN_LIMITS.reasonMax} showCount/></Form.Item><Button type="primary" htmlType="submit" loading={busy}>确认变更</Button></Form></Modal>
     <Modal title="创建用户" open={invite} onCancel={() => setInvite(false)} footer={null} destroyOnClose>{error && <Alert type="error" message={error}/>}<Alert className="section-gap" type="info" message="请设置初始密码并安全交给本人；首次登录后必须修改。"/><Form layout="vertical" initialValues={{ role: "sales" }} onFinish={(v: { email: string; role: CrmRole; password: string }) => void saveDirect({ action: "user.create", email: v.email, role: v.role, reason: "用户管理中心创建账号" }, v.password)}><Form.Item name="email" label="邮箱" rules={[{ required: true, type: "email" }]}><Input maxLength={AUTH_LIMITS.emailMax} autoComplete="off" spellCheck={false}/></Form.Item><Form.Item name="role" label="身份" rules={[{ required: true }]}><Select options={CRM_ROLES.map(role => ({ value: role, label: ROLE_NAMES[role] }))}/></Form.Item><Form.Item name="password" label="初始密码" rules={[{ required: true, message: "请设置初始密码" }, { min: AUTH_LIMITS.passwordMin, message: `至少 ${AUTH_LIMITS.passwordMin} 位` }, { pattern: PASSWORD_PATTERN, message: "仅允许英文字母和数字" }]}><Input.Password autoComplete="new-password" maxLength={AUTH_LIMITS.passwordMax}/></Form.Item><Form.Item name="confirm" label="确认初始密码" dependencies={["password"]} rules={[{ required: true, message: "请再次输入初始密码" }, ({ getFieldValue }) => ({ validator: (_, value) => value === getFieldValue("password") ? Promise.resolve() : Promise.reject(new Error("两次密码不一致")) })]}><Input.Password autoComplete="new-password" maxLength={AUTH_LIMITS.passwordMax}/></Form.Item><Button type="primary" htmlType="submit" loading={busy}>创建用户</Button></Form></Modal>
     <Modal title={issuedTitle === "重置密码" ? "密码重置链接" : "账号激活链接"} open={!!issued} onCancel={() => setIssued(null)} footer={<Button onClick={() => setIssued(null)}>关闭并清除链接</Button>} destroyOnClose><Alert type="warning" message="链接未通过邮件发送，请复制交给本人。仅可使用一次。"/><p>到期：{issued?.expiresAt ? date(issued.expiresAt) : "见服务端有效期"}</p><Typography.Text className="one-time-link">{issued?.challengeToken ? `${window.location.origin}/?challenge=${encodeURIComponent(issued.challengeToken)}` : ""}</Typography.Text><Button className="section-gap" onClick={() => { if (issued?.challengeToken) void navigator.clipboard.writeText(`${window.location.origin}/?challenge=${encodeURIComponent(issued.challengeToken)}`).then(() => { void message.success("链接已复制"); }).catch(() => { void message.error("复制失败，请手动复制"); }); }}>复制链接</Button></Modal>
   </div>;

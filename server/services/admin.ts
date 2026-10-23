@@ -63,6 +63,10 @@ export function createAdminService(repo:AdminRepository,authRepo:AuthRepository,
     const command=input.action==='product.update'&&input.role!==undefined?{...input,...productPermissionsFor(input.role)}:input;
     const result=await repo.mutate(tokens.hash(token),command);return result.ok?success({}):result;
    }
+   if(input.action==='user.delete'){
+    const result=await repo.mutate(tokens.hash(token),{...input,reason:input.reason?.trim()||'用户管理中心删除'});
+    return result.ok?success({}):result;
+   }
    if(typeof password!=='string'||password.length<AUTH_LIMITS.passwordMin||password.length>AUTH_LIMITS.passwordMax)return failure('INVALID_INPUT','管理请求无效');
    const credentials=await authRepo.credential(actor.data.email);if(!credentials.ok)return credentials;
    let verified=false;
@@ -77,8 +81,7 @@ export function createAdminService(repo:AdminRepository,authRepo:AuthRepository,
       {tokenHash:tokens.hash(raw),userId:input.action==='user.reset-password'?input.userId:'',purpose:input.action==='user.reset-password'?'recover':input.purpose,expiresAt,email:input.action==='challenge.issue'?input.email.trim().toLowerCase():'',displayName:input.action==='challenge.issue'?input.displayName.trim():''});
     return result.ok?success({challengeToken:raw,expiresAt}):result;
    }
-   const command=input.action==='user.delete'?{...input,reason:input.reason?.trim()||'未填写删除原因'}:input;
-   const result=await repo.mutate(tokens.hash(token),command);return result.ok?success({}):result;
+   const result=await repo.mutate(tokens.hash(token),input);return result.ok?success({}):result;
   },
   async consume(input:unknown):Promise<Result<void>> {
    if(!object(input)||Object.keys(input).some(k=>k!=='token'&&k!=='password')||typeof input.token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(input.token)
