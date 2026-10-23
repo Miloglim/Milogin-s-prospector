@@ -175,16 +175,33 @@ export class PostgresAuthRepository implements AuthRepository {
   createSalesAccount(input: { email: string; passwordHash: string; product: RegistrationProduct }): Promise<Result<{ email: string }>> {
     return this.execute(() => this.tx(async client => {
       await client.query('SELECT pg_advisory_xact_lock($1)', [ADMIN_LOCK]);
-      const existing = await client.query('SELECT user_id FROM identity.login_emails WHERE email=$1', [input.email]);
-      if (existing.rows.length) return failure('CONFLICT', '该邮箱已注册');
-      const userId = randomUUID();
-      await client.query('INSERT INTO identity.users(user_id,display_name,identity_admin) VALUES($1,$2,false)', [userId, input.email.split('@')[0]]);
-      await client.query('INSERT INTO identity.login_emails(user_id,email,verified_at) VALUES($1,$2,NULL)', [userId, input.email]);
+      const existing = await client.query('SELECT e.user_id,u.deleted_at FROM identity.login_emails e JOIN identity.users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u', [input.email]);
+      if (existing.rows.length && !existing.rows[0].deleted_at) return failure('CONFLICT', '该邮箱已注册');
+      const restoring = existing.rows.length === 1;
+      const userId = existing.rows[0]?.user_id ?? randomUUID();
+      let revision: number;
+      if (restoring) {
+        const restored = await client.query(`UPDATE identity.users SET display_name=$2,active=true,identity_admin=false,
+          must_change_password=false,deleted_at=NULL,created_at=now(),security_revision=security_revision+1,
+          management_revision=management_revision+1 WHERE user_id=$1 RETURNING management_revision`,[userId,input.email.split('@')[0]]);
+        revision = restored.rows[0].management_revision;
+        await client.query('UPDATE identity.login_emails SET verified_at=NULL WHERE user_id=$1',[userId]);
+        await client.query('DELETE FROM identity.credentials WHERE user_id=$1',[userId]);
+        await client.query('DELETE FROM identity.product_grants WHERE user_id=$1',[userId]);
+        await client.query('DELETE FROM identity.product_access WHERE user_id=$1',[userId]);
+        await client.query('UPDATE identity.sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1',[userId]);
+        await client.query('UPDATE identity.management_challenges SET consumed_at=COALESCE(consumed_at,now()) WHERE user_id=$1',[userId]);
+      } else {
+        revision = 1;
+        await client.query('INSERT INTO identity.users(user_id,display_name,identity_admin) VALUES($1,$2,false)', [userId, input.email.split('@')[0]]);
+        await client.query('INSERT INTO identity.login_emails(user_id,email,verified_at) VALUES($1,$2,NULL)', [userId, input.email]);
+      }
       await client.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')", [userId, input.passwordHash]);
       for(const product of ["crm","navigator"]) await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,$2,'sales')", [userId, product]);
       for(const product of ["crm","navigator"]) await client.query("INSERT INTO identity.product_access(user_id,product_id,scope) VALUES($1,$2,'own')", [userId, product]);
-      await client.query("INSERT INTO identity.management_audit(actor_id,target_id,action,product_id,reason) VALUES($1,$1,'identity.register',$2,'邮箱自助注册；邮箱未验证')", [userId, input.product]);
-      await client.query("INSERT INTO identity.outbox(event_type,user_id,product_id,revision) VALUES('identity.register',$1,$2,1)", [userId, input.product]);
+      const reason = restoring ? '邮箱自助注册；邮箱未验证；恢复已删除身份' : '邮箱自助注册；邮箱未验证';
+      await client.query('INSERT INTO identity.management_audit(actor_id,target_id,action,product_id,reason) VALUES($1,$1,$2,$3,$4)', [userId, 'identity.register', input.product, reason]);
+      await client.query('INSERT INTO identity.outbox(event_type,user_id,product_id,revision) VALUES($1,$2,$3,$4)', ['identity.register', userId, input.product, revision]);
       return success({ email: input.email });
     }));
   }
