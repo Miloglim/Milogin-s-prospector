@@ -22,6 +22,7 @@
 - 家庭或公司路由器不开放 Navigator 入站端口。
 - Windows 计划任务名为 `Milogin Navigator Office Tunnel`，运行 [守护脚本](<D:/Agent Basement/Milogin-s-prospector/scripts/navigator-office-tunnel.ps1>) 的安装副本 `%LOCALAPPDATA%\Milogin\navigator-office-tunnel.ps1`。
 - SSH 正常退出或连接断开后，守护脚本等待 10 秒自动重连；日志位于 `%LOCALAPPDATA%\Milogin\Logs\navigator-office-tunnel.log`。
+- 阿里云 `navigator-tunnel-watchdog.timer` 每分钟请求桥接健康接口；若 `18795` 仍被旧监听占用但健康失败，只终止受限 `navigator-tunnel` SSH 会话，本机守护脚本会重新连接。看门狗不重启 Caddy、中心服务或数据库。
 - 本机 `Database/ops/runtime.json` 必须配置服务器中心 `center_auth_url=https://crm.47.96.159.26.sslip.io` 和 `trusted_proxy_https=true`。watchdog 启动服务时会传递受信代理设置；不要只改用户级环境变量。
 
 ## Navigator 重启
