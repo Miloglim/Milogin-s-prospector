@@ -5,10 +5,11 @@ const userId='11111111-1111-4111-8111-111111111111';
 function setup(){
  const mutate=vi.fn().mockResolvedValue(success(undefined));
  const hash=vi.fn(async(value:string)=>`hash:${value}`);
+ const verify=vi.fn(async()=>true);
  const service=createAdminService({mutate} as any,{credential:async()=>success({active:true,passwordHash:'hash'})} as any,
-  {verify:async()=>true,hash},{create:()=> 'a'.repeat(43),hash:v=>v},{now:()=>0},
+  {verify,hash},{create:()=> 'a'.repeat(43),hash:v=>v},{now:()=>0},
   {me:async()=>success({email:'actor@example.invalid',identityAdmin:true,mustChangePassword:false})} as any);
- return {service,mutate,hash};
+ return {service,mutate,hash,verify};
 }
 describe('user lifecycle command boundary',()=>{
  it('creates a role-selected account with the administrator-provided initial password',async()=>{
@@ -24,15 +25,17 @@ describe('user lifecycle command boundary',()=>{
   expect((await service.mutate('session',{action:'user.create',email:'new@example.invalid',role:'operations',reason:'create'},'123')).ok).toBe(false);
   expect(mutate).not.toHaveBeenCalled();
  });
- it('accepts deletion with version and audit reason',async()=>{
-  const {service,mutate}=setup();const command={action:'user.delete',userId,revision:1,reason:'departed'};
-  expect((await service.mutate('session',command,'synthetic-password')).ok).toBe(true);
-  expect(mutate).toHaveBeenCalledWith('session',command);
+ it('deletes after one confirmation without password reauthentication or reason',async()=>{
+  const {service,mutate,verify}=setup();
+  expect((await service.mutate('session',{action:'user.delete',userId,revision:1},undefined)).ok).toBe(true);
+  expect(verify).not.toHaveBeenCalled();
+  expect(mutate).toHaveBeenCalledWith('session',expect.objectContaining({action:'user.delete',reason:'用户管理中心删除'}));
  });
- it('allows an omitted deletion reason and records a neutral audit value',async()=>{
-  const {service,mutate}=setup();
-  expect((await service.mutate('session',{action:'user.delete',userId,revision:1},'synthetic-password')).ok).toBe(true);
-  expect(mutate).toHaveBeenCalledWith('session',expect.objectContaining({action:'user.delete',reason:'未填写删除原因'}));
+ it('treats a legacy empty deletion reason as omitted',async()=>{
+  const {service,mutate,verify}=setup();
+  expect((await service.mutate('session',{action:'user.delete',userId,revision:1,reason:''},undefined)).ok).toBe(true);
+  expect(verify).not.toHaveBeenCalled();
+  expect(mutate).toHaveBeenCalledWith('session',expect.objectContaining({action:'user.delete',reason:'用户管理中心删除'}));
  });
  it('binds password reset to an immutable account ID and one-time challenge',async()=>{
   const {service,mutate}=setup();const command={action:'user.reset-password',userId,revision:1,reason:'requested'};
@@ -43,7 +46,7 @@ describe('user lifecycle command boundary',()=>{
  it('rejects client-supplied reset email or privilege flags',async()=>{
   const {service,mutate}=setup();
   expect((await service.mutate('session',{action:'user.reset-password',userId,revision:1,reason:'x',email:'other@example.invalid'},'synthetic-password')).ok).toBe(false);
-  expect((await service.mutate('session',{action:'user.delete',userId,revision:1,reason:'x',identityAdmin:true},'synthetic-password')).ok).toBe(false);
+  expect((await service.mutate('session',{action:'user.delete',userId,revision:1,reason:'x',identityAdmin:true},undefined)).ok).toBe(false);
   expect(mutate).not.toHaveBeenCalled();
  });
 });
