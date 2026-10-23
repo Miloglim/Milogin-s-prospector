@@ -6,6 +6,8 @@
 
 `POST /admin-api/command` 的 `user.delete` 只需一次管理端确认，不再要求管理员密码重新认证，也不再要求删除原因。服务端仍校验浏览器管理会话、CSRF、超级管理员权限和 `revision` 版本冲突，并继续拒绝自删、删除最后一名有效超级管理员、删除仍负责线索或存在未处理联系人分配的用户。旧请求中的空字符串原因按未填写处理，审计写入中性说明。
 
+`GET /admin-api/users` 在数据库分页前按权限排序：身份超级管理员、当前管理产品的超级管理员、管理员、用户、审计员、未授权；同权限按创建时间倒序。未传 `productId` 时按 CRM 权限排序，查看 Navigator 用户时按该产品当前有效角色排序。
+
 `POST /admin-api/command` 的 `user.create` 必须在请求体的独立 `password` 字段中携带管理员为账号设置的初始密码；该值只进入密码哈希，不写入管理命令、审计、日志或返回体。账号创建后仍设置 `must_change_password=true`，首次登录必须改成本人密码。服务端拒绝缺失或不符合账号密码规则的初始密码，禁止再用固定默认密码。
 
 `POST /admin-api/command` 的 `user.reset-password` 会生成一次性恢复链接；`POST /admin-api/challenge` 在生产 HTTPS 环境同样可用，不依赖 `test_mode`。消费时仍校验同源、来源限流、15 分钟有效期、一次性令牌、账号未停用/删除和目标邮箱未变化；成功后更新中心凭据、撤销旧会话并记录审计。账号激活类 `challenge.issue` 仍只保留本机开通流程。

@@ -95,6 +95,28 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
   expect((await repo.consume(draft.tokenHash,'bad')).ok).toBe(false);
   expect((await repo.mutate(hash,{action:'user.update',userId:t.id,revision:3,active:true,identityAdmin:false,reason:'reactivate'})).ok).toBe(false);
  });
+ it('sorts users by permission priority before creation time',async()=>{
+  const prefix=`sort-${randomUUID()}`;
+  const users=[
+   {key:'none',identityAdmin:false,role:null},
+   {key:'auditor',identityAdmin:false,role:'auditor'},
+   {key:'sales',identityAdmin:false,role:'sales'},
+   {key:'operations',identityAdmin:false,role:'operations'},
+   {key:'crm-admin',identityAdmin:false,role:'admin'},
+   {key:'identity-admin',identityAdmin:true,role:'sales'},
+  ] as const;
+  for(const user of users){
+   const id=randomUUID(),email=`${prefix}-${user.key}@example.invalid`;
+   await c.query('INSERT INTO identity.users(user_id,display_name,active,identity_admin) VALUES($1,$2,true,$3)',[id,user.key,user.identityAdmin]);
+   await c.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[id,email]);
+   if(user.role)await c.query("INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,'crm',$2,true)",[id,user.role]);
+  }
+  const page=await repo.users(hash,{search:prefix,limit:25,offset:0});
+  expect(page.ok).toBe(true);
+  if(page.ok)expect(page.data.items.map(user=>user.email)).toEqual(
+   ['identity-admin','crm-admin','operations','sales','auditor','none'].map(key=>`${prefix}-${key}@example.invalid`),
+  );
+ });
  it('blocks stale revisions, self deletion and deletion of an owner',async()=>{
   const t=await target();
   expect((await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:99,reason:'stale'})).ok).toBe(false);
