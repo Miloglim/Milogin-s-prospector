@@ -219,6 +219,7 @@ export function createOfflineCrmService(store:OfflineCrmStore,uuid:()=>string,no
     if(!bootstrap.ok){const state=load(ctx);state.lastError=bootstrap.error.message;save(ctx,state);return false;}
     if(bootstrap.data?.userId!==ctx.userId||!Array.isArray(bootstrap.data.capabilities))return false;
     let state=load(ctx);absorb(state,'/api/crm/bootstrap',bootstrap.data);save(ctx,state);
+    const knownCustomers=state.customers;
     const cap=bootstrap.data.capabilities;
     const views:LeadQuery['view'][]=cap.includes('leads.read.all')&&['shared','summary'].includes(bootstrap.data.scope)?['all']:cap.includes('leads.develop')?['personal','assigned']:[];
     if(cap.includes('leads.claim'))views.push('pool');
@@ -235,7 +236,7 @@ export function createOfflineCrmService(store:OfflineCrmStore,uuid:()=>string,no
         if(!page.data.items.length&&offset<total)return false;
         for(const preview of page.data.items){
           ids.push(preview.customerId);
-          const old=load(ctx).customers[preview.customerId];
+          const old=knownCustomers[preview.customerId];
           if(old?.version===preview.version&&old.customerKey){details[preview.customerId]=old;continue;}
           const detail=await network<LeadDetail>('GET',`/api/crm/leads/${preview.customerId}`);
           if(!ctx.active())return false;

@@ -10,12 +10,13 @@ const context: OfflineCrmContext = { userId, baseUrl: 'http://127.0.0.1:55844', 
 const customer: LeadDetail = { customerId, companyName: 'Local Company', country: null, version: 1, origin: 'personal', ownerUserId: userId, state: 'owned', stage: 'cold', source: 'manual', sourceDetail: '', customerKey: customerId, contactCount: 1, contacts: [{contactId: 7, email: 'a@example.invalid', name: 'Alice', country: null}], activities: [], canEdit: true, canFollowup: true, canAssign: false };
 function fixture() {
   let state = emptyOfflineCrmState('sales');
+  let loads = 0;
   state.bootstrap = {userId, capabilities: ['leads.create', 'leads.develop', 'leads.read', 'leads.import'], scope: 'own', summary: {mine:1,pool:0}, feedCursor:'0'};
   state.customers[customerId] = structuredClone(customer); state.views.personal = [customerId]; state.views.assigned=[]; state.views.pool=[];
-  const store = { load: () => structuredClone(state), save: (_: OfflineCrmContext, next: OfflineCrmState) => {state = structuredClone(next);} };
+  const store = { load: () => {loads++;return structuredClone(state);}, save: (_: OfflineCrmContext, next: OfflineCrmState) => {state = structuredClone(next);} };
   let seq = 10;
   const service = () => createOfflineCrmService(store, () => `00000000-0000-4000-8000-${String(seq++).padStart(12,'0')}`, () => '2026-10-13T00:00:00.000Z');
-  return {store, service, state:()=>state};
+  return {store, service, state:()=>state, loads:()=>loads};
 }
 const unreachable = async <T>():Promise<Result<T>> => failure('UNAVAILABLE','offline');
 describe('offline CRM durable workflow', () => {
@@ -124,6 +125,23 @@ describe('offline CRM durable workflow', () => {
       return success(customer) as Result<T>;
     });
     expect(f.state().lastSyncedAt).toBe('2026-10-13T00:00:00.000Z');
+  });
+  it('loads the local snapshot once while pulling many customer previews', async () => {
+    const f=fixture(),s=f.service();
+    const customers=Array.from({length:120},(_,index)=>({...customer,customerId:`00000000-0000-4000-8000-${String(index+100).padStart(12,'0')}`,companyName:`Company ${index}`}));
+    const online={...context,online:()=>true};
+    await s.sync(online,async <T>(method:string,path:string):Promise<Result<T>>=>{
+      if(path==='/api/crm/bootstrap')return success(f.state().bootstrap) as Result<T>;
+      if(path.includes('view=assigned'))return success({items:[],total:0}) as Result<T>;
+      if(path.includes('view=personal')){
+        const url=new URL(path,'http://local.invalid');const offset=Number(url.searchParams.get('offset')??0);const limit=Number(url.searchParams.get('limit')??100);
+        return success({items:customers.slice(offset,offset+limit),total:customers.length}) as Result<T>;
+      }
+      const detail=customers.find(row=>path===`/api/crm/leads/${row.customerId}`);if(!detail)return failure('NOT_FOUND','missing customer') as Result<T>;
+      return success(detail) as Result<T>;
+    },true);
+    expect(f.state().views.personal).toHaveLength(customers.length);
+    expect(f.loads()).toBeLessThan(10);
   });
   it('invalidates cached data when permissions change and never delivers a late old-session response', async () => {
     const f=fixture(),s=f.service();
