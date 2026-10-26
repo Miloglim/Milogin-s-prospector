@@ -15,6 +15,7 @@ describe('R3 global notification ownership', () => {
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     state.identity = { userId: 'sales-a', crmRoles: ['sales'], crmCapabilities: ['leads.develop'] }; state.refresh.mockClear(); state.navigate.mockClear(); timers = [];
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
     vi.spyOn(globalThis, 'setInterval').mockImplementation(((fn: () => void) => { timers.push(fn); return timers.length; }) as typeof setInterval);
     invoke = vi.fn(async channel => ({ ok: true, data: channel === CHANNEL.BOOTSTRAP ? { userId: 'sales-a', capabilities: ['leads.develop'], scope: 'own', summary: { mine: 0, pool: 0 } } : channel === CHANNEL.FEED ? { items: [item, item], nextCursor: '1', hasMore: false } : channel === CHANNEL.LIST ? { items: [], total: 0 } : channel === CHANNEL.DETAIL ? { customerId: 'customer-b' } : channel === CHANNEL.READ_ALL ? { marked: 1 } : undefined }));
@@ -29,6 +30,30 @@ describe('R3 global notification ownership', () => {
     await act(async () => { for (const timer of timers) timer(); });
     expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.FEED)).toHaveLength(2); expect(notifications.unread).toBe(1);
     expect(invoke).not.toHaveBeenCalledWith(CHANNEL.READ, item.id);
+  });
+  it('replays actionable notifications once and again only after the window becomes visible', async () => {
+    const normal = invoke.getMockImplementation()!;
+    const first = { ...item, id: 'contact-a', eventType: 'crm.contact.updated' as const, contactId: 1 };
+    const second = { ...item, id: 'contact-b', eventType: 'crm.lead.followup' as const, contactId: 2 };
+    let feedItems = [first];
+    invoke.mockImplementation(async channel => channel === CHANNEL.FEED ? { ok: true, data: { items: feedItems, nextCursor: '1', hasMore: false } } : normal(channel));
+    const feedOptions = () => invoke.mock.calls.filter(call => call[0] === CHANNEL.FEED).map(call => call[1]);
+    await mount();
+    expect(feedOptions()).toEqual([{ reset: true }]);
+    await act(async () => { await notifications.refresh(); });
+    expect(feedOptions().at(-1)).toEqual({ reset: false });
+    feedItems = [first, second];
+    await act(async () => { await notifications.refresh(); });
+    expect(feedOptions().at(-1)).toEqual({ reset: false });
+    await act(async () => { await notifications.refresh(); });
+    expect(feedOptions().at(-1)).toEqual({ reset: true });
+    await act(async () => { await notifications.refresh(); });
+    expect(feedOptions().at(-1)).toEqual({ reset: false });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await Promise.resolve(); });
+    expect(feedOptions().at(-1)).toEqual({ reset: true });
   });
   it('marks every unread notification read with one bulk request', async () => {
     await mount();
@@ -146,12 +171,14 @@ describe('R3 global notification ownership', () => {
     await act(async () => { await notifications.refresh(); }); expect(notifications.items).toHaveLength(1); expect(host.textContent).toContain('消息离线');
     state.identity = { ...state.identity, crmCapabilities: [] }; invoke.mockImplementation(normal); await mount(); expect(invoke).toHaveBeenLastCalledWith(CHANNEL.FEED, { reset: true });
   });
-  it('removes opportunity summaries after ownership changes without an identity change', async () => {
+  it('removes opportunity summaries after ownership changes when the window becomes visible again', async () => {
     const normal = invoke.getMockImplementation()!;
     invoke.mockImplementation(async channel => channel === CHANNEL.FEED ? {ok:true,data:{items:[{...item,eventType:'crm.opportunity.created',opportunityId:'opportunity-a',summary:{companyName:'Private company',note:'Private quote'}}],nextCursor:'1',hasMore:false}} : normal(channel));
     await mount(); expect(host.textContent).toContain('Private company');
     invoke.mockImplementation(async channel => channel === CHANNEL.FEED ? {ok:true,data:{items:[],nextCursor:'1',hasMore:false}} : normal(channel));
-    await act(async()=>{await notifications.refresh();});
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    await act(async()=>{document.dispatchEvent(new Event('visibilitychange')); for(let index=0;index<4;index++) await Promise.resolve();});
     expect(notifications.items).toEqual([]); expect(host.textContent).not.toContain('Private company');
     expect(invoke).toHaveBeenLastCalledWith(CHANNEL.FEED,{reset:true});
   });

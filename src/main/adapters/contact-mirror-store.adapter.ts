@@ -70,7 +70,7 @@ const SEARCH_FIELDS = ['email', 'firstName', 'lastName', 'title', 'companyName']
 const searchValue = (field: string) => `crm_contact_lower(${contactValue(field)})`;
 const PAGE_INDEXES = `
 CREATE INDEX IF NOT EXISTS crm_contact_mirror_page ON crm_contact_mirror(${UPDATED_ORDER});
-CREATE INDEX IF NOT EXISTS crm_contact_mirror_followup_page ON crm_contact_mirror(${FOLLOWUP_ORDER}) WHERE ${FOLLOWUP_PREDICATE};
+CREATE INDEX IF NOT EXISTS crm_contact_mirror_followup_v2_page ON crm_contact_mirror(${FOLLOWUP_ORDER}) WHERE ${FOLLOWUP_PREDICATE};
 CREATE INDEX IF NOT EXISTS crm_contact_mirror_source_page ON crm_contact_mirror(${contactValue('origin')},${contactValue('ownerUserId')},${UPDATED_ORDER});
 CREATE INDEX IF NOT EXISTS crm_contact_mirror_search_page ON crm_contact_mirror(${SEARCH_FIELDS.map(searchValue).join(',')},${UPDATED_ORDER});
 `;
@@ -312,7 +312,7 @@ export class SqliteContactMirrorStore implements ContactMirrorStore {
     }
     const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
     // A leading wildcard search scans pre-normalized independent fields, never JS callbacks per row.
-    const source = `crm_contact_mirror${search ? ' INDEXED BY crm_contact_mirror_search_page' : ''}`;
+    const source = `crm_contact_mirror${search ? ' INDEXED BY crm_contact_mirror_search_page' : query.followupOnly ? ' INDEXED BY crm_contact_mirror_followup_v2_page' : ''}`;
     // Deferred read transactions share one snapshot without preventing WAL writers.
     return db.transaction(() => {
       const total = (db.prepare(`SELECT COUNT(*) AS total FROM ${source}${where}`).get(...parameters) as { total: number }).total;

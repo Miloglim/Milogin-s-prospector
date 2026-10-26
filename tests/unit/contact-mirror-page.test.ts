@@ -120,7 +120,7 @@ describe('indexed SQLite contact pages', () => {
   });
   it.each([
     [{}, 'crm_contact_mirror_page'],
-    [{ followupOnly: true }, 'crm_contact_mirror_followup_page'],
+    [{ followupOnly: true }, 'crm_contact_mirror_followup_v2_page'],
     [{ scope: 'personal' }, 'crm_contact_mirror_source_page'],
   ] as const)('uses an ordering index for %j without a temporary sort', (variant, index) => {
     const { db, raw, store } = fixture(); store.replaceContacts(ctx, [row(1, { touchStatus: 'contacted' })]);

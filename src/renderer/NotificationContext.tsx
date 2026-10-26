@@ -18,6 +18,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<Result<T>
   try { return await window.api.invoke(channel, ...args) as Result<T>; }
   catch { /* A transport rejection is an explicit failure, never a read receipt. */ return { ok: false, error: { code: 'UNAVAILABLE', message: '消息中心连接中断，请重试' } }; }
 }
+const isActionableNotification = (item: OnlineNotification) => item.eventType.startsWith('crm.contact.') || item.eventType === TASK_DUE_EVENT || item.eventType === 'crm.lead.followup' || Object.values(OPPORTUNITY_EVENTS).includes(item.eventType as typeof OPPORTUNITY_EVENTS.created);
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const session = useIdentity();
   const scope = JSON.stringify([session.identity?.userId, session.identity?.crmRoles, session.identity?.crmCapabilities, session.identity?.mustChangePassword]);
@@ -25,11 +26,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const currentScope = useRef(scope); currentScope.current = scope;
   const accessScope = useRef(''); const replay = useRef(true);
   const replayScan = useRef<{ scope: string; items: Map<string, OnlineNotification> } | null>(null);
+  const observedActionable = useRef(new Set<string>());
+  const wasHidden = useRef(document.visibilityState === 'hidden');
   const epoch = useRef(0); const pending = useRef<number | null>(null);
   const [state, setState] = useState<{ scope: string; items: OnlineNotification[] }>({ scope, items: [] });
   const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
   const items = state.scope === scope ? state.items : [];
-  const needsVisibilityReplay = useRef(false); needsVisibilityReplay.current = items.some(item => item.eventType.startsWith('crm.contact.') || item.eventType === TASK_DUE_EVENT || item.eventType === 'crm.lead.followup' || Object.values(OPPORTUNITY_EVENTS).includes(item.eventType as typeof OPPORTUNITY_EVENTS.created));
   const reject = useCallback((result: Extract<Result<unknown>, { ok: false }>) => {
     setError(result.error.message);
     if (['UNAUTHORIZED', 'FORBIDDEN', 'PASSWORD_CHANGE_REQUIRED'].includes(result.error.code)) {
@@ -47,7 +49,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const signature = JSON.stringify([access.data.userId, access.data.capabilities.slice().sort(), access.data.scope]);
     if (accessScope.current !== signature) { if (accessScope.current) { generation = ++epoch.current; pending.current = generation; } accessScope.current = signature; replay.current = true; setState({ scope: startedScope, items: [] }); }
     // Scope-sensitive cached summaries must be replaced after ownership/task state changes.
-    const startReplay = reset || replay.current || needsVisibilityReplay.current && !replayScan.current;
+    const startReplay = reset || replay.current;
     if (startReplay) replayScan.current = { scope: startedScope, items: new Map() };
     const scan = replayScan.current?.scope === startedScope ? replayScan.current : null;
     let result = await invoke<OnlineFeed>(CHANNEL.FEED, { reset: startReplay });
@@ -62,6 +64,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     pending.current = null; setLoading(false);
     if (!result.ok) { reject(result); return; }
     replay.current = false; setError('');
+    const freshActionable = pages.some(item => isActionableNotification(item) && !observedActionable.current.has(item.id));
+    for (const item of pages) if (isActionableNotification(item)) observedActionable.current.add(item.id);
+    if (freshActionable && !startReplay) replay.current = true;
     for (const item of pages) scan?.items.set(item.id, item);
     const replace = !!scan && !result.data.hasMore;
     const currentPage = replace ? Array.from(scan!.items.values()) : pages;
@@ -73,9 +78,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       return { scope: startedScope, items: Array.from(merged.values()).slice(-MAX_ITEMS) };
     });
   }, [enabled, scope, reject]);
+  useEffect(() => {
+    const visibilityChanged = () => {
+      const hidden = document.visibilityState === 'hidden';
+      if (wasHidden.current && !hidden) replay.current = true;
+      wasHidden.current = hidden;
+    };
+    document.addEventListener('visibilitychange', visibilityChanged);
+    return () => document.removeEventListener('visibilitychange', visibilityChanged);
+  }, []);
   useVisiblePolling(() => refresh(), ONLINE_LIMITS.pollMs, enabled);
   useEffect(() => {
-    epoch.current++; pending.current = null; replay.current = true; replayScan.current = null; accessScope.current = ''; setState({ scope, items: [] }); setError(''); setLoading(false);
+    epoch.current++; pending.current = null; replay.current = true; replayScan.current = null; observedActionable.current.clear(); wasHidden.current = document.visibilityState === 'hidden'; accessScope.current = ''; setState({ scope, items: [] }); setError(''); setLoading(false);
     if (!enabled) return;
     void refresh();
     return () => { epoch.current++; };
