@@ -6,6 +6,7 @@ import { useVisiblePolling } from './hooks/useVisiblePolling';
 
 const MAX_ITEMS = 500;
 const MAX_FEED_PAGES = Math.ceil(MAX_ITEMS / ONLINE_LIMITS.feedPage);
+const READ_ALL_FALLBACK_CONCURRENCY = 8;
 export interface Notifications {
   items: OnlineNotification[]; unread: number; error: string; loading: boolean;
   refresh: (reset?: boolean) => Promise<void>; read: (id: string) => Promise<boolean>; readAll: () => Promise<boolean>;
@@ -92,10 +93,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const generation = epoch.current; const startedScope = scope;
     const result = await invoke<NotificationReadAllReceipt>(CHANNEL.READ_ALL);
     if (generation !== epoch.current || startedScope !== currentScope.current) return false;
-    if (!result.ok) { reject(result); return false; }
+    if (!result.ok) {
+      // Older centers do not have the bulk route yet. Keep the client compatible with
+      // their existing one-notification read endpoint until the center is upgraded.
+      if (result.error.code !== 'NOT_FOUND') { reject(result); return false; }
+      const unreadIds = items.filter(item => !item.read).map(item => item.id);
+      for (let index = 0; index < unreadIds.length; index += READ_ALL_FALLBACK_CONCURRENCY) {
+        const batch = unreadIds.slice(index, index + READ_ALL_FALLBACK_CONCURRENCY);
+        const reads = await Promise.all(batch.map(id => invoke<void>(CHANNEL.READ, id)));
+        if (generation !== epoch.current || startedScope !== currentScope.current) return false;
+        const failed = reads.find(read => !read.ok && read.error.code !== 'NOT_FOUND');
+        if (failed && !failed.ok) { reject(failed); return false; }
+      }
+    }
     setState(previous => ({ ...previous, items: previous.items.map(item => item.read ? item : { ...item, read: true }) }));
     return true;
-  }, [enabled, scope, reject]);
+  }, [enabled, scope, reject, items]);
   const open = useCallback(async (item: OnlineNotification) => {
     if (!enabled || scope !== currentScope.current || item.canOpen === false || (!item.customerId && !item.requestId && !item.shareId)) return null;
     const generation = epoch.current; const startedScope = scope;
