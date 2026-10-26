@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Input, Pagination, Space } from 'antd';
 import { ONLINE_CHANNELS as CHANNEL, ONLINE_LIMITS, OPPORTUNITY_LIMITS, OPPORTUNITY_STAGES, OPPORTUNITY_STAGE_LABELS } from '../../../shared/online-crm';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import type { LeadDetail, Opportunity, OpportunityCreate, OpportunityHistory, OpportunityPage, OpportunityStage, OpportunityUpdateStage, Result } from '../../../shared/online-crm';
 
 const PREWRITE_ERRORS = ['INVALID_INPUT', 'FORBIDDEN', 'UNAUTHORIZED', 'NOT_FOUND', 'CONFLICT', 'PASSWORD_CHANGE_REQUIRED', 'PAYLOAD_TOO_LARGE'];
@@ -144,9 +145,9 @@ export function Opportunities({ detail, canCreate, onChange, onSelect, selectedO
   useEffect(() => { customerVersion.current = detail.version; }, [detail.version]);
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => { if (!revalidate.current) void refresh(); }, ONLINE_LIMITS.pollMs);
-    return () => { listSequence.current++; clearInterval(timer); };
+    return () => { listSequence.current++; };
   }, [page, highlight]);
+  useVisiblePolling(() => { if (!revalidate.current) void refresh(); }, ONLINE_LIMITS.pollMs);
   useEffect(() => {
     const changed = () => setHighlight(highlightedId());
     window.addEventListener('hashchange', changed);

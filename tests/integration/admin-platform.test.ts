@@ -14,15 +14,17 @@ import { createOnlineServer } from '../../server/transport/http';
 import { createAdminHandler } from '../../server/transport/admin-http';
 import { createAdminStatic } from '../../server/adapters/admin-static';
 import { LoginRateGate } from '../../server/adapters/login-rate';
+import { createAdminDataBrowserService } from '../../server/services/admin-data-browser';
 const TIMEOUT=30000,TTL=3600;
 const log={write:()=>{}};const password=randomBytes(24).toString('hex');
 let pool:Pool,authRepo:PostgresAuthRepository,repo:PostgresAdminRepository,crypto:PasswordAdapter;
 let auth:ReturnType<typeof createAuthService>,admin:ReturnType<typeof createAdminService>;
+let dataBrowser:ReturnType<typeof createAdminDataBrowserService>;
 let manager:string,sales:string,managerId:string,salesId:string,managerEmail:string;
 let server:ReturnType<typeof createOnlineServer>,base:string;
 async function start(){
  const config={...ONLINE_DEFAULTS,test_mode:true},gate=new LoginRateGate(config,{now:()=>Date.now()});
- server=createOnlineServer(auth,gate,config,log,'test',createAdminHandler(auth,admin,tokenAdapter,gate,config,createAdminStatic()));
+ server=createOnlineServer(auth,gate,config,log,'test',createAdminHandler(auth,admin,tokenAdapter,gate,config,createAdminStatic(),undefined,undefined,dataBrowser));
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address() as {port:number};base=`http://127.0.0.1:${address.port}`;
 }
 async function close(){server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
@@ -42,6 +44,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
       const login=unwrap(await auth.login({email,password},'browser'));if(key==='manager'){manager=login.token;managerId=userId;managerEmail=email;}else{sales=login.token;salesId=userId;}
     }
     admin=createAdminService(repo,authRepo,crypto,tokenAdapter,{now:()=>Date.now()},auth);
+    dataBrowser=createAdminDataBrowserService(repo,tokenAdapter);
     await start();
   },TIMEOUT);
   afterAll(async()=>{if(server?.listening)await close();await pool?.end();});
@@ -49,6 +52,20 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
     expect((await auth.me(manager)).ok).toBe(false);expect((await auth.me(manager,'browser')).ok).toBe(true);
     expect((await admin.users(sales,{search:'',limit:25,offset:0})).ok).toBe(false);
     const products=unwrap(await admin.products(manager));expect(products.find(p=>p.productId==='navigator')?.connected).toBe(true);
+  });
+  it('browses whitelisted business rows and refuses non-super-admins',async()=>{
+    const catalog=await request('/admin-api/data');
+    expect(catalog.status).toBe(200);
+    expect(catalog.body.data.map((table:any)=>table.id)).toContain('identity.users');
+    expect(catalog.body.data.map((table:any)=>table.id)).not.toContain('identity.credentials');
+    expect(catalog.body.data.map((table:any)=>table.id)).not.toContain('public.crm_import_rows');
+    const users=await request(`/admin-api/data?table=identity.users&search=${encodeURIComponent(managerId)}&limit=100&offset=0`);
+    expect(users.status).toBe(200);
+    expect(users.body.data.rows.some((row:any)=>row.user_id===managerId)).toBe(true);
+    expect(users.body.data.columns.some((column:any)=>/password|token|secret|hash/i.test(column.key))).toBe(false);
+    expect((await request('/admin-api/data?table=identity.credentials&limit=25&offset=0')).status).toBe(400);
+    expect((await request('/admin-api/data?table=identity.users&sort=password_hash&limit=25&offset=0')).status).toBe(400);
+    expect((await request('/admin-api/data',undefined,sales)).status).toBe(403);
   });
   it('grants Navigator access only from its own product permission and revokes immediately',async()=>{
     const managerApi=unwrap(await auth.login({email:managerEmail,password})).token;

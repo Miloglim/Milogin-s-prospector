@@ -10,6 +10,7 @@ export function createEventsHandler(service:NotificationService):BrowserHandler{
   if(!token){send(response,failure('UNAUTHORIZED','请先登录'));return;}
   const query={deviceId:url.searchParams.get('deviceId')??'',after:url.searchParams.get('after')??'0',limit:Number(url.searchParams.get('limit')??NOTIFICATION_LIMITS.page)};
   if(request.method==='GET'&&path===NOTIFICATION_ROUTES.feed){send(response,await service.feed(token,query));return;}
+  if(request.method==='POST'&&path===NOTIFICATION_ROUTES.readAll){send(response,await service.readAll(token));return;}
   const read=/^\/api\/crm\/notifications\/([^/]+)\/read$/.exec(path);
   if(request.method==='POST'&&read){send(response,await service.read(token,read[1]!));return;}
   if(request.method!=='GET'||path!==NOTIFICATION_ROUTES.events){send(response,failure('NOT_FOUND','通知接口不存在'));return;}

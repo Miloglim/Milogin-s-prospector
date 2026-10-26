@@ -4,6 +4,7 @@ import type { LeadDetail, ImportReceipt } from '../../server/core/leads';
 export { hasContactedCustomer, customerBoardStage } from '../../server/core/leads';
 export type { Result, CrmStage } from '../../server/core/crm';
 export { importRowIssue, LEAD_LIMITS } from '../../server/core/leads';
+export { IMPORT_REMARK_MAX, unmatchedImportRemark } from '../../server/core/lead-import-fields';
 export { FOLLOWUP_METHODS, FOLLOWUP_METHOD_LABELS, CONTACT_TOUCH_STATUSES, CONTACT_TOUCH_LABELS } from '../../server/core/leads';
 export type { FollowupMethod, ContactTouchStatus, CustomerStage } from '../../server/core/leads';
 export type { Identity } from '../../server/core/auth';
@@ -23,7 +24,7 @@ export function centerContactDisplayStatus(row: { status?: string | null; touchS
   return row.status ?? '';
 }
 export type { ContactMailEvent, ContactMailEventInput, ContactMailEventReceipt } from '../../server/core/contact-mail';
-export { CENTER_CONTACT_ROUTE, CENTER_CONTACT_LIMITS, CENTER_CONTACT_FILTERS, centerContactQuery, centerContactPath } from '../../server/core/center-contacts';
+export { CENTER_CONTACT_ROUTE, CENTER_CONTACT_LIMITS, CENTER_CONTACT_FILTERS, centerContactQuery, centerContactPath, centerContactRemark } from '../../server/core/center-contacts';
 export type { ContactAssignment, ContactAssignmentStatus, ContactAssignmentPage, ContactAssignmentQuery, ContactAssignmentCreate, ContactAssignmentDecision, ContactAssignmentReceipt, CenterCompanyUpdate, CenterContactRef, CenterContactDetail, CenterContactUpdate, CenterContactFollowup } from '../../server/core/contact-assignments';
 export { CONTACT_ASSIGNMENT_ROUTES, CONTACT_ASSIGNMENT_LIMITS } from '../../server/core/contact-assignments';
 export type { ContactPermissions, ContactShareGrant, ContactShareStatus, ContactShare, ContactShareCreate, ContactShareDecision, ContactShareUpdate, ContactShareQuery, ContactSharePage, ContactShareMember } from '../../server/core/contact-sharing';
@@ -44,7 +45,7 @@ export interface ImportPreview { headers: string[]; rows: Record<string, string>
 export type { ImportSheetPreview, WorkbookImportRow, WorkbookImportRequest, WorkbookImportReceipt, WorkbookReceiptRow, WorkbookMapping, WorkbookPlanRow, WorkbookImportPlan } from '../../server/core/customer-import';
 export { WORKBOOK_IMPORT_ROUTE, WORKBOOK_LIMITS } from '../../server/core/customer-import';
 export { autoWorkbookMapping, buildWorkbookPlan, workbookRowIssue, prepareWorkbookRequests } from '../../server/core/customer-import';
-export type { Notification as OnlineNotification, FeedPage as OnlineFeed } from '../../server/core/notifications';
+export type { Notification as OnlineNotification, FeedPage as OnlineFeed, NotificationReadAllReceipt } from '../../server/core/notifications';
 export interface OnlineFeedRequest { reset?:boolean; }
 export interface CrmSyncIssue { id:string; customerId?:string; status:'failed'|'conflict'; message:string; local?:LeadDetail; central?:LeadDetail; receipt?:ImportReceipt; replayOnly?:boolean; contact?:{contactId:number;customerId:string;name:string;action:'update'|'followups';fields?:Record<string,unknown>;note?:string;centralFields?:Record<string,unknown>}; }
 export interface CrmSyncStatus { connection:'online'|'offline'; syncing:boolean; pending:number; failed:number; conflicts:number; lastSyncedAt?:string; lastError?:string; issues:CrmSyncIssue[]; }
@@ -66,7 +67,7 @@ export const ONLINE_CHANNELS = {
   ASSIGNMENT_ACCEPT:'online:assignment-accept', ASSIGNMENT_REJECT:'online:assignment-reject', ASSIGNMENT_CANCEL:'online:assignment-cancel',
   CREATE_CUSTOMER:'online:customer-create', UPDATE_CUSTOMER:'online:customer-update',
   MEMBERS:'online:members',
-  FEED:'online:feed', READ:'online:read',
+  FEED:'online:feed', READ:'online:read', READ_ALL:'online:read-all',
   TASK_LIST:'online:task-list', TASK_CREATE:'online:task-create',
   TASK_RESCHEDULE:'online:task-reschedule', TASK_COMPLETE:'online:task-complete',
   OPPORTUNITY_LIST:'online:opportunity-list', OPPORTUNITY_CREATE:'online:opportunity-create',

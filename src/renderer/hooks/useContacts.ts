@@ -94,7 +94,13 @@ export function useUpsertContact(port?: ContactDataPort) {
         data?: Contact;
         error?: string;
       }>,
-    onSuccess: () => void invalidateDomain(qc, "contacts"),
+    onSuccess: result => {
+      if (!result.success) return;
+      void invalidateDomain(qc, "contacts");
+      // 公司页此时通常已卸载；补拉未激活缓存，切回时不再先显示新增前的联系人人数。
+      void qc.refetchQueries({ queryKey: ["center-companies"], type: "inactive" });
+      void qc.refetchQueries({ queryKey: ["center-company-detail"], type: "inactive" });
+    },
   });
 }
 

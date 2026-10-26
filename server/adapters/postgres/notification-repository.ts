@@ -11,7 +11,7 @@ import type {DataScope} from '../../core/admin';
 import {ASSIGNMENT_SQL,ASSIGNMENT_VERSION} from './assignment-schema';
 import type {CrmRole} from '../../core/auth';
 import {effectiveCapabilitiesFor} from '../../core/admin';
-import {NOTIFICATION_LIMITS,type NotificationRepository,type FeedQuery,type FeedPage,type Notification} from '../../core/notifications';
+import {NOTIFICATION_LIMITS,type NotificationRepository,type FeedQuery,type FeedPage,type Notification,type NotificationReadAllReceipt} from '../../core/notifications';
 import {NOTIFICATION_LOCK,NOTIFICATION_SQL,NOTIFICATION_VERSION} from './notification-schema';
 import {assertCenterDatabasePool} from './config';
 import {ADMIN_LOCK} from './admin-schema';
@@ -79,6 +79,7 @@ export class PostgresNotificationRepository implements NotificationRepository{
   return success({items,nextCursor:cursor,hasMore:BigInt(cursor)<BigInt(high)});
  });}
  async read(hash:string,id:string):Promise<Result<void>>{return this.tx(async db=>{const actor=await this.actor(db,hash);if(!actor.ok)return actor;const rows=await db.query('SELECT c.*,d.event_type,o.recipient_user_ids,o.payload FROM crm_event_deliveries d JOIN crm_customers c USING(customer_id) JOIN identity.outbox o ON o.event_id=d.event_id WHERE d.delivery_id=$1 AND d.recipient_user_id=$2 FOR SHARE OF c',[id,actor.data.userId]);if(rows.rows[0]?.event_type===TASK_DUE_EVENT&&!await canProjectTaskDue(db,rows.rows[0],actor.data))return failure('NOT_FOUND','提醒已失效');if(!rows.rows.length||!(CONTACT_REQUEST_EVENTS.includes(rows.rows[0].event_type)&&rows.rows[0].recipient_user_ids?.includes(actor.data.userId))&&!(CONTACT_EVENTS.includes(rows.rows[0].event_type)&&await this.contactAccess(db,actor.data,rows.rows[0].payload?.contactId,rows.rows[0].customer_id))&&!(rows.rows[0].event_type==='crm.lead.assigned'&&rows.rows[0].recipient_user_ids?.includes(actor.data.userId))&&!visible(actor.data,rows.rows[0],rows.rows[0].event_type))return failure('NOT_FOUND','通知不存在');await db.query('INSERT INTO crm_notification_reads(user_id,delivery_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[actor.data.userId,id]);return success(undefined);});}
+ async readAll(hash:string):Promise<Result<NotificationReadAllReceipt>>{return this.tx(async db=>{const actor=await this.actor(db,hash);if(!actor.ok)return actor;const result=await db.query('INSERT INTO crm_notification_reads(user_id,delivery_id) SELECT recipient_user_id,delivery_id FROM crm_event_deliveries WHERE recipient_user_id=$1 ON CONFLICT DO NOTHING',[actor.data.userId]);return success({marked:result.rowCount??0});});}
  async dispatch():Promise<Result<number>>{return this.tx(async db=>{
   // Serialize bounded consumers: recipient heads are always locked in stable user order.
   await db.query('SELECT pg_advisory_xact_lock($1)',[NOTIFICATION_LOCK]);

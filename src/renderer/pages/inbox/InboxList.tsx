@@ -298,17 +298,21 @@ export function InboxList() {
     });
   };
 
-  let items = data?.success ? data.data || [] : [];
-  if (filter !== "all") items = items.filter(i => i.classification === filter);
-  if (search.trim()) {
-    const q = search.toLowerCase();
-    items = items.filter(i => (i.subject || "").toLowerCase().includes(q) || i.fromEmail.toLowerCase().includes(q) || (i.fromName || "").toLowerCase().includes(q));
-  }
+  const filteredItems = useMemo(() => {
+    let next = data?.success ? data.data || [] : [];
+    if (filter !== "all") next = next.filter(i => i.classification === filter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      next = next.filter(i => (i.subject || "").toLowerCase().includes(q) || i.fromEmail.toLowerCase().includes(q) || (i.fromName || "").toLowerCase().includes(q));
+    }
+    return next;
+  }, [data, filter, search]);
 
   // 发信人聚合（按 fromEmail 精确分组，邮件数降序）
-  const senderGroups = (() => {
+  const senderGroups = useMemo(() => {
+    if (view !== "sender") return [];
     const map = new Map<string, { email: string; name: string | null; count: number; types: Set<string>; latest: string }>();
-    for (const i of items) {
+    for (const i of filteredItems) {
       const g = map.get(i.fromEmail);
       if (g) {
         g.count++;
@@ -319,16 +323,14 @@ export function InboxList() {
       }
     }
     return [...map.values()].sort((a, b) => (b.latest > a.latest ? 1 : b.latest < a.latest ? -1 : 0));
-  })();
+  }, [filteredItems, view]);
 
-  // 发信人视图：选中某发信人则过滤
-  if (view === "sender" && senderFilter) {
-    items = items.filter(i => i.fromEmail === senderFilter);
-  }
-  // 退信页：已匹配联系人的排最前（能一键删除的先看到）。sort 是稳定的，组内仍按时间倒序
-  if (filter === "bounce") {
-    items = [...items].sort((a, b) => (b.matchedContactId || b._centerContact ? 1 : 0) - (a.matchedContactId || a._centerContact ? 1 : 0));
-  }
+  const items = useMemo(() => {
+    // 发信人视图：选中某发信人则过滤；退信页把可删除的已匹配联系人排前，组内仍按时间倒序。
+    let next = view === "sender" && senderFilter ? filteredItems.filter(i => i.fromEmail === senderFilter) : filteredItems;
+    if (filter === "bounce") next = [...next].sort((a, b) => (b.matchedContactId || b._centerContact ? 1 : 0) - (a.matchedContactId || a._centerContact ? 1 : 0));
+    return next;
+  }, [filteredItems, filter, senderFilter, view]);
   const sel_ = items.find(i => i.id === sid) || null;
   const legacyBounceMatches = bounceMatchesData?.success ? bounceMatchesData.data || [] : [];
   const centerBounceMatches: MatchContactRow[] = (sel_?._centerContacts ?? []).filter(link => link.role === 'bounce').map(link => ({

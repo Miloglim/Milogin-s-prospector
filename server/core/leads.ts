@@ -2,10 +2,11 @@ import type { CrmStage, JsonObject, Result } from './crm';
 import type { DataScope } from './admin';
 import type { WorkbookImportRequest, WorkbookImportReceipt } from './customer-import';
 import type { CenterContactQuery, CenterContactPage } from './center-contacts';
-export const LEAD_LIMITS={batchRows:200,bodyBytes:1048576,text:500,note:20000,page:25,pageMax:100,key:128,notifyMax:20} as const;
+import { IMPORT_REMARK_MAX } from './lead-import-fields';
+export const LEAD_LIMITS={batchRows:200,bodyBytes:1048576,text:500,note:IMPORT_REMARK_MAX,page:25,pageMax:100,key:128,notifyMax:20} as const;
 export const LEAD_ROUTES={bootstrap:'/api/crm/bootstrap',imports:'/api/crm/imports',leads:'/api/crm/leads',members:'/api/crm/members',assignAction:'assign'} as const;
 export type LeadState='draft'|'published'|'owned'|'paused';
-export interface ImportRow {customerKey:string;companyName:string;email:string;name?:string;country?:string;customerType?:string;businessType?:string;website?:string;firstName?:string;lastName?:string;title?:string;phone?:string;whatsapp?:string;linkedinUrl?:string;language?:string;clientType?:string;sourceLevel1?:string;sourceLevel2?:string;stage?:string;status?:string;tags?:string[];rawRow?:JsonObject;}
+export interface ImportRow {customerKey:string;companyName:string;email:string;name?:string;country?:string;customerType?:string;businessType?:string;website?:string;firstName?:string;lastName?:string;title?:string;phone?:string;whatsapp?:string;linkedinUrl?:string;language?:string;clientType?:string;sourceLevel1?:string;sourceLevel2?:string;stage?:string;status?:string;tags?:string[];rawRow?:JsonObject;remark?:string;}
 const IMPORT_EMAIL_MAX = 254;
 /** Display and center validation share one rule; row errors do not invalidate unrelated rows. */
 export function importRowIssue(row: ImportRow): string | undefined {
@@ -18,6 +19,7 @@ export function importRowIssue(row: ImportRow): string | undefined {
  if (row.customerType?.trim() && !['代理','直客'].includes(row.customerType.trim())) return '客户类型只能填写代理或直客';
  if ([row.companyName,row.name,row.country,row.customerType,row.businessType,row.website,row.firstName,row.lastName,row.title,row.phone,row.whatsapp,row.linkedinUrl,row.language,row.clientType,row.sourceLevel1,row.sourceLevel2,row.stage,row.status].some(value => value !== undefined && value.length > LEAD_LIMITS.text)) return '公司或联系人字段过长';
  if (row.tags !== undefined && (!Array.isArray(row.tags) || row.tags.length > LEAD_LIMITS.pageMax || row.tags.some(tag=>typeof tag !== 'string' || !tag.trim() || tag.length > LEAD_LIMITS.text))) return '联系人标签无效';
+ if (row.remark !== undefined && (typeof row.remark !== 'string' || row.remark.length > IMPORT_REMARK_MAX)) return '未匹配字段备注过长';
  return undefined;
 }
 export interface ImportRequest {source:string;sourceDetail:string;idempotencyKey:string;rows:ImportRow[];mapping?:Record<string,string>;kind?:'personal'|'operations';companyMatching?:boolean;}

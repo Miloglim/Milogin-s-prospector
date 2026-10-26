@@ -17,7 +17,7 @@ describe('R3 global notification ownership', () => {
     state.identity = { userId: 'sales-a', crmRoles: ['sales'], crmCapabilities: ['leads.develop'] }; state.refresh.mockClear(); state.navigate.mockClear(); timers = [];
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
     vi.spyOn(globalThis, 'setInterval').mockImplementation(((fn: () => void) => { timers.push(fn); return timers.length; }) as typeof setInterval);
-    invoke = vi.fn(async channel => ({ ok: true, data: channel === CHANNEL.BOOTSTRAP ? { userId: 'sales-a', capabilities: ['leads.develop'], scope: 'own', summary: { mine: 0, pool: 0 } } : channel === CHANNEL.FEED ? { items: [item, item], nextCursor: '1', hasMore: false } : channel === CHANNEL.LIST ? { items: [], total: 0 } : channel === CHANNEL.DETAIL ? { customerId: 'customer-b' } : undefined }));
+    invoke = vi.fn(async channel => ({ ok: true, data: channel === CHANNEL.BOOTSTRAP ? { userId: 'sales-a', capabilities: ['leads.develop'], scope: 'own', summary: { mine: 0, pool: 0 } } : channel === CHANNEL.FEED ? { items: [item, item], nextCursor: '1', hasMore: false } : channel === CHANNEL.LIST ? { items: [], total: 0 } : channel === CHANNEL.DETAIL ? { customerId: 'customer-b' } : channel === CHANNEL.READ_ALL ? { marked: 1 } : undefined }));
     Object.defineProperty(window, 'api', { configurable: true, value: { invoke } }); host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
@@ -29,6 +29,17 @@ describe('R3 global notification ownership', () => {
     await act(async () => { for (const timer of timers) timer(); });
     expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.FEED)).toHaveLength(2); expect(notifications.unread).toBe(1);
     expect(invoke).not.toHaveBeenCalledWith(CHANNEL.READ, item.id);
+  });
+  it('marks every unread notification read with one bulk request', async () => {
+    await mount();
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="一键已读全部消息"]')!;
+    expect(button.disabled).toBe(false);
+    await act(async () => { button.click(); await Promise.resolve(); });
+    expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.READ_ALL)).toHaveLength(1);
+    expect(invoke.mock.calls.some(call => call[0] === CHANNEL.READ)).toBe(false);
+    expect(notifications.unread).toBe(0);
+    expect(host.querySelectorAll('.message-row.is-unread')).toHaveLength(0);
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="一键已读全部消息"]')!.disabled).toBe(true);
   });
   it('checks exact detail authorization before read and navigates to the real customer drawer', async () => {
     await mount(); await act(async () => { host.querySelector<HTMLButtonElement>('button.message-main')!.click(); });

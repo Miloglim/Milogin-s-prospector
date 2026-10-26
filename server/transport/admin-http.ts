@@ -8,6 +8,8 @@ import type { AuthService } from '../services/auth';
 import type { AdminService } from '../services/admin';
 import type {PasswordChangeService} from '../services/password-change';
 import type { createManagementDashboardService } from '../services/management-dashboard';
+import { ADMIN_DATA_BROWSER_LIMITS,type AdminDataDirection } from '../core/admin-data-browser';
+import type { createAdminDataBrowserService } from '../services/admin-data-browser';
 import { body,send,type BrowserHandler } from './http';
 
 const COOKIE='milogin_admin';
@@ -47,7 +49,7 @@ async function navigatorHealth(config: OnlineConfig):Promise<OperationsCheck> {
   return {id:'navigator',label:'Navigator',state:'offline',value:'离线',valueLabel:'服务状态',detail:'暂无法连接 Navigator 服务'};
  }
 }
-export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:TokenPort,gate:LoginGate,config:OnlineConfig,staticHandler:BrowserHandler,passwordChange?:PasswordChangeService,dashboard?:ReturnType<typeof createManagementDashboardService>):BrowserHandler {
+export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:TokenPort,gate:LoginGate,config:OnlineConfig,staticHandler:BrowserHandler,passwordChange?:PasswordChangeService,dashboard?:ReturnType<typeof createManagementDashboardService>,dataBrowser?:ReturnType<typeof createAdminDataBrowserService>):BrowserHandler {
  const cookieFlags=`HttpOnly; SameSite=Strict; Path=/`+(config.test_mode||config.local_http?'':'; Secure');
  return async(request,response)=>{
   response.setHeader('Referrer-Policy','no-referrer');
@@ -100,6 +102,16 @@ export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:To
    const result=await dashboard.operations(token);
    if(!result.ok){send(response,result);return;}
    send(response,success({...result.data,checks:[...result.data.checks,await navigatorHealth(config)]}));return;
+  }
+  if(method==='GET'&&path===ADMIN_ROUTES.data){
+   if(!dataBrowser){send(response,failure('UNAVAILABLE','数据浏览服务暂不可用'));return;}
+   if(!url.searchParams.has('table')){send(response,await dataBrowser.tables(token));return;}
+   const limit=Number(url.searchParams.get('limit')??ADMIN_DATA_BROWSER_LIMITS.page),offset=Number(url.searchParams.get('offset')??0);
+   if(!Number.isSafeInteger(limit)||limit<1||limit>ADMIN_DATA_BROWSER_LIMITS.pageMax||!Number.isSafeInteger(offset)||offset<0){send(response,failure('INVALID_INPUT','分页参数无效'));return;}
+   const rawDirection=url.searchParams.get('direction'),direction=rawDirection===null?undefined:rawDirection as AdminDataDirection;
+   if(direction!==undefined&&direction!=='asc'&&direction!=='desc'){send(response,failure('INVALID_INPUT','排序方向无效'));return;}
+   const sort=url.searchParams.get('sort');
+   send(response,await dataBrowser.page(token,{table:url.searchParams.get('table')??'',search:url.searchParams.get('search')??'',limit,offset,...(sort?{sort}:{}),...(direction?{direction}:{})}));return;
   }
   if(method==='GET'&&path===ADMIN_ROUTES.navigatorDashboard){send(response,await navigatorDashboard(config,token));return;}
   if(method==='GET'&&path===ADMIN_ROUTES.sessions){send(response,await admin.sessions(token,url.searchParams.get('userId')??''));return;}

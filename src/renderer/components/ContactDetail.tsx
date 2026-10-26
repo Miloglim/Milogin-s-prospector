@@ -3,6 +3,7 @@ import { Drawer, Tabs, Tag, Select, message, Timeline, Input, Button, Tooltip, M
 import { EditOutlined, SearchOutlined, PartitionOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useUpsertContact, useDeleteContact, type Contact } from "../hooks/useContacts";
+import { centerContactRemark } from "../../shared/online-crm";
 import { CompanyBackcheck, COMPANY_BACKCHECK_UI_ENABLED } from "./CompanyBackcheck";
 import { DiamondLogo } from "./DiamondLogo";
 import { askAssistant } from "../lib/ask-ai";
@@ -91,6 +92,12 @@ function parseTags(s: string | null): string[] {
     const arr = JSON.parse(s);
     return Array.isArray(arr) ? arr.map(String) : [];
   } catch { return []; }
+}
+function importedRemark(raw: string | null): string {
+  try {
+    const extra = JSON.parse(raw || '{}') as import('../../../server/core/crm').JsonObject;
+    return centerContactRemark(extra);
+  } catch { /* Legacy extra text is user data; malformed JSON must not block the detail view. */ return ''; }
 }
 export function SectionTitle({ children }: { children: ReactNode }) {
   return <div className="text-[10px] font-semibold text-gray-400 tracking-wider mt-6 mb-1.5 first:mt-0">{children}</div>;
@@ -201,6 +208,7 @@ export function InfoTab({ contact, onSaveField, canEdit = true, canEditField }: 
   const stageMeta = STAGE_META[contact.stage || ""];
   const tagKey = contact.dataSource === 'center' ? contact.relationshipStage === 'cold' ? null : contact.relationshipStage ?? null : parseTags(contact.tags)[0] || null;
   const tagMeta = tagKey ? CRM_STAGES.find(s => s.key === tagKey) : null;
+  const remark = importedRemark(contact.extra);
 
   return (
     <fieldset disabled={!canEdit} className="px-1 pb-2 border-0 m-0 min-w-0">
@@ -242,6 +250,8 @@ export function InfoTab({ contact, onSaveField, canEdit = true, canEditField }: 
           disabled={contact.dataSource === 'center' ? !['contacted', 'replied', 'bounced', 'autoreply'].includes(contact.touchStatus ?? '') : contact.status !== "reached"}
           readNode={tagMeta ? <Tag color={tagMeta.color} className="text-[10px] my-0 leading-none py-0.5">{tagMeta.label}</Tag> : undefined} />
       </FieldRow>
+
+      {remark && <><SectionTitle>导入备注</SectionTitle><FieldRow label="备注"><div className="max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-gray-700">{remark}</div></FieldRow></>}
 
       <SectionTitle>公司资料</SectionTitle>
       <FieldRow label="国家"><EditSelect readOnly={contact.dataSource === 'center' || !allowed("country")} value={contact.country} onSave={v => onSaveField("country", v)} allowClear options={COUNTRIES.map(c => ({ value: c.code, label: `${c.code} ${c.label}` }))} /></FieldRow>

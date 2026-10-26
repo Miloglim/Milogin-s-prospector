@@ -12,6 +12,7 @@ import { Opportunities } from './Opportunities';
 import type { Opportunity } from '../../../shared/online-crm';
 import { CustomerLegacyShell } from './CustomerLegacyShell';
 import { ContactDetailLayout, CONTACT_DETAIL_WIDTH, SectionTitle, FieldRow } from '../../components/ContactDetail';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { COMPANY_BACKCHECK_UI_ENABLED } from '../../components/CompanyBackcheck';
 import { autoMapping, importFingerprint, mappedImportRows, prepareImportRequests } from './customerImport';
 import './customers.css';
@@ -176,23 +177,22 @@ export function CustomersPage() {
     window.addEventListener('hashchange', onHash); return () => window.removeEventListener('hashchange', onHash);
   }, []);
   useEffect(() => {
-    if (!bootstrap) return; void refresh(); let active = true; let polling = false; const version = epoch.current;
-    const timer = setInterval(() => { void (async () => {
-      if (polling) return; polling = true;
-      try {
-        const access = await invoke<LeadBootstrap>(CHANNEL.BOOTSTRAP);
-        if (!active || version !== epoch.current) return;
-        if (!access.ok) { failure(access); return; }
-        if (accessKey(access.data) !== accessKey(bootstrap)) { epoch.current++; clear(); setBootstrap(access.data); setScope(defaultScope(access.data)); return; }
-        if (lock.current) return;
-        const detailVersion = detailSequence.current;
-        await refresh();
-        // A write may start and finish while LIST is pending; do not let that older poll reopen stale detail.
-        if (!lock.current && detailVersion === detailSequence.current && !editingRef.current && active && version === epoch.current && selected.current) await openDetail(selected.current.customerId, true);
-      } finally { polling = false; }
-    })(); }, ONLINE_LIMITS.pollMs);
-    return () => { active = false; clearInterval(timer); };
+    if (!bootstrap) return;
+    void refresh();
+    return () => { epoch.current++; };
   }, [bootstrap, scope, assignment, stageFilter, search, page, view]);
+  useVisiblePolling(async () => {
+    if (!bootstrap || lock.current) return;
+    const version = epoch.current;
+    const access = await invoke<LeadBootstrap>(CHANNEL.BOOTSTRAP);
+    if (version !== epoch.current) return;
+    if (!access.ok) { failure(access); return; }
+    if (accessKey(access.data) !== accessKey(bootstrap)) { epoch.current++; clear(); setBootstrap(access.data); setScope(defaultScope(access.data)); return; }
+    const detailVersion = detailSequence.current;
+    await refresh();
+    // A write may start and finish while LIST is pending; do not let that older poll reopen stale detail.
+    if (!lock.current && detailVersion === detailSequence.current && !editingRef.current && version === epoch.current && selected.current) await openDetail(selected.current.customerId, true);
+  }, ONLINE_LIMITS.pollMs, !!bootstrap);
   function startCreate() { if(opportunityLockRef.current)return; selectionGeneration.current++; resetDraft(); setEditing(false); setCreating(true); form.resetFields(); form.setFieldsValue({ source: '手动新增', contacts: [{ email: '' }] }); }
   function startEdit() { if(opportunityLockRef.current)return; if (!detail) return; editSnapshot.current = detail; setEditing(true); form.setFieldsValue({ companyName: detail.companyName, country: detail.country ?? '', customerType: detail.customerType ?? '', businessType: detail.businessType ?? '', developmentRestriction: detail.developmentRestriction ?? '', sourceCreatedAt: detail.sourceCreatedAt ?? '', contacts: detail.contacts.map(contact => ({ contactId: contact.contactId, email: contact.email ?? '', name: contact.name ?? '', country: contact.country ?? '', phone: contact.phone ?? '', whatsapp: contact.whatsapp ?? '', title: contact.title ?? '' })) }); }
   async function saveCustomer(values: CustomerForm) {

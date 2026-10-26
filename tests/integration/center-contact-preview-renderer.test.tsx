@@ -78,6 +78,28 @@ describe('formal customer page reuses original presentation with center identity
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['contacts'] });
     expect(window.location.hash).toBe('#/inbox?detail=91');
   });
+  it('refreshes an inactive company list before returning from inbox contact creation', async () => {
+    let companyCount = 0;
+    const fallback = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === ONLINE_CHANNELS.COMPANY_LIST) return { ok: true, data: { items: companyCount ? [{ companyId: 2, name: 'Acme', domain: null, industry: null, country: null, size: null, createdAt: fixture.createdAt, updatedAt: fixture.updatedAt, contactCount: companyCount, canDelete: false, revision: 'company-revision' }] : [], total: companyCount ? 1 : 0 } };
+      if (channel === ONLINE_CHANNELS.IMPORT) { companyCount = 1; return { ok: true, data: { batchId: 'fixture-batch', version: 1, rows: [{ status: 'created', customerId: fixture.customerId }] } }; }
+      return fallback(channel, input);
+    });
+    window.location.hash = '#/customers?view=company';
+    await mount();
+    await vi.waitFor(() => expect(invoke.mock.calls.some(call => call[0] === ONLINE_CHANNELS.COMPANY_LIST)).toBe(true));
+    const initialCompanyCalls = invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.COMPANY_LIST).length;
+    window.location.hash = '#/customers?view=table&add=1&inbox=91&email=lead%40acme.invalid&company=Acme';
+    await act(async () => { window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await vi.waitFor(() => expect(document.querySelector('.ant-drawer-open')).not.toBeNull(), { timeout: 2000 });
+    await act(async () => { document.querySelector<HTMLButtonElement>('.ant-drawer-open button[type="submit"]')!.click(); await flush(); });
+    await vi.waitFor(() => expect(invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.COMPANY_LIST).length).toBeGreaterThan(initialCompanyCalls));
+    window.location.hash = '#/customers?view=company';
+    await act(async () => { window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await vi.waitFor(() => expect(host.textContent).toContain('Acme'));
+    expect(host.textContent).toContain('1人');
+  });
   it('keeps original board and company presentation while all queries remain center scoped', async () => {
     invoke.mockImplementation(async (channel, input) => channel === ONLINE_CHANNELS.COMPANY_LIST ? {ok:true,data:{items:[{companyId:1,name:fixture.companyName,domain:null,industry:null,country:null,size:null,createdAt:fixture.createdAt,updatedAt:fixture.updatedAt,contactCount:1,canDelete:false,revision:'revision'}],total:1}} : channel === 'system:getConfig' ? {success:true,data:{crm:{}}} : channel === ONLINE_CHANNELS.CONTACT_DETAIL ? { ok: true, data: { contact: fixture, company: { companyId: 1, name: fixture.companyName, domain: null, backcheckData: null }, activities: [], canEdit: true, canFollowup: true, canAssign: false, mailAvailable: false } } : { ok: true, data: { items: [fixture], total: (input as { limit?: number } | undefined)?.limit === 100 ? 1 : 51 } });
     await mount();

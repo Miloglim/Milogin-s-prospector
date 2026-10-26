@@ -419,6 +419,7 @@ interface VersionListData {
 const UPDATE_ERR_CN: Array<[RegExp, string]> = [
   [/please check update first/i, "更新信息未就绪，请稍后再点一次下载"],
   [/already.*download|up.to.date|no update/i, "已是最新版本"],
+  [/rate limit|HTTP 403/i, "更新发布源请求受限，请稍后重试"],
   [/404|Not Found/i, "更新仓库未找到，请联系维护者"],
   [/certificate|SSL|TLS|self[- ]signed|unable to verify/i, "网络证书校验失败（企业代理常见），请换网络后重试"],
   [/ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|network|net::|Failed|download/i, "网络不通或超时，稍后重试"],

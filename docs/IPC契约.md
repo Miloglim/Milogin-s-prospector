@@ -155,6 +155,8 @@ WORKBOOK_PREVIEW/WORKBOOK_IMPORT 为停用兼容通道，统一返回 UNAVAILABL
 
 无桌面IPC增删。server/core/admin.ts 新增 POST /admin-api/password，输入 currentPassword/newPassword，返回 { ok, data?, error? }。须同源browser Cookie、CSRF及当前密码；新密码至少12字符且不可复用当前密码。成功撤销全部会话并清Cookie，必须重新登录。identity DTO 增加 mustChangePassword；标记为true时只允许本人会话检查、退出及改密，其他管理/原API路径拒绝（PASSWORD_CHANGE_REQUIRED）。完整约束见 [管理工作台](management-platform.md)。
 
+管理中心新增只读 `GET /admin-api/data`，仍使用浏览器 Cookie 会话。无 `table` 返回该管理员可浏览的表目录；`table`、`search`、`sort`、`direction`、`limit`、`offset` 返回服务端分页数据。`table` 和 `sort` 必须在服务端白名单及当前表安全列内，`limit` 为 1–100、`direction` 为 `asc/desc`；仅为 `identityAdmin` 开放，不提供 POST、任意 SQL、原始凭据表或导入原始行。统一返回 `{ ok, data?, error? }`，桌面 IPC 无增删；完整字段和边界见 [管理工作台](management-platform.md)。
+
 ## 2026-10-10 管理HTTP补充（0.12.0-alpha.1，待发布）
 
 本节点无桌面IPC通道增删。新增浏览器HTTP路由由 `server/core/admin.ts` 唯一定义，完整请求/权限/数据见 [管理工作台M1](management-platform.md#http-契约)。浏览器Cookie session与API Bearer session按client资源分别鉴权；管理返回 `{ ok, data?, error? }`，不混用桌面旧返回类型。
@@ -217,6 +219,14 @@ IPC.ONLINE引用src/shared/online-crm.ts的ONLINE_CHANNELS，避免重复字符�
 | online:read | notificationId → 已读结果 |
 
 具体HTTP、授权、幂等、消息与回退见[M2交付](m2-lead-collaboration.md)，冻结的公开类型以server/core和shared导出为准。
+
+## 2026-10-23 消息中心一键已读
+
+| 通道 | 输入 → 输出 |
+|---|---|
+| online:read-all | 无 → NotificationReadAllReceipt {marked:number} |
+
+HTTP 为 `POST /api/crm/notifications/read-all`。接口使用当前登录会话，只给当前用户的现有通知投递写入已读记录；SQL 以 `(user_id, delivery_id)` 冲突忽略保证幂等，`marked` 是本次新增的已读数量。批量已读不返回客户、联系人、任务或通知正文，也不改变业务对象状态。新增通道已同步共享常量、主进程处理器和 preload 白名单。
 
 ## 2026-10-12 自助注册增量
 
@@ -333,6 +343,10 @@ HTTP复用POST /api/crm/contact-mail-events：ContactMailEventInput新增可选a
 
 常量由`ONLINE_CHANNELS.COMPANY_UPDATE`定义，preload沿用统一白名单。HTTP映射为`POST /api/crm/contacts/:contactId/company`。公司版本独立于联系人版本；详情返回company.revision/canEdit及真实country/industry/size。背调生成报告与中心保存分开，AI不可直接写旧本地公司资料。未增加其他IPC，联系人新增/导出/阶段修改复用现有通道。
 # 变更记录
+
+## 2026-10-25 未匹配导入列自动备注（0.58.0-alpha.1）
+
+`online:preview`、`online:import` 与 `POST /api/crm/imports` 的现有结构和通道不变。服务端按最终 `mapping` 找出 `rawRow` 中未映射的非空列，按 `字段名：内容` 逐行生成备注并写入 `contacts.extra.note`；占位值和空值忽略。备注最长 20,000 字符，超限返回单行 `invalid` 回执，不截断。`CenterContact.extra` 继续原样返回备注；联系人搜索可匹配 `extra.note`，联系人导出增加“备注”列。没有新增或删除 IPC/HTTP 路由，没有新增数据库字段或依赖。
 
 - 2026-10-16（0.47）：原 `inbox:classify` 参数和返回不变，手动分类成功表示本账号修改已持久保存，不等于中心已确认。`POST /api/crm/contact-mail-events` 原入参加可选 `correction:{previousEventKey:string|null,classification:'other'|'replied'|'autoreply'|'bounced'}`，返回事件可选 `correctionRevision:number`；仅入站，禁止 `advanceSendStage`。同键同载荷幂等、前驱不符返回CONFLICT。普通事实摘要兼容不变。详情 `LeadActivity` 可选 `mailEventId` / `mailSuperseded` 标识邮件关联及历史失效贡献，保留活动；无新增通道或路由。详见mail-classification-correction-delivery-20261016.md。
 

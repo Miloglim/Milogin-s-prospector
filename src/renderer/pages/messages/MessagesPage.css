@@ -13,6 +13,7 @@
 .messages-unread-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; color: #fff; background: var(--message-unread); font-size: 11px; font-weight: 600; line-height: 18px; }
 .messages-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .messages-tools > button { width: 30px; min-width: 30px; height: 30px; padding: 0; }
+.messages-tools > .messages-mark-all-read { width: auto; min-width: 0; padding-inline: 7px; white-space: nowrap; }
 .messages-alert { margin: 10px 12px 0; }
 .messages-body { flex: 1; min-height: 0; overflow: auto; padding: 0 0 8px; scrollbar-gutter: stable; }
 .messages-list { margin: 0; }

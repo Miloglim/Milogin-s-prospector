@@ -1,13 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ONLINE_CHANNELS as CHANNEL, ONLINE_LIMITS, TASK_DUE_EVENT, OPPORTUNITY_EVENTS } from '../shared/online-crm';
-import type { LeadBootstrap, LeadDetail, CenterContactDetail, OnlineFeed, OnlineNotification, Result } from '../shared/online-crm';
+import type { LeadBootstrap, LeadDetail, CenterContactDetail, OnlineFeed, OnlineNotification, NotificationReadAllReceipt, Result } from '../shared/online-crm';
 import { useIdentity } from './IdentityContext';
+import { useVisiblePolling } from './hooks/useVisiblePolling';
 
 const MAX_ITEMS = 500;
 const MAX_FEED_PAGES = Math.ceil(MAX_ITEMS / ONLINE_LIMITS.feedPage);
 export interface Notifications {
   items: OnlineNotification[]; unread: number; error: string; loading: boolean;
-  refresh: (reset?: boolean) => Promise<void>; read: (id: string) => Promise<boolean>;
+  refresh: (reset?: boolean) => Promise<void>; read: (id: string) => Promise<boolean>; readAll: () => Promise<boolean>;
   open: (item: OnlineNotification) => Promise<string | null>;
 }
 const Context = createContext<Notifications | null>(null);
@@ -71,11 +72,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       return { scope: startedScope, items: Array.from(merged.values()).slice(-MAX_ITEMS) };
     });
   }, [enabled, scope, reject]);
+  useVisiblePolling(() => refresh(), ONLINE_LIMITS.pollMs, enabled);
   useEffect(() => {
     epoch.current++; pending.current = null; replay.current = true; replayScan.current = null; accessScope.current = ''; setState({ scope, items: [] }); setError(''); setLoading(false);
     if (!enabled) return;
-    void refresh(); const timer = setInterval(() => { void refresh(); }, ONLINE_LIMITS.pollMs);
-    return () => { epoch.current++; clearInterval(timer); };
+    void refresh();
+    return () => { epoch.current++; };
   }, [scope, enabled, refresh]);
   const read = useCallback(async (id: string) => {
     if (!enabled || scope !== currentScope.current) return false;
@@ -84,6 +86,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (generation !== epoch.current || startedScope !== currentScope.current) return false;
     if (!result.ok) { if (result.error.code === 'NOT_FOUND') { setState(previous => ({ ...previous, items: previous.items.filter(item => item.id !== id) })); replay.current = true; } reject(result); return false; }
     setState(previous => ({ ...previous, items: previous.items.map(item => item.id === id ? { ...item, read: true } : item) })); return true;
+  }, [enabled, scope, reject]);
+  const readAll = useCallback(async () => {
+    if (!enabled || scope !== currentScope.current) return false;
+    const generation = epoch.current; const startedScope = scope;
+    const result = await invoke<NotificationReadAllReceipt>(CHANNEL.READ_ALL);
+    if (generation !== epoch.current || startedScope !== currentScope.current) return false;
+    if (!result.ok) { reject(result); return false; }
+    setState(previous => ({ ...previous, items: previous.items.map(item => item.read ? item : { ...item, read: true }) }));
+    return true;
   }, [enabled, scope, reject]);
   const open = useCallback(async (item: OnlineNotification) => {
     if (!enabled || scope !== currentScope.current || item.canOpen === false || (!item.customerId && !item.requestId && !item.shareId)) return null;
@@ -113,5 +124,5 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!await read(item.id)) return null;
     return generation === epoch.current && startedScope === currentScope.current ? item.customerId : null;
   }, [enabled, scope, read, reject]);
-  return <Context.Provider value={{ items, unread: items.filter(item => !item.read).length, error, loading, refresh, read, open }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ items, unread: items.filter(item => !item.read).length, error, loading, refresh, read, readAll, open }}>{children}</Context.Provider>;
 }

@@ -310,6 +310,18 @@ body {
 .prospector-page-table .ant-table-thead .ant-table-cell-fix-right {
   z-index: 3;
 }
+.contact-import-preview-table .ant-table-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.contact-import-value {
+  display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .history-table-tabs {
   flex: 1 1 auto;
   min-height: 0;

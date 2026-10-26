@@ -10,6 +10,18 @@ import {USER_LIFECYCLE_SQL,USER_LIFECYCLE_VERSION} from './user-lifecycle-schema
 import {NAVIGATOR_ACCESS_SQL,NAVIGATOR_ACCESS_VERSION,NAVIGATOR_PRODUCT_SQL,NAVIGATOR_PRODUCT_VERSION} from './navigator-access-schema';
 import {assertCenterDatabasePool} from './config';
 import { canReadManagementDashboard, DASHBOARD_LIMITS, OPERATIONS_LIMITS, type ManagementDashboard, type ManagementDashboardRepository, type OperationsCheck, type OperationsSummary } from '../../core/management-dashboard';
+import {
+  ADMIN_DATA_BROWSER_LIMITS,
+  ADMIN_DATA_TABLES,
+  adminDataColumnLabel,
+  adminDataTableInfo,
+  adminDataValueKind,
+  canReadAdminData,
+  findAdminDataTable,
+  isSafeAdminDataColumn,
+  type AdminDataBrowserRepository,
+  type AdminDataQuery,
+} from '../../core/admin-data-browser';
 
 type DB=Pool|PoolClient;
 interface Actor {userId:string;identityAdmin:boolean;roles:CrmRole[];capabilities:string[];scope:DataScope;}
@@ -55,7 +67,14 @@ async function diskCheck():Promise<OperationsCheck> {
   return {id:'disk',label:'服务器磁盘',state:'not_connected',value:'不可读',valueLabel:'已使用',detail:'当前运行环境未提供磁盘容量'};
  }
 }
-export class PostgresAdminRepository implements AdminRepository, ManagementDashboardRepository {
+type DataColumnRow={columnName:string;dataType:string};
+function quoteIdentifier(value:string):string{return `"${value.replaceAll('"','""')}"`;}
+function databaseValue(value:unknown):unknown {
+ if(value instanceof Date)return value.toISOString();
+ if(typeof value==='bigint')return value.toString();
+ return value ?? null;
+}
+export class PostgresAdminRepository implements AdminRepository, ManagementDashboardRepository, AdminDataBrowserRepository {
  constructor(private readonly pool:Pool,private readonly log:LogSink){
   assertCenterDatabasePool(pool);
  }
@@ -91,6 +110,31 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
  private async read<T>(hash:string,action:(c:PoolClient,actor:Actor)=>Promise<Result<T>>):Promise<Result<T>>{
   return this.execute(()=>this.tx(async c=>{await c.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');const actor=await this.actor(c,hash);return actor?action(c,actor):failure('UNAUTHORIZED','管理会话失效');}));
  }
+ dataTables(hash:string){return this.read(hash,async(_c,actor)=>canReadAdminData(actor)?success(ADMIN_DATA_TABLES.map(adminDataTableInfo)):failure('FORBIDDEN','仅超级管理员可浏览中心数据库'));}
+ dataPage(hash:string,q:AdminDataQuery){return this.read(hash,async(c,actor)=>{
+  if(!canReadAdminData(actor))return failure('FORBIDDEN','仅超级管理员可浏览中心数据库');
+  if(!Number.isSafeInteger(q.limit)||q.limit<1||q.limit>ADMIN_DATA_BROWSER_LIMITS.pageMax||!Number.isSafeInteger(q.offset)||q.offset<0)return failure('INVALID_INPUT','分页参数无效');
+  const search=q.search.trim();if(search.length>ADMIN_DATA_BROWSER_LIMITS.searchMax)return failure('INVALID_INPUT','搜索内容过长');
+  const table=findAdminDataTable(q.table);if(!table)return failure('INVALID_INPUT','数据表不在可浏览范围');
+  if(q.direction!==undefined&&q.direction!=='asc'&&q.direction!=='desc')return failure('INVALID_INPUT','排序方向无效');
+  const direction=q.direction??table.defaultDirection;
+  await c.query("SELECT set_config('statement_timeout',$1,true)",[`${ADMIN_DATA_BROWSER_LIMITS.statement_timeout_seconds * 1000}ms`]);
+  const metadata=await c.query<DataColumnRow>(`SELECT column_name AS "columnName",data_type AS "dataType" FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position`,[table.schema,table.table]);
+  const safe=metadata.rows.filter(column=>isSafeAdminDataColumn(column.columnName));
+  if(!safe.some(column=>column.columnName===table.keyColumn))return failure('NOT_FOUND','数据表尚未就绪');
+  const sort=q.sort||table.defaultSort;
+  if(!safe.some(column=>column.columnName===sort))return failure('INVALID_INPUT','排序字段无效');
+  const searchColumns=safe.filter(column=>adminDataValueKind(column.dataType)==='text');
+  if(search&&!searchColumns.length)return failure('INVALID_INPUT','当前数据表不支持搜索');
+  const columns=safe.map(column=>({key:column.columnName,label:adminDataColumnLabel(column.columnName),type:column.dataType,kind:adminDataValueKind(column.dataType),sortable:true,searchable:adminDataValueKind(column.dataType)==='text'}));
+  const relation=`${quoteIdentifier(table.schema)}.${quoteIdentifier(table.table)}`;
+  const where=search?`WHERE (${searchColumns.map(column=>`${quoteIdentifier(column.columnName)}::text ILIKE $1`).join(' OR ')})`:'';
+  const searchParams=search?[`%${search}%`]:[];
+  const count=await c.query<{n:number}>(`SELECT count(*)::int AS n FROM ${relation} ${where}`,searchParams);
+  const limitParam=searchParams.length+1,offsetParam=searchParams.length+2;
+  const selected=await c.query(`SELECT ${safe.map(column=>quoteIdentifier(column.columnName)).join(',')} FROM ${relation} ${where} ORDER BY ${quoteIdentifier(sort)} ${direction},${quoteIdentifier(table.keyColumn)} ${direction} LIMIT $${limitParam} OFFSET $${offsetParam}`,[...searchParams,q.limit,q.offset]);
+  return success({table:adminDataTableInfo(table),columns,rows:selected.rows.map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,databaseValue(value)]))),total:Number(count.rows[0]?.n??0),limit:q.limit,offset:q.offset,search,sort,direction,keyColumn:table.keyColumn});
+ });}
  users(hash:string,q:UserQuery):Promise<Result<UserPage>> {return this.read(hash,async(c,actor)=>{
   if(!actor.identityAdmin&&(q.productId!=='crm'||!actor.capabilities.includes('members.read')))return failure('FORBIDDEN','无成员读取权限');
    const state=q.state??'active';

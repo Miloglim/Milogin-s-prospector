@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({ offline:false, collapsed: false, unread: 1, it
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => state.navigate, useRouterState: ({ select }: { select: (value: unknown) => unknown }) => select({ location: { pathname: '/messages', search: {} } }) }));
 vi.mock('../../src/renderer/AppContext', () => ({ useAppContext: () => ({ sidebarCollapsed: state.collapsed }) }));
 vi.mock('../../src/renderer/IdentityContext', () => ({ useOptionalIdentity: () => ({ status:state.offline?'offline':'authenticated',localAvailable: true, identity: { displayName: '很长很长的账号名称需要省略而不会挤掉图标', email: 'test@example.invalid', identityAdmin: state.identityAdmin, crmRoles: state.roles }, logout: state.logout, reconnect: state.reconnect }) }));
-vi.mock('../../src/renderer/NotificationContext', () => ({ useOptionalNotifications: () => ({ unread: state.unread, items: state.items, error: '', loading: state.loading, refresh: state.refresh, read: state.readMessage, open: state.openMessage }) }));
+vi.mock('../../src/renderer/NotificationContext', () => ({ useOptionalNotifications: () => ({ unread: state.unread, items: state.items, error: '', loading: state.loading, refresh: state.refresh, read: state.readMessage, readAll: vi.fn(), open: state.openMessage }) }));
 vi.mock('../../src/renderer/hooks/useAgentTranscript', () => ({ drop: vi.fn(), useRunningConvIds: () => [] }));
 vi.mock('../../src/renderer/components/DiamondLogo', () => ({ DiamondLogo: () => <span /> }));
 vi.mock('../../src/renderer/components/GlobalSearch', () => ({ GlobalSearch: ({ trigger }: { trigger: (click: () => void, active: boolean) => React.ReactNode }) => trigger(state.search, false) }));
@@ -80,13 +80,17 @@ describe('sidebar account, search and messages footer', () => {
     expect(footer.querySelector('[aria-label="1 条未读"]')).toBeNull();
     expect(footer.querySelector('.sidebar-account')?.textContent).toBe('');
   });
-  it('allows entering customers offline while keeping live messages unavailable',async()=>{
+  it('allows opening cached messages offline while disabling the bulk write',async()=>{
     state.offline=true;await mount();
     expect(host.querySelector('.sidebar-brand-dot')?.classList.contains('is-offline')).toBe(true);
     const item=Array.from(host.querySelectorAll('li')).find(li=>li.textContent==='客户')!;
     expect(item.getAttribute('aria-disabled')).toBe('false');
     await act(async()=>{ item.click(); });expect(state.navigate).toHaveBeenCalledWith({to:'/customers'});
-    expect(host.querySelector('button[aria-label="消息中心"]')?.hasAttribute('disabled')).toBe(true);
+    const messages=host.querySelector<HTMLButtonElement>('button[aria-label="消息中心"]')!;
+    expect(messages.disabled).toBe(false);
+    await act(async()=>{messages.click();await Promise.resolve();});
+    expect(document.querySelector('.message-center-panel')).not.toBeNull();
+    expect(document.querySelector<HTMLButtonElement>('button[aria-label="一键已读全部消息"]')?.disabled).toBe(true);
   });
   it('keeps the brand dot active while connected', async () => {
     await mount();

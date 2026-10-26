@@ -45,6 +45,7 @@ import { PostgresOpportunityRepository } from './adapters/postgres/opportunity-r
 import { createOpportunityService } from './services/opportunities';
 import { createOpportunityHandler } from './transport/opportunities-http';
 import { createManagementDashboardService } from './services/management-dashboard';
+import { createAdminDataBrowserService } from './services/admin-data-browser';
 import { PostgresContactChangeRepository } from './adapters/postgres/contact-change-repository';
 import { createContactChangeService } from './services/contact-change-feed';
 import { createContactChangeHandler } from './transport/contact-change-http';
@@ -71,6 +72,7 @@ async function main() {
     const adminRepository=new PostgresAdminRepository(pool,serverLog);
     const admin=createAdminService(adminRepository,repo,passwords,tokenAdapter,clock,auth);
     const dashboard=createManagementDashboardService(adminRepository,tokenAdapter);
+    const dataBrowser=createAdminDataBrowserService(adminRepository,tokenAdapter);
     const gate=new LoginRateGate(config,clock);
     const leadRepo=new PostgresLeadRepository(pool,serverLog), notificationRepo=new PostgresNotificationRepository(pool,serverLog);
     if(!(await leadRepo.migrate()).ok || !(await notificationRepo.migrate()).ok) throw new Error('协作迁移被拒绝');
@@ -107,7 +109,7 @@ async function main() {
     };
     const offlineIssuer=loadOfflineAccessIssuer(onlineRuntimeDirectory(),config.public_origin ?? `http://${config.host}:${config.port}`);
     const desktop=createDesktopAuthHandler(createDesktopSessionService(repo,passwords,tokenAdapter,clock,config.session_ttl_seconds,offlineIssuer),gate,config);
-    const server=createOnlineServer(auth,gate,config,serverLog,instanceId,createAdminHandler(auth,admin,tokenAdapter,gate,config,createAdminStatic(),createPasswordChangeService(repo,repo,passwords,tokenAdapter,auth),dashboard),collaboration,desktop);
+    const server=createOnlineServer(auth,gate,config,serverLog,instanceId,createAdminHandler(auth,admin,tokenAdapter,gate,config,createAdminStatic(),createPasswordChangeService(repo,repo,passwords,tokenAdapter,auth),dashboard,dataBrowser),collaboration,desktop);
     await new Promise<void>((resolve,reject) => { server.once("error",reject); server.listen(config.port,config.host,resolve); });
     started=true;
     const dispatcher=startNotificationDispatcher(notificationRepo,serverLog);

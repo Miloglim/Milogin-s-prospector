@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Input, List, Pagination, Space } from 'antd';
 import { ONLINE_CHANNELS as CHANNEL, ONLINE_LIMITS, TASK_LIMITS } from '../../../shared/online-crm';
 import type { Result, LeadDetail, FollowupTask, TaskPage, TaskCreate, TaskReschedule, TaskComplete } from '../../../shared/online-crm';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 
 const TASK_PAGE_SIZE = 50;
 const PREWRITE_ERRORS = ['INVALID_INPUT', 'FORBIDDEN', 'UNAUTHORIZED', 'NOT_FOUND', 'CONFLICT', 'PASSWORD_CHANGE_REQUIRED'];
@@ -56,9 +57,9 @@ export function FollowupTasks({ detail, canCreate, opportunity }: { detail: Lead
   }
   useEffect(() => {
     alive.current = true; void refresh();
-    const timer = setInterval(() => { void refresh(); }, ONLINE_LIMITS.pollMs);
-    return () => { alive.current = false; listSequence.current++; clearInterval(timer); };
+    return () => { alive.current = false; listSequence.current++; };
   }, [page]);
+  useVisiblePolling(refresh, ONLINE_LIMITS.pollMs);
   useEffect(() => {
     if (highlightedTask && tasks.some(task => task.taskId === highlightedTask)) document.getElementById(`task-${highlightedTask}`)?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
   }, [highlightedTask, tasks]);

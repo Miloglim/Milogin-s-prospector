@@ -94,3 +94,11 @@ body { margin: 0; }
 .product-dashboard .flow-stages i { background: var(--dashboard-tint); color: var(--dashboard-accent); }
 .product-dashboard .dashboard-stats .ant-card-body { min-height: 108px; }
 .product-dashboard .operations-check-card .ant-card-body { min-height: 168px; }
+.data-browser-heading { margin-bottom: 16px; }
+.data-browser-alert { margin-bottom: 12px; }
+.data-browser-toolbar { display: grid; grid-template-columns: minmax(220px, 300px) minmax(220px, 360px) minmax(0, 1fr); gap: 10px; align-items: center; margin-bottom: 12px; }
+.data-browser-toolbar .ant-select, .data-browser-toolbar .ant-input-search { width: 100%; }
+.data-browser-table .ant-table-cell { vertical-align: top; white-space: nowrap; }
+.data-browser-table .ant-table-cell > * { max-width: 100%; }
+@media(max-width: 860px) { .data-browser-toolbar { grid-template-columns: 1fr; } .data-browser-toolbar .ant-typography { display: none; } }
+@media(max-width: 560px) { .data-browser-heading { align-items: flex-start; } .data-browser-heading > .ant-space { width: 100%; justify-content: space-between; } }

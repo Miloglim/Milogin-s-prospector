@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
-import { Alert, Empty, Segmented, theme } from 'antd';
+import { Alert, Button, Empty, Segmented, message, theme } from 'antd';
 import {
-  BellOutlined, ClockCircleOutlined, EditOutlined,
+  BellOutlined, CheckOutlined, ClockCircleOutlined, EditOutlined,
   LineChartOutlined, ShareAltOutlined, UserAddOutlined, UserSwitchOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from '@tanstack/react-router';
@@ -85,12 +85,15 @@ function resizePanel(startWidth: number, startHeight: number, deltaX: number, de
 }
 
 export function MessageCenterPanel() {
-  const identity = useOptionalIdentity()?.identity;
+  const session = useOptionalIdentity();
+  const identity = session?.identity;
+  const offline = session?.status === 'offline';
   const notifications = useOptionalNotifications();
   const navigate = useNavigate();
   const { token } = theme.useToken();
   const [filter, setFilter] = useState<MessageFilter>('全部');
   const [panelSize, setPanelSize] = useState<PanelSize | null>(null);
+  const [markingAllRead, setMarkingAllRead] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const unread = notifications?.unread ?? 0;
@@ -129,6 +132,16 @@ export function MessageCenterPanel() {
         ...(item.opportunityId ? { opportunityId: item.opportunityId } : {}),
       },
     });
+  };
+
+  const markAllRead = async () => {
+    if (!notifications || unread === 0 || offline || markingAllRead) return;
+    setMarkingAllRead(true);
+    try {
+      if (await notifications.readAll()) message.success('已全部标为已读');
+    } finally {
+      setMarkingAllRead(false);
+    }
   };
 
   useEffect(() => {
@@ -198,6 +211,7 @@ export function MessageCenterPanel() {
         {unread > 0 && <span className="messages-unread-badge" aria-label={`${unread} 条未读`}>{unread}</span>}
       </div>
       <div className="messages-tools">
+        <Button className="messages-mark-all-read" type="text" size="small" icon={<CheckOutlined />} aria-label="一键已读全部消息" disabled={unread === 0 || offline} title={offline ? '连接中心后可全部标为已读' : undefined} loading={markingAllRead} onClick={() => void markAllRead()}>全部已读</Button>
         <Segmented aria-label="消息筛选" size="small" options={[...FILTERS]} value={filter} onChange={value => setFilter(value as MessageFilter)} />
       </div>
     </header>

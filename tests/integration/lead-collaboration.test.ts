@@ -76,7 +76,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M2 real PostgreSQL 
   const feedback=unwrap(await contacts.contactFollowup(salesA,follow));expect(unwrap(await contacts.contactFollowup(salesA,follow))).toEqual(feedback);
   expect(unwrap(await contacts.contactDetail(ops,selected)).activities[0]!.note).toBe(follow.note);
   const events=(await pool.query('SELECT event_type FROM identity.outbox WHERE customer_id=$1',[id])).rows.map(x=>x.event_type);
-  expect(events.sort()).toEqual(['crm.contact.assignment.accepted','crm.contact.assignment.requested','crm.contact.followup','crm.lead.published']);
+  expect(events.sort()).toEqual(['crm.contact.assignment.accepted','crm.contact.assignment.requested','crm.contact.followup','crm.customer.created','crm.customer.updated','crm.lead.published']);
   expect((await pool.query('SELECT count(*)::int n FROM crm_shared_activities WHERE contact_id=$1 AND note=$2',[selected.contactId,follow.note])).rows[0].n).toBe(1);
   await pool.query("UPDATE identity.product_access SET capabilities=$2 WHERE user_id=$1 AND product_id='crm'",[aId,JSON.stringify(['leads.claim'])]);
   expect(await contacts.contactDetail(salesA,selected)).toMatchObject({error:{code:'NOT_FOUND'}});
@@ -91,5 +91,16 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M2 real PostgreSQL 
   const trigger=`m2_test_${id.replace(/-/g,'')}`;await pool.query(`CREATE TRIGGER ${trigger} BEFORE INSERT ON identity.outbox FOR EACH ROW WHEN (NEW.customer_id='${id}'::uuid) EXECUTE FUNCTION crm_m2_test_outbox_failure()`);
   // An invalid row must abort the whole publish without partial published customers.
   try{const bad=await service.publish(ops,receipt.batchId,{rowIds:[receipt.rows[0]!.rowId],expectedVersion:1,idempotencyKey:randomUUID()});expect(bad).toMatchObject({error:{code:'DATABASE_ERROR'}});const row=await pool.query('SELECT state,version FROM crm_customers WHERE customer_id=$1',[id]);expect(row.rows[0]).toEqual({state:'draft',version:1});}finally{await pool.query(`DROP TRIGGER ${trigger} ON identity.outbox`);}
+ });
+ it('stores unmapped columns as a searchable multiline contact remark',async()=>{
+  const companyName=`Remark company ${source}`;
+  const email=`remark-${source}@example.invalid`;
+  const rawRow={Company:companyName,Email:email,Phone:'+1 555',Profile:'first line\nsecond line',Associations:'WCA','Member years':'3',Fax:'(N/A)'};
+  const receipt=unwrap(await service.importRows(ops,{source:`remark-${source}`,sourceDetail:'remark test',idempotencyKey:randomUUID(),mapping:{companyName:'Company',email:'Email',phone:'Phone'},rows:[{customerKey:`remark-${source}`,companyName,email,phone:'+1 555',rawRow}]}));
+  expect(receipt.rows[0]!.status).toBe('created');
+  const stored=await pool.query('SELECT extra FROM contacts WHERE email=$1',[email]);
+  expect(stored.rows[0].extra).toEqual({note:'Profile：first line\nsecond line\nAssociations：WCA\nMember years：3'});
+  const found=unwrap(await service.contacts(ops,{search:'second line',limit:25,offset:0}));
+  expect(found.items.some(row=>row.email===email)).toBe(true);
  });
 });

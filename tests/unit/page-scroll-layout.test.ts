@@ -50,6 +50,18 @@ describe('page scroll containment', () => {
     expect(customersCss).toMatch(/\.customer-assignment-table\.is-empty \.ant-table-thead>tr>th::before\s*\{\s*display:\s*none!important;?/s);
   });
 
+  it('centers both company empty states consistently', () => {
+    const companyPage = readFileSync(resolve(root, 'src/renderer/pages/companies/CompanyPage.tsx'), 'utf8');
+    expect(companyPage.match(/className="company-empty-state"/g)).toHaveLength(1);
+    expect(companyPage).toContain('? "company-empty-state"');
+    expect(customersCss).toMatch(/\.company-empty-state\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;/s);
+  });
+
+  it('stretches assignment tables while preserving narrow-screen horizontal scrolling', () => {
+    expect(customersCss).toMatch(/\.customer-assignment-table \.ant-table-container\s*\{[^}]*width:\s*100%;/s);
+    expect(customersCss).toMatch(/\.customer-assignment-table table\s*\{[^}]*width:\s*100%!important;[^}]*min-width:\s*900px;/s);
+  });
+
   it('uses one border around the campaign contact picker table', () => {
     expect(globalCss).toMatch(/\.picker-compact \.ant-table-container\s*\{\s*border:\s*0\s*!important;\s*border-radius:\s*0\s*!important;/s);
   });

@@ -4,6 +4,7 @@ import { ONLINE_CHANNELS, ONLINE_LIMITS } from '../shared/online-crm';
 import type { Identity, OnlineLogin, OnlineSessionSnapshot, Result, OnlineRegistration, RegisteredAccount } from '../shared/online-crm';
 import type { LoginAccount, LoginAccountQuery, SavedAccountLogin, OnlineLogout } from '../shared/online-crm';
 import { clearSessionTranscript } from './hooks/useAgentTranscript';
+import { useVisiblePolling } from './hooks/useVisiblePolling';
 
 export type IdentityStatus = 'restoring' | 'anonymous' | 'password-required' | 'authenticated' | 'offline';
 export interface IdentityContextValue {
@@ -95,6 +96,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       else { epoch.current++; apply(null); }
     }
   }, [apply, refreshAccounts]);
+  useVisiblePolling(refresh, ONLINE_LIMITS.pollMs);
   useEffect(() => {
     let alive = true;
     const version = ++epoch.current;
@@ -104,8 +106,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       else { setError(result.error.message); apply(null); }
       void refreshAccounts();
     });
-    const timer = setInterval(() => { void refresh(); }, ONLINE_LIMITS.pollMs);
-    return () => { alive = false; epoch.current++; clearInterval(timer); };
+    return () => { alive = false; epoch.current++; };
   }, [apply, refresh, refreshAccounts]);
   const register = useCallback(async (input: OnlineRegistration) => {
     if (actionPending.current || currentIdentity.current) return false;

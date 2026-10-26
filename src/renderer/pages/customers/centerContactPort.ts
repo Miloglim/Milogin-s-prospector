@@ -1,6 +1,6 @@
 import {LEAD_IMPORT_FIELDS, leadImportMapping} from '../../../../server/core/lead-import-fields';
 import { importRowIssue } from '../../../../server/core/leads';
-import { ONLINE_CHANNELS, CENTER_CONTACT_LIMITS, centerContactDisplayStatus, type CenterContact, type CenterContactQuery, type CenterContactPage, type CenterContactDetail, type ContactDelete, type ContactDeleteReceipt, type Result, type ImportPreview, type ImportReceipt, type ImportRequest } from '../../../shared/online-crm';
+import { ONLINE_CHANNELS, CENTER_CONTACT_LIMITS, centerContactDisplayStatus, centerContactRemark, type CenterContact, type CenterContactQuery, type CenterContactPage, type CenterContactDetail, type ContactDelete, type ContactDeleteReceipt, type Result, type ImportPreview, type ImportReceipt, type ImportRequest } from '../../../shared/online-crm';
 import type { Contact, ContactDataPort, ContactFilters } from '../../hooks/useContacts';
 import type { ImportDrawerPort } from '../../components/ImportDrawer';
 import { importFingerprint, prepareImportRequests } from './customerImport';
@@ -105,7 +105,7 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
     async export(kind, filters) {
       const all = await readAll(filters); if (!all.success || !all.data) return { success: false, error: all.error };
       const csv = (rows: unknown[][]) => '\ufeff' + rows.map(row => row.map(value => { const text = String(value ?? ''); return '"' + (/^[\s]*[=+@-]/.test(text) ? "'" + text : text).replace(/"/g, '""') + '"'; }).join(',')).join('\r\n');
-      if (kind === 'contacts') return { success: true, data: csv([['邮箱','名','姓','公司名','职位 / Title','电话','WhatsApp','LinkedIn','国家','语言','客户类型','业务类型','网站','联系状态','发送阶段','负责人','客户阶段','标签','一级来源','二级来源','导入批次来源','创建时间','更新时间'], ...all.data.map(row => [row.email,row.firstName,row.lastName,row.companyName,row.title,row.phone,row.whatsapp,row.linkedinUrl,row.country,row.language,row.clientType === 'agent' ? '代理' : row.clientType === 'direct' ? '直客' : row.clientType,row.businessType,row.website,centerContactDisplayStatus(row),row.stage,row.ownerName,row.relationshipStage,row.tags.join('、'),row.sourceLevel1,row.sourceLevel2,row.source,row.createdAt,row.updatedAt])]) };
+      if (kind === 'contacts') return { success: true, data: csv([['邮箱','名','姓','公司名','职位 / Title','电话','WhatsApp','LinkedIn','国家','语言','客户类型','业务类型','网站','联系状态','发送阶段','负责人','客户阶段','标签','一级来源','二级来源','导入批次来源','备注','创建时间','更新时间'], ...all.data.map(row => [row.email,row.firstName,row.lastName,row.companyName,row.title,row.phone,row.whatsapp,row.linkedinUrl,row.country,row.language,row.clientType === 'agent' ? '代理' : row.clientType === 'direct' ? '直客' : row.clientType,row.businessType,row.website,centerContactDisplayStatus(row),row.stage,row.ownerName,row.relationshipStage,row.tags.join('、'),row.sourceLevel1,row.sourceLevel2,row.source,centerContactRemark(row.extra),row.createdAt,row.updatedAt])]) };
       const rows: unknown[][] = [];
       for (const row of all.data) {
         const result = await invoke<CenterContactDetail>(ONLINE_CHANNELS.CONTACT_DETAIL, { contactId: row.contactId, customerId: row.customerId });

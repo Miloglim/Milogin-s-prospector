@@ -15,4 +15,12 @@ describe('titlebar-safe drawer contract', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/renderer/components/ImportDrawer.tsx'), 'utf8');
     expect(source).toContain('app-drawer-below-titlebar');
   });
+
+  it('keeps import preview fields on one line with fixed table columns', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/renderer/components/ImportDrawer.tsx'), 'utf8');
+    expect(source).toContain('tableLayout="fixed"');
+    expect(source).toContain('ellipsis: true');
+    expect(source).toContain('contact-import-preview-table');
+    expect(css).toMatch(/\.contact-import-preview-table\s+\.ant-table-cell\s*\{[^}]*white-space:\s*nowrap;[^}]*text-overflow:\s*ellipsis;/s);
+  });
 });

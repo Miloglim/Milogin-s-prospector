@@ -145,7 +145,7 @@ export function CompanyPage({ dataPort }: { dataPort?: CompanyDataPort } = {}) {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className={companies.length === 0 && !isLoading ? "company-empty-state" : "flex-1 overflow-y-auto"}>
           {isLoading ? <Card loading /> :
             companies.length === 0 ? <Empty description="暂无公司" image={Empty.PRESENTED_IMAGE_SIMPLE} /> :
             companies.map(c => (
@@ -184,9 +184,7 @@ export function CompanyPage({ dataPort }: { dataPort?: CompanyDataPort } = {}) {
       <div className="flex-1 bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
         {detailData?.success === false && <div role="alert" className="text-xs text-red-500 p-3">{detailData.error || '公司详情加载失败'}</div>}
         {!selectedId ? (
-          <div className="flex-1 flex items-center justify-center">
-            <Empty description="选择左侧公司查看详情" />
-          </div>
+          <div className="company-empty-state"><Empty description="选择左侧公司查看详情" /></div>
         ) : detail ? (
           <>
             {/* 头部 */}

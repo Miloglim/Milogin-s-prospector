@@ -40,6 +40,13 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('actual PostgreSQL d
   expect((await pool.query('SELECT * FROM crm_event_deliveries WHERE event_id=$1 AND recipient_user_id=$2',[id,sales])).rows).toHaveLength(1);
   expect((await repo.read(hash,first.data.items[0]!.id)).ok).toBe(true);const read=await repo.feed(hash,{deviceId:'desktop-b',after:'0',limit:50});expect(read.ok&&read.data.items[0]!.read).toBe(true);
  });
+ it('marks every current user delivery read in one idempotent command',async()=>{
+  await event();await event();expect((await repo.dispatch()).ok).toBe(true);
+  const bulk=await repo.readAll(hash);expect(bulk.ok&&bulk.data.marked).toBeGreaterThanOrEqual(2);
+  const again=await repo.readAll(hash);expect(again).toEqual({ok:true,data:{marked:0}});
+  const feed=await repo.feed(hash,{deviceId:'read-all',after:'0',limit:50});expect(feed.ok).toBe(true);if(!feed.ok)throw Error('feed');
+  expect(feed.data.items.filter(n=>n.customerId===customer).every(n=>n.read)).toBe(true);
+ });
  it('out-of-order event transactions receive ordered committed user cursors',async()=>{
   const tx=await pool.connect();await tx.query('BEGIN');const late=await event('crm.lead.published',tx);const earlier=await event();expect((await repo.dispatch()).ok).toBe(true);await tx.query('COMMIT');tx.release();expect((await repo.dispatch()).ok).toBe(true);
   const rows=await pool.query('SELECT event_id,delivery_seq::text FROM crm_event_deliveries WHERE recipient_user_id=$1 AND event_id=ANY($2::uuid[]) ORDER BY delivery_seq',[sales,[late,earlier]]);expect(rows.rows.map(r=>r.event_id)).toEqual([earlier,late]);
@@ -64,7 +71,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('actual PostgreSQL d
  it('streams only cursor hints and closes after capability revocation',async()=>{
   const handler=createEventsHandler(createNotificationService(repo,tokenAdapter));const server=createServer((req,res)=>{void handler(req,res);});await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
   try{
-   const url=`http://127.0.0.1:${(server.address() as {port:number}).port}/api/crm/events?deviceId=sse-test&after=0`;const response=await fetch(url,{headers:{Authorization:`Bearer ${raw}`}});expect(response.status).toBe(200);const reader=response.body!.getReader();const frame=new TextDecoder().decode((await reader.read()).value);expect(frame).toContain('event: change');expect(frame).not.toContain(customer);expect(frame).not.toContain('sensitive');
+   const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;const marked=await fetch(`${base}/api/crm/notifications/read-all`,{method:'POST',headers:{Authorization:`Bearer ${raw}`}});expect(await marked.json()).toMatchObject({ok:true,data:{marked:expect.any(Number)}});
+   const url=`${base}/api/crm/events?deviceId=sse-test&after=0`;const response=await fetch(url,{headers:{Authorization:`Bearer ${raw}`}});expect(response.status).toBe(200);const reader=response.body!.getReader();const frame=new TextDecoder().decode((await reader.read()).value);expect(frame).toContain('event: change');expect(frame).not.toContain(customer);expect(frame).not.toContain('sensitive');
    await pool.query("UPDATE identity.product_access SET capabilities='[]' WHERE user_id=$1 AND product_id='crm'",[sales]);expect((await reader.read()).done).toBe(true);
    await pool.query("UPDATE identity.product_access SET capabilities=NULL WHERE user_id=$1 AND product_id='crm'",[sales]);
   }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}

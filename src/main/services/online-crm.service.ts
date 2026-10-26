@@ -1,5 +1,5 @@
 import type { ImportFileContent } from "../../shared/online-crm";
-import type { AccountProfile, Result, Identity, OnlineLogin, ImportPreview, ImportRequest, ImportReceipt, PublishRequest, PublishReceipt, LeadBootstrap, LeadQuery, LeadPage, LeadDetail, LeadCommand, FollowupRequest, OnlineFeed } from '../../shared/online-crm';
+import type { AccountProfile, Result, Identity, OnlineLogin, ImportPreview, ImportRequest, ImportReceipt, PublishRequest, PublishReceipt, LeadBootstrap, LeadQuery, LeadPage, LeadDetail, LeadCommand, FollowupRequest, OnlineFeed, NotificationReadAllReceipt } from '../../shared/online-crm';
 import type { OnlineSessionSnapshot, OnlinePasswordChange, OnlineRegistration, RegisteredAccount, OnlineFeedRequest } from '../../shared/online-crm';
 import type { LoginAccountQuery, SavedAccountLogin, OnlineLogout } from '../../shared/online-crm';
 import type { CustomerCreate, CustomerUpdate, MemberQuery, MemberPage } from '../../shared/online-crm';
@@ -9,6 +9,7 @@ import {centerContactQuery,centerContactPath,type CenterContactPage,type CenterC
 import { WORKBOOK_IMPORT_ROUTE, type WorkbookImportRequest, type WorkbookImportReceipt } from '../../../server/core/customer-import';
 import type { FollowupTask, TaskQuery, TaskPage, TaskCreate, TaskReschedule, TaskComplete } from '../../../server/core/tasks';
 import { OPPORTUNITY_ROUTES, type Opportunity, type OpportunityPage, type OpportunityQuery, type OpportunityCreate, type OpportunityUpdateStage } from '../../../server/core/opportunities';
+import { NOTIFICATION_ROUTES } from '../../../server/core/notifications';
 import { CONTACT_ASSIGNMENT_ROUTES, type CenterCompanyUpdate,type CenterContactRef, type CenterContactDetail, type CenterContactUpdate, type CenterContactFollowup, type ContactAssignmentQuery, type ContactAssignmentPage, type ContactAssignmentCreate, type ContactAssignmentReceipt, type ContactAssignmentDecision, type ContactAssignment } from '../../../server/core/contact-assignments';
 import {companyUpdate,contactRef,contactUpdate,contactFollowup,contactAssignmentQuery,contactAssignmentCreate,contactAssignmentDecision} from '../../../server/services/contact-assignments';
 import {companyCreate,companyDelete,companyQuery,companyRef,contactDelete} from '../../../server/services/crm-lifecycle';
@@ -98,7 +99,7 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     updateCustomer:(input:CustomerUpdate)=>port.request<LeadDetail>('POST',`/api/crm/leads/${encodeURIComponent(input.customerId)}/update`,input),
     members:(query:MemberQuery)=>port.request<MemberPage>('GET',`${LEAD_ROUTES.members}?search=${encodeURIComponent(query.search)}&limit=${query.limit}&offset=${query.offset}`),
     followup:(input:FollowupRequest)=>port.request<LeadDetail>('POST',`/api/crm/leads/${encodeURIComponent(input.customerId)}/followups`,input),
-    feed:(input?:OnlineFeedRequest)=>port.feed(input), read:(id:string)=>port.request<void>('POST',`/api/crm/notifications/${encodeURIComponent(id)}/read`,{}),
+    feed:(input?:OnlineFeedRequest)=>port.feed(input), read:(id:string)=>port.request<void>('POST',`/api/crm/notifications/${encodeURIComponent(id)}/read`,{}), readAll:()=>port.request<NotificationReadAllReceipt>('POST',NOTIFICATION_ROUTES.readAll,{}),
     tasks:(query:TaskQuery)=>port.tasks?.(query) ?? Promise.resolve(failure('UNAVAILABLE','任务服务不可用')),
     createTask:(input:TaskCreate)=>port.createTask?.(input) ?? Promise.resolve(failure('UNAVAILABLE','任务服务不可用')),
     rescheduleTask:(input:TaskReschedule)=>port.rescheduleTask?.(input) ?? Promise.resolve(failure('UNAVAILABLE','任务服务不可用')),

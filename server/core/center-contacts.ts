@@ -5,6 +5,11 @@ import { CONTACT_TOUCH_STATUSES, type ContactTouchStatus, type CustomerStage, ty
 export const CENTER_CONTACT_ROUTE = '/api/crm/contacts';
 export const CENTER_CONTACT_LIMITS = { page: 50, pageMax: 100, text: 500 } as const;
 export const CENTER_CONTACT_FILTERS = ['stage', 'status', 'tags', 'clientType', 'country', 'language'] as const;
+export const CENTER_CONTACT_REMARK_KEY = 'note';
+export function centerContactRemark(extra: JsonObject): string {
+  const value = extra[CENTER_CONTACT_REMARK_KEY];
+  return typeof value === 'string' ? value.trim() : '';
+}
 export interface CenterContactQuery {
   search: string; limit: number; offset: number;
   /** Sending sequence, never the customer's relationship stage. */

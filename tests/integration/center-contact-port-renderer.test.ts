@@ -81,11 +81,11 @@ describe('center data port for original contact table', () => {
   it('exports current scope and filters, quotes formula-like values as text, and propagates errors', async () => {
     const port = createCenterContactPort({key:'export',scope:'assigned',invoke: async (_channel,input) => {
       expect(input).toMatchObject({scope:'assigned',search:'test',country:'BR'});
-      return {ok:true,data:{items:[{...contact,firstName:'=unsafe',clientType:'agent',businessType:'海运',website:'https://example.invalid',phone:'111',whatsapp:'222',sourceLevel1:'展会',sourceLevel2:'上海展'}],total:1}};
+      return {ok:true,data:{items:[{...contact,firstName:'=unsafe',clientType:'agent',businessType:'海运',website:'https://example.invalid',phone:'111',whatsapp:'222',sourceLevel1:'展会',sourceLevel2:'上海展',extra:{note:'Profile：展会客户\n邮箱有效性：有效'}}],total:1}};
     }});
     const result = await port.export!('contacts',{search:'test',country:'BR'});
     expect(result.success).toBe(true); expect(result.data).toContain("'=unsafe");
-    for(const value of ['公司名','职位 / Title','客户类型','代理','业务类型','海运','网站','https://example.invalid','WhatsApp','222','一级来源','展会','二级来源','上海展','导入批次来源']) expect(result.data).toContain(`"${value}"`);
+    for(const value of ['公司名','职位 / Title','客户类型','代理','业务类型','海运','网站','https://example.invalid','WhatsApp','222','一级来源','展会','二级来源','上海展','导入批次来源','备注','Profile：展会客户\n邮箱有效性：有效']) expect(result.data).toContain(`"${value}"`);
   });
 
 });

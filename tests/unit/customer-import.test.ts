@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { autoMapping, importFingerprint, mappedImportRows, prepareImportRequests } from '../../src/renderer/pages/customers/customerImport';
 import { importRowIssue } from '../../server/core/leads';
+import { IMPORT_REMARK_MAX, unmatchedImportRemark } from '../../server/core/lead-import-fields';
 
 describe('customer import preparation', () => {
   it('does not silently choose between ambiguous aliases and trims header whitespace', () => {
@@ -31,5 +32,12 @@ describe('customer import preparation', () => {
     expect(importFingerprint(input, { customerKey: 'id' })).toBe(importFingerprint(input, { customerKey: 'id' }));
     expect(importFingerprint(input, { customerKey: 'id' })).not.toBe(importFingerprint({ ...input, data: 'id,company\n2,Acme' }, { customerKey: 'id' }));
     expect(importFingerprint(input, { customerKey: 'id' })).not.toBe(importFingerprint(input, { customerKey: 'company' }));
+  });
+  it('turns every non-empty unmapped column into one labelled remark line', () => {
+    const raw = { '公司名称': 'Acme', Phone: '+1 555', '加入协会': 'WCA', Profile: 'line one\nline two', Fax: '(N/A)', '邮箱有效性': '有效', Count: 0 };
+    expect(unmatchedImportRemark(raw, ['公司名称', 'phone'])).toBe('加入协会：WCA\nProfile：line one\nline two\n邮箱有效性：有效\nCount：0');
+    expect(unmatchedImportRemark({ 公司名称: 'Acme', 备注: '第一行\n第二行' }, ['公司名称'])).toBe('第一行\n第二行');
+    expect(unmatchedImportRemark(undefined, [])).toBe('');
+    expect(importRowIssue({ customerKey: 'a', companyName: 'Acme', email: 'a@example.invalid', remark: 'x'.repeat(IMPORT_REMARK_MAX + 1) })).toBe('未匹配字段备注过长');
   });
 });

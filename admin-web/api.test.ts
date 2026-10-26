@@ -4,6 +4,16 @@ import { api, configureSession, readChallenge } from "./api";
 
 afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
 describe("browser admin session boundaries", () => {
+  it("reads the data catalog and sends paging, search, and sorting to the same endpoint", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, data: [] }) });
+    vi.stubGlobal("fetch", fetch);
+    await api.dataTables();
+    expect(new URL(fetch.mock.calls[0]![0], "http://localhost").pathname).toBe("/admin-api/data");
+    await api.data({ table: "public.contacts", search: "acme", limit: 50, offset: 100, sort: "updated_at", direction: "desc" });
+    const url = new URL(fetch.mock.calls[1]![0], "http://localhost");
+    expect(url.pathname).toBe("/admin-api/data");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ table: "public.contacts", search: "acme", limit: "50", offset: "100", sort: "updated_at", direction: "desc" });
+  });
   it("reads the system operations summary through the admin origin", async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, data: { version: "0.55.0-alpha.1", checks: [] } }) });
     vi.stubGlobal("fetch", fetch);

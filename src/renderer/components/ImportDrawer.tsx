@@ -193,8 +193,9 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
         key: h,
         dataIndex: h,
         width: 130,
+        ellipsis: true,
         render: (v: string) => (
-          <span className={`text-xs ${!v ? "text-gray-300" : "text-gray-700"}`}>
+          <span className={`contact-import-value text-xs ${!v ? "text-gray-300" : "text-gray-700"}`} title={v || undefined}>
             {v || "—"}
           </span>
         ),
@@ -283,7 +284,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
           </summary>
           <p className="mb-3 mt-3 text-[11px] text-gray-400">
             第一行为表头，系统会自动匹配中英文列名并忽略大小写与空格。
-            {port ? '其他列保留为导入原始记录。' : '未匹配的列保留在「额外信息」中。'}
+            {port ? '未匹配的非空列会自动汇总为联系人备注。' : '未匹配的列保留在「额外信息」中。'}
           </p>
           {(port ? [
             {title:'公司资料',fields:FIELD_ALIASES.filter(field=>field.group==='company')},
@@ -321,9 +322,10 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
             dataSource={dataSource}
             rowKey="__idx"
             size="small"
+            tableLayout="fixed"
             scroll={{ x: preview.headers.length * 130 }}
             pagination={false}
-            className="[&_.ant-table-thead>tr>th]:!text-[10px] [&_.ant-table-thead>tr>th]:!p-1"
+            className="contact-import-preview-table [&_.ant-table-thead>tr>th]:!text-[10px] [&_.ant-table-thead>tr>th]:!p-1"
           />
 
         </div>

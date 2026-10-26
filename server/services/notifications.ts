@@ -11,6 +11,7 @@ export function createNotificationService(repo:NotificationRepository,tokens:Tok
    return repo.feed(tokens.hash(token),input);
   },
   async read(token:string,id:string){return UUID.test(id)?repo.read(tokens.hash(token),id):failure('INVALID_INPUT','通知标识无效');},
+  async readAll(token:string){return repo.readAll(tokens.hash(token));},
   async watermark(token:string){return repo.watermark(tokens.hash(token));},
  };
 }

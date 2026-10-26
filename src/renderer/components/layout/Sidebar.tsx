@@ -274,8 +274,8 @@ export function Sidebar() {
   const indicatorRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    if (offline || !session?.identity) setMessagesOpen(false);
-  }, [offline, session?.identity]);
+    if (!session?.identity) setMessagesOpen(false);
+  }, [session?.identity]);
 
   useEffect(() => {
     const offChunk = window.api.on("agent:chunk", () => setAgentBusy(true));
@@ -437,7 +437,7 @@ export function Sidebar() {
             content={<MessageCenterPanel />}
           >
             <span className="message-center-trigger">
-              <FootIcon icon={<><BellOutlined />{(notifications?.unread ?? 0) > 0 && <span className="sidebar-message-badge" aria-label={`${notifications?.unread} 条未读`}>{notifications?.unread}</span>}</>} label="消息中心" disabled={offline} active={messagesOpen} onClick={() => undefined} />
+              <FootIcon icon={<><BellOutlined />{(notifications?.unread ?? 0) > 0 && <span className="sidebar-message-badge" aria-label={`${notifications?.unread} 条未读`}>{notifications?.unread}</span>}</>} label="消息中心" active={messagesOpen} onClick={() => undefined} />
             </span>
           </Popover>}
         </div>

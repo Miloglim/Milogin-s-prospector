@@ -25,3 +25,28 @@ export function leadImportMapping(headers:string[]):Record<string,string> {
     return matches.length===1?[[field.key,matches[0]!]]:[];
   }));
 }
+
+export const IMPORT_REMARK_MAX = 20000;
+const EMPTY_IMPORT_VALUES = new Set(['', 'n/a', 'na', '(n/a)', 'null', 'none', 'nil', '-', '--', '—', '暂无', '无', '未提供']);
+const DIRECT_REMARK_HEADERS = new Set(['备注', 'remark', 'note', 'notes', '说明']);
+function remarkValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value).trim();
+  try { return JSON.stringify(value).trim(); }
+  catch { /* Import rows are JSON data; malformed non-JSON values are omitted instead of breaking the batch. */ return ''; }
+}
+/** Convert every non-empty column that the user did not map into one labelled line per field. */
+export function unmatchedImportRemark(rawRow: Record<string, unknown> | undefined, mappedHeaders: Iterable<string>): string {
+  if (!rawRow) return '';
+  const mapped = new Set(Array.from(mappedHeaders, normalizeImportHeader).filter(Boolean));
+  const lines: string[] = [];
+  for (const [rawHeader, rawValue] of Object.entries(rawRow)) {
+    const header = rawHeader.trim();
+    const normalizedHeader = normalizeImportHeader(header);
+    if (!header || mapped.has(normalizedHeader)) continue;
+    const value = remarkValue(rawValue);
+    if (EMPTY_IMPORT_VALUES.has(value.toLowerCase())) continue;
+    lines.push(DIRECT_REMARK_HEADERS.has(normalizedHeader) ? value : `${header}：${value}`);
+  }
+  return lines.join('\n');
+}

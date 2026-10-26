@@ -150,7 +150,9 @@ body.workspace-dark .customer-classic-floating-detail .border-gray-200 { border-
 .customer-assignment-table{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .customer-assignment-table .ant-spin-nested-loading,.customer-assignment-table .ant-spin-container{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .customer-assignment-table .ant-table{flex:1 1 auto;min-height:0}
-.customer-assignment-table .ant-table-container{min-height:0;display:flex;flex-direction:column}
+.customer-assignment-table .ant-table-container{width:100%;min-height:0;display:flex;flex-direction:column}
+.customer-assignment-table .ant-table-body,.customer-assignment-table .ant-table-content{width:100%;scrollbar-gutter:auto}
+.customer-assignment-table table{width:100%!important;min-width:900px;table-layout:fixed}
 .customer-assignment-table .ant-table-body{flex:1 1 auto;min-height:0;overflow:auto!important}
 .customer-assignment-table-wrap{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .customer-assignment-table.is-empty,
@@ -164,6 +166,8 @@ body.workspace-dark .customer-classic-floating-detail .border-gray-200 { border-
 .customer-assignment-table.is-empty .ant-table-container{display:block!important}
 .customer-assignment-table.is-empty .ant-table-body{overflow-x:auto!important;overflow-y:hidden!important}
 .customer-assignment-table.is-empty .ant-table-thead>tr>th::before{display:none!important}
+.company-empty-state{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}
+.company-empty-state .ant-empty{margin:0}
 .customer-legacy-page{gap:12px;padding-bottom:0}
 .customer-table-deferred{flex:1 1 auto;min-height:0;overflow:hidden;border:1px solid var(--customer-border,#e5e7eb);border-radius:8px;background:var(--customer-surface,#fff)}
 .customer-table-skeleton-head,.customer-table-skeleton-row{display:grid;grid-template-columns:28px minmax(150px,1.4fr) minmax(100px,1fr) minmax(120px,1.1fr) minmax(100px,1fr) minmax(80px,.8fr) minmax(80px,.8fr);align-items:center;gap:12px;padding:0 12px}

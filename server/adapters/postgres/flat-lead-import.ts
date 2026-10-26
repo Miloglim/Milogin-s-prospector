@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { importRowIssue, type ImportRequest, type ImportReceipt, type ImportReceiptRow } from '../../core/leads';
+import { unmatchedImportRemark } from '../../core/lead-import-fields';
 import type { LeadActor } from './lead-repository';
 import { canDeleteContact, loadContactIn } from './contact-assignment-repository';
 
@@ -12,7 +13,14 @@ export async function importFlatLeadsIn(c: PoolClient, actor: LeadActor, input: 
   await c.query('INSERT INTO crm_import_batches(batch_id,actor_id,source,source_detail,mapping) VALUES($1,$2,$3,$4,$5)', [batchId,actor.userId,input.source,input.sourceDetail,JSON.stringify(input.mapping ?? {})]);
   const rows: ImportReceiptRow[] = [];
   for (const [index, original] of input.rows.entries()) {
-    const row = {...original, customerKey:original.customerKey.trim(), companyName:original.companyName.trim(),email:original.email.trim().toLowerCase()};
+    const row = {
+      ...original,
+      customerKey: original.customerKey.trim(),
+      companyName: original.companyName.trim(),
+      email: original.email.trim().toLowerCase(),
+      remark: unmatchedImportRemark(original.rawRow, Object.values(input.mapping ?? {})),
+    };
+    const extra = JSON.stringify(row.remark ? { note: row.remark } : {});
     const rowId = randomUUID();
     let status: ImportReceiptRow['status'] = 'created';
     let message = importRowIssue(row);
@@ -93,8 +101,9 @@ export async function importFlatLeadsIn(c: PoolClient, actor: LeadActor, input: 
                   source_level1=COALESCE($9,source_level1),source_level2=COALESCE($10,source_level2),country=COALESCE($11,country),
                   language=COALESCE($12,language),client_type=COALESCE($13,client_type),stage=COALESCE($14,stage),status=COALESCE($15,status),
                   tags=CASE WHEN $16::jsonb='[]'::jsonb THEN tags ELSE $16::jsonb END,
+                  extra=CASE WHEN $17::jsonb='{}'::jsonb THEN extra ELSE COALESCE(extra,'{}'::jsonb)||$17::jsonb END,
                   crm_deleted_at=NULL,crm_deleted_by=NULL,crm_contact_version=crm_contact_version+1,updated_at=clock_timestamp()
-                  WHERE id=$1 AND crm_deleted_at IS NOT NULL RETURNING crm_contact_version`,[deletedContact.id,companyId,...values,optional(row.country),optional(row.language),optional(row.clientType),optional(row.stage),optional(row.status),JSON.stringify(row.tags??[])]);
+                  WHERE id=$1 AND crm_deleted_at IS NOT NULL RETURNING crm_contact_version`,[deletedContact.id,companyId,...values,optional(row.country),optional(row.language),optional(row.clientType),optional(row.stage),optional(row.status),JSON.stringify(row.tags??[]),extra]);
                 if (!restored.rows.length) {
                   status='restricted_conflict'; message='联系人恢复状态已变化，请刷新后重试';
                 } else {
@@ -103,7 +112,7 @@ export async function importFlatLeadsIn(c: PoolClient, actor: LeadActor, input: 
                 }
               }
             } else {
-              const created=await c.query('INSERT INTO contacts(email,company_id,first_name,last_name,title,phone,whatsapp,linkedin,source_level1,source_level2,country,language,client_type,stage,status,tags,source,source_detail) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18) RETURNING id,crm_contact_version',[row.email||null,companyId,...values,optional(row.country),optional(row.language),optional(row.clientType),row.stage??'cold',row.status??'',JSON.stringify(row.tags??[]),input.source,input.sourceDetail]);
+              const created=await c.query('INSERT INTO contacts(email,company_id,first_name,last_name,title,phone,whatsapp,linkedin,source_level1,source_level2,country,language,client_type,stage,status,tags,extra,source,source_detail) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18,$19) RETURNING id,crm_contact_version',[row.email||null,companyId,...values,optional(row.country),optional(row.language),optional(row.clientType),row.stage??'cold',row.status??'',JSON.stringify(row.tags??[]),extra,input.source,input.sourceDetail]);
               contactId=created.rows[0].id;contactVersion=created.rows[0].crm_contact_version;
               await c.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[customerId,contactId]);
             }
