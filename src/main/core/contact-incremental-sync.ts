@@ -20,6 +20,7 @@ export interface ContactIncrementalState { cursor: string | null; permissionKey:
 export interface ContactIncrementalStore {
   state(context: ContactMirrorContext): ContactIncrementalState;
   upsert(context: ContactMirrorContext, contact: CenterContact): void;
+  upsertMany?(context: ContactMirrorContext, contacts: CenterContact[]): void;
   remove(context: ContactMirrorContext, reference: { contactId: number; customerId: string }): void;
   saveCursor(context: ContactMirrorContext, cursor: string): void;
   invalidate(context: ContactMirrorContext): void;
@@ -50,9 +51,16 @@ export async function runContactIncrementalSync(
     if (page.resyncRequired) return { kind: 'fallback', reason: 'resync-required' };
     if (page.permissionKey !== undefined && page.permissionKey !== (context.permissionKey ?? '')) return { kind: 'fallback', reason: 'permission-changed' };
     if (page.baseCursor !== cursor) { store.invalidate(context); return { kind: 'fallback', reason: 'cursor-mismatch' }; }
+    const incoming = page.changes.flatMap(change => change.kind === 'upsert' ? [change.contact] : []);
+    if (incoming.length) {
+      if (store.upsertMany) store.upsertMany(context, incoming);
+      else for (const contact of incoming) store.upsert(context, contact);
+      upserts += incoming.length;
+    }
     for (const change of page.changes) {
-      if (change.kind === 'upsert') { store.upsert(context, change.contact); upserts++; }
-      else { store.remove(context, { contactId: change.contactId, customerId: change.customerId }); tombstones++; }
+      if (change.kind !== 'tombstone') continue;
+      store.remove(context, { contactId: change.contactId, customerId: change.customerId });
+      tombstones++;
     }
     store.saveCursor(context, page.nextCursor);
     cursor = page.nextCursor; pages++;

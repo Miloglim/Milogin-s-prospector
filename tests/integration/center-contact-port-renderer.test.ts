@@ -54,6 +54,12 @@ describe('center data port for original contact table', () => {
     const port = createCenterContactPort({ key: 'fixture', invoke: async (_channel, input) => (input as { offset: number }).offset ? { ok: false, error: { code: 'UNAVAILABLE', message: '离线' } } : { ok: true, data: { items: [contact], total: 101 } } });
     expect(await port.listIds({})).toMatchObject({ success: false, error: '离线' });
   });
+  it('keeps the follow-up board query filtered instead of scanning all contacts', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const port = createCenterContactPort({ key: 'board', invoke: async (channel, input) => { calls.push([channel, input]); return { ok: true, data: { items: [contact], total: 1 } }; } });
+    expect(await port.readAll({ followupOnly: true })).toMatchObject({ success: true, data: [contact] });
+    expect(calls[0]).toEqual([ONLINE_CHANNELS.CONTACT_LIST, expect.objectContaining({ followupOnly: true, limit: 100, offset: 0 })]);
+  });
   it('creates through the existing center import contract, preserving all original drawer fields and one retry key', async () => {
     let attempts = 0; const calls: unknown[] = [];
     const port = createCenterContactPort({key:'manual', invoke: async (channel, input) => {

@@ -68,4 +68,17 @@ describe('local contact incremental sync adapter', () => {
     await expect(runContactIncrementalSync(ctx, target, async () => ({ baseCursor: 'c0', nextCursor: 'c1', hasMore: false, changes: [{ kind: 'upsert', contact: row(3) }] }))).rejects.toThrow('local write failed');
     expect(target.saveCursor).not.toHaveBeenCalled();
   });
+
+  it('applies one page of upserts as a single batch before advancing the cursor', async () => {
+    const target = store();
+    const upsertMany = vi.fn((_: typeof ctx, contacts: CenterContact[]) => { for (const contact of contacts) target.upserts.push(contact); });
+    target.upsertMany = upsertMany;
+    const changes = Array.from({ length: 100 }, (_, index) => ({ kind: 'upsert' as const, contact: row(index + 1) }));
+    const result = await runContactIncrementalSync(ctx, target, async () => ({ baseCursor: 'c0', nextCursor: 'c1', hasMore: false, changes }));
+    expect(result).toEqual({ kind: 'incremental', cursor: 'c1', pages: 1, upserts: 100, tombstones: 0 });
+    expect(upsertMany).toHaveBeenCalledTimes(1);
+    expect(upsertMany.mock.calls[0]?.[1]).toHaveLength(100);
+    expect(target.upsert).not.toHaveBeenCalled();
+    expect(target.saveCursor).toHaveBeenCalledWith(ctx, 'c1');
+  });
 });

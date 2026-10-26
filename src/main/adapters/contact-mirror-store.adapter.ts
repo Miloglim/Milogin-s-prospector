@@ -176,14 +176,14 @@ export class SqliteContactMirrorStore implements ContactMirrorStore {
     return db;
   }
 
-  private writeContacts(db: Database, contacts: CenterContact[]): void {
+  private writeContacts(db: Database, contacts: CenterContact[], knownSnapshots?: ReadonlyMap<number,string>): void {
     const statement = db.prepare(`INSERT INTO crm_contact_mirror(contact_id,customer_id,email_normalized,snapshot)
       VALUES(?,?,?,?) ON CONFLICT(contact_id) DO UPDATE SET customer_id=excluded.customer_id,
       email_normalized=excluded.email_normalized,snapshot=excluded.snapshot`);
     for (const contact of contacts) {
-      const old = db.prepare('SELECT snapshot FROM crm_contact_mirror WHERE contact_id=?').get(contact.contactId) as { snapshot: string } | undefined;
-      if (old) {
-        const previous = JSON.parse(old.snapshot) as CenterContact;
+      const oldSnapshot = knownSnapshots ? knownSnapshots.get(contact.contactId) : (db.prepare('SELECT snapshot FROM crm_contact_mirror WHERE contact_id=?').get(contact.contactId) as { snapshot: string } | undefined)?.snapshot;
+      if (oldSnapshot !== undefined) {
+        const previous = JSON.parse(oldSnapshot) as CenterContact;
         if ((contact.contactVersion ?? contact.customerVersion) < (previous.contactVersion ?? previous.customerVersion) || (contact.contactVersion ?? contact.customerVersion) === (previous.contactVersion ?? previous.customerVersion) && contact.customerVersion < previous.customerVersion) continue;
       }
       statement.run(contact.contactId, contact.customerId, normalizedContactEmail(contact.email), JSON.stringify(contact));
@@ -262,8 +262,11 @@ export class SqliteContactMirrorStore implements ContactMirrorStore {
   upsertContacts(ctx: ContactMirrorContext, contacts: CenterContact[]): void {
     const db = this.database(ctx);
     db.transaction(() => {
-      const previous=new Map(this.contacts(ctx).map(row=>[row.contactId,row]));
-      this.writeContacts(db, contacts);
+      const ids=[...new Set(contacts.map(row=>row.contactId))];
+      const snapshots=ids.length?db.prepare('SELECT contact_id,snapshot FROM crm_contact_mirror WHERE contact_id IN (SELECT value FROM json_each(?))').all(JSON.stringify(ids)) as {contact_id:number;snapshot:string}[]:[];
+      const known=new Map(snapshots.map(row=>[row.contact_id,row.snapshot]));
+      const previous=new Map([...known].map(([contactId,snapshot])=>[contactId,JSON.parse(snapshot) as CenterContact]));
+      this.writeContacts(db, contacts, known);
       let changed=false;
       for(const incoming of contacts){
         const old=previous.get(incoming.contactId),current=this.contact(ctx,incoming);

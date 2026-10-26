@@ -11,6 +11,6 @@ export default defineConfig({
     // produced widespread 5s timeouts that disappeared at four workers.
     minWorkers: 1,
     maxWorkers: 4,
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.trash/**", "**/checkpoints/**", "**/*.bak", "**/scripts/check.test.mjs"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.trash/**", "**/.work/**", "**/checkpoints/**", "**/*.bak", "**/scripts/check.test.mjs"],
   },
 });

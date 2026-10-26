@@ -33,7 +33,7 @@ export interface CenterContactPort extends ContactDataPort {
   records: Map<number, CenterContact>;
   scope?:CenterContactQuery['scope'];
   isCurrent():boolean;
-  readAll(filters?: { search?: string } & ContactFilters): Promise<{ success: boolean; data?: CenterContact[]; error?: string }>;
+  readAll(filters?: { search?: string; followupOnly?: boolean } & ContactFilters): Promise<{ success: boolean; data?: CenterContact[]; error?: string }>;
 }
 export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'all', assignment, isCurrent = () => true }: { key: string; invoke?: CenterInvoke; scope?: CenterContactQuery['scope']; assignment?: 'accepted'; isCurrent?: () => boolean }): CenterContactPort {
   const records = new Map<number, CenterContact>();
@@ -51,7 +51,7 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
   }
   let creation: { signature: string; payload: ImportRequest } | null = null;
   const scans = new Map<string, ReturnType<CenterContactPort['readAll']>>();
-  const read = async (params: { search?: string; page?: number; pageSize?: number } & ContactFilters = {}) => {
+  const read = async (params: { search?: string; page?: number; pageSize?: number; followupOnly?: boolean } & ContactFilters = {}) => {
     const pageSize = params.pageSize ?? CENTER_CONTACT_LIMITS.page;
     const { page, pageSize: _pageSize, ...filters } = params;
     const result = await invoke<CenterContactPage>(ONLINE_CHANNELS.CONTACT_LIST, { search: '', ...filters, scope, ...(assignment ? { assignment } : {}), limit: pageSize, offset: ((page ?? 1) - 1) * pageSize });
@@ -62,12 +62,16 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
   };
   const scan: CenterContactPort['readAll'] = async (filters = {}) => {
     const items: CenterContact[] = [];
+    const seen = new Set<number>();
     let page = 1;
     while (true) {
       const result = await read({ ...filters, page, pageSize: CENTER_CONTACT_LIMITS.pageMax });
       if (!result.success || !result.data) return { success: false, error: result.error ?? '联系人查询失败' };
-      items.push(...result.data.items);
-      if (new Set(items.map(row => row.contactId)).size !== items.length) return { success: false, error: '联系人列表已变化，请刷新重试' };
+      for (const row of result.data.items) {
+        if (seen.has(row.contactId)) return { success: false, error: '联系人列表已变化，请刷新重试' };
+        seen.add(row.contactId);
+        items.push(row);
+      }
       if (items.length >= result.data.total) return { success: true, data: items };
       if (!result.data.items.length) return { success: false, error: '联系人列表已变化，请刷新重试' };
       page++;

@@ -35,6 +35,15 @@ function row(contactId: number, fields: Partial<CenterContact> = {}): CenterCont
     ownerUserId: 'alice', ownerName: null, origin: 'personal', state: 'owned', assignmentStatus: null, ...fields };
 }
 describe('indexed SQLite contact pages', () => {
+  it('updates an incremental batch without decoding unrelated mirror rows', () => {
+    const { store } = fixture();
+    const rows = Array.from({ length: 5_000 }, (_, index) => row(index + 1));
+    store.replaceContacts(ctx, rows);
+    const fullRead = vi.spyOn(store, 'contacts');
+    store.upsertContacts(ctx, [{ ...rows[0]!, contactVersion: 4, firstName: 'updated' }]);
+    expect(fullRead).not.toHaveBeenCalled();
+    expect(store.contacts(ctx)).toHaveLength(5_000);
+  });
   it('keeps count and items on one WAL read snapshot while another connection updates the cache', () => {
     const directory = mkdtempSync(join(tmpdir(), 'prospector-contact-page-')); directories.push(directory);
     const file = join(directory, 'isolated.db');

@@ -84,6 +84,11 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
   const revision=(ctx:ContactMirrorContext,ref:CenterContactRef)=>lifecycleRevisions.get(lifecycleKey(ctx,ref))??0;
   const invalidateContact=(ctx:ContactMirrorContext,ref:CenterContactRef)=>lifecycleRevisions.set(lifecycleKey(ctx,ref),revision(ctx,ref)+1);
   const changedAccess=(left:CenterContact|undefined,right:CenterContact|undefined)=>!left||!right||contactAccessFingerprint(contactDetailSnapshot(left))!==contactAccessFingerprint(contactDetailSnapshot(right));
+  const upsertManyContacts=(ctx:ContactMirrorContext,rows:CenterContact[])=>{
+    const before=new Map(rows.map(row=>[row.contactId,mirror.store.contact(ctx,row)]));
+    mirror.store.upsertContacts(ctx,rows);
+    for(const row of rows)if(changedAccess(before.get(row.contactId),mirror.store.contact(ctx,row)))invalidateContact(ctx,row);
+  };
   const saveDetail=(ctx:ContactMirrorContext,detail:CenterContactDetail)=>{
     const before=mirror.store.contact(ctx,detail.contact);mirror.store.saveDetail(ctx,detail);
     const accepted=mirror.store.contact(ctx,detail.contact);
@@ -158,12 +163,8 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
     incremental: {
       store: {
         state: ctx => mirror.store.incrementalState?.(ctx) ?? { cursor: null, permissionKey: ctx.permissionKey ?? '' },
-        upsert: (ctx, contact) => {
-          const before = mirror.store.contact(ctx, contact);
-          mirror.store.upsertContacts(ctx, [contact]);
-          const current = mirror.store.contact(ctx, contact);
-          if (changedAccess(before, current)) invalidateContact(ctx, contact);
-        },
+        upsert: (ctx, contact) => upsertManyContacts(ctx, [contact]),
+        upsertMany: upsertManyContacts,
         remove: (ctx, reference) => {
           mirror.store.forgetContact(ctx, reference);
           invalidateContact(ctx, reference);

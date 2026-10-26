@@ -52,6 +52,7 @@ describe('center contact board first click', () => {
     } as unknown as CenterContactPort;
     await act(async () => root.render(<QueryClientProvider client={client}><CenterContactViews port={port} view="board" /></QueryClientProvider>));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 80)); });
+    expect(port.readAll).toHaveBeenCalledWith({ followupOnly: true });
     const contact = Array.from(host.querySelectorAll('span')).find(element => element.textContent === 'Fixture');
     expect(contact).toBeTruthy();
     await act(async () => { contact!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await new Promise(resolve => setTimeout(resolve, 40)); });
