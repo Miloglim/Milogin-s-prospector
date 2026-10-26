@@ -48,6 +48,8 @@ describe('GitHub Release Atom metadata', () => {
   it('removes the unauthenticated GitHub REST API dependency from updater checks', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/main/updater.ts'), 'utf8');
     expect(source).toContain('releases.atom');
+    expect(source).toContain('net.fetch');
+    expect(source).not.toContain('netFetch');
     expect(source).not.toContain('api.github.com');
   });
 });

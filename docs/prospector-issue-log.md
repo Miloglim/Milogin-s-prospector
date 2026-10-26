@@ -16,7 +16,7 @@
 - 现象：客户端检查新版本时可能受 GitHub 未认证 REST API 限流影响，或把发布源错误统一显示成仓库权限问题。
 - 原因：主进程直接请求 GitHub Releases REST API，且旧版本比较只取版本核心段，不能可靠区分 `alpha.1`、`alpha.2`。
 - 修改：改用公开 Release Atom；新增独立解析、SemVer 预发布比较与稳定/预发布通道选择。REST API 不再参与常规更新检测，下载仍使用 electron-updater 的 Release 资产。
-- 验证：Atom 解析、通道选择、预发布比较和“源码不得包含 api.github.com”测试通过；全量回归 `1740 passed / 187 skipped`。
+- 验证：Atom 解析、通道选择、预发布比较和“源码不得包含 api.github.com”测试通过；真实 Electron 主进程读取公网 Atom 后，`update:listVersions` 返回 5 个版本，`update:check` 返回成功，不再出现 403。全量回归 `1740 passed / 187 skipped`。
 - 边界：Release 必须继续包含当前版本 EXE、blockmap 和 `latest.yml`；Atom 只负责发现新版本，不替代下载资产校验。
 
 ### 程序长时间运行后响应变慢

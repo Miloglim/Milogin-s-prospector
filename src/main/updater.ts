@@ -3,11 +3,10 @@
 // main/index.ts 启动时调用 init(mainWindow) 即可
 
 import { autoUpdater } from "electron-updater";
-import { ipcMain, app } from "electron";
+import { app, net } from "electron";
 import type { BrowserWindow } from "electron";
 import { IPC } from "./contract";
 import { Log } from "./logger";
-import { netFetch } from "./net-proxy";
 import { compareReleaseVersions, latestReleaseForChannel, parseReleaseFeed, type UpdateRelease } from "./services/update-metadata.service";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 小时
@@ -18,10 +17,10 @@ let _checkTimer: ReturnType<typeof setInterval> | null = null;
 let _channel: "stable" | "prerelease" = "stable";
 
 async function fetchReleases(): Promise<UpdateRelease[]> {
-  const response = await netFetch(RELEASE_FEED, { headers: {
-    "User-Agent": "prospecting-email",
-    Accept: "application/atom+xml, application/xml, text/xml",
-  } });
+  const response = await net.fetch(RELEASE_FEED, {
+    headers: { "User-Agent": "prospecting-email", Accept: "application/atom+xml, application/xml, text/xml" },
+    signal: AbortSignal.timeout(15_000),
+  });
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${(await response.text().catch(() => "")).slice(0, 200)}`);
   return parseReleaseFeed(await response.text());
 }
