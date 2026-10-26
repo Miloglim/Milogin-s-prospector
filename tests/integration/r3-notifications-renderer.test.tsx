@@ -41,6 +41,22 @@ describe('R3 global notification ownership', () => {
     expect(host.querySelectorAll('.message-row.is-unread')).toHaveLength(0);
     expect(host.querySelector<HTMLButtonElement>('button[aria-label="一键已读全部消息"]')!.disabled).toBe(true);
   });
+  it('falls back to existing single-read endpoints when an older center lacks bulk read', async () => {
+    const normal = invoke.getMockImplementation()!;
+    const second = { ...item, id: 'notification-b', cursor: '2', createdAt: '2026-10-12T01:00:00Z' };
+    invoke.mockImplementation(async channel => {
+      if (channel === CHANNEL.FEED) return { ok: true, data: { items: [item, second], nextCursor: '2', hasMore: false } };
+      if (channel === CHANNEL.READ_ALL) return { ok: false, error: { code: 'NOT_FOUND', message: '通知接口不存在' } };
+      if (channel === CHANNEL.READ) return { ok: true };
+      return normal(channel);
+    });
+    await mount();
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="一键已读全部消息"]')!.click(); await Promise.resolve(); });
+    expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.READ_ALL)).toHaveLength(1);
+    expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.READ)).toHaveLength(2);
+    expect(notifications.unread).toBe(0);
+    expect(host.querySelectorAll('.message-row.is-unread')).toHaveLength(0);
+  });
   it('checks exact detail authorization before read and navigates to the real customer drawer', async () => {
     await mount(); await act(async () => { host.querySelector<HTMLButtonElement>('button.message-main')!.click(); });
     const channels = invoke.mock.calls.map(call => call[0]); expect(channels.indexOf(CHANNEL.DETAIL)).toBeLessThan(channels.indexOf(CHANNEL.READ));
