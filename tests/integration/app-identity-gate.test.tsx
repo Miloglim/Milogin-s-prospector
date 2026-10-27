@@ -33,8 +33,8 @@ describe('application login boundary', () => {
     host = document.createElement('div'); document.body.append(host); root = createRoot(host); query = new QueryClient();
   });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); query.clear(); vi.restoreAllMocks(); });
-  const mount = async (invoke: ReturnType<typeof vi.fn>) => {
-    Object.defineProperty(window, 'api', { configurable: true, value: { invoke, on: vi.fn(() => () => {}) } });
+  const mount = async (invoke: ReturnType<typeof vi.fn>, on = vi.fn(() => () => {})) => {
+    Object.defineProperty(window, 'api', { configurable: true, value: { invoke, on } });
     await act(async () => root.render(<QueryClientProvider client={query}><App /></QueryClientProvider>));
   };
   it('never mounts a route while restoring or logged out; creation opens a real form without making requests', async () => {
@@ -87,6 +87,19 @@ describe('application login boundary', () => {
     expect(host.querySelector('[data-testid="business-router"]')).not.toBeNull();
     expect(host.querySelector('form')).toBeNull();
     expect(router.navigate).toHaveBeenCalledWith({to:'/customers',replace:true});
+  });
+  it('shows one global prompt for an available update and opens settings', async () => {
+    let updateHandler: ((value: unknown) => void) | undefined;
+    const on = vi.fn((channel: string, listener: (value: unknown) => void) => {
+      if (channel === 'update:available') updateHandler = listener;
+      return () => {};
+    });
+    await mount(vi.fn(async () => ({ ok: true, data: { identity, baseUrl: 'http://127.0.0.1:55844', remembered: true, localAvailable: false } })), on);
+    await act(async () => { updateHandler?.({ version: '0.60.0', prerelease: false }); });
+    expect(document.body.textContent).toContain('发现新版本');
+    expect(document.body.textContent).toContain('v0.60.0 已发布');
+    await act(async () => { Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '前往更新')!.click(); });
+    expect(router.navigate).toHaveBeenCalledWith({ to: '/settings' });
   });
   it('opens cached inbox on verified offline startup while keeping business routes available', async () => {
     await mount(vi.fn(async () => ({ ok: true, data: { identity, baseUrl: 'http://127.0.0.1:55844', remembered: true, localAvailable: true, connection: 'offline' } })));

@@ -184,11 +184,11 @@ function RangeRow({ label, min, max, onSaveMin, onSaveMax, hint }: {
 }
 
 // ── 分区卡片 ──
-function SettingCard({ icon, title, required, children, status }: {
-  icon?: React.ReactNode; title: string; required?: boolean; children: React.ReactNode; status?: React.ReactNode;
+function SettingCard({ id, icon, title, required, children, status }: {
+  id?: string; icon?: React.ReactNode; title: string; required?: boolean; children: React.ReactNode; status?: React.ReactNode;
 }) {
   return (
-    <div className={`settings-group ${required ? "is-required" : ""}`}>
+    <div id={id} className={`settings-group ${required ? "is-required" : ""}`}>
       <div className="settings-group-heading">
         <h3>
           {icon ? <span className="opacity-50">{icon}</span> : null} {title}
@@ -1425,7 +1425,7 @@ export function SettingsPage() {
               style={{ cursor: "default" }}
             >{appVersion?.success ? `v${appVersion.data}` : '—'}</span></div>
           </SettingCard>
-          <SettingCard title="检查更新"><UpdateChecker /></SettingCard>
+          <SettingCard id="settings-update" title="检查更新"><UpdateChecker /></SettingCard>
         </SettingsPanel>
       </div>
 

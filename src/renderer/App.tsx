@@ -37,6 +37,35 @@ function RestartRequestDialog() {
   </Modal>;
 }
 
+type UpdatePromptInfo = { version: string; prerelease?: boolean };
+
+function UpdateAvailableDialog() {
+  const session = useIdentity();
+  const [update, setUpdate] = useState<UpdatePromptInfo | null>(null);
+  const prompted = useRef(new Set<string>());
+  useEffect(() => window.api.on('update:available', (value: unknown) => {
+    const info = value as Partial<UpdatePromptInfo> | null;
+    const version = typeof info?.version === 'string' ? info.version.trim() : '';
+    if (!version || prompted.current.has(version)) return;
+    prompted.current.add(version);
+    if (router.state.location.pathname === '/settings') return;
+    setUpdate({ version, prerelease: info?.prerelease === true });
+  }), []);
+  useEffect(() => {
+    if (!session.identity || session.identity.mustChangePassword) setUpdate(null);
+  }, [session.identity?.userId, session.identity?.mustChangePassword]);
+  const openSettings = () => {
+    setUpdate(null);
+    void router.navigate({ to: '/settings' });
+    window.setTimeout(() => document.getElementById('settings-update')?.scrollIntoView({ block: 'center' }), 100);
+  };
+  return <Modal open={!!update && !!session.identity && !session.identity.mustChangePassword}
+    title="发现新版本" centered okText="前往更新" cancelText="稍后"
+    onOk={openSettings} onCancel={() => setUpdate(null)}>
+    {update && <p>v{update.version} 已发布</p>}
+  </Modal>;
+}
+
 function IdentityGate() {
   const session = useIdentity();
   const [pathname, setPathname] = useState(() => router.state.location.pathname);
@@ -85,7 +114,7 @@ function ApplicationTheme() {
       renderEmpty={() => <AppEmptyState />}
       theme={brandTheme(workspaceDark)}>
       <AntApp>
-        <NotificationProvider><RestartRequestDialog /><BusinessEvents /><IdentityGate /></NotificationProvider>
+        <NotificationProvider><RestartRequestDialog /><UpdateAvailableDialog /><BusinessEvents /><IdentityGate /></NotificationProvider>
       </AntApp>
     </ConfigProvider>
   );
