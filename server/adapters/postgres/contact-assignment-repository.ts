@@ -6,12 +6,13 @@ import {sharedAccessSql,validShareSql} from './contact-sharing-sql';
 import {createHash,randomUUID} from 'node:crypto';
 import type {PoolClient} from 'pg';
 import {failure,success,type Result} from '../../core/crm';
-import {CONTACT_ASSIGNMENT_EVENTS,isContactAssignmentTarget,type ContactAssignment,type ContactAssignmentCreate,type ContactAssignmentDecision,type ContactAssignmentQuery,type CenterCompanyUpdate,type CenterContactRef,type CenterContactUpdate,type CenterContactFollowup,type CenterContactDetail} from '../../core/contact-assignments';
-import type {CenterContact,CenterContactQuery,CenterContactPage} from '../../core/center-contacts';
+import {CONTACT_ASSIGNMENT_EVENTS,isContactAssignmentTarget,type ContactAssignment,type ContactAssignmentCreate,type ContactAssignmentDecision,type ContactAssignmentGroupDecision,type ContactAssignmentGroupPage,type ContactAssignmentGroupQuery,type ContactAssignmentQuery,type CenterCompanyUpdate,type CenterContactRef,type CenterContactUpdate,type CenterContactFollowup,type CenterContactDetail} from '../../core/contact-assignments';
+import type {CenterContact,CenterContactGroupDimension,CenterContactGroupPage,CenterContactGroupQuery,CenterContactQuery,CenterContactPage} from '../../core/center-contacts';
 import {FOLLOWUP_TIME_LIMITS} from '../../core/leads';
 import type {LeadActor} from './lead-repository';
 import {CONTACT_MAIL_LIMITS} from '../../core/contact-mail';
 import {contactMailEventsIn} from './contact-mail-repository';
+import {migrateContactAssignmentGroups} from './contact-assignment-group-schema';
 const MILLISECONDS_PER_SECOND=1000;
 const FOLLOWUP_LEGACY_STATUS={contacted:'reached',replied:'replied',bounced:'bounced',autoreply:'autoreply',uncontacted:''} as const;
 export const CONTACT_OWNER_SQL="COALESCE((SELECT ar.target_user_id FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status='accepted'),c.owner_user_id)";
@@ -45,16 +46,30 @@ export async function listContactsIn(c:PoolClient,a:LeadActor,q:CenterContactQue
  AND ($12::text IS NULL OR ($12='accepted' AND EXISTS(SELECT 1 FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status='accepted')) OR ($12='unassigned' AND ${CONTACT_OWNER_SQL} IS NULL AND NOT EXISTS(SELECT 1 FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status='pending')))
  AND (NOT $13::boolean OR ct.crm_touch_status IN ('contacted','replied','bounced','autoreply'))
  AND ($14::text IS NULL OR COALESCE((SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1),CASE WHEN ct.crm_touch_status IN ('contacted','replied','bounced','autoreply') THEN 'reaching' ELSE 'cold' END)=$14)
- AND ($15::text IS NULL OR ct.crm_touch_status=$15) AND ($16::text IS NULL OR ct.language=$16)`;
- const p=[global,manager,develop,a.userId,`%${q.search.replace(/[!%_]/g,'!$&')}%`,q.stage??null,q.status??null,q.tags??null,q.clientType??null,q.country??null,q.scope??'all',q.assignment??null,q.followupOnly??false,q.crmStage??null,q.touchStatus??null,q.language??null];
+ AND ($15::text IS NULL OR ct.crm_touch_status=$15) AND ($16::text IS NULL OR ct.language=$16)
+ AND ($17::text IS NULL OR (CASE $17::text ${Object.entries(CONTACT_GROUP_SQL).map(([dimension,value])=>`WHEN '${dimension}' THEN ${value.key}`).join(' ')} END)=$18::text)`;
+ const p=[global,manager,develop,a.userId,`%${q.search.replace(/[!%_]/g,'!$&')}%`,q.stage??null,q.status??null,q.tags??null,q.clientType??null,q.country??null,q.scope??'all',q.assignment??null,q.followupOnly??false,q.crmStage??null,q.touchStatus??null,q.language??null,q.groupDimension??null,q.groupKey??null];
  // Materialize only authorized row identities before expensive display projections. Pair the
  // contact with its customer so pagination cannot grant access to a sibling association.
  const order=q.followupOnly?'page.last_followup_at DESC NULLS LAST,':'';
  const count=await c.query(`SELECT count(*)::int AS n ${JOINS} ${filter}`,p),rows=await c.query(`WITH contact_page AS MATERIALIZED (
  SELECT ct.id AS contact_id,c.customer_id,ct.updated_at ${q.followupOnly?`,${LAST_FOLLOWUP_AT} AS last_followup_at`:''}
- ${JOINS} ${filter} ORDER BY ${q.followupOnly?'last_followup_at DESC NULLS LAST,':''}ct.updated_at DESC,ct.id DESC LIMIT $17 OFFSET $18
+ ${JOINS} ${filter} ORDER BY ${q.followupOnly?'last_followup_at DESC NULLS LAST,':''}ct.updated_at DESC,ct.id DESC LIMIT $19 OFFSET $20
  ) SELECT ${PROJECTION} FROM contact_page page JOIN contacts ct ON ct.id=page.contact_id JOIN crm_customer_contacts cc ON cc.contact_id=page.contact_id AND cc.customer_id=page.customer_id JOIN crm_customers c ON c.customer_id=page.customer_id JOIN companies co ON co.id=c.company_id
  ORDER BY ${order}page.updated_at DESC,page.contact_id DESC`,[...p,q.limit,q.offset]);return success({items:rows.rows.map(row=>mapped(a,row)),total:count.rows[0].n});
+}
+const CONTACT_GROUP_SQL: Record<CenterContactGroupDimension,{key:string;label:string}> = {
+ batch:{key:"COALESCE(NULLIF(ct.source_detail,''),NULLIF(ct.source_level1,''),NULLIF(ct.source_level2,''),'unset')",label:"CASE WHEN COALESCE(NULLIF(ct.source_detail,''),NULLIF(ct.source_level1,''),NULLIF(ct.source_level2,'')) IS NULL THEN '未标记' ELSE COALESCE(NULLIF(ct.source_detail,''),NULLIF(ct.source_level1,''),NULLIF(ct.source_level2,'')) END"},
+ country:{key:"COALESCE(NULLIF(co.country,''),NULLIF(ct.country,''),'unset')",label:"COALESCE(NULLIF(co.country,''),NULLIF(ct.country,''),'未标记')"},
+ company:{key:'co.id::text',label:'co.name'},
+ clientType:{key:"COALESCE(CASE co.customer_type WHEN '代理' THEN 'agent' WHEN '直客' THEN 'direct' END,ct.client_type,'unset')",label:"CASE COALESCE(CASE co.customer_type WHEN '代理' THEN 'agent' WHEN '直客' THEN 'direct' END,ct.client_type) WHEN 'agent' THEN '代理' WHEN 'direct' THEN '直客' ELSE '未设置' END"},
+};
+export async function listContactGroupsIn(c:PoolClient,a:LeadActor,q:CenterContactGroupQuery):Promise<Result<CenterContactGroupPage>>{
+ const manager=contactManager(a),global=all(a),develop=a.capabilities.includes('leads.develop');if(!manager&&!global&&!develop)return failure('FORBIDDEN','无联系人查询权限');
+ const expression=CONTACT_GROUP_SQL[q.dimension];
+ const access=`WHERE ct.crm_deleted_at IS NULL AND co.crm_deleted_at IS NULL AND ($1::boolean OR ($2::boolean AND c.origin='operations') OR ($3::boolean AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql('$4::uuid',CONTACT_OWNER_SQL)}))) AND ($5::text='all' OR ($5='personal' AND c.origin='personal' AND ${CONTACT_OWNER_SQL}=$4::uuid) OR ($5='assigned' AND c.origin='operations' AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql('$4::uuid',CONTACT_OWNER_SQL)})))`;
+ const rows=await c.query(`WITH grouped AS (SELECT ${expression.key} AS key,${expression.label} AS label,count(*)::int AS count ${JOINS} ${access} GROUP BY 1,2),filtered AS (SELECT * FROM grouped WHERE ($6::text='' OR label ILIKE $6 ESCAPE '!')) SELECT key,label,count,count(*) OVER()::int AS total FROM filtered ORDER BY count DESC,label LIMIT $7 OFFSET $8`,[global,manager,develop,a.userId,q.scope,q.search?`%${q.search.replace(/[!%_]/g,'!$&')}%`:'',q.limit,q.offset]);
+ return success({items:rows.rows.map(row=>({key:String(row.key),label:String(row.label),count:Number(row.count)})),total:Number(rows.rows[0]?.total??0)});
 }
 async function cached<T>(c:PoolClient,a:LeadActor,operation:string,input:{idempotencyKey:string},work:()=>Promise<Result<T>>,replay?:(data:T)=>Promise<Result<T>>):Promise<Result<T>>{
  const digest=createHash('sha256').update(JSON.stringify(input)).digest('hex'),old=(await c.query('SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3',[a.userId,operation,input.idempotencyKey])).rows[0];
@@ -64,11 +79,11 @@ async function cached<T>(c:PoolClient,a:LeadActor,operation:string,input:{idempo
 async function members(c:PoolClient){return (await c.query(`SELECT u.user_id,pa.scope,pa.capabilities,ARRAY(SELECT g.role FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM identity.users u JOIN identity.product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE u.active AND NOT u.must_change_password FOR SHARE OF u,pa`)).rows;}
 import {effectiveCapabilitiesFor} from '../../core/admin';
 function validTarget(member:Record<string,any>|undefined,actorId:string):boolean{return !!member&&isContactAssignmentTarget({userId:member.user_id,roles:member.roles,capabilities:effectiveCapabilitiesFor(member.roles,member.capabilities)},actorId);}
-const REQUEST_SELECT=`SELECT r.request_id AS "requestId",r.contact_id AS "contactId",r.customer_id AS "customerId",r.version,COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'联系人') AS "contactName",NULL::text AS email,co.name AS "companyName",r.target_user_id AS "targetUserId",target.display_name AS "targetName",r.actor_id AS "actorId",actor.display_name AS "actorName",r.status,r.created_at AS "createdAt",r.decided_at AS "decidedAt",c.origin FROM crm_contact_assignment_requests r JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id JOIN identity.users target ON target.user_id=r.target_user_id JOIN identity.users actor ON actor.user_id=r.actor_id`;
+const REQUEST_SELECT=`SELECT r.request_id AS "requestId",COALESCE(gm.group_id,r.request_id) AS "groupId",r.contact_id AS "contactId",r.customer_id AS "customerId",r.version,COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'联系人') AS "contactName",NULL::text AS email,co.name AS "companyName",r.target_user_id AS "targetUserId",target.display_name AS "targetName",r.actor_id AS "actorId",actor.display_name AS "actorName",r.status,r.created_at AS "createdAt",r.decided_at AS "decidedAt",c.origin FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id JOIN identity.users target ON target.user_id=r.target_user_id JOIN identity.users actor ON actor.user_id=r.actor_id`;
 type AssignmentRow=ContactAssignment&{origin:string};
 function mapRequest(a:LeadActor,r:AssignmentRow):ContactAssignment{const {origin:_,...item}=r;return {...item,createdAt:new Date(r.createdAt).toISOString(),decidedAt:r.decidedAt?new Date(r.decidedAt).toISOString():null,canAccept:r.status==='pending'&&r.targetUserId===a.userId&&a.capabilities.includes('leads.develop'),canReject:r.status==='pending'&&r.targetUserId===a.userId&&a.capabilities.includes('leads.develop'),canCancel:r.status==='pending'&&r.origin==='operations'&&contactManager(a)};}
 async function request(c:PoolClient,a:LeadActor,id:string):Promise<Result<ContactAssignment>>{const row=(await c.query(`${REQUEST_SELECT} WHERE r.request_id=$1`,[id])).rows[0] as AssignmentRow|undefined;if(!row||!([row.actorId,row.targetUserId].includes(a.userId)||row.origin==='operations'&&contactManager(a)))return failure('NOT_FOUND','分配请求不存在');return success(mapRequest(a,row));}
-async function assignmentEvent(c:PoolClient,a:LeadActor,r:ContactAssignment,type:string,recipients:string[],activityId?:string){await c.query('INSERT INTO identity.outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,\'crm\',$3,$4,$5,$6::uuid[])',[type,a.userId,r.version,r.customerId,JSON.stringify({requestId:r.requestId,contactId:r.contactId,customerId:r.customerId,version:r.version,companyName:r.companyName,contactName:r.contactName,...(activityId?{activityId}:{})}),[...new Set(recipients)].sort()]);}
+async function assignmentEvent(c:PoolClient,a:LeadActor,r:ContactAssignment,type:string,recipients:string[],activityId?:string,groupCount?:number){await c.query('INSERT INTO identity.outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,\'crm\',$3,$4,$5,$6::uuid[])',[type,a.userId,r.version,r.customerId,JSON.stringify({requestId:r.requestId,groupId:r.groupId,contactId:r.contactId,customerId:r.customerId,version:r.version,companyName:r.companyName,contactName:r.contactName,...(groupCount?{groupCount}:{}),...(activityId?{activityId}:{})}),[...new Set(recipients)].sort()]);}
 export async function contactAssignmentsIn(c:PoolClient,a:LeadActor,q:ContactAssignmentQuery){
  const column=q.view==='incoming'?'target_user_id':'actor_id';if(q.view==='outgoing'&&!contactManager(a))return failure('FORBIDDEN','无分配管理权限');if(q.view==='incoming'&&!a.capabilities.includes('leads.develop'))return failure('FORBIDDEN','无分配接收权限');
  if(q.requestId){
@@ -76,18 +91,45 @@ export async function contactAssignmentsIn(c:PoolClient,a:LeadActor,q:ContactAss
   const rows=await c.query(`${REQUEST_SELECT} WHERE (r.${column}=$1 OR $3::boolean AND c.origin='operations') AND r.request_id=$2`,[a.userId,q.requestId,q.view==='outgoing'&&contactManager(a)]);
   return success({items:rows.rows.map(r=>mapRequest(a,r)),total:rows.rows.length});
  }
+ if(q.groupId){
+  const migrated=await migrateContactAssignmentGroups(c);if(!migrated.ok)return migrated;
+  const rows=await c.query(`${REQUEST_SELECT} WHERE COALESCE(gm.group_id,r.request_id)=$2 AND (r.${column}=$1 OR $3::boolean AND c.origin='operations') ORDER BY r.created_at,r.request_id`,[a.userId,q.groupId,q.view==='outgoing'&&contactManager(a)]);
+  return success({items:rows.rows.map(r=>mapRequest(a,r)),total:rows.rows.length});
+ }
  const filter=`WHERE ct.crm_deleted_at IS NULL AND (r.${column}=$1 OR $4::boolean AND c.origin='operations') AND r.status=$2 AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!')`,p=[a.userId,q.status,`%${q.search.replace(/[!%_]/g,'!$&')}%`,q.view==='outgoing'&&contactManager(a)];
  const rows=await c.query(`${REQUEST_SELECT} ${filter} ORDER BY r.created_at DESC,r.request_id DESC LIMIT $5 OFFSET $6`,[...p,q.limit,q.offset]),count=await c.query(`SELECT count(*)::int AS n FROM crm_contact_assignment_requests r JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id ${filter}`,p);return success({items:rows.rows.map(r=>mapRequest(a,r)),total:count.rows[0].n});
 }
+export async function contactAssignmentGroupsIn(c:PoolClient,a:LeadActor,q:ContactAssignmentGroupQuery):Promise<Result<ContactAssignmentGroupPage>>{
+ const migrated=await migrateContactAssignmentGroups(c);if(!migrated.ok)return migrated;
+ const column=q.view==='incoming'?'target_user_id':'actor_id';if(q.view==='outgoing'&&!contactManager(a))return failure('FORBIDDEN','无分配管理权限');if(q.view==='incoming'&&!a.capabilities.includes('leads.develop'))return failure('FORBIDDEN','无分配接收权限');
+ const search=`%${q.search.replace(/[!%_]/g,'!$&')}%`,manager=q.view==='outgoing'&&contactManager(a);
+ const rows=await c.query(`WITH grouped AS (
+  SELECT COALESCE(gm.group_id,r.request_id) AS group_id,count(*)::int AS total,
+   count(*) FILTER(WHERE r.status='pending')::int AS pending,count(*) FILTER(WHERE r.status='accepted')::int AS accepted,
+   count(*) FILTER(WHERE r.status='rejected')::int AS rejected,count(*) FILTER(WHERE r.status='cancelled')::int AS cancelled,
+   min(actor.display_name) AS actor_name,min(target.display_name) AS target_name,min(r.created_at) AS created_at,
+   (array_agg(COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'联系人') ORDER BY r.created_at,r.request_id))[1:5] AS contact_names,
+   (array_agg(DISTINCT co.name ORDER BY co.name))[1:5] AS company_names
+  FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id
+  JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id
+  JOIN identity.users actor ON actor.user_id=r.actor_id JOIN identity.users target ON target.user_id=r.target_user_id
+  WHERE ct.crm_deleted_at IS NULL AND (r.${column}=$1 OR $4::boolean AND c.origin='operations')
+  GROUP BY COALESCE(gm.group_id,r.request_id),r.target_user_id,r.actor_id
+  HAVING bool_or(r.status=$2 AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!'))
+ ) SELECT *,count(*) OVER()::int AS group_total FROM grouped ORDER BY created_at DESC,group_id DESC LIMIT $5 OFFSET $6`,[a.userId,q.status,search,manager,q.limit,q.offset]);
+ const items=rows.rows.map(row=>{const pending=Number(row.pending);return {groupId:String(row.group_id),total:Number(row.total),pending,accepted:Number(row.accepted),rejected:Number(row.rejected),cancelled:Number(row.cancelled),actorName:String(row.actor_name),targetName:String(row.target_name),createdAt:new Date(row.created_at).toISOString(),contactNames:row.contact_names as string[],companyNames:row.company_names as string[],canAcceptAll:pending>0&&q.view==='incoming'&&a.capabilities.includes('leads.develop'),canRejectAll:pending>0&&q.view==='incoming'&&a.capabilities.includes('leads.develop'),canCancelAll:pending>0&&contactManager(a)};});
+ return success({items,total:Number(rows.rows[0]?.group_total??0)});
+}
 export async function createContactAssignmentsIn(c:PoolClient,a:LeadActor,input:ContactAssignmentCreate){
+ const migrated=await migrateContactAssignmentGroups(c);if(!migrated.ok)return migrated;
  if(!contactManager(a))return failure('FORBIDDEN','无分配权限');
  const currentMembers=await members(c);if(!validTarget(currentMembers.find(m=>m.user_id===input.targetUserId),a.userId)||input.notifyUserIds.some(id=>!currentMembers.some(m=>m.user_id===id&&m.roles.length)))return failure('INVALID_INPUT','分配成员已失效或无用户开发权限');
  return cached(c,a,'contact-assignments:create',input,async()=>{
-  const items:ContactAssignment[]=[];
-  for(const ref of [...input.contacts].sort((x,y)=>x.contactId-y.contactId)){
+  const items:ContactAssignment[]=[];const groupId=randomUUID(),ordered=[...input.contacts].sort((x,y)=>x.contactId-y.contactId);
+  for(const [index,ref] of ordered.entries()){
    const ct=await contact(c,ref,true);if(!ct||!read(a,ct))return failure('NOT_FOUND','联系人不存在');if(!assign(a,ct)||ct.contactVersion!==ref.expectedVersion)return failure('CONFLICT','联系人已分配、受限或版本已变化');
    if((await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE contact_id=$1 AND status IN ('pending','accepted')",[ref.contactId])).rows.length)return failure('CONFLICT','联系人已有有效分配请求');
-   const id=randomUUID();await c.query('INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids) VALUES($1,$2,$3,$4,$5,$6::uuid[])',[id,ref.contactId,ref.customerId,input.targetUserId,a.userId,input.notifyUserIds]);const r=await request(c,a,id);if(!r.ok)return r;items.push(r.data);await assignmentEvent(c,a,r.data,CONTACT_ASSIGNMENT_EVENTS.requested,[a.userId,input.targetUserId,...input.notifyUserIds]);
+   const id=randomUUID();await c.query('INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids) VALUES($1,$2,$3,$4,$5,$6::uuid[])',[id,ref.contactId,ref.customerId,input.targetUserId,a.userId,input.notifyUserIds]);await c.query('INSERT INTO crm_contact_assignment_group_members(group_id,request_id) VALUES($1,$2)',[groupId,id]);const r=await request(c,a,id);if(!r.ok)return r;items.push(r.data);if(index===0)await assignmentEvent(c,a,r.data,CONTACT_ASSIGNMENT_EVENTS.requested,[a.userId,input.targetUserId,...input.notifyUserIds],undefined,ordered.length);
   }return success({items});
  },async old=>{const items:ContactAssignment[]=[];for(const r of old.items){const current=await request(c,a,r.requestId);if(!current.ok)return current;items.push(current.data);}return success({items});});
 }
@@ -104,6 +146,18 @@ export async function decideContactAssignmentIn(c:PoolClient,a:LeadActor,action:
   const status=action==='accept'?'accepted':action==='reject'?'rejected':'cancelled';await c.query('UPDATE crm_contact_assignment_requests SET status=$2,version=version+1,decided_at=now() WHERE request_id=$1',[input.requestId,status]);const result=await request(c,a,input.requestId);if(!result.ok)return result;
   await assignmentEvent(c,a,result.data,CONTACT_ASSIGNMENT_EVENTS[status],[row.actor_id,row.target_user_id,...row.notify_user_ids]);return result;
  },()=>request(c,a,input.requestId));
+}
+export async function decideContactAssignmentGroupIn(c:PoolClient,a:LeadActor,action:'accept'|'reject'|'cancel',input:ContactAssignmentGroupDecision):Promise<Result<{items:ContactAssignment[]}>>{
+ const migrated=await migrateContactAssignmentGroups(c);if(!migrated.ok)return migrated;
+ const rows=(await c.query(`SELECT r.request_id,r.version,r.status,r.target_user_id,c.origin FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id JOIN crm_customers c ON c.customer_id=r.customer_id WHERE COALESCE(gm.group_id,r.request_id)=$1 ORDER BY r.request_id FOR UPDATE OF r`,[input.groupId])).rows;
+ if(!rows.length)return failure('NOT_FOUND','分配组不存在');
+ if(action==='cancel'?!contactManager(a):rows.some(row=>row.target_user_id!==a.userId)||!a.capabilities.includes('leads.develop'))return failure('NOT_FOUND','分配请求不存在');
+ for(const row of rows.filter(row=>row.status==='pending')){
+  const decision={requestId:row.request_id as string,expectedVersion:Number(row.version),idempotencyKey:createHash('sha256').update(`${input.idempotencyKey}:${row.request_id}`).digest('hex')};
+  const result=await decideContactAssignmentIn(c,a,action,decision);if(!result.ok)return result;
+ }
+ const result=await contactAssignmentsIn(c,a,{view:action==='cancel'?'outgoing':'incoming',status:'pending',search:'',limit:200,offset:0,groupId:input.groupId});
+ return result.ok?success({items:result.data.items}):result;
 }
 export async function contactUpdateIn(c:PoolClient,a:LeadActor,input:CenterContactUpdate):Promise<Result<CenterContactDetail>>{
  const ct=await contact(c,input,true);if(!ct||!read(a,ct))return failure('NOT_FOUND','联系人不存在或不可修改');

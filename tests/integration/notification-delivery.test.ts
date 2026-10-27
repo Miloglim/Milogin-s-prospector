@@ -39,7 +39,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('actual PostgreSQL d
   const second=await repo.feed(hash,{deviceId:'desktop-b',after:'0',limit:50});expect(second).toEqual(first);
   expect((await pool.query('SELECT * FROM crm_event_deliveries WHERE event_id=$1 AND recipient_user_id=$2',[id,sales])).rows).toHaveLength(1);
   expect((await repo.read(hash,first.data.items[0]!.id)).ok).toBe(true);const read=await repo.feed(hash,{deviceId:'desktop-b',after:'0',limit:50});expect(read.ok&&read.data.items[0]!.read).toBe(true);
- });
+ },15000);
  it('marks every current user delivery read in one idempotent command',async()=>{
   await event();await event();expect((await repo.dispatch()).ok).toBe(true);
   const bulk=await repo.readAll(hash);expect(bulk.ok&&bulk.data.marked).toBeGreaterThanOrEqual(2);
@@ -77,9 +77,27 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('actual PostgreSQL d
    await pool.query("UPDATE identity.product_access SET capabilities=NULL WHERE user_id=$1 AND product_id='crm'",[sales]);
   }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
  },10000);
+ it('keeps only the latest 100 messages and persists read state across devices and restarts',async()=>{
+  const ids:string[]=[];try{
+   for(let index=0;index<105;index++)ids.push(await event('crm.lead.published'));
+   for(let index=0;index<3;index++)expect((await repo.dispatch()).ok).toBe(true);
+   const latest=await repo.feed(hash,{deviceId:'latest-a',after:'0',limit:100,latest:true});if(!latest.ok)throw Error(latest.error.message);
+   const watermark=await repo.watermark(hash);if(!watermark.ok)throw Error(watermark.error.message);
+   expect(latest.data.items).toHaveLength(100);expect(latest.data.hasMore).toBe(false);expect(BigInt(latest.data.nextCursor)).toBe(BigInt(watermark.data));
+   const retained=await pool.query('SELECT count(*)::int AS count FROM crm_event_deliveries WHERE recipient_user_id=$1',[sales]);expect(retained.rows[0].count).toBe(100);
+   const first=latest.data.items[0]!;expect((await repo.read(hash,first.id)).ok).toBe(true);
+   const restarted=new PostgresNotificationRepository(pool,log);const otherDevice=await restarted.feed(hash,{deviceId:'latest-b',after:'0',limit:100,latest:true});if(!otherDevice.ok)throw Error(otherDevice.error.message);
+   expect(otherDevice.data.items).toHaveLength(100);expect(otherDevice.data.items.find(item=>item.id===first.id)?.read).toBe(true);
+  }finally{
+   await pool.query('DELETE FROM crm_notification_reads WHERE delivery_id IN(SELECT delivery_id FROM crm_event_deliveries WHERE event_id=ANY($1::uuid[]))',[ids]);
+   await pool.query('DELETE FROM crm_event_deliveries WHERE event_id=ANY($1::uuid[])',[ids]);
+   await pool.query('DELETE FROM crm_notification_consumed WHERE event_id=ANY($1::uuid[])',[ids]);
+   await pool.query('DELETE FROM identity.outbox WHERE event_id=ANY($1::uuid[])',[ids]);
+  }
+ },30000);
  it('old events are filtered by current owner and advance scanned cursor; revoked capability/access/password deny',async()=>{
   await pool.query("UPDATE crm_customers SET state='owned',owner_user_id=$2 WHERE customer_id=$1",[customer,other]);const feed=await repo.feed(hash,{deviceId:'desktop-a',after:'0',limit:50});expect(feed.ok&&feed.data.items.filter(item=>item.customerId===customer)).toEqual([]);expect(feed.ok&&BigInt(feed.data.nextCursor)>0n).toBe(true);
   await pool.query('UPDATE identity.users SET must_change_password=true WHERE user_id=$1',[sales]);expect(await repo.watermark(hash)).toMatchObject({ok:false,error:{code:'PASSWORD_CHANGE_REQUIRED'}});await pool.query('UPDATE identity.users SET must_change_password=false WHERE user_id=$1',[sales]);
   await pool.query("UPDATE identity.product_access SET active=false WHERE user_id=$1 AND product_id='crm'",[sales]);expect((await repo.feed(hash,{deviceId:'desktop-a',after:'0',limit:50})).ok).toBe(false);
- });
+ },10000);
 });

@@ -4,7 +4,7 @@ import type { LeadBootstrap, LeadDetail, CenterContactDetail, OnlineFeed, Online
 import { useIdentity } from './IdentityContext';
 import { useVisiblePolling } from './hooks/useVisiblePolling';
 
-const MAX_ITEMS = 500;
+const MAX_ITEMS = 100;
 const MAX_FEED_PAGES = Math.ceil(MAX_ITEMS / ONLINE_LIMITS.feedPage);
 const READ_ALL_FALLBACK_CONCURRENCY = 8;
 export interface Notifications {

@@ -8,7 +8,7 @@ export function createEventsHandler(service:NotificationService):BrowserHandler{
   const url=new URL(request.url??'/','http://localhost'),path=url.pathname;
   const token=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.authorization??'')?.[1]??'';
   if(!token){send(response,failure('UNAUTHORIZED','请先登录'));return;}
-  const query={deviceId:url.searchParams.get('deviceId')??'',after:url.searchParams.get('after')??'0',limit:Number(url.searchParams.get('limit')??NOTIFICATION_LIMITS.page)};
+  const latest=url.searchParams.get('latest');const query={deviceId:url.searchParams.get('deviceId')??'',after:url.searchParams.get('after')??'0',limit:Number(url.searchParams.get('limit')??NOTIFICATION_LIMITS.page),...(latest==='true'?{latest:true}:latest==='false'?{latest:false}:{})};
   if(request.method==='GET'&&path===NOTIFICATION_ROUTES.feed){send(response,await service.feed(token,query));return;}
   if(request.method==='POST'&&path===NOTIFICATION_ROUTES.readAll){send(response,await service.readAll(token));return;}
   const read=/^\/api\/crm\/notifications\/([^/]+)\/read$/.exec(path);

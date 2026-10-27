@@ -23,6 +23,8 @@ import {PostgresLeadRepository} from './adapters/postgres/lead-repository';
 import {createLeadService} from './services/leads';
 import {createContactAssignmentService} from './services/contact-assignments';
 import {createContactAssignmentHandler} from './transport/contact-assignments-http';
+import {CONTACT_ASSIGNMENT_ROUTES} from './core/contact-assignments';
+import {migrateContactAssignmentGroups} from './adapters/postgres/contact-assignment-group-schema';
 import {createContactMailService} from './services/contact-mail';
 import {createContactMailHandler} from './transport/contact-mail-http';
 import {CONTACT_MAIL_ROUTE} from './core/contact-mail';
@@ -76,6 +78,7 @@ async function main() {
     const gate=new LoginRateGate(config,clock);
     const leadRepo=new PostgresLeadRepository(pool,serverLog), notificationRepo=new PostgresNotificationRepository(pool,serverLog);
     if(!(await leadRepo.migrate()).ok || !(await notificationRepo.migrate()).ok) throw new Error('协作迁移被拒绝');
+    const assignmentGroupClient=await pool.connect();try{if(!(await migrateContactAssignmentGroups(assignmentGroupClient)).ok)throw new Error('分配组迁移被拒绝');}finally{assignmentGroupClient.release();}
     const taskRepo=new PostgresTaskRepository(pool,serverLog);
     if(!(await taskRepo.migrate()).ok)throw new Error('任务迁移被拒绝');
     const opportunityRepo=new PostgresOpportunityRepository(pool,serverLog);
@@ -100,7 +103,7 @@ async function main() {
       if(Object.values(SEND_ACCEPTANCE_ROUTES).some(path=>path===route)){await sendAcceptance(request,response);return;}
       if(route===CONTACT_MAIL_ROUTE){await contactMail(request,response);return;}
       if(route==='/api/crm/contact-shares'||route.startsWith('/api/crm/contact-shares/')){await contactShares(request,response);return;}
-      if(route==='/api/crm/companies'||route.startsWith('/api/crm/companies/')||route==='/api/crm/contacts/delete'||route==='/api/crm/contact-assignments'||route.startsWith('/api/crm/contact-assignments/')||route.startsWith('/api/crm/contacts/')){await contactAssignments(request,response);return;}
+      if(route==='/api/crm/companies'||route.startsWith('/api/crm/companies/')||route==='/api/crm/contacts/delete'||route===CONTACT_ASSIGNMENT_ROUTES.assignments||route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.assignments}/`)||route===CONTACT_ASSIGNMENT_ROUTES.groups||route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.groups}/`)||route.startsWith('/api/crm/contacts/')){await contactAssignments(request,response);return;}
       if(route===TASK_ROUTES.tasks || route.startsWith(`${TASK_ROUTES.tasks}/`)){await tasks(request,response);return;}
       if(route===OPPORTUNITY_ROUTES.opportunities || route.startsWith(`${OPPORTUNITY_ROUTES.opportunities}/`)){await opportunities(request,response);return;}
       if(route===CONTACT_CHANGE_ROUTE){await contactChanges(request,response);return;}

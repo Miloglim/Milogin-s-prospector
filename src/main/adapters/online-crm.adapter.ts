@@ -22,7 +22,7 @@ import type { OfflineCrmContext } from '../core/offline-crm';
 import type { CrmSyncResolve, CrmSyncStatus } from '../../shared/online-crm';
 import { CONTACT_COMMAND_PREFIX } from '../core/contact-commands';
 import { validateCenterBase } from '../core/center-endpoint';
-import { centerContactPath, type CenterContactPage, type CenterContactQuery } from '../../../server/core/center-contacts';
+import { CENTER_CONTACT_GROUP_ROUTE, centerContactPath, type CenterContactGroupPage, type CenterContactGroupQuery, type CenterContactPage, type CenterContactQuery } from '../../../server/core/center-contacts';
 import { CONTACT_ASSIGNMENT_ROUTES, type CenterContactDetail, type CenterContactRef } from '../../../server/core/contact-assignments';
 
 const FALLBACK_ACCESS_MS = 3600000;
@@ -62,6 +62,10 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     if (local.ok || !this.identity || !this.isOnline() || !['DATABASE_ERROR', 'UNAVAILABLE'].includes(local.error.code)) return local;
     Log.error('online.contacts', `本地联系人列表不可用，回退中心实时查询: ${local.error.message}`);
     return this.requestLive<CenterContactPage>('GET', centerContactPath(query));
+  }
+  async contactGroups(query: CenterContactGroupQuery): Promise<Result<CenterContactGroupPage>> {
+    if (!this.currentIdentity()) return failure('UNAUTHORIZED', '请登录中心账号');
+    return this.requestLive<CenterContactGroupPage>('GET', `${CENTER_CONTACT_GROUP_ROUTE}?${new URLSearchParams({ dimension: query.dimension, scope: query.scope, search: query.search, limit: String(query.limit), offset: String(query.offset) })}`);
   }
   contactReadContext():OfflineCrmContext|null { return this.crmContext(); }
   /** Legacy SQLite migration is limited to ordinary sales identities. */
@@ -384,7 +388,9 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     if(input?.reset){this.cursor='0';this.feedRevision++;}
     const revision=this.feedRevision;
     const generation=this.generation;
-    const result=await this.request<OnlineFeed>('GET',`/api/crm/notifications?deviceId=${this.deviceId}&after=${this.cursor}&limit=${ONLINE_LIMITS.feedPage}`);
+    const params=new URLSearchParams({deviceId:this.deviceId,after:this.cursor,limit:String(ONLINE_LIMITS.feedPage)});
+    if(input?.reset)params.set('latest','true');
+    const result=await this.request<OnlineFeed>('GET',`/api/crm/notifications?${params}`);
     if(revision!==this.feedRevision)return failure('UNAVAILABLE','通知范围已变化，请重试');
     if(result.ok && generation===this.generation) this.cursor=result.data.nextCursor;
     return result;

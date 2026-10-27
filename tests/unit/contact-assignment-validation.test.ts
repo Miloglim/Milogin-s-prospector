@@ -25,7 +25,11 @@ describe('contact assignment validation',()=>{
  });
  it('accepts an exact request reference while retaining strict query validation',()=>{
   expect(validators.contactAssignmentQuery({view:'incoming',status:'pending',requestId:id})).toMatchObject({ok:true,data:{requestId:id,status:'pending'}});
+  expect(validators.contactAssignmentQuery({view:'incoming',status:'pending',groupId:id})).toMatchObject({ok:true,data:{groupId:id,status:'pending'}});
+  expect(validators.contactAssignmentQuery({view:'incoming',status:'pending',requestId:id,groupId:id})).toMatchObject({ok:false});
   expect(validators.contactAssignmentQuery({view:'incoming',requestId:'invalid'})).toMatchObject({ok:false,error:{code:'INVALID_INPUT'}});
+  expect(validators.contactAssignmentGroupQuery({view:'incoming',status:'pending',search:'',limit:50,offset:0})).toMatchObject({ok:true});
+  expect(validators.contactAssignmentGroupDecision({groupId:id,idempotencyKey:'group-key'})).toMatchObject({ok:true,data:{groupId:id}});
  });
 });
 

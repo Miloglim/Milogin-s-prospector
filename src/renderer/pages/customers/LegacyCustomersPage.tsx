@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Segmented, Select, message } from 'antd';
-import { BankOutlined, BarChartOutlined, ShareAltOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { Button, Segmented, Select, Tag, message } from 'antd';
+import { BankOutlined, BarChartOutlined, LeftOutlined, ShareAltOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import { ContactList } from '../contacts/ContactList';
 import { useQueryClient } from '@tanstack/react-query';
 import { useIdentity } from '../../IdentityContext';
@@ -9,9 +9,12 @@ import { createCenterContactPort, createCenterImportPort, centerInvoke } from '.
 import { CenterContactDetail } from './CenterContactDetail';
 import { CenterContactViews } from './CenterContactViews';
 import { ContactAssignments, AssignmentModal } from './ContactAssignments';
+import { ContactGroups } from './ContactGroups';
+import type { CenterContactGroupDimension } from '../../../shared/online-crm';
 import './customers.css';
 
-type LegacyView = 'table' | 'board' | 'company' | 'assignments';
+type LegacyView = 'groups' | 'table' | 'board' | 'company' | 'assignments';
+type ContactGroupSelection={dimension:CenterContactGroupDimension;key:string;label:string};
 const CUSTOMER_TABLE_DEFER_MS = 180;
 const CUSTOMER_TABLE_SKELETON_ROWS = 8;
 
@@ -43,10 +46,16 @@ function ContactTableSkeleton() {
 function readView(): LegacyView {
   const value = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('view');
   if (value === 'board') return 'board';
+  if (value === 'groups') return 'groups';
   if (value === 'table') return 'table';
   if (value === 'company') return 'company';
   if (value === 'assignments') return 'assignments';
   return 'board';
+}
+function readContactGroup():ContactGroupSelection|null {
+  const params=new URLSearchParams(window.location.hash.split('?')[1]??'');
+  const dimension=params.get('groupDimension'),key=params.get('groupKey'),label=params.get('groupLabel');
+  return dimension&&['batch','country','company','clientType'].includes(dimension)&&key&&label?{dimension:dimension as CenterContactGroupDimension,key,label}:null;
 }
 
 /** Original customer shell/presentation, explicitly backed by center contacts. */
@@ -54,6 +63,7 @@ export function LegacyCustomersPage() {
   const { identity, baseUrl, status } = useIdentity();
   const qc = useQueryClient();
   const [view, setView] = useState<LegacyView>(readView);
+  const [contactGroup,setContactGroup]=useState<ContactGroupSelection|null>(readContactGroup);
   // 客户页壳体和骨架先独立绘制，联系人大表格在高亮动画和首屏布局稳定后再挂载。
   const [tableReady, setTableReady] = useState(false);
   const operations = identity?.identityAdmin || identity?.crmRoles.some(role => ['operations', 'admin'].includes(role)) || false;
@@ -62,11 +72,11 @@ export function LegacyCustomersPage() {
   const [deepReference, setDeepReference] = useState<CenterContactRef | null>(null);
   const [headerActionsTarget, setHeaderActionsTarget] = useState<HTMLDivElement | null>(null);
   const identityKey = JSON.stringify([baseUrl,identity?.userId,identity?.crmRoles?.slice().sort(),identity?.crmCapabilities?.slice().sort(),identity?.identityAdmin,identity?.mustChangePassword]);
-  const activeScope: NonNullable<CenterContactQuery['scope']> = view === 'table' ? 'all' : scope;
-  const key = `${identityKey}:${activeScope}`;
+  const activeScope: NonNullable<CenterContactQuery['scope']> = view === 'table' || view === 'groups' ? 'all' : scope;
+  const key = `${identityKey}:${activeScope}:${contactGroup?.dimension??''}:${contactGroup?.key??''}`;
   const currentIdentity = useRef(identityKey); currentIdentity.current = identityKey;
   const currentSession = useRef(''); currentSession.current = `${baseUrl}:${identity?.userId}`;
-  const port = useMemo(() => createCenterContactPort({ key, scope: activeScope, isCurrent: () => currentIdentity.current === identityKey }), [key, activeScope]);
+  const port = useMemo(() => createCenterContactPort({ key, scope: activeScope, group:contactGroup?{groupDimension:contactGroup.dimension,groupKey:contactGroup.key}:undefined, isCurrent: () => currentIdentity.current === identityKey }), [key, activeScope, contactGroup?.dimension, contactGroup?.key]);
   const importPort = useMemo(() => { const session = `${baseUrl}:${identity?.userId}`; return createCenterImportPort(centerInvoke, operations, () => { void qc.invalidateQueries({ queryKey: ['center-contacts'] }); }, () => currentSession.current === session); }, [key, operations, qc]);
   useEffect(() => {
     if (view !== 'table') { setTableReady(false); return; }
@@ -79,6 +89,7 @@ export function LegacyCustomersPage() {
     const onHashChange = () => {
       // Old child pages consume/clear deep links; that must not reset the selected tab.
       if (new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('view')) setView(readView());
+      setContactGroup(readContactGroup());
       const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
       const contactId = Number(params.get('centerContact'));
       const customerId = params.get('centerCustomer');
@@ -97,17 +108,22 @@ export function LegacyCustomersPage() {
     if (rows.some(row => !row?.canAssign)) { message.error('所选联系人包含不可分配项，请刷新后重选'); return; }
     setAssigning(rows as CenterContact[]);
   };
+  const selectGroup=(selection:ContactGroupSelection)=>{setContactGroup(selection);setView('table')};
+  const openGroups=()=>{setContactGroup(null);setView('groups')};
+  const changeView=(next:LegacyView)=>{if(next==='table'){openGroups();return;}setContactGroup(null);setView(next)};
   return <div className="prospector-table-page customer-legacy-page">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <Segmented<LegacyView> value={view} onChange={setView} options={[
+      <Segmented<LegacyView> value={view==='table'&&contactGroup?'groups':view} onChange={changeView} options={[
         { value: 'board', label: '跟进看板', icon: <BarChartOutlined /> },
-        { value: 'table', label: '联系人', icon: <UnorderedListOutlined /> },
+        { value: 'groups', label: '联系人', icon: <UnorderedListOutlined /> },
         { value: 'assignments', label: operations ? '分配管理' : '分配线索', icon: <ShareAltOutlined /> },
         { value: 'company', label: '公司', icon: <BankOutlined /> },
       ]} />
       {view === 'table' && <div ref={setHeaderActionsTarget} className="flex flex-1 min-w-[350px] items-center justify-end" />}
     </div>
+    {view==='table'&&contactGroup&&<div className="contact-group-context"><Button size="small" type="link" icon={<LeftOutlined/>} onClick={openGroups}>联系人分组</Button><Tag>{contactGroup.label}</Tag></div>}
     {view === 'table' && (tableReady ? <ContactList key={key} dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} /> : <ContactTableSkeleton />)}
+    {view === 'groups' && <ContactGroups scope="all" onSelect={selectGroup} />}
     {(view === 'board' || view === 'company') && <div className="space-y-3">{sourceFilter}<CenterContactViews key={key} port={port} view={view} /></div>}
     {view === 'assignments' && <ContactAssignments key={`${baseUrl}:${identity?.userId}`} operations={operations} />}
     {assigning.length > 0 && <AssignmentModal key={assigning.map(row => row.contactId).join(',')} contacts={assigning} close={() => setAssigning([])} />}

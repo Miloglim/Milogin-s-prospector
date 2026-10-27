@@ -115,6 +115,11 @@ export function MessageCenterPanel() {
       window.location.hash = `#/customers?view=assignments&sharing=true&shareView=${view}`;
       return;
     }
+    if (item.assignmentGroupId) {
+      const assignmentStatus = item.assignmentStatus ?? (item.eventType.split('.').pop() === 'requested' ? 'pending' : item.eventType.split('.').pop());
+      window.location.hash = `#/customers?view=assignments&groupId=${encodeURIComponent(item.assignmentGroupId)}&assignmentStatus=${assignmentStatus}`;
+      return;
+    }
     if (item.requestId) {
       const assignmentStatus = item.assignmentStatus ?? (item.eventType.split('.').pop() === 'requested' ? 'pending' : item.eventType.split('.').pop());
       window.location.hash = `#/customers?view=assignments&requestId=${encodeURIComponent(item.requestId)}&assignmentStatus=${assignmentStatus}`;
@@ -224,7 +229,7 @@ export function MessageCenterPanel() {
           {group.map(item => {
             const canOpen = item.canOpen !== false && (!!item.customerId || !!item.requestId || !!item.shareId);
             const summary = canOpen ? item.summary : undefined;
-            const detail = [summary?.actorName, summary?.note].filter(Boolean).join(' · ');
+            const detail = [summary?.actorName, item.assignmentGroupCount ? `${item.assignmentGroupCount} 个联系人` : summary?.note].filter(Boolean).join(' · ');
             const action = canOpen ? destinationLabel(item) : '';
             const content = <>
               <span className="message-type-icon" aria-hidden="true">{messageIcon(item.eventType)}</span>

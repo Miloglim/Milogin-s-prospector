@@ -39,6 +39,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact acceptance 
    await client.query("INSERT INTO crm_customers(customer_id,company_id,source,customer_key,source_detail,created_by,origin) VALUES($1,$2,'rollback',$1::uuid::text,'fixture',$3,'operations')",[id,co,ops.id]);
    const contacts:number[]=[];
    for(const name of ['Selected','Sibling']){const ct=(await client.query('INSERT INTO contacts(email,first_name,company_id) VALUES($1,$2,$3) RETURNING id',[`${randomUUID()}@example.invalid`,name,co])).rows[0].id;contacts.push(ct);await client.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[id,ct]);}
+   const companyGroup=unwrap(await repo.listContactGroups(ops.hash,{dimension:'company',scope:'all',search:'rollback-only-company',limit:24,offset:0})).items[0]!;
+   expect(companyGroup).toMatchObject({label:'rollback-only-company',count:2});expect(unwrap(await repo.listContacts(ops.hash,{search:'',limit:50,offset:0,groupDimension:'company',groupKey:companyGroup.key})).total).toBe(2);
    const companyRef={customerId:id,contactId:contacts[0]!};
    expect(unwrap(await repo.listContacts(otherOps.hash,{search:'rollback-only',limit:50,offset:0})).total).toBe(2);
    expect(unwrap(await assignments.contactDetail(otherOps.hash,companyRef))).toMatchObject({canEdit:true,canFollowup:true,company:{canEdit:true}});
@@ -55,8 +57,9 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact acceptance 
    await client.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[privateId,privateContact]);
    expect(await assignments.contactDetail(otherOps.hash,{customerId:privateId,contactId:privateContact})).toMatchObject({ok:false,error:{code:'NOT_FOUND'}});
    expect(unwrap(await repo.listContacts(otherOps.hash,{search:'Private',limit:50,offset:0})).total).toBe(0);
-   const selected=contacts[0]!,sibling=contacts[1]!,input={contacts:[{customerId:id,contactId:selected,expectedVersion:1}],targetUserId:sales.id,notifyUserIds:[auditor.id],idempotencyKey:randomUUID()};
-   const request=unwrap(await assignments.createContactAssignments(ops.hash,input)).items[0]!;
+   const selected=contacts[0]!,sibling=contacts[1]!,input={contacts:[{customerId:id,contactId:selected,expectedVersion:1},{customerId:id,contactId:sibling,expectedVersion:1}],targetUserId:sales.id,notifyUserIds:[auditor.id],idempotencyKey:randomUUID()};
+   const created=unwrap(await assignments.createContactAssignments(ops.hash,input));const request=created.items[0]!,siblingRequest=created.items[1]!;
+   expect(created.items).toHaveLength(2);expect(siblingRequest.groupId).toBe(request.groupId);
    expect(request.status).toBe('pending');expect(request.email).toBeNull();
    expect(unwrap(await assignments.contactAssignments(otherOps.hash,{view:'outgoing',status:'pending',search:'',limit:50,offset:0})).items).toContainEqual(expect.objectContaining({requestId:request.requestId,canCancel:true}));
    expect(unwrap(await assignments.contactDetail(ops.hash,{customerId:id,contactId:selected})).canAssign).toBe(false);
@@ -65,10 +68,13 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact acceptance 
    expect(unwrap(await repo.listContacts(sales.hash,{search:'rollback-only',limit:50,offset:0})).total).toBe(0);
    expect(await assignments.decideContactAssignment(other.hash,'accept',{requestId:request.requestId,expectedVersion:1,idempotencyKey:randomUUID()})).toMatchObject({ok:false,error:{code:'NOT_FOUND'}});
    const notifications=new PostgresNotificationRepository(facade,{write:()=>{}});unwrap(await notifications.migrate());unwrap(await notifications.dispatch());
-   const notice=unwrap(await notifications.feed(auditor.hash,{deviceId:'rollback',after:'0',limit:100})).items.find(x=>x.requestId===request.requestId)!;
-   expect(notice).toMatchObject({canOpen:false,summary:{companyName:'rollback-only-company'}});expect(JSON.stringify(notice)).not.toContain('@example.invalid');
+   const notices=unwrap(await notifications.feed(auditor.hash,{deviceId:'rollback',after:'0',limit:100,latest:true})).items.filter(x=>x.assignmentGroupId===request.groupId);
+   expect(notices).toHaveLength(1);expect(notices[0]).toMatchObject({canOpen:false,assignmentGroupCount:2,summary:{companyName:'rollback-only-company'}});expect(JSON.stringify(notices[0])).not.toContain('@example.invalid');
    const decision={requestId:request.requestId,expectedVersion:1,idempotencyKey:randomUUID()};
    const accepted=unwrap(await assignments.decideContactAssignment(sales.hash,'accept',decision));expect(accepted.status).toBe('accepted');
+   const pendingGroup=unwrap(await assignments.contactAssignmentGroups(sales.hash,{view:'incoming',status:'pending',search:'',limit:50,offset:0})).items.find(row=>row.groupId===request.groupId)!;
+   expect(pendingGroup).toMatchObject({total:2,pending:1,accepted:1,canAcceptAll:true});
+   const grouped=unwrap(await assignments.decideContactAssignmentGroup(sales.hash,'reject',{groupId:request.groupId,idempotencyKey:randomUUID()}));expect(grouped.items.map(row=>row.status).sort()).toEqual(['accepted','rejected']);
    const exact=unwrap(await assignments.contactAssignments(sales.hash,{view:'incoming',status:'pending',requestId:request.requestId,search:'',limit:50,offset:0}));
    expect(exact).toMatchObject({total:1,items:[{requestId:request.requestId,status:'accepted'}]});
    expect(unwrap(await assignments.contactAssignments(other.hash,{view:'incoming',status:'pending',requestId:request.requestId,search:'',limit:50,offset:0}))).toEqual({total:0,items:[]});

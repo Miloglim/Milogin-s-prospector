@@ -7,7 +7,7 @@ const CURSOR=new RegExp(`^(0|[1-9][0-9]{0,${NOTIFICATION_LIMITS.cursorDigits-1}}
 export function createNotificationService(repo:NotificationRepository,tokens:TokenPort){
  return {
   async feed(token:string,input:FeedQuery){
-   if(!input||typeof input.deviceId!=='string'||!DEVICE.test(input.deviceId)||typeof input.after!=='string'||!CURSOR.test(input.after)||BigInt(input.after)>NOTIFICATION_CURSOR_MAX||!Number.isSafeInteger(input.limit)||input.limit<1||input.limit>NOTIFICATION_LIMITS.pageMax)return failure('INVALID_INPUT','通知分页参数无效');
+   if(!input||typeof input.deviceId!=='string'||!DEVICE.test(input.deviceId)||typeof input.after!=='string'||!CURSOR.test(input.after)||BigInt(input.after)>NOTIFICATION_CURSOR_MAX||!Number.isSafeInteger(input.limit)||input.limit<1||input.limit>NOTIFICATION_LIMITS.pageMax||input.latest!==undefined&&typeof input.latest!=='boolean')return failure('INVALID_INPUT','通知分页参数无效');
    return repo.feed(tokens.hash(token),input);
   },
   async read(token:string,id:string){return UUID.test(id)?repo.read(tokens.hash(token),id):failure('INVALID_INPUT','通知标识无效');},

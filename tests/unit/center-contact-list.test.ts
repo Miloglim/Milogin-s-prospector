@@ -10,7 +10,8 @@ import { failure, success } from '../../server/core/crm';
 const token = 'a'.repeat(43);
 const query = { search: 'name & 100%', limit: 50, offset: 0, stage: 'f2', status: 'replied', tags: 'quoting', country: 'Brazil', clientType: 'agent', language: 'PT', touchStatus: 'contacted' as const };
 const page = { items: [], total: 0 };
-const repository = () => ({ listContacts: vi.fn(async () => success(page)) });
+const groupPage={items:[{key:'fixture-batch',label:'Fixture batch',count:1}],total:1};
+const repository = () => ({ listContacts: vi.fn(async () => success(page)),listContactGroups:vi.fn(async()=>success(groupPage)) });
 const tokens = { hash: (value: string) => `hash:${value}` };
 
 describe('authorized center contact list contracts', () => {
@@ -30,6 +31,14 @@ describe('authorized center contact list contracts', () => {
     }
     expect(await service.contacts('', query)).toMatchObject({ ok: false, error: { code: 'UNAUTHORIZED' } });
     expect(repo.listContacts).toHaveBeenCalledTimes(1);
+  });
+  it('validates first-level contact group queries and exposes the same contract over HTTP',async()=>{
+   const repo=repository(),service=createLeadService(repo as never,tokens as never);const groupQuery={dimension:'batch' as const,scope:'all' as const,search:'Fixture',limit:24,offset:0};
+   expect(await service.contactGroups(token,groupQuery)).toEqual(success(groupPage));expect(repo.listContactGroups).toHaveBeenCalledWith(`hash:${token}`,groupQuery);
+   expect(await service.contactGroups(token,{...groupQuery,dimension:'owner'})).toMatchObject({ok:false,error:{code:'INVALID_INPUT'}});
+   const handler=createCrmHandler(service),server=createServer((request,response)=>{void handler(request,response);});await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+   try{const base=`http://127.0.0.1:${(server.address() as {port:number}).port}/api/crm/contact-groups`;const response=await fetch(`${base}?dimension=batch&scope=all&search=Fixture&limit=24&offset=0`,{headers:{Authorization:`Bearer ${token}`}});expect(response.status).toBe(200);expect(await response.json()).toEqual(success(groupPage));}
+   finally{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
   });
 
   it('exposes the same validated query through real HTTP, never treating it as a customer summary', async () => {

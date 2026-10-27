@@ -1,5 +1,15 @@
 # IPC 契约
 
+## 2026-10-27 消息留档、联系人分组与分配组
+
+`online:contact-groups`：`CenterContactGroupQuery {dimension,scope,search,limit,offset}` → `Result<CenterContactGroupPage>`，对应 `GET /api/crm/contact-groups`。`online:contact-list` 的 `CenterContactQuery` 增加可选且成对的 `groupDimension/groupKey`，用于一级卡片进入原联系人表。
+
+`online:assignment-groups`：`ContactAssignmentGroupQuery` → `Result<ContactAssignmentGroupPage>`，对应 `GET /api/crm/contact-assignments/groups`。`online:assignment-list` 的查询增加可选 `groupId`，用于读取整组明细；原 `requestId` 精确定位保留且两者互斥。
+
+新增 `online:assignment-group-accept/reject/cancel`：`ContactAssignmentGroupDecision {groupId,idempotencyKey}` → `Result<ContactAssignmentReceipt>`，对应 `POST /api/crm/contact-assignments/groups/:groupId/(accept|reject|cancel)`。组级决定只处理当前 pending 成员，统一返回组内当前明细。
+
+`online:feed {reset:true}` 读取最新 100 条并写入相同设备游标；单条和全部已读仍写中心 `crm_notification_reads`。`OnlineNotification` 增加可选 `assignmentGroupId/assignmentGroupCount`，打开组通知定位 `groupId` 而不是任一成员请求。
+
 ## 2026-10-22 发送任务自动命名
 
 `send:campaignCreate` 与 `send:campaignUpdateDraft` 的 `CreateCampaignInput.name` 改为可选；空字符串或纯空白表示自动命名。主进程按现有 `send_campaigns.name` 使用 `src/shared/campaign-name.ts` 生成首个未占用的 `任务N`。成功结果新增 `name`：创建返回 `{id,name,eligible,excluded}`，草稿编辑返回 `{name,eligible,excluded}`；原字段保留。

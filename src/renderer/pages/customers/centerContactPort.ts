@@ -35,7 +35,7 @@ export interface CenterContactPort extends ContactDataPort {
   isCurrent():boolean;
   readAll(filters?: { search?: string; followupOnly?: boolean } & ContactFilters): Promise<{ success: boolean; data?: CenterContact[]; error?: string }>;
 }
-export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'all', assignment, isCurrent = () => true }: { key: string; invoke?: CenterInvoke; scope?: CenterContactQuery['scope']; assignment?: 'accepted'; isCurrent?: () => boolean }): CenterContactPort {
+export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'all', assignment, group, isCurrent = () => true }: { key: string; invoke?: CenterInvoke; scope?: CenterContactQuery['scope']; assignment?: 'accepted'; group?: Pick<CenterContactQuery,'groupDimension'|'groupKey'>; isCurrent?: () => boolean }): CenterContactPort {
   const records = new Map<number, CenterContact>();
   const deleteRequests = new Map<string,ContactDelete>();
   async function remove(ids:number[]) {
@@ -54,7 +54,7 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
   const read = async (params: { search?: string; page?: number; pageSize?: number; followupOnly?: boolean } & ContactFilters = {}) => {
     const pageSize = params.pageSize ?? CENTER_CONTACT_LIMITS.page;
     const { page, pageSize: _pageSize, ...filters } = params;
-    const result = await invoke<CenterContactPage>(ONLINE_CHANNELS.CONTACT_LIST, { search: '', ...filters, scope, ...(assignment ? { assignment } : {}), limit: pageSize, offset: ((page ?? 1) - 1) * pageSize });
+    const result = await invoke<CenterContactPage>(ONLINE_CHANNELS.CONTACT_LIST, { search: '', ...filters, scope, ...(assignment ? { assignment } : {}), ...(group ?? {}), limit: pageSize, offset: ((page ?? 1) - 1) * pageSize });
     if (!isCurrent()) return { success: false as const, error: '账号或权限已变化' };
     if (!result.ok) return { success: false as const, error: result.error.message };
     result.data.items.forEach(row => records.set(row.contactId, row));

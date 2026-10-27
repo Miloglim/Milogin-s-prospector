@@ -1,7 +1,7 @@
 import type { CrmStage, JsonObject, Result } from './crm';
 import type { DataScope } from './admin';
 import type { WorkbookImportRequest, WorkbookImportReceipt } from './customer-import';
-import type { CenterContactQuery, CenterContactPage } from './center-contacts';
+import type { CenterContactQuery, CenterContactPage, CenterContactGroupQuery, CenterContactGroupPage } from './center-contacts';
 import { IMPORT_REMARK_MAX } from './lead-import-fields';
 export const LEAD_LIMITS={batchRows:200,bodyBytes:1048576,text:500,note:IMPORT_REMARK_MAX,page:25,pageMax:100,key:128,notifyMax:20} as const;
 export const LEAD_ROUTES={bootstrap:'/api/crm/bootstrap',imports:'/api/crm/imports',leads:'/api/crm/leads',members:'/api/crm/members',assignAction:'assign'} as const;
@@ -62,6 +62,7 @@ export interface LeadBootstrap {userId:string;capabilities:string[];scope:DataSc
 export interface PublishReceipt {batchId:string;version:number;publishedCustomerIds:string[];}
 export interface LeadRepository {
  listContacts?(hash:string,query:CenterContactQuery):Promise<Result<CenterContactPage>>;
+ listContactGroups?(hash:string,query:CenterContactGroupQuery):Promise<Result<CenterContactGroupPage>>;
  bootstrap(hash:string):Promise<Result<LeadBootstrap>>;importRows(hash:string,input:ImportRequest):Promise<Result<ImportReceipt>>;
  importWorkbook?(hash:string,input:WorkbookImportRequest):Promise<Result<WorkbookImportReceipt>>;
  publish(hash:string,batchId:string,input:PublishRequest):Promise<Result<PublishReceipt>>;

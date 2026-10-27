@@ -25,10 +25,10 @@ import {normalizeSourceDate} from '../../core/customer-import';
 import type {WorkbookImportRequest,WorkbookImportReceipt} from '../../core/customer-import';
 import {assertCenterDatabasePool} from './config';
 import type {CenterContactQuery,CenterContactPage} from '../../core/center-contacts';
-import type {ContactAssignmentRepository,ContactAssignmentCreate,ContactAssignmentDecision,ContactAssignmentQuery,CenterCompanyUpdate,CenterContactRef,CenterContactUpdate,CenterContactFollowup} from '../../core/contact-assignments';
+import type {ContactAssignmentRepository,ContactAssignmentCreate,ContactAssignmentDecision,ContactAssignmentGroupDecision,ContactAssignmentGroupQuery,ContactAssignmentQuery,CenterCompanyUpdate,CenterContactRef,CenterContactUpdate,CenterContactFollowup} from '../../core/contact-assignments';
 import {isContactAssignmentTarget} from '../../core/contact-assignments';
 import {CONTACT_ASSIGNMENT_VERSION,CONTACT_ASSIGNMENT_SQL} from './contact-assignment-schema';
-import {contactDetailIn,companyUpdateIn,contactUpdateIn,contactFollowupIn,contactAssignmentsIn,createContactAssignmentsIn,decideContactAssignmentIn,listContactsIn} from './contact-assignment-repository';
+import {contactDetailIn,companyUpdateIn,contactUpdateIn,contactFollowupIn,contactAssignmentGroupsIn,contactAssignmentsIn,createContactAssignmentsIn,decideContactAssignmentIn,decideContactAssignmentGroupIn,listContactGroupsIn,listContactsIn} from './contact-assignment-repository';
 import type {ContactMailRepository,ContactMailEventInput} from '../../core/contact-mail';
 import {CONTACT_MAIL_VERSION,CONTACT_MAIL_SQL,CONTACT_MAIL_SEND_STAGE_VERSION,CONTACT_MAIL_SEND_STAGE_SQL} from './contact-mail-schema';
 import {LIFECYCLE_VERSION,LIFECYCLE_SQL} from './crm-lifecycle-schema';
@@ -95,14 +95,17 @@ export class PostgresLeadRepository implements LeadRepository,ContactAssignmentR
 
  publish(hash:string,batchId:string,input:PublishRequest):Promise<Result<PublishReceipt>>{return this.authorized(hash,async(c,a)=>{if(!a.capabilities.includes('leads.publish')||!operational(a))return failure('FORBIDDEN','无发布权限');const batch=await c.query('SELECT * FROM crm_import_batches WHERE batch_id=$1 FOR UPDATE',[batchId]);if(!batch.rows.length||batch.rows[0].actor_id!==a.userId)return failure('NOT_FOUND','批次不存在');return this.cached(c,a,`publish:${batchId}`,input,async()=>{if(batch.rows[0].version!==input.expectedVersion)return failure('CONFLICT','批次版本已变化');const rows=await c.query(`SELECT row_id,customer_id,status FROM crm_import_rows WHERE batch_id=$1 AND row_id=ANY($2::uuid[])`,[batchId,input.rowIds]);if(rows.rows.length!==new Set(input.rowIds).size||rows.rows.some(r=>!r.customer_id||!['created','appended','duplicate'].includes(r.status)))return failure('CONFLICT','仅有效来源行可以发布');const ids=[...new Set<string>(rows.rows.map(r=>r.customer_id))];for(const id of ids){const update=await c.query(`UPDATE crm_customers SET state='published',version=version+1 WHERE customer_id=$1 AND state='draft' AND origin='operations' AND created_by=$2 AND COALESCE(btrim(development_restriction),'')='' RETURNING version`,[id,a.userId]);if(!update.rows.length)return failure('CONFLICT','客户状态已变化或存在开发限制');await this.event(c,a,id,update.rows[0].version,'crm.lead.published');}await c.query('UPDATE crm_import_batches SET version=version+1 WHERE batch_id=$1',[batchId]);return success({batchId,version:input.expectedVersion+1,publishedCustomerIds:ids});});});}
  listContacts(hash:string,q:CenterContactQuery):Promise<Result<CenterContactPage>>{return this.authorized(hash,(c,a)=>listContactsIn(c,a,q));}
+ listContactGroups(hash:string,q:import('../../core/center-contacts').CenterContactGroupQuery):Promise<Result<import('../../core/center-contacts').CenterContactGroupPage>>{return this.authorized(hash,(c,a)=>listContactGroupsIn(c,a,q));}
  recordContactMailEvent(hash:string,input:ContactMailEventInput){return this.authorized(hash,(c,a)=>recordContactMailEventIn(c,a,input));}
  contactDetail(hash:string,input:CenterContactRef){return this.authorized(hash,(c,a)=>contactDetailIn(c,a,input));}
  companyUpdate(hash:string,input:CenterCompanyUpdate){return this.authorized(hash,(c,a)=>companyUpdateIn(c,a,input));}
  contactUpdate(hash:string,input:CenterContactUpdate){return this.authorized(hash,(c,a)=>contactUpdateIn(c,a,input));}
  contactFollowup(hash:string,input:CenterContactFollowup){return this.authorized(hash,(c,a)=>contactFollowupIn(c,a,input));}
  contactAssignments(hash:string,input:ContactAssignmentQuery){return this.authorized(hash,(c,a)=>contactAssignmentsIn(c,a,input));}
+ contactAssignmentGroups(hash:string,input:ContactAssignmentGroupQuery){return this.authorized(hash,(c,a)=>contactAssignmentGroupsIn(c,a,input));}
  createContactAssignments(hash:string,input:ContactAssignmentCreate){return this.authorized(hash,(c,a)=>createContactAssignmentsIn(c,a,input));}
  decideContactAssignment(hash:string,action:'accept'|'reject'|'cancel',input:ContactAssignmentDecision){return this.authorized(hash,(c,a)=>decideContactAssignmentIn(c,a,action,input));}
+ decideContactAssignmentGroup(hash:string,action:'accept'|'reject'|'cancel',input:ContactAssignmentGroupDecision){return this.authorized(hash,(c,a)=>decideContactAssignmentGroupIn(c,a,action,input));}
  list(hash:string,q:LeadQuery):Promise<Result<LeadPage>>{return this.authorized(hash,async(c,a)=>{
  if(q.view==='all'&&!administrator(a)||q.view==='operations'&&!operational(a)||q.view==='pool'&&!a.capabilities.includes('leads.claim')||['mine','personal','assigned'].includes(q.view)&&!a.capabilities.includes('leads.develop'))return failure('FORBIDDEN','无列表权限');
  const where=q.view==='all'?'($1::uuid IS NOT NULL)':q.view==='operations'?"($1::uuid IS NOT NULL) AND c.origin='operations'":q.view==='pool'?`($1::uuid IS NOT NULL) AND c.state='published'`:q.view==='personal'?`c.owner_user_id=$1 AND c.origin='personal'`:q.view==='assigned'?`c.owner_user_id=$1 AND c.origin='operations'`:`c.owner_user_id=$1`;

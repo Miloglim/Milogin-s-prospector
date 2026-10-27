@@ -3,7 +3,10 @@ import { CRM_STAGES, failure, success, type JsonObject, type Result } from './cr
 import { CONTACT_TOUCH_STATUSES, type ContactTouchStatus, type CustomerStage, type LeadState } from './leads';
 
 export const CENTER_CONTACT_ROUTE = '/api/crm/contacts';
+export const CENTER_CONTACT_GROUP_ROUTE = '/api/crm/contact-groups';
 export const CENTER_CONTACT_LIMITS = { page: 50, pageMax: 100, text: 500 } as const;
+export const CENTER_CONTACT_GROUP_LIMITS = { page: 24, pageMax: 100 } as const;
+export const CENTER_CONTACT_GROUP_DIMENSIONS = ['batch', 'country', 'company', 'clientType'] as const;
 export const CENTER_CONTACT_FILTERS = ['stage', 'status', 'tags', 'clientType', 'country', 'language'] as const;
 export const CENTER_CONTACT_REMARK_KEY = 'note';
 export function centerContactRemark(extra: JsonObject): string {
@@ -17,6 +20,8 @@ export interface CenterContactQuery {
   touchStatus?: ContactTouchStatus;
   scope?: 'all' | 'personal' | 'assigned'; assignment?: 'accepted';
   followupOnly?: boolean; crmStage?: CustomerStage;
+  /** A card selection from the first-level contact group view. */
+  groupDimension?: CenterContactGroupDimension; groupKey?: string;
 }
 export interface CenterContact {
   /** Center IDs are explicit and never masquerade as legacy SQLite `id`. */
@@ -39,12 +44,19 @@ export interface CenterContact {
   assignmentStatus?: 'pending' | 'accepted' | null;
 }
 export interface CenterContactPage { items: CenterContact[]; total: number; }
+export type CenterContactGroupDimension = typeof CENTER_CONTACT_GROUP_DIMENSIONS[number];
+export interface CenterContactGroupQuery {
+  dimension: CenterContactGroupDimension; scope: 'all' | 'personal' | 'assigned';
+  search: string; limit: number; offset: number;
+}
+export interface CenterContactGroup { key: string; label: string; count: number; }
+export interface CenterContactGroupPage { items: CenterContactGroup[]; total: number; }
 
 /** Same canonical query is used at HTTP, IPC and renderer boundaries. */
 export function centerContactQuery(value: unknown): Result<CenterContactQuery> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return failure('INVALID_INPUT', '联系人查询参数无效');
   const input = value as Record<string, unknown>;
-  const allowed: readonly string[] = ['search', 'limit', 'offset', ...CENTER_CONTACT_FILTERS, 'scope', 'assignment', 'followupOnly', 'crmStage', 'touchStatus'];
+  const allowed: readonly string[] = ['search', 'limit', 'offset', ...CENTER_CONTACT_FILTERS, 'scope', 'assignment', 'followupOnly', 'crmStage', 'touchStatus', 'groupDimension', 'groupKey'];
   if (Object.keys(input).some(key => !allowed.includes(key))) return failure('INVALID_INPUT', '联系人查询含未知参数');
   const search = input.search ?? '';
   const limit = input.limit ?? CENTER_CONTACT_LIMITS.page;
@@ -77,6 +89,11 @@ export function centerContactQuery(value: unknown): Result<CenterContactQuery> {
     if (typeof item !== 'string' || item.length > CENTER_CONTACT_LIMITS.text) return failure('INVALID_INPUT', '联系人筛选参数无效');
     if (item.trim()) query[key] = item.trim();
   }
+  if (input.groupDimension !== undefined || input.groupKey !== undefined) {
+    if (!CENTER_CONTACT_GROUP_DIMENSIONS.includes(input.groupDimension as CenterContactGroupDimension) || typeof input.groupKey !== 'string' || !input.groupKey.trim() || input.groupKey.length > CENTER_CONTACT_LIMITS.text) return failure('INVALID_INPUT', '联系人分组筛选无效');
+    query.groupDimension = input.groupDimension as CenterContactGroupDimension;
+    query.groupKey = input.groupKey.trim();
+  }
   return success(query);
 }
 
@@ -84,5 +101,19 @@ export function centerContactPath(query: CenterContactQuery): string {
   const fields = [['search', query.search], ['limit', String(query.limit)], ['offset', String(query.offset)]];
   for (const key of CENTER_CONTACT_FILTERS) if (query[key] !== undefined) fields.push([key, query[key]!]);
   for (const key of ['scope', 'assignment', 'followupOnly', 'crmStage', 'touchStatus'] as const) if (query[key] !== undefined) fields.push([key, String(query[key])]);
+  if (query.groupDimension !== undefined) fields.push(['groupDimension', query.groupDimension], ['groupKey', query.groupKey!]);
   return `${CENTER_CONTACT_ROUTE}?${fields.map(([key, value]) => `${key}=${encodeURIComponent(value!)}`).join('&')}`;
+}
+
+export function centerContactGroupQuery(value: unknown): Result<CenterContactGroupQuery> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return failure('INVALID_INPUT', '联系人分组查询无效');
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).some(key => !['dimension', 'scope', 'search', 'limit', 'offset'].includes(key))) return failure('INVALID_INPUT', '联系人分组查询含未知参数');
+  const dimension = input.dimension ?? 'batch';
+  const scope = input.scope ?? 'all';
+  const search = input.search ?? '';
+  const limit = input.limit ?? CENTER_CONTACT_GROUP_LIMITS.page;
+  const offset = input.offset ?? 0;
+  if (!CENTER_CONTACT_GROUP_DIMENSIONS.includes(dimension as CenterContactGroupDimension) || !['all', 'personal', 'assigned'].includes(scope as string) || typeof search !== 'string' || search.length > CENTER_CONTACT_LIMITS.text || !Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > CENTER_CONTACT_GROUP_LIMITS.pageMax || !Number.isSafeInteger(offset) || Number(offset) < 0) return failure('INVALID_INPUT', '联系人分组查询参数无效');
+  return success({ dimension: dimension as CenterContactGroupDimension, scope: scope as CenterContactGroupQuery['scope'], search: search.trim(), limit: Number(limit), offset: Number(offset) });
 }

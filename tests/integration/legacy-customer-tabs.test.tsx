@@ -9,6 +9,7 @@ vi.mock('../../src/renderer/pages/crm/CrmPipeline', () => ({ CrmPipeline: () => 
 vi.mock('../../src/renderer/pages/companies/CompanyPage', () => ({ CompanyPage: () => <div data-view="company" /> }));
 vi.mock('../../src/renderer/IdentityContext', () => ({ useIdentity: () => ({ identity: { userId: 'tabs-test', crmRoles: ['operations'] }, baseUrl: 'http://127.0.0.1:55844', status: 'online' }) }));
 vi.mock('../../src/renderer/pages/customers/CenterContactViews', () => ({ CenterContactViews: ({ view }: { view: string }) => <div data-view={view} /> }));
+vi.mock('../../src/renderer/pages/customers/ContactGroups', () => ({ ContactGroups: ({ onSelect }: { onSelect:(value:{dimension:'batch';key:string;label:string})=>void }) => <button data-view="groups" onClick={()=>onSelect({dimension:'batch',key:'fixture',label:'Fixture'})}>分组卡片</button> }));
 describe('restored original customer view switch', () => {
   let root: Root; let host: HTMLDivElement;
   beforeEach(() => { (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; window.history.replaceState(null, '', '#/customers'); host = document.createElement('div'); document.body.append(host); root = createRoot(host); });
@@ -20,7 +21,8 @@ describe('restored original customer view switch', () => {
     await mount(); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
     await select('跟进看板'); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
     await select('公司'); expect(host.querySelector('[data-view="company"]')).not.toBeNull();
-    await select('联系人'); await waitForDeferredTable(); expect(host.querySelector('[data-view="table"]')).not.toBeNull();
+    await select('联系人'); expect(host.querySelector('[data-view="groups"]')).not.toBeNull();
+    await act(async()=>{host.querySelector<HTMLButtonElement>('[data-view="groups"]')!.click();}); await waitForDeferredTable(); expect(host.querySelector('[data-view="table"]')).not.toBeNull();
   });
   it('keeps the board selected after its child consumes the detail deep link', async () => {
     window.history.replaceState(null, '', '#/customers?view=board&detail=123'); await mount();

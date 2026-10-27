@@ -50,6 +50,8 @@ describe('desktop center isolation',()=>{
     expect(request).toHaveBeenCalledWith('GET','/api/crm/leads?view=personal&search=&limit=25&offset=0');
     const workbook={source:'worksheet',sourceDetail:'',kind:'operations' as const,idempotencyKey:'workbook-key',rows:[{entity:'customer' as const,sourceRef:'row-1',companyName:'Without contacts',sheetName:'Customers',rowNumber:2,rawRow:{}}]};
     await service.importWorkbook(workbook);expect(request).toHaveBeenCalledWith('POST','/api/crm/workbook-imports',workbook);
+    await service.contactGroups({dimension:'batch',scope:'all',search:'Q3',limit:24,offset:0});expect(request).toHaveBeenCalledWith('GET','/api/crm/contact-groups?dimension=batch&scope=all&search=Q3&limit=24&offset=0');
+    await service.assignmentGroups({view:'incoming',status:'pending',search:'Acme',limit:50,offset:0});expect(request).toHaveBeenCalledWith('GET','/api/crm/contact-assignments/groups?view=incoming&status=pending&search=Acme&limit=50&offset=0');
     expect((await service.workbookPreview()).ok).toBe(false);
   });
   it('replays durable notifications on reset and ignores a late pre-reset cursor',async()=>{
@@ -59,7 +61,7 @@ describe('desktop center isolation',()=>{
     const adapter=new OnlineCrmAdapter(fetcher as unknown as typeof fetch);
     await adapter.login({baseUrl:'http://127.0.0.1:55844',email:identity.email,password:randomBytes(24).toString('base64url')});
     expect((await adapter.feed()).ok).toBe(true);pending=true;const late=adapter.feed();pending=false;
-    expect((await adapter.feed({reset:true})).ok).toBe(true);expect(feedPaths.at(-1)).toContain('after=0&');
+    expect((await adapter.feed({reset:true})).ok).toBe(true);expect(feedPaths.at(-1)).toContain('after=0&');expect(feedPaths.at(-1)).toContain('latest=true');
     finish!(json({items:[],nextCursor:'99',hasMore:false}));expect((await late).ok).toBe(false);
     await adapter.feed();expect(feedPaths.at(-1)).toContain('after=8&');
     expect((await adapter.feed({reset:'invalid'} as never)).ok).toBe(false);

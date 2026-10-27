@@ -24,8 +24,9 @@ export function centerContactDisplayStatus(row: { status?: string | null; touchS
   return row.status ?? '';
 }
 export type { ContactMailEvent, ContactMailEventInput, ContactMailEventReceipt } from '../../server/core/contact-mail';
-export { CENTER_CONTACT_ROUTE, CENTER_CONTACT_LIMITS, CENTER_CONTACT_FILTERS, centerContactQuery, centerContactPath, centerContactRemark } from '../../server/core/center-contacts';
-export type { ContactAssignment, ContactAssignmentStatus, ContactAssignmentPage, ContactAssignmentQuery, ContactAssignmentCreate, ContactAssignmentDecision, ContactAssignmentReceipt, CenterCompanyUpdate, CenterContactRef, CenterContactDetail, CenterContactUpdate, CenterContactFollowup } from '../../server/core/contact-assignments';
+export { CENTER_CONTACT_ROUTE, CENTER_CONTACT_GROUP_ROUTE, CENTER_CONTACT_LIMITS, CENTER_CONTACT_GROUP_LIMITS, CENTER_CONTACT_GROUP_DIMENSIONS, CENTER_CONTACT_FILTERS, centerContactQuery, centerContactGroupQuery, centerContactPath, centerContactRemark } from '../../server/core/center-contacts';
+export type { CenterContactGroup, CenterContactGroupDimension, CenterContactGroupPage, CenterContactGroupQuery } from '../../server/core/center-contacts';
+export type { ContactAssignment, ContactAssignmentStatus, ContactAssignmentPage, ContactAssignmentQuery, ContactAssignmentCreate, ContactAssignmentDecision, ContactAssignmentGroup, ContactAssignmentGroupDecision, ContactAssignmentGroupPage, ContactAssignmentGroupQuery, ContactAssignmentReceipt, CenterCompanyUpdate, CenterContactRef, CenterContactDetail, CenterContactUpdate, CenterContactFollowup } from '../../server/core/contact-assignments';
 export { CONTACT_ASSIGNMENT_ROUTES, CONTACT_ASSIGNMENT_LIMITS } from '../../server/core/contact-assignments';
 export type { ContactPermissions, ContactShareGrant, ContactShareStatus, ContactShare, ContactShareCreate, ContactShareDecision, ContactShareUpdate, ContactShareQuery, ContactSharePage, ContactShareMember } from '../../server/core/contact-sharing';
 export { CONTACT_SHARING_ROUTES, CONTACT_SHARING_EVENTS, CONTACT_SHARED_FIELDS } from '../../server/core/contact-sharing';
@@ -61,10 +62,11 @@ export const ONLINE_CHANNELS = {
   WORKBOOK_PREVIEW:'online:workbook-preview', WORKBOOK_IMPORT:'online:workbook-import',
   SYNC_STATUS:'online:sync-status', SYNC_NOW:'online:sync-now', SYNC_RESOLVE:'online:sync-resolve',
   LIST:'online:list', DETAIL:'online:detail', FOLLOWUP:'online:followup',
-  CONTACT_LIST:'online:contact-list',
+  CONTACT_LIST:'online:contact-list', CONTACT_GROUPS:'online:contact-groups',
   COMPANY_UPDATE:'online:company-update', CONTACT_DETAIL:'online:contact-detail', CONTACT_UPDATE:'online:contact-update', CONTACT_FOLLOWUP:'online:contact-followup',
-  ASSIGNMENT_LIST:'online:assignment-list', ASSIGNMENT_CREATE:'online:assignment-create',
+  ASSIGNMENT_LIST:'online:assignment-list', ASSIGNMENT_GROUPS:'online:assignment-groups', ASSIGNMENT_CREATE:'online:assignment-create',
   ASSIGNMENT_ACCEPT:'online:assignment-accept', ASSIGNMENT_REJECT:'online:assignment-reject', ASSIGNMENT_CANCEL:'online:assignment-cancel',
+  ASSIGNMENT_GROUP_ACCEPT:'online:assignment-group-accept', ASSIGNMENT_GROUP_REJECT:'online:assignment-group-reject', ASSIGNMENT_GROUP_CANCEL:'online:assignment-group-cancel',
   CREATE_CUSTOMER:'online:customer-create', UPDATE_CUSTOMER:'online:customer-update',
   MEMBERS:'online:members',
   FEED:'online:feed', READ:'online:read', READ_ALL:'online:read-all',
@@ -73,7 +75,7 @@ export const ONLINE_CHANNELS = {
   OPPORTUNITY_LIST:'online:opportunity-list', OPPORTUNITY_CREATE:'online:opportunity-create',
   OPPORTUNITY_DETAIL:'online:opportunity-detail', OPPORTUNITY_STAGE:'online:opportunity-stage',
 } as const;
-export const ONLINE_LIMITS = { timeoutMs:10000, responseBytes:1048576, fileBytes:10485760, fileRows:10000, batchRows:200, feedPage:50, pollMs:5000, defaultUrl:'http://127.0.0.1:55844' } as const;
+export const ONLINE_LIMITS = { timeoutMs:10000, responseBytes:1048576, fileBytes:10485760, fileRows:10000, batchRows:200, feedPage:100, pollMs:5000, defaultUrl:'http://127.0.0.1:55844' } as const;
 
 export interface ImportFileContent { type: "csv" | "xlsx" | "tsv"; data: string; encoding?:'base64'; }
 export type { FollowupTask, TaskQuery, TaskPage, TaskCreate, TaskReschedule, TaskComplete } from '../../server/core/tasks';

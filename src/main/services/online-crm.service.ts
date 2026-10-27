@@ -5,13 +5,13 @@ import type { LoginAccountQuery, SavedAccountLogin, OnlineLogout } from '../../s
 import type { CustomerCreate, CustomerUpdate, MemberQuery, MemberPage } from '../../shared/online-crm';
 import { LEAD_ROUTES } from '../../../server/core/leads';
 import { failure } from '../../../server/core/crm';
-import {centerContactQuery,centerContactPath,type CenterContactPage,type CenterContactQuery} from '../../../server/core/center-contacts';
+import {CENTER_CONTACT_GROUP_ROUTE,centerContactGroupQuery,centerContactQuery,centerContactPath,type CenterContactGroupPage,type CenterContactGroupQuery,type CenterContactPage,type CenterContactQuery} from '../../../server/core/center-contacts';
 import { WORKBOOK_IMPORT_ROUTE, type WorkbookImportRequest, type WorkbookImportReceipt } from '../../../server/core/customer-import';
 import type { FollowupTask, TaskQuery, TaskPage, TaskCreate, TaskReschedule, TaskComplete } from '../../../server/core/tasks';
 import { OPPORTUNITY_ROUTES, type Opportunity, type OpportunityPage, type OpportunityQuery, type OpportunityCreate, type OpportunityUpdateStage } from '../../../server/core/opportunities';
 import { NOTIFICATION_ROUTES } from '../../../server/core/notifications';
-import { CONTACT_ASSIGNMENT_ROUTES, type CenterCompanyUpdate,type CenterContactRef, type CenterContactDetail, type CenterContactUpdate, type CenterContactFollowup, type ContactAssignmentQuery, type ContactAssignmentPage, type ContactAssignmentCreate, type ContactAssignmentReceipt, type ContactAssignmentDecision, type ContactAssignment } from '../../../server/core/contact-assignments';
-import {companyUpdate,contactRef,contactUpdate,contactFollowup,contactAssignmentQuery,contactAssignmentCreate,contactAssignmentDecision} from '../../../server/services/contact-assignments';
+import { CONTACT_ASSIGNMENT_ROUTES, type CenterCompanyUpdate,type CenterContactRef, type CenterContactDetail, type CenterContactUpdate, type CenterContactFollowup, type ContactAssignmentQuery, type ContactAssignmentPage, type ContactAssignmentGroupQuery, type ContactAssignmentGroupPage, type ContactAssignmentGroupDecision, type ContactAssignmentCreate, type ContactAssignmentReceipt, type ContactAssignmentDecision, type ContactAssignment } from '../../../server/core/contact-assignments';
+import {companyUpdate,contactRef,contactUpdate,contactFollowup,contactAssignmentQuery,contactAssignmentGroupQuery,contactAssignmentGroupDecision,contactAssignmentCreate,contactAssignmentDecision} from '../../../server/services/contact-assignments';
 import {companyCreate,companyDelete,companyQuery,companyRef,contactDelete} from '../../../server/services/crm-lifecycle';
 import {COMPANY_ROUTE,CONTACT_DELETE_ROUTE,type CompanyCreate,type CompanyDelete,type CompanyQuery,type CompanyPage,type CompanyDetail,type ContactDelete,type ContactDeleteReceipt} from '../../../server/core/crm-lifecycle';
 import { CONTACT_SHARING_ROUTES, type ContactShare, type ContactSharePage, type ContactShareQuery, type ContactShareCreate, type ContactShareUpdate, type ContactShareMember } from '../../../server/core/contact-sharing';
@@ -23,6 +23,7 @@ export interface OnlineCrmPort {
   contactUpdate?(input:CenterContactUpdate):Promise<Result<CenterContactDetail>>;
   contactFollowup?(input:CenterContactFollowup):Promise<Result<CenterContactDetail>>;
   contacts?(query:CenterContactQuery):Promise<Result<CenterContactPage>>;
+  contactGroups?(query:CenterContactGroupQuery):Promise<Result<CenterContactGroupPage>>;
   register?(input:OnlineRegistration):Promise<Result<RegisteredAccount>>;
   login(input:OnlineLogin):Promise<Result<Identity>>; logout(input?:OnlineLogout):Promise<Result<void>>;
   accountProfile?():Promise<Result<AccountProfile>>;
@@ -44,6 +45,7 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     const value=parse(input);return value.ok?send(value.data):Promise.resolve(value);
   };
   const decision=(action:'accept'|'reject'|'cancel',input:unknown)=>validated(input,contactAssignmentDecision,value=>port.request<ContactAssignment>('POST',`${CONTACT_ASSIGNMENT_ROUTES.assignments}/${encodeURIComponent(value.requestId)}/${action}`,value));
+  const groupDecision=(action:'accept'|'reject'|'cancel',input:unknown)=>validated(input,contactAssignmentGroupDecision,value=>port.request<ContactAssignmentReceipt>('POST',`${CONTACT_ASSIGNMENT_ROUTES.groups}/${encodeURIComponent(value.groupId)}/${action}`,value));
   return {
     contactShares:(input:ContactShareQuery)=>validated(input,contactShareQuery,query=>{
       const params=new URLSearchParams({view:query.view,limit:String(query.limit),offset:String(query.offset)});
@@ -69,12 +71,17 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     contactDetail:(input:CenterContactRef)=>validated(input,contactRef,value=>port.contactDetail?port.contactDetail(value):port.request<CenterContactDetail>('GET',`${CONTACT_ASSIGNMENT_ROUTES.contact}/${encodeURIComponent(String(value.contactId))}?customerId=${encodeURIComponent(value.customerId)}`)),
     contactUpdate:(input:CenterContactUpdate)=>validated(input,contactUpdate,value=>port.contactUpdate?port.contactUpdate(value):port.request<CenterContactDetail>('POST',`${CONTACT_ASSIGNMENT_ROUTES.contact}/${encodeURIComponent(String(value.contactId))}/update`,value,true)),
     contactFollowup:(input:CenterContactFollowup)=>validated(input,contactFollowup,value=>port.contactFollowup?port.contactFollowup(value):port.request<CenterContactDetail>('POST',`${CONTACT_ASSIGNMENT_ROUTES.contact}/${encodeURIComponent(String(value.contactId))}/followups`,value,true)),
-    assignments:(input:ContactAssignmentQuery)=>validated(input,contactAssignmentQuery,query=>port.request<ContactAssignmentPage>('GET',`${CONTACT_ASSIGNMENT_ROUTES.assignments}?view=${encodeURIComponent(query.view)}&status=${encodeURIComponent(query.status)}&search=${encodeURIComponent(query.search)}&limit=${query.limit}&offset=${query.offset}${query.requestId?`&requestId=${encodeURIComponent(query.requestId)}`:''}`)),
+    assignments:(input:ContactAssignmentQuery)=>validated(input,contactAssignmentQuery,query=>port.request<ContactAssignmentPage>('GET',`${CONTACT_ASSIGNMENT_ROUTES.assignments}?view=${encodeURIComponent(query.view)}&status=${encodeURIComponent(query.status)}&search=${encodeURIComponent(query.search)}&limit=${query.limit}&offset=${query.offset}${query.requestId?`&requestId=${encodeURIComponent(query.requestId)}`:''}${query.groupId?`&groupId=${encodeURIComponent(query.groupId)}`:''}`)),
+    assignmentGroups:(input:ContactAssignmentGroupQuery)=>validated(input,contactAssignmentGroupQuery,query=>port.request<ContactAssignmentGroupPage>('GET',`${CONTACT_ASSIGNMENT_ROUTES.groups}?${new URLSearchParams({view:query.view,status:query.status,search:query.search,limit:String(query.limit),offset:String(query.offset)})}`)),
     createAssignments:(input:ContactAssignmentCreate)=>validated(input,contactAssignmentCreate,value=>port.request<ContactAssignmentReceipt>('POST',CONTACT_ASSIGNMENT_ROUTES.assignments,value)),
     acceptAssignment:(input:ContactAssignmentDecision)=>decision('accept',input),
     rejectAssignment:(input:ContactAssignmentDecision)=>decision('reject',input),
     cancelAssignment:(input:ContactAssignmentDecision)=>decision('cancel',input),
+    acceptAssignmentGroup:(input:ContactAssignmentGroupDecision)=>groupDecision('accept',input),
+    rejectAssignmentGroup:(input:ContactAssignmentGroupDecision)=>groupDecision('reject',input),
+    cancelAssignmentGroup:(input:ContactAssignmentGroupDecision)=>groupDecision('cancel',input),
     contacts:(input:unknown)=>{const query=centerContactQuery(input);return query.ok?(port.contacts?port.contacts(query.data):port.request<CenterContactPage>('GET',centerContactPath(query.data))):Promise.resolve(query);},
+    contactGroups:(input:unknown)=>{const query=centerContactGroupQuery(input);return query.ok?(port.contactGroups?port.contactGroups(query.data):port.request<CenterContactGroupPage>('GET',`${CENTER_CONTACT_GROUP_ROUTE}?${new URLSearchParams({dimension:query.data.dimension,scope:query.data.scope,search:query.data.search,limit:String(query.data.limit),offset:String(query.data.offset)})}`)):Promise.resolve(query);},
     opportunities:(query:OpportunityQuery)=>port.request<OpportunityPage>('GET',`${OPPORTUNITY_ROUTES.opportunities}?customerId=${encodeURIComponent(query.customerId)}&limit=${query.limit}&offset=${query.offset}`),
     createOpportunity:(input:OpportunityCreate)=>port.request<Opportunity>('POST',OPPORTUNITY_ROUTES.opportunities,input),
     opportunityDetail:(id:string)=>port.request<Opportunity>('GET',`${OPPORTUNITY_ROUTES.opportunities}/${encodeURIComponent(id)}`),

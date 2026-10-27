@@ -31,6 +31,16 @@ describe('R3 global notification ownership', () => {
     expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.FEED)).toHaveLength(2); expect(notifications.unread).toBe(1);
     expect(invoke).not.toHaveBeenCalledWith(CHANNEL.READ, item.id);
   });
+  it('keeps only the newest 100 notifications in the client window', async () => {
+    const normal=invoke.getMockImplementation()!;
+    const items=Array.from({length:150},(_,index)=>({...item,id:`notification-${index}`,cursor:String(index+1),createdAt:new Date(Date.UTC(2026,0,1,0,index)).toISOString()}));
+    invoke.mockImplementation(async channel=>channel===CHANNEL.FEED?{ok:true,data:{items,nextCursor:'150',hasMore:false}}:normal(channel));
+    await mount();
+    expect(notifications.items).toHaveLength(100);
+    expect(notifications.items[0]!.id).toBe('notification-50');
+    expect(notifications.items.at(-1)!.id).toBe('notification-149');
+    expect(invoke.mock.calls.filter(call=>call[0]===CHANNEL.FEED)).toHaveLength(1);
+  });
   it('replays actionable notifications once and again only after the window becomes visible', async () => {
     const normal = invoke.getMockImplementation()!;
     const first = { ...item, id: 'contact-a', eventType: 'crm.contact.updated' as const, contactId: 1 };
@@ -107,6 +117,15 @@ describe('R3 global notification ownership', () => {
     await act(async () => { host.querySelector<HTMLButtonElement>('button.message-main')!.click(); });
     expect(window.location.hash).toContain('view=assignments'); expect(window.location.hash).toContain('requestId=request-a'); expect(window.location.hash).toContain('assignmentStatus=pending');
     expect(invoke).toHaveBeenCalledWith(CHANNEL.READ, item.id); expect(invoke.mock.calls.some(call => [CHANNEL.DETAIL, CHANNEL.CONTACT_DETAIL, CHANNEL.ASSIGNMENT_ACCEPT].includes(call[0]))).toBe(false);
+  });
+  it('opens an assignment notification at its whole request group', async () => {
+    const normal = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async channel => channel === CHANNEL.FEED ? { ok: true, data: { items: [{ ...item, eventType: 'crm.contact.assignment.requested', customerId: '', requestId: 'request-a', assignmentGroupId: 'group-a', assignmentGroupCount: 50, assignmentStatus: 'pending', summary: { companyName: 'Group Company', actorName: '管理员' } }], nextCursor: '1', hasMore: false } } : normal(channel));
+    await mount();
+    expect(host.textContent).toContain('50 个联系人');
+    await act(async () => { host.querySelector<HTMLButtonElement>('button.message-main')!.click(); });
+    expect(window.location.hash).toContain('view=assignments'); expect(window.location.hash).toContain('groupId=group-a'); expect(window.location.hash).not.toContain('requestId=request-a');
+    expect(invoke).toHaveBeenCalledWith(CHANNEL.READ, item.id); expect(invoke.mock.calls.some(call => call[0] === CHANNEL.ASSIGNMENT_ACCEPT)).toBe(false);
   });
   it('opens shared invitations without probing a pending contact or implicitly accepting', async () => {
     const normal = invoke.getMockImplementation()!;

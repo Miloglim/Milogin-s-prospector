@@ -52,7 +52,9 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('R2 center authorita
  const current=(await request(`/api/crm/contacts/${ref.contactId}?customerId=${id}`,undefined,ops.token)).body.data.contact;
  const pending=(await request('/api/crm/contact-assignments',{contacts:[{...ref,expectedVersion:current.contactVersion}],targetUserId:sales.id,notifyUserIds:[],idempotencyKey:randomUUID()},ops.token)).body.data.items[0];
  expect((await request(`/api/crm/contacts/${ref.contactId}?customerId=${id}`,undefined,sales.token)).status).toBe(404);
- expect((await request(`/api/crm/contact-assignments/${pending.requestId}/accept`,{expectedVersion:1,idempotencyKey:randomUUID()},sales.token)).status).toBe(200);
+ const groupPage=(await request('/api/crm/contact-assignments/groups?view=incoming&status=pending&search=&limit=50&offset=0',undefined,sales.token)).body.data;
+ expect(groupPage.items.find((row:any)=>row.groupId===pending.groupId)).toMatchObject({total:1,pending:1,canAcceptAll:true});
+ expect((await request(`/api/crm/contact-assignments/groups/${pending.groupId}/accept`,{groupId:pending.groupId,idempotencyKey:randomUUID()},sales.token)).status).toBe(200);
  const contact=(await request(`/api/crm/contacts/${ref.contactId}?customerId=${id}`,undefined,sales.token)).body.data;
  expect(contact.contact).toMatchObject({origin:'operations',ownerUserId:sales.id});
  expect((await request(`/api/crm/contacts/${ref.contactId}?customerId=${id}`,undefined,ops.token)).body.data.canEdit).toBe(true);

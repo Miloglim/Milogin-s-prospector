@@ -12,6 +12,7 @@ vi.mock('antd', () => ({
   Alert: ({ message }: { message: string }) => <div role="alert">{message}</div>,
   Space: ({ children }: { children: ReactNode }) => <div>{children}</div>, Tag: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   Button: ({ children, onClick, disabled }: { children: ReactNode; onClick?: () => void; disabled?: boolean }) => <button disabled={disabled} onClick={onClick}>{children}</button>,
+  Pagination: () => null,
   Input: ({ value, onChange }: { value: string; onChange: (event: unknown) => void }) => <input value={value} onChange={onChange} />,
   Modal: ({ children, onOk, okButtonProps }: { children: ReactNode; onOk: () => void; okButtonProps: { disabled: boolean } }) => <div>{children}<button disabled={okButtonProps.disabled} onClick={onOk}>分配</button></div>,
   Select: ({ options, onChange, mode, ...props }: { options: Array<{ value: string; label: string }>; onChange: (value: unknown) => void; mode?: string; [key: string]: unknown }) => <select aria-label={props['aria-label'] as string} onChange={event => onChange(mode ? [event.target.value] : event.target.value)}><option value="" />{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
@@ -35,14 +36,21 @@ describe('contact assignment decisions and selected row identity', () => {
     expect(writes).toHaveLength(2); expect(writes[0]![1]).toEqual(writes[1]![1]); expect(writes[0]![1]).toMatchObject({ contacts: [{ contactId: 9, customerId: 'customer-a', expectedVersion: 7 }], targetUserId: 'target' });
     expect(invoke.mock.calls.some(call => call[0] === 'online:assign')).toBe(false);
   });
-  it('pending sales requests display accept and reject, and accepting uses request identity without opening customer detail', async () => {
-    invoke.mockImplementation(async channel => channel === C.ASSIGNMENT_LIST ? { ok: true, data: { items: [{ requestId: 'request-a', contactId: 9, customerId: 'customer-a', version: 4, contactName: 'Alice', companyName: 'Fixture Company', targetName: '用户甲', actorName: '管理员', createdAt: '2026-10-14', status: 'pending', canAccept: true, canReject: true, canCancel: false }], total: 1 } } : { ok: false, error: { code: 'UNAVAILABLE', message: '响应丢失' } });
+  it('pending sales groups can be accepted as one stable group request', async () => {
+    invoke.mockImplementation(async channel => channel === C.ASSIGNMENT_GROUPS ? { ok: true, data: { items: [{ groupId: 'group-a', total: 50, pending: 50, accepted: 0, rejected: 0, cancelled: 0, actorName: '管理员', targetName: '用户甲', createdAt: '2026-10-14', contactNames: ['Alice','Bob'], companyNames: ['Fixture Company'], canAcceptAll: true, canRejectAll: true, canCancelAll: false }], total: 1 } } : { ok: false, error: { code: 'UNAVAILABLE', message: '响应丢失' } });
     await mount(<ContactAssignments operations={false} />);
-    expect(host.textContent).toContain('Alice'); expect(host.textContent).toContain('拒绝');
-    const button = Array.from(host.querySelectorAll('button')).find(button => button.textContent === '接受')!;
+    expect(host.textContent).toContain('50 个联系人'); expect(host.textContent).toContain('Alice、Bob'); expect(host.textContent).toContain('拒绝');
+    const button = Array.from(host.querySelectorAll('button')).find(button => button.textContent === '一键接收')!;
     await act(async () => button.click()); await act(async () => button.click());
-    const writes = invoke.mock.calls.filter(call => call[0] === C.ASSIGNMENT_ACCEPT); expect(writes).toHaveLength(2); expect(writes[0]![1]).toEqual(writes[1]![1]); expect(writes[0]![1]).toMatchObject({ requestId: 'request-a', expectedVersion: 4 });
-    expect(invoke.mock.calls.every(call => [C.ASSIGNMENT_LIST, C.ASSIGNMENT_ACCEPT].includes(call[0]))).toBe(true);
+    const writes = invoke.mock.calls.filter(call => call[0] === C.ASSIGNMENT_GROUP_ACCEPT); expect(writes).toHaveLength(2); expect(writes[0]![1]).toEqual(writes[1]![1]); expect(writes[0]![1]).toMatchObject({ groupId: 'group-a' });
+    expect(invoke.mock.calls.every(call => [C.ASSIGNMENT_GROUPS, C.ASSIGNMENT_GROUP_ACCEPT].includes(call[0]))).toBe(true);
+  });
+  it('opens one assignment group and keeps per-contact actions available inside', async () => {
+    invoke.mockImplementation(async channel => channel === C.ASSIGNMENT_GROUPS ? { ok: true, data: { items: [{ groupId: 'group-a', total: 2, pending: 2, accepted: 0, rejected: 0, cancelled: 0, actorName: '管理员', targetName: '用户甲', createdAt: '2026-10-14', contactNames: ['Alice','Bob'], companyNames: ['Fixture Company'], canAcceptAll: true, canRejectAll: true, canCancelAll: false }], total: 1 } } : channel === C.ASSIGNMENT_LIST ? { ok: true, data: { items: [{ requestId: 'request-a', groupId: 'group-a', contactId: 9, customerId: 'customer-a', version: 1, contactName: 'Alice', companyName: 'Fixture Company', targetName: '用户甲', actorName: '管理员', createdAt: '2026-10-14', status: 'pending', canAccept: true, canReject: true, canCancel: false }], total: 1 } } : { ok: false, error: { code: 'UNAVAILABLE', message: '响应丢失' } });
+    await mount(<ContactAssignments operations={false} />);
+    await act(async () => host.querySelector<HTMLButtonElement>('.assignment-group-main')!.click()); await act(flush);
+    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_LIST, expect.objectContaining({ groupId: 'group-a', limit: 200, offset: 0 }));
+    expect(host.textContent).toContain('Alice');expect(host.textContent).toContain('接受');expect(host.textContent).toContain('返回分组');
   });
   it('an old requested notification opens the current accepted request without scanning unrelated pages', async () => {
     window.location.hash = '#/customers?view=assignments&requestId=request-a&assignmentStatus=pending';
