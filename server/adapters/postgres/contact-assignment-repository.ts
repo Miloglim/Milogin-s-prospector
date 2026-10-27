@@ -68,8 +68,19 @@ export async function listContactGroupsIn(c:PoolClient,a:LeadActor,q:CenterConta
  const manager=contactManager(a),global=all(a),develop=a.capabilities.includes('leads.develop');if(!manager&&!global&&!develop)return failure('FORBIDDEN','无联系人查询权限');
  const expression=CONTACT_GROUP_SQL[q.dimension];
  const access=`WHERE ct.crm_deleted_at IS NULL AND co.crm_deleted_at IS NULL AND ($1::boolean OR ($2::boolean AND c.origin='operations') OR ($3::boolean AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql('$4::uuid',CONTACT_OWNER_SQL)}))) AND ($5::text='all' OR ($5='personal' AND c.origin='personal' AND ${CONTACT_OWNER_SQL}=$4::uuid) OR ($5='assigned' AND c.origin='operations' AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql('$4::uuid',CONTACT_OWNER_SQL)})))`;
- const rows=await c.query(`WITH grouped AS (SELECT ${expression.key} AS key,${expression.label} AS label,count(*)::int AS count ${JOINS} ${access} GROUP BY 1,2),filtered AS (SELECT * FROM grouped WHERE ($6::text='' OR label ILIKE $6 ESCAPE '!')) SELECT key,label,count,count(*) OVER()::int AS total FROM filtered ORDER BY count DESC,label LIMIT $7 OFFSET $8`,[global,manager,develop,a.userId,q.scope,q.search?`%${q.search.replace(/[!%_]/g,'!$&')}%`:'',q.limit,q.offset]);
- return success({items:rows.rows.map(row=>({key:String(row.key),label:String(row.label),count:Number(row.count)})),total:Number(rows.rows[0]?.total??0)});
+ const rows=await c.query(`WITH grouped AS (
+  SELECT ${expression.key} AS key,${expression.label} AS label,count(*)::int AS count,
+   count(DISTINCT co.id)::int AS company_count,
+   count(DISTINCT COALESCE(NULLIF(co.country,''),NULLIF(ct.country,'')))::int AS country_count,
+   count(*) FILTER(WHERE ct.crm_touch_status IN ('contacted','replied','bounced','autoreply'))::int AS touched_count,
+   max(ct.updated_at) AS latest_updated_at,
+   (array_agg(DISTINCT co.name ORDER BY co.name) FILTER(WHERE co.name IS NOT NULL))[1:3] AS companies,
+   (array_agg(DISTINCT COALESCE(NULLIF(co.country,''),NULLIF(ct.country,'')) ORDER BY COALESCE(NULLIF(co.country,''),NULLIF(ct.country,''))) FILTER(WHERE COALESCE(NULLIF(co.country,''),NULLIF(ct.country,'')) IS NOT NULL))[1:3] AS countries,
+   (array_agg(DISTINCT COALESCE(CASE co.customer_type WHEN '代理' THEN '代理' WHEN '直客' THEN '直客' END,ct.client_type,'未设置') ORDER BY COALESCE(CASE co.customer_type WHEN '代理' THEN '代理' WHEN '直客' THEN '直客' END,ct.client_type,'未设置')))[1:3] AS client_types
+  ${JOINS} ${access} GROUP BY 1,2
+ ),filtered AS (SELECT * FROM grouped WHERE ($6::text='' OR label ILIKE $6 ESCAPE '!'))
+ SELECT *,count(*) OVER()::int AS total FROM filtered ORDER BY count DESC,label LIMIT $7 OFFSET $8`,[global,manager,develop,a.userId,q.scope,q.search?`%${q.search.replace(/[!%_]/g,'!$&')}%`:'',q.limit,q.offset]);
+ return success({items:rows.rows.map(row=>({key:String(row.key),label:String(row.label),count:Number(row.count),companyCount:Number(row.company_count),countryCount:Number(row.country_count),touchedCount:Number(row.touched_count),companies:(row.companies??[]) as string[],countries:(row.countries??[]) as string[],clientTypes:(row.client_types??[]) as string[],latestUpdatedAt:row.latest_updated_at?new Date(row.latest_updated_at).toISOString():null})),total:Number(rows.rows[0]?.total??0)});
 }
 async function cached<T>(c:PoolClient,a:LeadActor,operation:string,input:{idempotencyKey:string},work:()=>Promise<Result<T>>,replay?:(data:T)=>Promise<Result<T>>):Promise<Result<T>>{
  const digest=createHash('sha256').update(JSON.stringify(input)).digest('hex'),old=(await c.query('SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3',[a.userId,operation,input.idempotencyKey])).rows[0];

@@ -293,7 +293,7 @@ export class PostgresAuthRepository implements AuthRepository {
   navigatorAccess(tokenHash: string): Promise<Result<NavigatorAccess | null>> {
     return this.execute(async () => {
       const result = await this.pool.query(`SELECT u.user_id AS "userId",e.email,u.display_name AS "displayName",
-        CASE WHEN u.identity_admin THEN 'admin'
+        CASE WHEN u.identity_admin THEN 'superadmin'
           WHEN a.active AND EXISTS(SELECT 1 FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='navigator' AND g.role='operations' AND g.active) THEN 'operator'
           WHEN a.active AND EXISTS(SELECT 1 FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='navigator' AND g.role='sales' AND g.active) THEN 'sales'
           ELSE NULL END AS role

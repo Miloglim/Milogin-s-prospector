@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
+import { resolve } from 'node:path';
 import {
   assertCenterDatabasePool,
   readOnlineDatabaseConfig,
@@ -29,6 +30,20 @@ describe('center database environment boundary', () => {
     });
   });
 
+  it('allows only an explicit internal Docker database host', () => {
+    const dockerEnv = {
+      PROSPECTOR_CENTER_PG_HOST: 'postgres',
+      PROSPECTOR_CENTER_PG_PORT: '5432',
+      PROSPECTOR_CENTER_PG_PASSWORD: 'example-password',
+    };
+    expect(readProductionDatabaseConfig(dockerEnv)).toMatchObject({
+      host: 'postgres', port: 5432, database: 'milogin_center', user: 'milogin_app',
+    });
+    expect(() => readProductionDatabaseConfig({ ...dockerEnv, PROSPECTOR_CENTER_PG_HOST: 'not_a_host/path' })).toThrow();
+    expect(() => readProductionDatabaseConfig({ ...dockerEnv, PROSPECTOR_CENTER_PG_PORT: '70000' })).toThrow();
+    expect(() => readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_DSN: PRODUCTION_DSN, PROSPECTOR_CENTER_PG_HOST: 'postgres' })).toThrow();
+  });
+
   it('rejects pools from the wrong environment and unknown modes', async () => {
     const env = { PROSPECTOR_CENTER_MODE: 'production', PROSPECTOR_CENTER_PG_DSN: PRODUCTION_DSN };
     const testPool = new Pool(readTestDatabaseConfig());
@@ -52,5 +67,18 @@ describe('center database environment boundary', () => {
     expect(readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://127.0.0.1:55847', PROSPECTOR_CENTER_LOCAL_HTTP: '1' }))
       .toMatchObject({ host: '127.0.0.1', port: 55847, public_origin: 'http://127.0.0.1:55847', local_http: true });
     expect(() => readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://127.0.0.1:55847' })).toThrow();
+  });
+
+  it('supports a container bind address and persistent runtime path', () => {
+    const env = {
+      PROSPECTOR_CENTER_MODE: 'production',
+      PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'https://center.example.test',
+      PROSPECTOR_CENTER_BIND_HOST: '0.0.0.0',
+      PROSPECTOR_CENTER_RUNTIME_DIR: '/var/lib/prospector-center',
+    } as NodeJS.ProcessEnv;
+    expect(readOnlineConfig(env)).toMatchObject({ host: '0.0.0.0', port: 55847 });
+    expect(onlineRuntimeDirectory(env)).toBe(resolve('/var/lib/prospector-center'));
+    expect(() => readOnlineConfig({ ...env, PROSPECTOR_CENTER_BIND_HOST: '192.168.1.8' })).toThrow();
+    expect(() => onlineRuntimeDirectory({ ...env, PROSPECTOR_CENTER_RUNTIME_DIR: 'relative/path' })).toThrow();
   });
 });

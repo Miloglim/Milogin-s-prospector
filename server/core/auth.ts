@@ -66,7 +66,7 @@ export interface Identity {
 export interface Credential { userId: string; passwordHash: string; active: boolean; securityRevision: number; mustChangePassword?:boolean; }
 export interface LoginRequest { email: string; password: string; }
 export interface LoginResponse { token: string; expiresAt: string; identity: Identity; }
-export type NavigatorRole = "admin" | "operator" | "sales";
+export type NavigatorRole = "superadmin" | "admin" | "operator" | "sales";
 export interface NavigatorAccess { userId: string; email: string; displayName: string; role: NavigatorRole; }
 export interface SessionDraft { tokenHash: string; userId: string; securityRevision: number; expiresAt: string; client?:"api"|"browser"; }
 export interface FixtureUser { userId: string; email: string; displayName: string; identityAdmin: boolean; crmRoles: CrmRole[]; passwordHash: string; mustChangePassword?:boolean; }

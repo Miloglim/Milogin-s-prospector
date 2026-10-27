@@ -69,8 +69,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
   });
   it('grants Navigator access only from its own product permission and revokes immediately',async()=>{
     const managerApi=unwrap(await auth.login({email:managerEmail,password})).token;
-    expect(unwrap(await auth.navigatorAccess(managerApi))).toMatchObject({userId:managerId,role:'admin'});
-    expect(unwrap(await auth.navigatorAccess(manager))).toMatchObject({userId:managerId,role:'admin'});
+    expect(unwrap(await auth.navigatorAccess(managerApi))).toMatchObject({userId:managerId,role:'superadmin'});
+    expect(unwrap(await auth.navigatorAccess(manager))).toMatchObject({userId:managerId,role:'superadmin'});
     const target=unwrap(await admin.users(manager,{search:salesId,limit:25,offset:0})).items[0]!;
     const salesApi=unwrap(await auth.login({email:target.email,password})).token;
     expect((await auth.navigatorAccess(salesApi)).ok).toBe(false);

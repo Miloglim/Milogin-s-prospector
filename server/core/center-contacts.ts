@@ -49,7 +49,12 @@ export interface CenterContactGroupQuery {
   dimension: CenterContactGroupDimension; scope: 'all' | 'personal' | 'assigned';
   search: string; limit: number; offset: number;
 }
-export interface CenterContactGroup { key: string; label: string; count: number; }
+export interface CenterContactGroup {
+  key: string; label: string; count: number;
+  companyCount?: number; countryCount?: number; touchedCount?: number;
+  companies?: string[]; countries?: string[]; clientTypes?: string[];
+  latestUpdatedAt?: string | null;
+}
 export interface CenterContactGroupPage { items: CenterContactGroup[]; total: number; }
 
 /** Same canonical query is used at HTTP, IPC and renderer boundaries. */

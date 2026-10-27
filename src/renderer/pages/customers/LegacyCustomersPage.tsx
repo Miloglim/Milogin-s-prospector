@@ -4,13 +4,12 @@ import { BankOutlined, BarChartOutlined, LeftOutlined, ShareAltOutlined, Unorder
 import { ContactList } from '../contacts/ContactList';
 import { useQueryClient } from '@tanstack/react-query';
 import { useIdentity } from '../../IdentityContext';
-import type { CenterContact, CenterContactQuery, CenterContactRef } from '../../../shared/online-crm';
+import { CONTACT_ASSIGNMENT_LIMITS, type CenterContact, type CenterContactGroup, type CenterContactGroupDimension, type CenterContactQuery, type CenterContactRef } from '../../../shared/online-crm';
 import { createCenterContactPort, createCenterImportPort, centerInvoke } from './centerContactPort';
 import { CenterContactDetail } from './CenterContactDetail';
 import { CenterContactViews } from './CenterContactViews';
 import { ContactAssignments, AssignmentModal } from './ContactAssignments';
 import { ContactGroups } from './ContactGroups';
-import type { CenterContactGroupDimension } from '../../../shared/online-crm';
 import './customers.css';
 
 type LegacyView = 'groups' | 'table' | 'board' | 'company' | 'assignments';
@@ -108,6 +107,31 @@ export function LegacyCustomersPage() {
     if (rows.some(row => !row?.canAssign)) { message.error('所选联系人包含不可分配项，请刷新后重选'); return; }
     setAssigning(rows as CenterContact[]);
   };
+  const assignGroups = async (dimension:CenterContactGroupDimension, groups:CenterContactGroup[]) => {
+    if (status === 'offline') { message.error('分配需要连接服务器'); return false; }
+    if (groups.reduce((total,group)=>total+group.count,0)>CONTACT_ASSIGNMENT_LIMITS.batch) { message.error(`每次最多分配 ${CONTACT_ASSIGNMENT_LIMITS.batch} 人`); return false; }
+    const session = `${baseUrl}:${identity?.userId}`;
+    try {
+      const results = await Promise.all(groups.map(group => createCenterContactPort({
+        key:`${key}:assignment:${dimension}:${group.key}`, scope:'all',
+        group:{groupDimension:dimension,groupKey:group.key},
+        isCurrent:()=>currentIdentity.current===identityKey&&currentSession.current===session,
+      }).readAll()));
+      const failed = results.find(result=>!result.success);
+      if (failed) { message.error(failed.error ?? '联系人读取失败'); return false; }
+      const contacts = new Map<number,CenterContact>();
+      results.forEach(result=>result.data?.forEach(contact=>contacts.set(contact.contactId,contact)));
+      const rows = [...contacts.values()];
+      if (!rows.length) { message.error('所选分组没有可分配联系人'); return false; }
+      if (rows.length>CONTACT_ASSIGNMENT_LIMITS.batch) { message.error(`每次最多分配 ${CONTACT_ASSIGNMENT_LIMITS.batch} 人`); return false; }
+      if (rows.some(row=>!row.canAssign)) { message.error('所选联系人包含不可分配项，请刷新后重选'); return false; }
+      setAssigning(rows);
+      return true;
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '联系人读取失败');
+      return false;
+    }
+  };
   const selectGroup=(selection:ContactGroupSelection)=>{setContactGroup(selection);setView('table')};
   const openGroups=()=>{setContactGroup(null);setView('groups')};
   const changeView=(next:LegacyView)=>{if(next==='table'){openGroups();return;}setContactGroup(null);setView(next)};
@@ -123,7 +147,7 @@ export function LegacyCustomersPage() {
     </div>
     {view==='table'&&contactGroup&&<div className="contact-group-context"><Button size="small" type="link" icon={<LeftOutlined/>} onClick={openGroups}>联系人分组</Button><Tag>{contactGroup.label}</Tag></div>}
     {view === 'table' && (tableReady ? <ContactList key={key} dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} /> : <ContactTableSkeleton />)}
-    {view === 'groups' && <ContactGroups scope="all" onSelect={selectGroup} />}
+    {view === 'groups' && <ContactGroups scope="all" canAssign={operations} onSelect={selectGroup} onAssign={selection=>assignGroups(selection.dimension,selection.groups)} />}
     {(view === 'board' || view === 'company') && <div className="space-y-3">{sourceFilter}<CenterContactViews key={key} port={port} view={view} /></div>}
     {view === 'assignments' && <ContactAssignments key={`${baseUrl}:${identity?.userId}`} operations={operations} />}
     {assigning.length > 0 && <AssignmentModal key={assigning.map(row => row.contactId).join(',')} contacts={assigning} close={() => setAssigning([])} />}

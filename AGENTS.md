@@ -116,6 +116,11 @@
 
 - 管理中心创建账号必须让管理员明确设置初始密码，禁止生成管理员不知道的固定默认密码；密码只经独立请求字段进入哈希，不进入命令、审计或日志。一次性重置链接的消费不能受 `test_mode` 限制，生产 HTTPS 环境也必须可通过同一套同源、限流、短时一次性令牌完成密码设置。
 
+## 服务器 Docker 部署陷阱（2026-10-27）
+
+- 生产中心不得继续假定 Windows `ProgramData` 或回环 PostgreSQL。容器只允许显式绑定 `127.0.0.1`/`0.0.0.0`，数据库主机由 `PROSPECTOR_CENTER_PG_HOST` 指定，但数据库名和用户必须保持 `milogin_center` / `milogin_app`。
+- Docker 构建不得执行 Electron 原生模块安装脚本；镜像只复制中心服务、管理前端和一次性管理员初始化脚本。超级管理员密码不得写入 Compose、镜像或日志。
+
 ## 首次改密准入陷阱（2026-10-26）
 
 - 中心桌面登录返回 `identity.mustChangePassword=true` 时，Navigator 必须先建立只允许状态查询、退出和改密的本地受限会话，不能继续调用会过滤首次改密账号的 `/api/navigator/access`，否则正确初始密码也会被误报为无 Navigator 权限。

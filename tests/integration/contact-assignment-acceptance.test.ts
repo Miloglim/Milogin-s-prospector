@@ -40,7 +40,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact acceptance 
    const contacts:number[]=[];
    for(const name of ['Selected','Sibling']){const ct=(await client.query('INSERT INTO contacts(email,first_name,company_id) VALUES($1,$2,$3) RETURNING id',[`${randomUUID()}@example.invalid`,name,co])).rows[0].id;contacts.push(ct);await client.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[id,ct]);}
    const companyGroup=unwrap(await repo.listContactGroups(ops.hash,{dimension:'company',scope:'all',search:'rollback-only-company',limit:24,offset:0})).items[0]!;
-   expect(companyGroup).toMatchObject({label:'rollback-only-company',count:2});expect(unwrap(await repo.listContacts(ops.hash,{search:'',limit:50,offset:0,groupDimension:'company',groupKey:companyGroup.key})).total).toBe(2);
+   expect(companyGroup).toMatchObject({label:'rollback-only-company',count:2,companyCount:1,countryCount:0,touchedCount:0,companies:['rollback-only-company']});expect(unwrap(await repo.listContacts(ops.hash,{search:'',limit:50,offset:0,groupDimension:'company',groupKey:companyGroup.key})).total).toBe(2);
    const companyRef={customerId:id,contactId:contacts[0]!};
    expect(unwrap(await repo.listContacts(otherOps.hash,{search:'rollback-only',limit:50,offset:0})).total).toBe(2);
    expect(unwrap(await assignments.contactDetail(otherOps.hash,companyRef))).toMatchObject({canEdit:true,canFollowup:true,company:{canEdit:true}});
