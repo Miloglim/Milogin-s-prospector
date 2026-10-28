@@ -126,6 +126,7 @@
 - 公司只提供一个 `milogin_center` 数据库和一个应用账号，两个产品不得再创建 `navigator`、`prospector`、`identity` schema。中心表统一使用 `public.identity_*`；业务表共处 `public` 后，新增表必须带产品前缀并在全新隔离库验证重名、外键、索引和触发器。
 - `deployment-templates/company-postgres-bootstrap.sql` 只用于全新空库。它必须同时包含结构、`crm_schema_migrations` checksum 和 `identity_products` 种子；如果只建表不写迁移版本，容器启动会再次执行迁移并失败。DMS 禁止建 schema、顶层 SELECT，并把函数/触发器/视图归为可编程对象，因此工单必须按 `company-postgres-tables.sql` → `company-postgres-programmable.sql` 顺序执行；不要直接上传完整 bootstrap，也不要用 `跳过` 绕过预检查。
 - DMS 会把 `ALTER TABLE ONLY ... ADD CONSTRAINT` 误判为 `UNKNOW`；工单文件使用等价的 `ALTER TABLE ... ADD CONSTRAINT`。`crm_device_cursors` 的名称也会触发解析歧义，工单文件必须使用带双引号的 `public."crm_device_cursors"`。这些只是 DMS 兼容写法，本地 PostgreSQL 仍按同一结构验证。
+- DMS 的“可编程对象”表单不支持 PostgreSQL `DO` 块：`company-postgres-bootstrap-single.sql` 可在本地作为一个原子命令执行，但 DMS 仍报 SQL 拆分失败。不要再把 `DO` 块作为 DMS 工单提交；单库初始化应由 DBA/数据库迁移平台直接运行完整脚本。
 - 公司数据库用户通过 `PROSPECTOR_CENTER_PG_USER`/KMS 注入，数据库名固定 `milogin_center`；Prospector 连接名必须是 `prospector-center`。同一数据库账号不是产品安全边界，钉钉身份映射和产品授权仍只能在中心服务端校验。
 
 ## 首次改密准入陷阱（2026-10-26）
