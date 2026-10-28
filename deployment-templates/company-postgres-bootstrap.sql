@@ -22,12 +22,6 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: public; Type: SCHEMA; Schema: -; Owner: -
---
-
-CREATE SCHEMA IF NOT EXISTS public;
-
-
 --
 -- Name: crm_contact_change_capture(); Type: FUNCTION; Schema: public; Owner: -
 --
