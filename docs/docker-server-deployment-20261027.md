@@ -10,7 +10,7 @@
 
 ## 首次部署
 
-1. 由管理员在 `milogin_center/public` 依次执行两张数据变更工单：先运行 `deployment-templates/company-postgres-tables.sql`，审批执行后再运行 `deployment-templates/company-postgres-programmable.sql`。前者建表、索引、序列和迁移种子，后者建函数、触发器与视图；脚本只用于空库，已有同名对象时不得直接覆盖。`company-postgres-bootstrap.sql` 保留为本地完整基线。
+1. 由管理员在 `milogin_center/public` 依次执行两张数据变更工单：先运行 `deployment-templates/company-postgres-tables.sql`，审批执行后再运行 `deployment-templates/company-postgres-programmable.sql`。前者建表、索引、序列和迁移种子，后者用 `CREATE OR REPLACE` 与受控触发器重建顺序补齐函数、触发器与视图，可安全重跑。`company-postgres-bootstrap.sql` 保留为本地完整基线。
 
 DMS 当前不能稳定解析完整 PostgreSQL dump；单条 `DO`、单条 `CREATE PROCEDURE` 和 Base64 编码的 `CREATE FUNCTION` 均被预检查拒绝。对应文件在本地 PostgreSQL 均已验证，但 DMS 平台解析器仍报 SQL 拆分失败或 `TODO CREATE`。没有 DBA 调整执行规则时，应由受控迁移工具直接执行完整基线，不再通过拆分、编码或跳过预检查规避平台限制。
 2. 通过 KMS/部署环境填写 `PROSPECTOR_CENTER_PG_HOST`、`PROSPECTOR_CENTER_PG_PORT`、`PROSPECTOR_CENTER_PG_USER` 和 `PROSPECTOR_CENTER_PG_PASSWORD`；真实账号密码不得进入仓库、Compose 或日志。

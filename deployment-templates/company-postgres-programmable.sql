@@ -1,7 +1,7 @@
 -- Milogin shared public schema: functions, triggers and views.
 -- Run after company-postgres-tables.sql has been approved and executed.
 
-CREATE FUNCTION public.crm_contact_change_capture() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.crm_contact_change_capture() RETURNS trigger
     LANGUAGE plpgsql
     AS $_$
 BEGIN
@@ -27,7 +27,7 @@ BEGIN
  RETURN NEW;
 END $_$;
 
-CREATE FUNCTION public.crm_opportunities_customer_owner_changed() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.crm_opportunities_customer_owner_changed() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
@@ -37,12 +37,12 @@ BEGIN
  RETURN NEW;
 END $$;
 
-CREATE FUNCTION public.crm_opportunity_history_append_only() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.crm_opportunity_history_append_only() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN RAISE EXCEPTION 'Opportunity stage history is append only' USING ERRCODE='23514'; END $$;
 
-CREATE FUNCTION public.crm_tasks_customer_owner_changed() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.crm_tasks_customer_owner_changed() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
@@ -52,15 +52,19 @@ BEGIN
  RETURN NEW;
 END $$;
 
+DROP TRIGGER IF EXISTS crm_contact_change_capture ON public.identity_outbox;
 CREATE TRIGGER crm_contact_change_capture AFTER INSERT ON public.identity_outbox FOR EACH ROW EXECUTE FUNCTION public.crm_contact_change_capture();
 
+DROP TRIGGER IF EXISTS crm_opportunities_customer_owner_changed ON public.crm_customers;
 CREATE TRIGGER crm_opportunities_customer_owner_changed AFTER UPDATE OF owner_user_id ON public.crm_customers FOR EACH ROW EXECUTE FUNCTION public.crm_opportunities_customer_owner_changed();
 
+DROP TRIGGER IF EXISTS crm_opportunity_history_append_only ON public.crm_opportunity_stage_history;
 CREATE TRIGGER crm_opportunity_history_append_only BEFORE DELETE OR UPDATE ON public.crm_opportunity_stage_history FOR EACH ROW EXECUTE FUNCTION public.crm_opportunity_history_append_only();
 
+DROP TRIGGER IF EXISTS crm_tasks_customer_owner_changed ON public.crm_customers;
 CREATE TRIGGER crm_tasks_customer_owner_changed AFTER UPDATE OF owner_user_id ON public.crm_customers FOR EACH ROW EXECUTE FUNCTION public.crm_tasks_customer_owner_changed();
 
-CREATE VIEW public.freight_rates AS
+CREATE OR REPLACE VIEW public.freight_rates AS
  SELECT id,
     content_key,
     record_type,
@@ -100,7 +104,7 @@ CREATE VIEW public.freight_rates AS
    FROM public.freight_items
   WHERE (record_type = 'rates'::text);
 
-CREATE VIEW public.space_records AS
+CREATE OR REPLACE VIEW public.space_records AS
  SELECT id,
     content_key,
     record_type,
