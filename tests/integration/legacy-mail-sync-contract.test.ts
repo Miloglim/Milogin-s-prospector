@@ -52,10 +52,10 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('legacy mail sync 
       const actorId = randomUUID();
       const token = randomBytes(32).toString('base64url');
       const hash = tokenAdapter.hash(token);
-      await client.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)', [actorId, 'legacy-mail-sync-fixture']);
-      await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm','sales')", [actorId]);
-      await client.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm','own',$2)", [actorId, JSON.stringify(capabilitiesFor(['sales']))]);
-      await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')", [hash, actorId]);
+      await client.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)', [actorId, 'legacy-mail-sync-fixture']);
+      await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm','sales')", [actorId]);
+      await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm','own',$2)", [actorId, JSON.stringify(capabilitiesFor(['sales']))]);
+      await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')", [hash, actorId]);
 
       const companyId = (await client.query("INSERT INTO companies(name) VALUES('legacy-mail-sync-company') RETURNING id")).rows[0].id;
       const customerId = randomUUID();

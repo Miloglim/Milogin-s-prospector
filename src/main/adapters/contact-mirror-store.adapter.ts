@@ -68,11 +68,21 @@ const FOLLOWUP_PREDICATE = `${contactValue('touchStatus')} IN ('contacted','repl
 const FOLLOWUP_ORDER = `crm_contact_time(${contactValue('lastFollowupAt')}) DESC,${UPDATED_ORDER}`;
 const SEARCH_FIELDS = ['email', 'firstName', 'lastName', 'title', 'companyName'] as const;
 const searchValue = (field: string) => `crm_contact_lower(${contactValue(field)})`;
+const GROUP_KEY_SQL = {
+  batch: `COALESCE(NULLIF(${contactValue('sourceDetail')},''),NULLIF(${contactValue('sourceLevel1')},''),NULLIF(${contactValue('sourceLevel2')},''),'unset')`,
+  country: `COALESCE(NULLIF(${contactValue('country')},''),'unset')`,
+  company: `COALESCE(CAST(${contactValue('companyId')} AS TEXT),'unset')`,
+  clientType: `COALESCE(NULLIF(${contactValue('clientType')},''),'unset')`,
+} as const;
 const PAGE_INDEXES = `
 CREATE INDEX IF NOT EXISTS crm_contact_mirror_page ON crm_contact_mirror(${UPDATED_ORDER});
 CREATE INDEX IF NOT EXISTS crm_contact_mirror_followup_v2_page ON crm_contact_mirror(${FOLLOWUP_ORDER}) WHERE ${FOLLOWUP_PREDICATE};
 CREATE INDEX IF NOT EXISTS crm_contact_mirror_source_page ON crm_contact_mirror(${contactValue('origin')},${contactValue('ownerUserId')},${UPDATED_ORDER});
 CREATE INDEX IF NOT EXISTS crm_contact_mirror_search_page ON crm_contact_mirror(${SEARCH_FIELDS.map(searchValue).join(',')},${UPDATED_ORDER});
+CREATE INDEX IF NOT EXISTS crm_contact_mirror_batch_page ON crm_contact_mirror(${GROUP_KEY_SQL.batch},${UPDATED_ORDER});
+CREATE INDEX IF NOT EXISTS crm_contact_mirror_country_page ON crm_contact_mirror(${GROUP_KEY_SQL.country},${UPDATED_ORDER});
+CREATE INDEX IF NOT EXISTS crm_contact_mirror_company_page ON crm_contact_mirror(${GROUP_KEY_SQL.company},${UPDATED_ORDER});
+CREATE INDEX IF NOT EXISTS crm_contact_mirror_client_type_page ON crm_contact_mirror(${GROUP_KEY_SQL.clientType},${UPDATED_ORDER});
 `;
 const UNRESOLVED_COMMAND = "json_extract(payload,'$.status') IN ('pending','conflict','failed')";
 const commandDigest=(input:ContactCommandInput)=>createHash('sha256').update(contactCommandFingerprint(input)).digest('hex');
@@ -295,6 +305,9 @@ export class SqliteContactMirrorStore implements ContactMirrorStore {
       conditions.push(`((${contactValue('origin')}='operations' AND ${contactValue('ownerUserId')}=?) OR ${contactValue('isShared')}=1)`); parameters.push(ctx.userId);
     }
     if (query.assignment === 'accepted') conditions.push(`${contactValue('assignmentStatus')}='accepted'`);
+    if (query.groupDimension && query.groupKey !== undefined) {
+      conditions.push(`${GROUP_KEY_SQL[query.groupDimension]}=?`); parameters.push(query.groupKey);
+    }
     if (query.followupOnly) conditions.push(FOLLOWUP_PREDICATE);
     if (query.crmStage) {
       conditions.push(`COALESCE(${contactValue('relationshipStage')},CASE WHEN ${FOLLOWUP_PREDICATE} THEN 'reaching' ELSE 'cold' END)=?`); parameters.push(query.crmStage);

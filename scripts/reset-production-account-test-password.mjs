@@ -29,20 +29,20 @@ const client = await pool.connect();
 try {
   await client.query("BEGIN");
   await client.query("SELECT pg_advisory_xact_lock($1)", [ADMIN_LOCK]);
-  const target = await client.query(`SELECT u.user_id FROM identity.users u JOIN identity.login_emails e USING(user_id)
+  const target = await client.query(`SELECT u.user_id FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id)
     WHERE e.email=$1 AND u.active AND u.deleted_at IS NULL FOR UPDATE OF u`, [EMAIL]);
   if (target.rowCount !== 1) throw new Error("目标账号不存在或未启用");
-  const actor = await client.query(`SELECT u.user_id FROM identity.users u JOIN identity.credentials c USING(user_id)
+  const actor = await client.query(`SELECT u.user_id FROM public.identity_users u JOIN public.identity_credentials c USING(user_id)
     WHERE u.active AND u.identity_admin AND u.deleted_at IS NULL ORDER BY u.created_at LIMIT 1`);
   if (actor.rowCount !== 1) throw new Error("缺少用于审计的超级管理员");
   const userId = target.rows[0].user_id;
-  await client.query(`UPDATE identity.credentials SET password_hash=$2,hash_scheme='scrypt-v1',changed_at=now() WHERE user_id=$1`, [userId, passwordHash]);
-  await client.query(`UPDATE identity.users SET must_change_password=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1`, [userId]);
-  await client.query(`UPDATE identity.desktop_refresh_tokens r SET consumed_at=now() FROM identity.sessions s
+  await client.query(`UPDATE public.identity_credentials SET password_hash=$2,hash_scheme='scrypt-v1',changed_at=now() WHERE user_id=$1`, [userId, passwordHash]);
+  await client.query(`UPDATE public.identity_users SET must_change_password=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1`, [userId]);
+  await client.query(`UPDATE public.identity_desktop_refresh_tokens r SET consumed_at=now() FROM public.identity_sessions s
     WHERE r.session_id=s.session_id AND s.user_id=$1 AND r.consumed_at IS NULL`, [userId]);
-  await client.query("UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL", [userId]);
-  await client.query("UPDATE identity.management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL", [userId]);
-  await client.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,reason)
+  await client.query("UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL", [userId]);
+  await client.query("UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL", [userId]);
+  await client.query(`INSERT INTO public.identity_management_audit(actor_id,target_id,action,reason)
     VALUES($1,$2,'identity.password.test_reset','账号生产登录链路验收临时密码；结束后由本人改密')`, [actor.rows[0].user_id, userId]);
   await client.query("COMMIT");
   fs.mkdirSync(path.dirname(OUTPUT), { recursive: true, mode: 0o700 });

@@ -1,10 +1,10 @@
 import { CAMPAIGN_LIMITS, CAMPAIGN_STATES, CAMPAIGN_TARGET_STATES, CAMPAIGN_ATTEMPT_STATES } from '../../core/campaigns';
-export const CAMPAIGN_VERSION='026-server-campaigns-n7';
+export const CAMPAIGN_VERSION='026-server-campaigns-n7-public';
 export const CAMPAIGN_LOCK=19041026;
 const quote=(v:string)=>v.split(',').map(x=>`'${x}'`).join(',');
 export const CAMPAIGN_SQL=`
 CREATE TABLE crm_campaigns(
- campaign_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),created_by uuid NOT NULL REFERENCES identity.users(user_id),name text NOT NULL CHECK(btrim(name)<>'' AND length(name)<=${CAMPAIGN_LIMITS.name}),
+ campaign_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),created_by uuid NOT NULL REFERENCES public.identity_users(user_id),name text NOT NULL CHECK(btrim(name)<>'' AND length(name)<=${CAMPAIGN_LIMITS.name}),
  state text NOT NULL DEFAULT 'draft' CHECK(state IN (${quote(CAMPAIGN_STATES.join(','))})),version integer NOT NULL DEFAULT 1 CHECK(version>0),auto_send boolean NOT NULL DEFAULT false CHECK(auto_send=false),
  idempotency_key text NOT NULL CHECK(length(idempotency_key) BETWEEN 1 AND ${CAMPAIGN_LIMITS.key}),confirmed_at timestamptz,paused_at timestamptz,stopped_at timestamptz,stop_reason text CHECK(stop_reason IS NULL OR length(stop_reason)<=${CAMPAIGN_LIMITS.reason}),next_run_at timestamptz,
  created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(created_by,idempotency_key),

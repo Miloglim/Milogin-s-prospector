@@ -1,10 +1,10 @@
 import { SEND_AUTHORIZATION_LIMITS } from '../../core/send-acceptance';
-export const SEND_ACCEPTANCE_VERSION = '025-send-acceptance';
+export const SEND_ACCEPTANCE_VERSION = '025-send-acceptance-public';
 export const SEND_ACCEPTANCE_SQL = `
 ALTER TABLE crm_contact_mail_events ADD COLUMN archive_only boolean NOT NULL DEFAULT false;
 CREATE TABLE crm_send_authorizations (
   authorization_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  actor_id uuid NOT NULL REFERENCES identity.users(user_id),
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
   send_key text NOT NULL CHECK(length(send_key) BETWEEN 1 AND ${SEND_AUTHORIZATION_LIMITS.sendKey}),
   contact_id integer NOT NULL REFERENCES contacts(id),
   customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
@@ -12,7 +12,7 @@ CREATE TABLE crm_send_authorizations (
   authorized_recipients jsonb NOT NULL CHECK(jsonb_typeof(authorized_recipients)='array'),
   authorized_cc jsonb NOT NULL CHECK(jsonb_typeof(authorized_cc)='array'),
   request_fingerprint text NOT NULL,
-  owner_user_id uuid REFERENCES identity.users(user_id),
+  owner_user_id uuid REFERENCES public.identity_users(user_id),
   allow_advance_stage boolean NOT NULL,
   issued_at timestamptz NOT NULL, expires_at timestamptz NOT NULL,
   consumed_event_id uuid UNIQUE REFERENCES crm_contact_mail_events(event_id),

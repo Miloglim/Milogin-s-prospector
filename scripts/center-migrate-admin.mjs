@@ -74,22 +74,22 @@ async function main() {
     const matching = await source.query(`SELECT u.user_id,u.display_name,u.active,u.identity_admin,
       u.security_revision,u.management_revision,u.created_at,u.deleted_at,u.must_change_password,
       e.email,e.verified_at,c.password_hash,c.hash_scheme,c.changed_at
-      FROM identity.users u JOIN identity.login_emails e USING(user_id)
-      JOIN identity.credentials c USING(user_id) WHERE e.email=$1`, [ADMIN_EMAIL]);
+      FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id)
+      JOIN public.identity_credentials c USING(user_id) WHERE e.email=$1`, [ADMIN_EMAIL]);
     if (matching.rowCount !== 1 || !matching.rows[0].active || !matching.rows[0].identity_admin
       || matching.rows[0].deleted_at || matching.rows[0].must_change_password
       || matching.rows[0].hash_scheme !== 'scrypt-v1') throw new Error('来源超管身份不符合迁移条件');
-    const present = await destination.query("SELECT to_regclass('identity.users') AS users");
+    const present = await destination.query("SELECT to_regclass('public.identity_users') AS users");
     if (verifyOnly) {
       if (!present.rows[0].users) throw new Error('目标身份表尚未建立');
       const migrated = await destination.query(`SELECT u.user_id,u.active,u.identity_admin,
         u.security_revision,u.management_revision,u.must_change_password,e.email,e.verified_at,
-        c.password_hash,c.hash_scheme FROM identity.users u
-        JOIN identity.login_emails e USING(user_id)
-        JOIN identity.credentials c USING(user_id)`);
+        c.password_hash,c.hash_scheme FROM public.identity_users u
+        JOIN public.identity_login_emails e USING(user_id)
+        JOIN public.identity_credentials c USING(user_id)`);
       const sessions = await destination.query(`SELECT
-        (SELECT count(*)::int FROM identity.sessions) AS sessions,
-        (SELECT count(*)::int FROM identity.desktop_refresh_tokens) AS refresh_tokens`);
+        (SELECT count(*)::int FROM public.identity_sessions) AS sessions,
+        (SELECT count(*)::int FROM public.identity_desktop_refresh_tokens) AS refresh_tokens`);
       const original = matching.rows[0], copied = migrated.rows[0];
       if (migrated.rowCount !== 1 || copied.user_id !== original.user_id
         || copied.email !== ADMIN_EMAIL || copied.password_hash !== original.password_hash
@@ -125,20 +125,20 @@ async function main() {
     const client = await destination.connect();
     try {
       await client.query('BEGIN');
-      const identityCount = await client.query('SELECT count(*)::int AS n FROM identity.users');
-      const sessionCount = await client.query('SELECT count(*)::int AS n FROM identity.sessions');
+      const identityCount = await client.query('SELECT count(*)::int AS n FROM public.identity_users');
+      const sessionCount = await client.query('SELECT count(*)::int AS n FROM public.identity_sessions');
       if (identityCount.rows[0].n !== 0 || sessionCount.rows[0].n !== 0) {
         throw new Error('目标库已有账号或会话，拒绝迁移');
       }
       const u = matching.rows[0];
-      await client.query(`INSERT INTO identity.users
+      await client.query(`INSERT INTO public.identity_users
         (user_id,display_name,active,identity_admin,security_revision,management_revision,
          created_at,deleted_at,must_change_password) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [u.user_id,u.display_name,u.active,u.identity_admin,u.security_revision,
         u.management_revision,u.created_at,u.deleted_at,u.must_change_password]);
-      await client.query('INSERT INTO identity.login_emails(user_id,email,verified_at) VALUES($1,$2,$3)',
+      await client.query('INSERT INTO public.identity_login_emails(user_id,email,verified_at) VALUES($1,$2,$3)',
         [u.user_id,u.email,u.verified_at]);
-      await client.query(`INSERT INTO identity.credentials
+      await client.query(`INSERT INTO public.identity_credentials
         (user_id,password_hash,hash_scheme,changed_at) VALUES($1,$2,$3,$4)`,
       [u.user_id,u.password_hash,u.hash_scheme,u.changed_at]);
       await client.query('COMMIT');
@@ -148,8 +148,8 @@ async function main() {
     } finally { client.release(); }
     const verified = await destination.query(`SELECT count(*)::int AS users,
       count(*) FILTER (WHERE identity_admin AND active AND deleted_at IS NULL)::int AS admins
-      FROM identity.users`);
-    const sessions = await destination.query('SELECT count(*)::int AS n FROM identity.sessions');
+      FROM public.identity_users`);
+    const sessions = await destination.query('SELECT count(*)::int AS n FROM public.identity_sessions');
     if (verified.rows[0].users !== 1 || verified.rows[0].admins !== 1 || sessions.rows[0].n !== 0) {
       throw new Error('迁移后账号或会话数量异常');
     }

@@ -1,5 +1,19 @@
 # Prospector Database Schema
 
+## 2026-10-28 当前正式库映射：全部使用 public
+
+公司只提供一个 `milogin_center` 数据库并禁止创建额外 schema。当前代码中的实际表名以本文后续业务表定义和 `deployment-templates/company-postgres-bootstrap.sql` 为准；中心账号区不再使用 `identity` schema：
+
+- `identity.users` → `public.identity_users`
+- `identity.login_emails` → `public.identity_login_emails`
+- `identity.credentials` → `public.identity_credentials`
+- `identity.product_grants` → `public.identity_product_grants`
+- `identity.product_access` → `public.identity_product_access`
+- `identity.sessions` → `public.identity_sessions`
+- 其他中心表同理使用 `public.identity_*`。
+
+Navigator 的运价、账号投影和运行表也位于同一 `public`。统一 bootstrap 当前包含 89 张表和 2 个视图；历史交付文中出现的 `identity.*` 是当时结构记录，不代表当前部署 SQL。中心迁移版本增加 `-public` 后缀，应用启动按 checksum 核验，不能把旧 schema 的关键词替换当作已完成迁移。
+
 ## 2026-10-21 收件箱 IMAP 续抓游标
 
 本账号 `prospector.db` 的 `email_accounts` 增加两个可空列：`imap_fetch_uid_validity TEXT` 与 `imap_fetch_last_uid INTEGER`。两者必须成组解释：UIDVALIDITY 与当前邮箱一致时才使用最后 UID 继续下一批；UIDVALIDITY 变化视为服务器 UID 空间重建，从最近时间窗口重新开始。列由基础 `schema-sql.ts` 和幂等迁移 `v0.55-accounts-imap-fetch-cursor` 同源补齐，迁移不删除、不改写邮件或账号数据。中心 PostgreSQL 无结构变化。

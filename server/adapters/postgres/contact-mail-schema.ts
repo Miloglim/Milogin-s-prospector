@@ -1,10 +1,10 @@
 import { CONTACT_MAIL_KINDS, CONTACT_MAIL_LIMITS as L } from '../../core/contact-mail';
-export const CONTACT_MAIL_VERSION = '020-contact-mail-events';
-export const CONTACT_MAIL_SEND_STAGE_VERSION = '021-contact-mail-send-stage';
+export const CONTACT_MAIL_VERSION = '020-contact-mail-events-public';
+export const CONTACT_MAIL_SEND_STAGE_VERSION = '021-contact-mail-send-stage-public';
 export const CONTACT_MAIL_SEND_STAGE_SQL = 'ALTER TABLE crm_contact_mail_events ADD COLUMN send_stage_advanced boolean NOT NULL DEFAULT false;';
 export const CONTACT_MAIL_SQL = `
 CREATE TABLE crm_contact_mail_events (
- event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(), actor_id uuid NOT NULL REFERENCES identity.users(user_id),
+ event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(), actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
  contact_id integer NOT NULL REFERENCES contacts(id), customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
  event_key text NOT NULL CHECK(length(event_key) BETWEEN 1 AND ${L.key}),
  mailbox_key text NOT NULL CHECK(length(mailbox_key) BETWEEN 1 AND ${L.mailboxKey}),

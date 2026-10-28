@@ -3,10 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 import { resolveConfig } from 'electron-vite';
 import { createServer } from 'vite';
+import { preserveServerForRelaunch } from './dev-single-lifecycle.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const marker = `--prospector-dev-launcher=${root}`;
 const electron = resolve(root, 'node_modules/electron/dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
+const RELAUNCH_GRACE_MS = 5_000;
+const RELAUNCH_PROBE_INTERVAL_MS = 200;
 const env = { ...process.env, NODE_OPTIONS: '' };
 // Development is intentionally pinned to the formal local center. A stale
 // shell value must not silently route the app back to the isolated test node.
@@ -57,9 +60,37 @@ if (alreadyRunning) {
     } else child.kill();
     await server.close();
   }
+  async function finishWindowExit() {
+    if (stopping || process.platform !== 'win32') {
+      await stop();
+      return;
+    }
+    try {
+      const relaunched = await preserveServerForRelaunch({
+        probe: () => existingElectronPid() !== '',
+        stop,
+        graceMs: RELAUNCH_GRACE_MS,
+        probeIntervalMs: RELAUNCH_PROBE_INTERVAL_MS,
+      });
+      if (relaunched) {
+        console.log(`[${new Date().toISOString()}] [INFO] [dev.launcher] 检测到替代窗口，页面服务继续运行`);
+      }
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] [WARN] [dev.launcher] 探测替代窗口失败: ${error.message}`);
+      await stop();
+    }
+  }
   process.on('SIGINT', () => void stop());
   process.on('SIGTERM', () => void stop());
   child.on('error', error => { console.error(`[${new Date().toISOString()}] [ERROR] [dev.launcher] ${error.message}`); void stop(); });
-  // Keep the page service alive during app.relaunch() on an account switch.
-  child.on('exit', code => { if (code && !stopping) { console.error(`[${new Date().toISOString()}] [ERROR] [dev.launcher] 窗口异常退出 (${code})`); void stop(); } });
+  child.on('exit', code => {
+    if (stopping) return;
+    if (code) {
+      console.error(`[${new Date().toISOString()}] [ERROR] [dev.launcher] 窗口异常退出 (${code})`);
+      void stop();
+      return;
+    }
+    // app.relaunch() also exits with 0. Keep Vite only while its replacement appears.
+    void finishWindowExit();
+  });
 }

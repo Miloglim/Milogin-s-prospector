@@ -77,7 +77,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('signed offline ac
     expect(renewed.status).toBe(200);
     validGrant(renewed.body.data.offlineAccess, userId);
     expect(renewed.body.data.offlineAccess.publicKey).toBe(login.body.data.offlineAccess.publicKey);
-    await pool.query('UPDATE identity.users SET active=false WHERE user_id=$1', [userId]);
+    await pool.query('UPDATE public.identity_users SET active=false WHERE user_id=$1', [userId]);
     expect((await request(DESKTOP_AUTH_ROUTES.refresh, { refreshToken: renewed.body.data.refreshToken })).status).toBe(401);
   }, TIMEOUT_MS);
   it('never returns a lease before required password change', async () => {

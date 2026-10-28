@@ -12,7 +12,7 @@ function unwrap<T>(r:Result<T>):T { if(!r.ok)throw Error(`${r.error.code}: ${r.e
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('send acceptance rollback PostgreSQL',()=>{
  it('binds live authorization to immutable late receipts without restoring revoked contact data',async()=>{
   const pool=new Pool(readTestDatabaseConfig()),client=await pool.connect();
-  const counts=async()=>(await client.query('SELECT (SELECT count(*) FROM identity.users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM identity.outbox) AS events')).rows[0];
+  const counts=async()=>(await client.query('SELECT (SELECT count(*) FROM public.identity_users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM public.identity_outbox) AS events')).rows[0];
   const before=await counts();await client.query('BEGIN');
   try {
    let lease=Promise.resolve(), failArchiveAudit=false;
@@ -22,10 +22,10 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('send acceptance rol
    unwrap(await repo.migrate());
    const actors=[];
    for(const role of ['operations','sales','sales','auditor'] as const){const id=randomUUID(),token=randomBytes(32).toString('base64url');
-    await client.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)',[id,`rollback-${id}`]);
-    await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
-    await client.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
-    await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);actors.push({id,hash:tokenAdapter.hash(token)});
+    await client.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)',[id,`rollback-${id}`]);
+    await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
+    await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
+    await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);actors.push({id,hash:tokenAdapter.hash(token)});
    }
    const [ops,sales,other,auditor]=actors as [{id:string;hash:string},{id:string;hash:string},{id:string;hash:string},{id:string;hash:string}];
    const co=(await client.query("INSERT INTO companies(name,backcheck_data) VALUES('rollback-only-company',$1) RETURNING id",[JSON.stringify({verified:'fixture'})])).rows[0].id,id=randomUUID();
@@ -122,7 +122,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('send acceptance rol
    const changedBefore=(await client.query('SELECT crm_contact_version,stage,status,crm_touch_status FROM contacts WHERE id=$1',[ref.contactId])).rows[0];
    expect(unwrap(await repo.acceptSend(sales.hash,{authorizationId:changeOwnerGrant.authorizationId,event:{...ownerEvent,eventKey:k(),messageKey:k(),occurredAt:changeOwnerGrant.issuedAt}})).archivedAfterRevocation).toBe(true);
    expect((await client.query('SELECT crm_contact_version,stage,status,crm_touch_status FROM contacts WHERE id=$1',[ref.contactId])).rows[0]).toEqual(changedBefore);
-   await client.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1',[other.id]);expect(await repo.acceptSend(other.hash,{authorizationId:grant.authorizationId,event})).toMatchObject({ok:false,error:{code:'UNAUTHORIZED'}});
+   await client.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1',[other.id]);expect(await repo.acceptSend(other.hash,{authorizationId:grant.authorizationId,event})).toMatchObject({ok:false,error:{code:'UNAUTHORIZED'}});
   } finally {await client.query('ROLLBACK');expect(await counts()).toEqual(before);client.release();await pool.end();}
  },30000);
 });

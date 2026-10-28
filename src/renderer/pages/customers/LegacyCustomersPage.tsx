@@ -9,11 +9,10 @@ import { createCenterContactPort, createCenterImportPort, centerInvoke } from '.
 import { CenterContactDetail } from './CenterContactDetail';
 import { CenterContactViews } from './CenterContactViews';
 import { ContactAssignments, AssignmentModal } from './ContactAssignments';
-import { ContactGroups } from './ContactGroups';
+import { ContactGroups, type ContactGroupSelection } from './ContactGroups';
 import './customers.css';
 
 type LegacyView = 'groups' | 'table' | 'board' | 'company' | 'assignments';
-type ContactGroupSelection={dimension:CenterContactGroupDimension;key:string;label:string};
 const CUSTOMER_TABLE_DEFER_MS = 180;
 const CUSTOMER_TABLE_SKELETON_ROWS = 8;
 
@@ -76,9 +75,12 @@ export function LegacyCustomersPage() {
   const currentIdentity = useRef(identityKey); currentIdentity.current = identityKey;
   const currentSession = useRef(''); currentSession.current = `${baseUrl}:${identity?.userId}`;
   const port = useMemo(() => createCenterContactPort({ key, scope: activeScope, group:contactGroup?{groupDimension:contactGroup.dimension,groupKey:contactGroup.key}:undefined, isCurrent: () => currentIdentity.current === identityKey }), [key, activeScope, contactGroup?.dimension, contactGroup?.key]);
-  const importPort = useMemo(() => { const session = `${baseUrl}:${identity?.userId}`; return createCenterImportPort(centerInvoke, operations, () => { void qc.invalidateQueries({ queryKey: ['center-contacts'] }); }, () => currentSession.current === session); }, [key, operations, qc]);
+  const importPort = useMemo(() => { const session = `${baseUrl}:${identity?.userId}`; return createCenterImportPort(centerInvoke, operations, () => {
+    void qc.invalidateQueries({ queryKey: ['center-contacts'] });
+    void qc.invalidateQueries({ queryKey: ['center-contact-groups'] });
+  }, () => currentSession.current === session); }, [key, operations, qc]);
   useEffect(() => {
-    if (view !== 'table') { setTableReady(false); return; }
+    if (view !== 'table' && view !== 'groups') { setTableReady(false); return; }
     const timer = window.setTimeout(() => setTableReady(true), CUSTOMER_TABLE_DEFER_MS);
     return () => {
       window.clearTimeout(timer);
@@ -132,9 +134,15 @@ export function LegacyCustomersPage() {
       return false;
     }
   };
-  const selectGroup=(selection:ContactGroupSelection)=>{setContactGroup(selection);setView('table')};
+  const selectGroup=(selection:ContactGroupSelection|null)=>{setContactGroup(selection);if(view!=='groups')setView('table')};
   const openGroups=()=>{setContactGroup(null);setView('groups')};
   const changeView=(next:LegacyView)=>{if(next==='table'){openGroups();return;}setContactGroup(null);setView(next)};
+  const groupMetrics=[
+    {label:'待触达',value:contactGroup?.count===undefined?'—':Math.max(0,contactGroup.count-(contactGroup.touchedCount??0)),note:'尚未形成有效触达'},
+    {label:'已触达',value:contactGroup?.touchedCount??'—',note:'已联系、回复或退信'},
+    {label:'覆盖公司',value:contactGroup?.companyCount??'—',note:'当前分组内公司数'},
+    {label:'覆盖国家',value:contactGroup?.countryCount??'—',note:'当前分组国家范围'},
+  ];
   return <div className="prospector-table-page customer-legacy-page">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <Segmented<LegacyView> value={view==='table'&&contactGroup?'groups':view} onChange={changeView} options={[
@@ -143,11 +151,19 @@ export function LegacyCustomersPage() {
         { value: 'assignments', label: operations ? '分配管理' : '分配线索', icon: <ShareAltOutlined /> },
         { value: 'company', label: '公司', icon: <BankOutlined /> },
       ]} />
-      {view === 'table' && <div ref={setHeaderActionsTarget} className="flex flex-1 min-w-[350px] items-center justify-end" />}
+      {(view === 'table' || view === 'groups') && <div ref={setHeaderActionsTarget} className="flex flex-1 min-w-[350px] items-center justify-end" />}
     </div>
     {view==='table'&&contactGroup&&<div className="contact-group-context"><Button size="small" type="link" icon={<LeftOutlined/>} onClick={openGroups}>联系人分组</Button><Tag>{contactGroup.label}</Tag></div>}
     {view === 'table' && (tableReady ? <ContactList key={key} dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} /> : <ContactTableSkeleton />)}
-    {view === 'groups' && <ContactGroups scope="all" canAssign={operations} onSelect={selectGroup} onAssign={selection=>assignGroups(selection.dimension,selection.groups)} />}
+    {view === 'groups' && <div className="contact-group-workspace">
+      <div className="contact-group-metrics">{groupMetrics.map(metric=><div className="contact-group-metric" key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.note}</small></div>)}</div>
+      <div className="contact-group-split">
+        <ContactGroups scope="all" canAssign={operations} selectedGroup={contactGroup} onSelect={selectGroup} onAssign={selection=>assignGroups(selection.dimension,selection.groups)} />
+        <div className="contact-group-members">
+          {tableReady && contactGroup ? <ContactList dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} /> : <ContactTableSkeleton />}
+        </div>
+      </div>
+    </div>}
     {(view === 'board' || view === 'company') && <div className="space-y-3">{sourceFilter}<CenterContactViews key={key} port={port} view={view} /></div>}
     {view === 'assignments' && <ContactAssignments key={`${baseUrl}:${identity?.userId}`} operations={operations} />}
     {assigning.length > 0 && <AssignmentModal key={assigning.map(row => row.contactId).join(',')} contacts={assigning} close={() => setAssigning([])} />}

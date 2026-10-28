@@ -34,11 +34,11 @@ const DISK_PATH=process.platform==='win32'?path.parse(process.cwd()).root:'/';
 const PERSON=`u.user_id AS "userId",u.display_name AS "displayName",e.email,e.verified_at IS NOT NULL AS "emailVerified",u.deleted_at AS "deletedAt",
  u.identity_admin AS "identityAdmin",u.active,u.management_revision AS revision,
  COALESCE(a.active,true) AS "accessActive",COALESCE(a.scope,CASE
-  WHEN EXISTS(SELECT 1 FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role='admin') THEN 'summary'
-  WHEN EXISTS(SELECT 1 FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role='operations') THEN 'shared' ELSE 'own' END) AS scope,a.capabilities,
- ARRAY(SELECT role FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' ORDER BY role) AS "crmRoles",
- (SELECT g.role FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='navigator' AND g.active AND g.role IN ('operations','sales') ORDER BY CASE g.role WHEN 'operations' THEN 0 ELSE 1 END LIMIT 1) AS "navigatorRole",
- COALESCE((SELECT na.active FROM identity.product_access na WHERE na.user_id=u.user_id AND na.product_id='navigator'),false) AS "navigatorActive"`;
+  WHEN EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role='admin') THEN 'summary'
+  WHEN EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role='operations') THEN 'shared' ELSE 'own' END) AS scope,a.capabilities,
+ ARRAY(SELECT role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' ORDER BY role) AS "crmRoles",
+ (SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='navigator' AND g.active AND g.role IN ('operations','sales') ORDER BY CASE g.role WHEN 'operations' THEN 0 ELSE 1 END LIMIT 1) AS "navigatorRole",
+ COALESCE((SELECT na.active FROM public.identity_product_access na WHERE na.user_id=u.user_id AND na.product_id='navigator'),false) AS "navigatorActive"`;
 function managed(row:any):ManagedUser {return {...row,capabilities:effectiveCapabilitiesFor(row.crmRoles,row.capabilities)};}
 function formatBytes(bytes:number):string {
  const units=['B','KB','MB','GB','TB'];
@@ -102,8 +102,8 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
  private async actor(c:DB,hash:string):Promise<Actor|null>{
   const result=await c.query(`SELECT u.user_id AS "userId",u.identity_admin AS "identityAdmin",a.scope,
    COALESCE(a.active,true) AS enabled,a.capabilities,
-   ARRAY(SELECT role FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY role) AS roles
-   FROM identity.sessions s JOIN identity.users u USING(user_id) LEFT JOIN identity.product_access a ON a.user_id=u.user_id AND a.product_id='crm'
+   ARRAY(SELECT role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY role) AS roles
+   FROM public.identity_sessions s JOIN public.identity_users u USING(user_id) LEFT JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm'
    WHERE s.token_hash=$1 AND s.client='browser' AND s.revoked_at IS NULL AND s.expires_at>now() AND u.active AND NOT u.must_change_password AND s.security_revision=u.security_revision`,[hash]);
   const row=result.rows[0];if(!row)return null;return {...row,scope:row.scope??(row.roles.includes('admin')?'summary':row.roles.includes('operations')?'shared':'own'),roles:row.enabled?row.roles:[],capabilities:row.enabled?effectiveCapabilitiesFor(row.roles,row.capabilities):[]};
  }
@@ -140,38 +140,38 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
    const state=q.state??'active';
    if(state==='archived'&&!actor.identityAdmin)return failure('FORBIDDEN','无归档账号读取权限');
    const filter=`WHERE (($4::text='archived' AND u.deleted_at IS NOT NULL) OR ($4::text='active' AND u.deleted_at IS NULL)) AND ($1='' OR u.user_id::text=$1 OR e.email ILIKE $2 ESCAPE '\\' OR u.display_name ILIKE $2 ESCAPE '\\')
-   AND ($3::text IS NULL OR EXISTS(SELECT 1 FROM identity.product_grants g WHERE g.user_id=u.user_id AND g.product_id=$3 AND g.active))`;
+   AND ($3::text IS NULL OR EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id=$3 AND g.active))`;
    const p=[q.search,`%${q.search.replace(/[\\%_]/g,'\\$&')}%`,q.productId??null];
-   const count=await c.query(`SELECT count(*)::int AS n FROM identity.users u JOIN identity.login_emails e USING(user_id) ${filter}`,[...p,state]);
-   const rows=await c.query(`SELECT ${PERSON} FROM identity.users u JOIN identity.login_emails e USING(user_id) LEFT JOIN identity.product_access a ON a.user_id=u.user_id AND a.product_id='crm' ${filter}
+   const count=await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) ${filter}`,[...p,state]);
+   const rows=await c.query(`SELECT ${PERSON} FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) LEFT JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' ${filter}
     ORDER BY CASE WHEN u.identity_admin THEN 0 ELSE COALESCE((
-     SELECT MIN(array_position($5::text[],g.role)) FROM identity.product_grants g
+     SELECT MIN(array_position($5::text[],g.role)) FROM public.identity_product_grants g
      WHERE g.user_id=u.user_id AND g.product_id=COALESCE($3,'crm') AND g.active
     ),array_length($5::text[],1)+1) END,u.created_at DESC,u.user_id LIMIT $6 OFFSET $7`,[...p,state,[...CRM_ROLES],q.limit,q.offset]);
   return success({items:rows.rows.map(managed),total:count.rows[0].n});
  });}
  products(hash:string):Promise<Result<ProductInfo[]>>{return this.read(hash,async(c,actor)=>{
-  const rows=await c.query('SELECT product_id AS "productId",name,connected,description FROM identity.products ORDER BY product_id');
+  const rows=await c.query('SELECT product_id AS "productId",name,connected,description FROM public.identity_products ORDER BY product_id');
   return success(rows.rows.map(row=>({...row,capabilities:row.productId==='crm'?actor.capabilities:[],roles:row.productId==='crm'?actor.roles:[],scope:row.productId==='crm'?actor.scope:'own'})));
  });}
  dashboard(hash:string):Promise<Result<ManagementDashboard>> {return this.read(hash,async(c,actor)=>{
   if(!canReadManagementDashboard(actor))return failure('FORBIDDEN','无数据看板权限');
   const [users,customers,tasks,pending,imports,deliveries,batchReceipts,eventReceipts,taskReceipts]=await Promise.all([
-   c.query("SELECT count(*)::int AS n FROM identity.users WHERE active AND deleted_at IS NULL"),
+   c.query("SELECT count(*)::int AS n FROM public.identity_users WHERE active AND deleted_at IS NULL"),
    c.query("SELECT count(*)::int AS n,max(created_at) AS updated_at FROM crm_customers"),
    c.query("SELECT count(*)::int AS n,count(*) FILTER (WHERE due_at<=now())::int AS overdue,min(due_at) AS next_due FROM crm_followup_tasks WHERE status='open'"),
-   c.query("SELECT count(*)::int AS n,count(*) FILTER (WHERE created_at < now()-$1 * interval '1 second')::int AS stale,min(created_at) AS oldest FROM identity.outbox o WHERE NOT EXISTS (SELECT 1 FROM crm_notification_consumed x WHERE x.event_id=o.event_id)",[DASHBOARD_LIMITS.stale_event_seconds]),
+   c.query("SELECT count(*)::int AS n,count(*) FILTER (WHERE created_at < now()-$1 * interval '1 second')::int AS stale,min(created_at) AS oldest FROM public.identity_outbox o WHERE NOT EXISTS (SELECT 1 FROM crm_notification_consumed x WHERE x.event_id=o.event_id)",[DASHBOARD_LIMITS.stale_event_seconds]),
    c.query("SELECT count(*)::int AS n,max(created_at) AS updated_at FROM crm_import_batches"),
    c.query("SELECT count(*)::int AS n,max(created_at) AS updated_at FROM crm_event_deliveries"),
    c.query(`SELECT b.batch_id::text AS id,b.created_at,count(r.row_id)::int AS total,count(r.row_id) FILTER (WHERE r.status='created')::int AS created,count(r.row_id) FILTER (WHERE r.status='duplicate')::int AS duplicate,count(r.row_id) FILTER (WHERE r.status IN ('invalid','restricted_conflict'))::int AS review FROM (SELECT batch_id,created_at FROM crm_import_batches ORDER BY created_at DESC,batch_id LIMIT $1) b LEFT JOIN crm_import_rows r USING(batch_id) GROUP BY b.batch_id,b.created_at ORDER BY b.created_at DESC,b.batch_id`,[DASHBOARD_LIMITS.receipts]),
-   c.query(`SELECT o.event_id::text AS id,o.created_at,x.consumed_at,(SELECT count(*)::int FROM crm_event_deliveries d WHERE d.event_id=o.event_id) AS deliveries FROM identity.outbox o LEFT JOIN crm_notification_consumed x USING(event_id) WHERE o.product_id='crm' AND o.customer_id IS NOT NULL ORDER BY o.created_at DESC,o.event_id LIMIT $1`,[DASHBOARD_LIMITS.receipts]),
+   c.query(`SELECT o.event_id::text AS id,o.created_at,x.consumed_at,(SELECT count(*)::int FROM crm_event_deliveries d WHERE d.event_id=o.event_id) AS deliveries FROM public.identity_outbox o LEFT JOIN crm_notification_consumed x USING(event_id) WHERE o.product_id='crm' AND o.customer_id IS NOT NULL ORDER BY o.created_at DESC,o.event_id LIMIT $1`,[DASHBOARD_LIMITS.receipts]),
    c.query(`SELECT t.task_id::text AS id,t.updated_at AS created_at,t.status,t.due_at,EXISTS(SELECT 1 FROM crm_task_due_receipts r WHERE r.task_id=t.task_id AND r.task_version=t.version) AS reminded FROM crm_followup_tasks t ORDER BY t.updated_at DESC,t.task_id LIMIT $1`,[DASHBOARD_LIMITS.receipts]),
   ]);
   const value=(r:any)=>Number(r.rows[0]?.n??0);
   const iso=(v:unknown)=>v instanceof Date?v.toISOString():typeof v==='string'?new Date(v).toISOString():null;
   const customerCount=value(customers), taskCount=value(tasks), pendingCount=value(pending), overdueCount=Number(tasks.rows[0]?.overdue??0), staleCount=Number(pending.rows[0]?.stale??0);
   const databases:ManagementDashboard['databases']=[
-   {id:'identity',name:'身份数据区',kind:'中心 PostgreSQL · identity',state:'healthy',records:value(users),updatedAt:null,detail:'与业务区共用中心库；账号、产品权限与管理审计',recordLabel:'启用账号'},
+{id:'identity',name:'身份数据区',kind:'中心 PostgreSQL · public.identity_*',state:'healthy',records:value(users),updatedAt:null,detail:'与业务区共用 public schema；账号表使用 identity_ 前缀',recordLabel:'启用账号'},
    {id:'crm',name:'Prospector 业务数据区',kind:'中心 PostgreSQL · public',state:'healthy',records:customerCount,updatedAt:iso(customers.rows[0]?.updated_at),detail:'客户、联系人、跟进与协作事件；时间为最近客户创建时间',recordLabel:'客户'},
    {id:'local',name:'桌面个人数据',kind:'SQLite',state:'not_connected',records:null,updatedAt:null,detail:'尚未接入中心遥测',recordLabel:'记录'},
   ];
@@ -212,14 +212,14 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
   });}
  sessions(hash:string,userId:string):Promise<Result<SessionInfo[]>>{return this.read(hash,async(c,actor)=>{
   if(!actor.identityAdmin&&actor.userId!==userId)return failure('FORBIDDEN','无会话管理权限');
-  const rows=await c.query(`SELECT session_id AS "sessionId",client,created_at AS "createdAt",expires_at AS "expiresAt",(revoked_at IS NOT NULL OR expires_at<=now()) AS revoked FROM identity.sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2`,[userId,MAX_AUDIT_ROWS]);
+  const rows=await c.query(`SELECT session_id AS "sessionId",client,created_at AS "createdAt",expires_at AS "expiresAt",(revoked_at IS NOT NULL OR expires_at<=now()) AS revoked FROM public.identity_sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2`,[userId,MAX_AUDIT_ROWS]);
   return success(rows.rows.map(row=>({...row,createdAt:row.createdAt.toISOString(),expiresAt:row.expiresAt.toISOString()})));
  });}
  audit(hash:string,productId?:string,userId?:string):Promise<Result<AuditInfo[]>>{return this.read(hash,async(c,actor)=>{
   if(productId===undefined&&!actor.identityAdmin)return failure('FORBIDDEN','无身份审计权限');
   if(productId==='navigator'&&!actor.identityAdmin&&!actor.capabilities.includes('audit.read'))return failure('FORBIDDEN','无Navigator审计权限');
   if(productId==='crm'&&!actor.capabilities.includes('audit.read'))return failure('FORBIDDEN','无产品审计权限');
-  const rows=await c.query(`SELECT a.id::text,a.action,a.product_id AS "productId",a.reason,a.created_at AS "createdAt",u.display_name AS "actorName",COALESCE(t.display_name,'') AS "targetName" FROM identity.management_audit a JOIN identity.users u ON u.user_id=a.actor_id LEFT JOIN identity.users t ON t.user_id=a.target_id WHERE a.product_id IS NOT DISTINCT FROM $1 AND ($3::uuid IS NULL OR a.actor_id=$3::uuid OR a.target_id=$3::uuid) ORDER BY a.id DESC LIMIT $2`,[productId??null,MAX_AUDIT_ROWS,userId??null]);
+  const rows=await c.query(`SELECT a.id::text,a.action,a.product_id AS "productId",a.reason,a.created_at AS "createdAt",u.display_name AS "actorName",COALESCE(t.display_name,'') AS "targetName" FROM public.identity_management_audit a JOIN public.identity_users u ON u.user_id=a.actor_id LEFT JOIN public.identity_users t ON t.user_id=a.target_id WHERE a.product_id IS NOT DISTINCT FROM $1 AND ($3::uuid IS NULL OR a.actor_id=$3::uuid OR a.target_id=$3::uuid) ORDER BY a.id DESC LIMIT $2`,[productId??null,MAX_AUDIT_ROWS,userId??null]);
   return success(rows.rows.map(row=>({...row,createdAt:row.createdAt.toISOString()})));
  });}
  mutate(hash:string,cmd:AdminCommand,challenge?:ChallengeDraft,initialPasswordHash?:string):Promise<Result<void>>{return this.execute(()=>this.tx(async c=>{
@@ -238,40 +238,40 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
   let targetId:string,productId:string|null=null;
   if(cmd.action==='user.create'){
    if(!initialPasswordHash)return failure('INVALID_INPUT','缺少初始密码摘要');
-   const existing=await c.query(`SELECT e.user_id,u.deleted_at FROM identity.login_emails e JOIN identity.users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u`,[cmd.email]);
+   const existing=await c.query(`SELECT e.user_id,u.deleted_at FROM public.identity_login_emails e JOIN public.identity_users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u`,[cmd.email]);
    if(existing.rows.length)return failure('CONFLICT',existing.rows[0].deleted_at?'该邮箱已归档，请到已归档账号中恢复':'该邮箱已注册');
    targetId=randomUUID();productId='crm';
    const {roles,scope,capabilities}=productPermissionsFor(cmd.role);
-   await c.query('INSERT INTO identity.users(user_id,display_name,identity_admin,must_change_password) VALUES($1,$2,$3,true)',[targetId,cmd.email.split('@')[0],cmd.role==='admin']);
-   await c.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[targetId,cmd.email]);
-   await c.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')",[targetId,initialPasswordHash]);
-   for(const role of roles)await c.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[targetId,role]);
-   await c.query("INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities) VALUES($1,'crm',true,$2,$3)",[targetId,scope,JSON.stringify(capabilities)]);
+   await c.query('INSERT INTO public.identity_users(user_id,display_name,identity_admin,must_change_password) VALUES($1,$2,$3,true)',[targetId,cmd.email.split('@')[0],cmd.role==='admin']);
+   await c.query('INSERT INTO public.identity_login_emails(user_id,email) VALUES($1,$2)',[targetId,cmd.email]);
+   await c.query("INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')",[targetId,initialPasswordHash]);
+   for(const role of roles)await c.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[targetId,role]);
+   await c.query("INSERT INTO public.identity_product_access(user_id,product_id,active,scope,capabilities) VALUES($1,'crm',true,$2,$3)",[targetId,scope,JSON.stringify(capabilities)]);
     const navigatorRole=navigatorGrantRoleFor(cmd.role);
-    await c.query("INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,'navigator',$2,true)",[targetId,navigatorRole]);
-    await c.query("INSERT INTO identity.product_access(user_id,product_id,active,scope) VALUES($1,'navigator',true,'own')",[targetId]);
+    await c.query("INSERT INTO public.identity_product_grants(user_id,product_id,role,active) VALUES($1,'navigator',$2,true)",[targetId,navigatorRole]);
+    await c.query("INSERT INTO public.identity_product_access(user_id,product_id,active,scope) VALUES($1,'navigator',true,'own')",[targetId]);
   }else if(cmd.action==='challenge.issue'){
    if(!challenge)return failure('INVALID_INPUT','缺少用途绑定挑战');
-   const existing=await c.query(`SELECT e.user_id,u.active,u.deleted_at,EXISTS(SELECT 1 FROM identity.credentials c WHERE c.user_id=e.user_id) AS credentialed FROM identity.login_emails e JOIN identity.users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u`,[cmd.email]);
+   const existing=await c.query(`SELECT e.user_id,u.active,u.deleted_at,EXISTS(SELECT 1 FROM public.identity_credentials c WHERE c.user_id=e.user_id) AS credentialed FROM public.identity_login_emails e JOIN public.identity_users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u`,[cmd.email]);
    if(cmd.purpose==='activate'&&existing.rows.length&&(existing.rows[0].active||existing.rows[0].credentialed||existing.rows[0].deleted_at))return failure('CONFLICT','该邮箱已注册');
    if(cmd.purpose==='recover'&&!existing.rows.length)return failure('NOT_FOUND','未找到目标身份');
    if(cmd.purpose==='recover'&&(!existing.rows[0].active||existing.rows[0].deleted_at))return failure('FORBIDDEN','停用或已删除账号不能重置密码');
    targetId=existing.rows[0]?.user_id??randomUUID();
-   if(cmd.purpose==='activate'&&!existing.rows.length){await c.query('INSERT INTO identity.users(user_id,display_name,active) VALUES($1,$2,false)',[targetId,cmd.displayName]);await c.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[targetId,cmd.email]);}
-   await c.query('UPDATE identity.management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
-   await c.query('INSERT INTO identity.management_challenges(token_hash,user_id,purpose,issuer_id,email,expires_at) VALUES($1,$2,$3,$4,$5,$6)',[challenge.tokenHash,targetId,cmd.purpose,actor.userId,cmd.email,challenge.expiresAt]);
+   if(cmd.purpose==='activate'&&!existing.rows.length){await c.query('INSERT INTO public.identity_users(user_id,display_name,active) VALUES($1,$2,false)',[targetId,cmd.displayName]);await c.query('INSERT INTO public.identity_login_emails(user_id,email) VALUES($1,$2)',[targetId,cmd.email]);}
+   await c.query('UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
+   await c.query('INSERT INTO public.identity_management_challenges(token_hash,user_id,purpose,issuer_id,email,expires_at) VALUES($1,$2,$3,$4,$5,$6)',[challenge.tokenHash,targetId,cmd.purpose,actor.userId,cmd.email,challenge.expiresAt]);
    if(cmd.purpose==='recover'){
-    await c.query('UPDATE identity.users SET security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
-    await c.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
+    await c.query('UPDATE public.identity_users SET security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
+    await c.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
    }
   }else{
-    targetId=cmd.userId;const target=await c.query('SELECT active,identity_admin,management_revision,deleted_at FROM identity.users WHERE user_id=$1 FOR UPDATE',[targetId]);
+    targetId=cmd.userId;const target=await c.query('SELECT active,identity_admin,management_revision,deleted_at FROM public.identity_users WHERE user_id=$1 FOR UPDATE',[targetId]);
     if(!target.rows.length||target.rows[0].deleted_at&&cmd.action!=='user.restore')return failure('NOT_FOUND','目标用户不存在或已删除');
    if('revision'in cmd&&target.rows[0].management_revision!==cmd.revision)return failure('CONFLICT','资料已更新，请刷新后重试');
     if(cmd.action==='user.delete'){
     if(targetId===actor.userId)return failure('FORBIDDEN','不能删除当前登录账号');
     if(target.rows[0].active&&target.rows[0].identity_admin){
-     const count=await c.query(`SELECT count(*)::int AS n FROM identity.users u JOIN identity.credentials c USING(user_id) JOIN identity.login_emails e USING(user_id) WHERE u.active AND u.identity_admin AND u.deleted_at IS NULL`);
+     const count=await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_credentials c USING(user_id) JOIN public.identity_login_emails e USING(user_id) WHERE u.active AND u.identity_admin AND u.deleted_at IS NULL`);
      if(count.rows[0].n<=1)return failure('CONFLICT','必须保留至少一名有效超级管理员');
     }
     // All CRM ownership writes and this command share ADMIN_LOCK, so the check
@@ -284,67 +284,67 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
      const requests=await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE status IN ('pending','accepted') AND (actor_id=$1 OR target_user_id=$1) LIMIT 1",[targetId]);
      if(requests.rows.length)return failure('CONFLICT','该用户仍有有效联系人分配，请先处理分配归属');
     }
-    await c.query('UPDATE identity.users SET deleted_at=now(),active=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
-    await c.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
-    await c.query('UPDATE identity.management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
+    await c.query('UPDATE public.identity_users SET deleted_at=now(),active=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
+    await c.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
+    await c.query('UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
     }else if(cmd.action==='user.restore'){
      if(!target.rows[0].deleted_at)return failure('CONFLICT','目标账号未归档');
      if(!initialPasswordHash)return failure('INVALID_INPUT','缺少恢复密码摘要');
-     await c.query('UPDATE identity.users SET active=true,deleted_at=NULL,must_change_password=true,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
-     await c.query(`INSERT INTO identity.credentials(user_id,password_hash,hash_scheme,changed_at) VALUES($1,$2,'scrypt-v1',now())
+     await c.query('UPDATE public.identity_users SET active=true,deleted_at=NULL,must_change_password=true,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
+     await c.query(`INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme,changed_at) VALUES($1,$2,'scrypt-v1',now())
       ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash,hash_scheme=EXCLUDED.hash_scheme,changed_at=now()`,[targetId,initialPasswordHash]);
-     await c.query('UPDATE identity.sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1',[targetId]);
-     await c.query('UPDATE identity.management_challenges SET consumed_at=COALESCE(consumed_at,now()) WHERE user_id=$1',[targetId]);
+     await c.query('UPDATE public.identity_sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1',[targetId]);
+     await c.query('UPDATE public.identity_management_challenges SET consumed_at=COALESCE(consumed_at,now()) WHERE user_id=$1',[targetId]);
     }else if(cmd.action==='user.reset-password'){
     if(!challenge||challenge.userId!==targetId||challenge.purpose!=='recover')return failure('INVALID_INPUT','缺少账号绑定挑战');
     if(!target.rows[0].active)return failure('FORBIDDEN','停用账号不能重置密码');
-    const email=await c.query('SELECT email FROM identity.login_emails WHERE user_id=$1',[targetId]);
+    const email=await c.query('SELECT email FROM public.identity_login_emails WHERE user_id=$1',[targetId]);
     if(!email.rows.length)return failure('NOT_FOUND','目标用户邮箱不存在');
-    await c.query('UPDATE identity.management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
-    await c.query("INSERT INTO identity.management_challenges(token_hash,user_id,purpose,issuer_id,email,expires_at) VALUES($1,$2,'recover',$3,$4,$5)",[challenge.tokenHash,targetId,actor.userId,email.rows[0].email,challenge.expiresAt]);
-    await c.query('UPDATE identity.users SET security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
-    await c.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
+    await c.query('UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
+    await c.query("INSERT INTO public.identity_management_challenges(token_hash,user_id,purpose,issuer_id,email,expires_at) VALUES($1,$2,'recover',$3,$4,$5)",[challenge.tokenHash,targetId,actor.userId,email.rows[0].email,challenge.expiresAt]);
+    await c.query('UPDATE public.identity_users SET security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
+    await c.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
    }else if(cmd.action==='user.update'){
-    if(cmd.active && !(await c.query('SELECT 1 FROM identity.credentials WHERE user_id=$1',[targetId])).rows.length)return failure('CONFLICT','待激活身份必须先使用激活链接设置密码');
+    if(cmd.active && !(await c.query('SELECT 1 FROM public.identity_credentials WHERE user_id=$1',[targetId])).rows.length)return failure('CONFLICT','待激活身份必须先使用激活链接设置密码');
     if(targetId===actor.userId&&cmd.identityAdmin&&!target.rows[0].identity_admin)return failure('FORBIDDEN','不能为本人提权');
     if(target.rows[0].active&&target.rows[0].identity_admin&&(!cmd.active||!cmd.identityAdmin)){
-     const count=await c.query(`SELECT count(*)::int AS n FROM identity.users u JOIN identity.credentials c USING(user_id) JOIN identity.login_emails e USING(user_id) WHERE u.active AND u.identity_admin`);if(count.rows[0].n<=1)return failure('CONFLICT','必须保留至少一名有效超级管理员');
+     const count=await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_credentials c USING(user_id) JOIN public.identity_login_emails e USING(user_id) WHERE u.active AND u.identity_admin`);if(count.rows[0].n<=1)return failure('CONFLICT','必须保留至少一名有效超级管理员');
     }
-    await c.query('UPDATE identity.users SET active=$2,identity_admin=$3,management_revision=management_revision+1,security_revision=security_revision+1 WHERE user_id=$1',[targetId,cmd.active,cmd.identityAdmin]);
-    await c.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
-    await c.query('UPDATE identity.management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
+    await c.query('UPDATE public.identity_users SET active=$2,identity_admin=$3,management_revision=management_revision+1,security_revision=security_revision+1 WHERE user_id=$1',[targetId,cmd.active,cmd.identityAdmin]);
+    await c.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
+    await c.query('UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
    }else if(cmd.action==='product.update'){
-    productId='crm';await c.query('DELETE FROM identity.product_grants WHERE user_id=$1 AND product_id=$2',[targetId,productId]);
-    for(const role of cmd.roles)await c.query('INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,$2,$3,$4)',[targetId,productId,role,cmd.active]);
-    await c.query(`INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities) VALUES($1,$2,$3,$4,$5) ON CONFLICT(user_id,product_id) DO UPDATE SET active=EXCLUDED.active,scope=EXCLUDED.scope,capabilities=EXCLUDED.capabilities`,[targetId,productId,cmd.active,cmd.scope,JSON.stringify(cmd.capabilities)]);
-    await c.query('UPDATE identity.users SET management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
+    productId='crm';await c.query('DELETE FROM public.identity_product_grants WHERE user_id=$1 AND product_id=$2',[targetId,productId]);
+    for(const role of cmd.roles)await c.query('INSERT INTO public.identity_product_grants(user_id,product_id,role,active) VALUES($1,$2,$3,$4)',[targetId,productId,role,cmd.active]);
+    await c.query(`INSERT INTO public.identity_product_access(user_id,product_id,active,scope,capabilities) VALUES($1,$2,$3,$4,$5) ON CONFLICT(user_id,product_id) DO UPDATE SET active=EXCLUDED.active,scope=EXCLUDED.scope,capabilities=EXCLUDED.capabilities`,[targetId,productId,cmd.active,cmd.scope,JSON.stringify(cmd.capabilities)]);
+    await c.query('UPDATE public.identity_users SET management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
    }else if(cmd.action==='navigator.update'){
     if(target.rows[0].identity_admin)return failure('FORBIDDEN','中心超级管理员自动拥有 Navigator 管理权限');
     productId='navigator';
-    await c.query("DELETE FROM identity.product_grants WHERE user_id=$1 AND product_id='navigator'",[targetId]);
-    await c.query("INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,'navigator',$2,true)",[targetId,cmd.role]);
-    await c.query("INSERT INTO identity.product_access(user_id,product_id,active,scope) VALUES($1,'navigator',$2,'own') ON CONFLICT(user_id,product_id) DO UPDATE SET active=EXCLUDED.active",[targetId,cmd.active]);
-    await c.query('UPDATE identity.users SET management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
-   }else{const revoked=await c.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND session_id=$2 AND revoked_at IS NULL RETURNING session_id',[targetId,cmd.sessionId]);if(!revoked.rows.length)return failure('NOT_FOUND','有效会话不存在');}
+    await c.query("DELETE FROM public.identity_product_grants WHERE user_id=$1 AND product_id='navigator'",[targetId]);
+    await c.query("INSERT INTO public.identity_product_grants(user_id,product_id,role,active) VALUES($1,'navigator',$2,true)",[targetId,cmd.role]);
+    await c.query("INSERT INTO public.identity_product_access(user_id,product_id,active,scope) VALUES($1,'navigator',$2,'own') ON CONFLICT(user_id,product_id) DO UPDATE SET active=EXCLUDED.active",[targetId,cmd.active]);
+    await c.query('UPDATE public.identity_users SET management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
+   }else{const revoked=await c.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND session_id=$2 AND revoked_at IS NULL RETURNING session_id',[targetId,cmd.sessionId]);if(!revoked.rows.length)return failure('NOT_FOUND','有效会话不存在');}
   }
-  await c.query('INSERT INTO identity.management_audit(actor_id,target_id,action,product_id,reason) VALUES($1,$2,$3,$4,$5)',[actor.userId,targetId,cmd.action,productId,cmd.reason]);
-  await c.query(`INSERT INTO identity.outbox(event_type,user_id,product_id,revision) SELECT $2,user_id,$3,management_revision FROM identity.users WHERE user_id=$1`,[targetId,cmd.action,productId]);
+  await c.query('INSERT INTO public.identity_management_audit(actor_id,target_id,action,product_id,reason) VALUES($1,$2,$3,$4,$5)',[actor.userId,targetId,cmd.action,productId,cmd.reason]);
+  await c.query(`INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision) SELECT $2,user_id,$3,management_revision FROM public.identity_users WHERE user_id=$1`,[targetId,cmd.action,productId]);
   return success(undefined);
  }));}
  consume(hash:string,passwordHash:string):Promise<Result<void>>{return this.execute(()=>this.tx(async c=>{
   await c.query('SELECT pg_advisory_xact_lock($1)',[ADMIN_LOCK]);
-  const challenges=await c.query(`SELECT c.* FROM identity.management_challenges c JOIN identity.users issuer ON issuer.user_id=c.issuer_id WHERE c.token_hash=$1 AND c.consumed_at IS NULL AND c.expires_at>now() AND issuer.active AND issuer.identity_admin FOR UPDATE OF c`,[hash]);
+  const challenges=await c.query(`SELECT c.* FROM public.identity_management_challenges c JOIN public.identity_users issuer ON issuer.user_id=c.issuer_id WHERE c.token_hash=$1 AND c.consumed_at IS NULL AND c.expires_at>now() AND issuer.active AND issuer.identity_admin FOR UPDATE OF c`,[hash]);
   const challenge=challenges.rows[0];if(!challenge)return failure('UNAUTHORIZED','链接已失效或已使用');
-  const users=await c.query('SELECT u.active,u.deleted_at,e.email FROM identity.users u JOIN identity.login_emails e USING(user_id) WHERE u.user_id=$1 FOR UPDATE OF u',[challenge.user_id]);
+  const users=await c.query('SELECT u.active,u.deleted_at,e.email FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) WHERE u.user_id=$1 FOR UPDATE OF u',[challenge.user_id]);
   if(!users.rows.length||users.rows[0].email!==challenge.email)return failure('CONFLICT','身份信息已变化');
   if(users.rows[0].deleted_at)return failure('FORBIDDEN','已删除账号不能激活或重置密码');
   if(challenge.purpose==='recover'&&!users.rows[0].active)return failure('FORBIDDEN','停用账号不能通过密码恢复重新启用');
-  await c.query(`INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1') ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash,changed_at=now()`,[challenge.user_id,passwordHash]);
-  await c.query(`UPDATE identity.users SET active=true,must_change_password=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1`,[challenge.user_id]);
-  await c.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[challenge.user_id]);
-  await c.query('UPDATE identity.management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[challenge.user_id]);
-  await c.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,reason) VALUES($1,$2,$3,'管理挑战已消费；邮箱未验证')`,[challenge.issuer_id,challenge.user_id,`challenge.${challenge.purpose}`]);
-  await c.query(`INSERT INTO identity.outbox(event_type,user_id,revision) SELECT 'identity.password.changed',user_id,management_revision FROM identity.users WHERE user_id=$1`,[challenge.user_id]);
+  await c.query(`INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1') ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash,changed_at=now()`,[challenge.user_id,passwordHash]);
+  await c.query(`UPDATE public.identity_users SET active=true,must_change_password=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1`,[challenge.user_id]);
+  await c.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[challenge.user_id]);
+  await c.query('UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[challenge.user_id]);
+  await c.query(`INSERT INTO public.identity_management_audit(actor_id,target_id,action,reason) VALUES($1,$2,$3,'管理挑战已消费；邮箱未验证')`,[challenge.issuer_id,challenge.user_id,`challenge.${challenge.purpose}`]);
+  await c.query(`INSERT INTO public.identity_outbox(event_type,user_id,revision) SELECT 'identity.password.changed',user_id,management_revision FROM public.identity_users WHERE user_id=$1`,[challenge.user_id]);
   return success(undefined);
  }));}
 }

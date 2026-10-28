@@ -1,76 +1,102 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Checkbox, Input, Pagination, Segmented, Spin, Tag } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Alert, Button, Checkbox, Pagination, Segmented, Spin, Tag } from 'antd';
+import { CheckSquareOutlined } from '@ant-design/icons';
 import { CENTER_CONTACT_GROUP_DIMENSIONS, CENTER_CONTACT_GROUP_LIMITS, CONTACT_ASSIGNMENT_LIMITS, ONLINE_CHANNELS, type CenterContactGroup, type CenterContactGroupDimension, type CenterContactGroupPage, type CenterContactGroupQuery } from '../../../shared/online-crm';
 import { centerInvoke } from './centerContactPort';
 import { useIdentity } from '../../IdentityContext';
 
 const LABELS: Record<CenterContactGroupDimension,string> = { batch:'导入批次', country:'国家', company:'公司', clientType:'客户类型' };
-const SEARCH_DEBOUNCE_MS = 250;
+const IMPORTED_AT_FORMATTER = new Intl.DateTimeFormat('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });
 
-function updatedLabel(value:string|null|undefined){
- if(!value)return '';
- const date=new Date(value);return Number.isNaN(date.getTime())?'':`${date.getMonth()+1}/${date.getDate()}`;
+export type ContactGroupSelection = {
+  dimension:CenterContactGroupDimension;
+  key:string;
+  label:string;
+  count?:number;
+  companyCount?:number;
+  countryCount?:number;
+  touchedCount?:number;
+  latestImportedAt?:string|null;
+};
+
+function importedAtLabel(value:string|null|undefined){
+ if(!value)return '未记录';
+ const date=new Date(value);
+ return Number.isNaN(date.getTime())?'未记录':IMPORTED_AT_FORMATTER.format(date);
 }
 
-export function ContactGroups({ scope = 'all', canAssign = false, onSelect, onAssign }:{
+function selection(dimension:CenterContactGroupDimension,group:CenterContactGroup):ContactGroupSelection {
+ return {
+  dimension,key:group.key,label:group.label,count:group.count,
+  companyCount:group.companyCount,countryCount:group.countryCount,touchedCount:group.touchedCount,
+  latestImportedAt:group.latestImportedAt,
+ };
+}
+
+export function ContactGroups({ scope = 'all', canAssign = false, selectedGroup, onSelect, onAssign }:{
  scope?:CenterContactGroupQuery['scope']; canAssign?:boolean;
- onSelect:(selection:{dimension:CenterContactGroupDimension;key:string;label:string})=>void;
+ selectedGroup?:ContactGroupSelection|null;
+ onSelect:(selection:ContactGroupSelection|null)=>void;
  onAssign?:(selection:{dimension:CenterContactGroupDimension;groups:CenterContactGroup[]})=>Promise<boolean>;
 }) {
  const { identity, baseUrl } = useIdentity();
- const [dimension,setDimension]=useState<CenterContactGroupDimension>('batch');
- const [search,setSearch]=useState('');
- const [debouncedSearch,setDebouncedSearch]=useState('');
+ const [dimension,setDimension]=useState<CenterContactGroupDimension>(selectedGroup?.dimension??'batch');
  const [page,setPage]=useState(1);
  const [selected,setSelected]=useState<Set<string>>(new Set());
+ const [selecting,setSelecting]=useState(false);
  const [assigning,setAssigning]=useState(false);
- useEffect(()=>{const timer=window.setTimeout(()=>setDebouncedSearch(search.trim()),SEARCH_DEBOUNCE_MS);return()=>window.clearTimeout(timer);},[search]);
- useEffect(()=>{setPage(1);},[dimension,debouncedSearch,scope]);
- useEffect(()=>{setSelected(new Set());},[dimension,debouncedSearch,scope,page]);
+ useEffect(()=>{setPage(1);},[dimension,scope]);
+ useEffect(()=>{setSelected(new Set());},[dimension,scope,page]);
  const query=useQuery({
-  queryKey:['center-contact-groups',baseUrl,identity?.userId,scope,dimension,debouncedSearch,page],
-  queryFn:()=>centerInvoke<CenterContactGroupPage>(ONLINE_CHANNELS.CONTACT_GROUPS,{dimension,scope,search:debouncedSearch,limit:CENTER_CONTACT_GROUP_LIMITS.page,offset:(page-1)*CENTER_CONTACT_GROUP_LIMITS.page}),
-  placeholderData:previous=>previous,
+  queryKey:['center-contact-groups',baseUrl,identity?.userId,scope,dimension,'',page],
+  queryFn:()=>centerInvoke<CenterContactGroupPage>(ONLINE_CHANNELS.CONTACT_GROUPS,{dimension,scope,search:'',limit:CENTER_CONTACT_GROUP_LIMITS.page,offset:(page-1)*CENTER_CONTACT_GROUP_LIMITS.page}),
  });
  const data=query.data?.ok?query.data.data:undefined;
  const groups=data?.items??[];
- const error=query.data&&!query.data.ok?query.data.error.message:query.error?.message;
+ const groupSignature=groups.map(group=>`${group.key}:${group.count}`).join('|');
  const selectedGroups=groups.filter(group=>selected.has(group.key));
  const selectedContacts=selectedGroups.reduce((total,group)=>total+group.count,0);
  const tooMany=selectedContacts>CONTACT_ASSIGNMENT_LIMITS.batch;
+ useEffect(()=>{
+  if(!groups.length)return;
+  const current=selectedGroup?.dimension===dimension?groups.find(group=>group.key===selectedGroup.key):undefined;
+  if(current&&selectedGroup?.count!==undefined)return;
+  onSelect(selection(dimension,current??groups[0]!));
+ },[dimension,groupSignature,selectedGroup?.dimension,selectedGroup?.key,selectedGroup?.count,onSelect]);
+ const error=query.data&&!query.data.ok?query.data.error.message:query.error?.message;
  const toggle=(key:string,checked:boolean)=>setSelected(previous=>{const next=new Set(previous);if(checked)next.add(key);else next.delete(key);return next;});
  const selectPage=()=>setSelected(new Set(groups.map(group=>group.key)));
- async function assign(){if(!onAssign||!selectedGroups.length||tooMany||assigning)return;setAssigning(true);try{if(await onAssign({dimension,groups:selectedGroups}))setSelected(new Set());}finally{setAssigning(false);}}
- return <div className="contact-group-overview">
-  <div className="contact-group-sticky">
-   <div className="contact-group-toolbar">
-    <Segmented<CenterContactGroupDimension> value={dimension} onChange={setDimension} options={CENTER_CONTACT_GROUP_DIMENSIONS.map(value=>({value,label:LABELS[value]}))}/>
-    <Input size="small" prefix={<SearchOutlined/>} placeholder={`搜索${LABELS[dimension]}`} value={search} onChange={event=>setSearch(event.target.value)} allowClear/>
-   </div>
-   {canAssign&&selectedGroups.length>0&&<div className="contact-group-selection">
-    <span>已选 {selectedGroups.length} 组 · {selectedContacts} 人</span>
-    {tooMany&&<Tag color="red">每次最多 {CONTACT_ASSIGNMENT_LIMITS.batch} 人</Tag>}
-    <Button size="small" type="text" onClick={selectPage}>全选本页</Button>
-    <Button aria-label="分配所选分组" size="small" type="primary" loading={assigning} disabled={tooMany} onClick={()=>void assign()}>分配</Button>
-   </div>}
+ const toggleSelecting=()=>setSelecting(value=>{if(value)setSelected(new Set());return !value;});
+ const changeDimension=(value:CenterContactGroupDimension)=>{setDimension(value);onSelect(null);};
+ async function assign(){if(!onAssign||!selectedGroups.length||tooMany||assigning)return;setAssigning(true);try{if(await onAssign({dimension,groups:selectedGroups})){setSelected(new Set());setSelecting(false);}}finally{setAssigning(false);}}
+ return <aside className="contact-group-panel" aria-busy={query.isFetching}>
+  <div className="contact-group-panel-head">
+   <div><div className="contact-group-panel-title">联系人分组</div><div className="contact-group-panel-count">{data?.total??0} 组</div></div>
+   {canAssign&&<Button size="small" type={selecting?'primary':'default'} icon={<CheckSquareOutlined/>} onClick={toggleSelecting}>{selecting?'取消':'多选'}</Button>}
   </div>
+  <Segmented<CenterContactGroupDimension> block size="small" value={dimension} onChange={changeDimension} options={CENTER_CONTACT_GROUP_DIMENSIONS.map(value=>({value,label:LABELS[value]}))}/>
+  {canAssign&&selecting&&selectedGroups.length>0&&<div className="contact-group-panel-selection">
+   <span>已选 {selectedGroups.length} 组 · {selectedContacts} 人</span>
+   {tooMany&&<Tag color="red">最多 {CONTACT_ASSIGNMENT_LIMITS.batch} 人</Tag>}
+   <Button size="small" type="text" onClick={selectPage}>全选本页</Button>
+   <Button aria-label="分配所选分组" size="small" type="primary" loading={assigning} disabled={tooMany} onClick={()=>void assign()}>分配</Button>
+  </div>}
   {error&&<Alert type="error" message={error}/>}
-  <div className="contact-group-grid" aria-busy={query.isFetching}>
-   {groups.map(group=><article className={`contact-group-card${selected.has(group.key)?' is-selected':''}`} data-dimension={dimension} key={group.key}>
-    {canAssign&&<Checkbox className="contact-group-check" aria-label={`选择 ${group.label}`} checked={selected.has(group.key)} onChange={event=>toggle(group.key,event.target.checked)}/>}
-    <button type="button" className="contact-group-open" onClick={()=>onSelect({dimension,key:group.key,label:group.label})}>
-     <span className="contact-group-title"><strong>{group.label}</strong><b>{group.count}</b></span>
-     <span className="contact-group-stats"><span>{group.companyCount??0} 家公司</span><span>{group.countryCount??0} 个国家</span><span>{group.touchedCount??0} 已触达</span></span>
-     {(group.companies?.length??0)>0&&<span className="contact-group-companies">{group.companies!.slice(0,2).join(' · ')}</span>}
-     <span className="contact-group-samples">{[...(group.countries??[]),...(group.clientTypes??[])].slice(0,3).map((value,index)=><Tag key={`${index}:${value}`}>{value}</Tag>)}</span>
-     {group.latestUpdatedAt&&<time dateTime={group.latestUpdatedAt}>最近更新 {updatedLabel(group.latestUpdatedAt)}</time>}
-    </button>
-   </article>)}
-   {query.isLoading&&<div className="contact-group-loading"><Spin/></div>}
-   {!query.isLoading&&!error&&groups.length===0&&<div className="contact-group-empty">没有匹配分组</div>}
+  <div className="contact-group-panel-list">
+   {groups.map(group=>{
+    const active=selectedGroup?.dimension===dimension&&selectedGroup.key===group.key;
+    return <div className={`contact-group-panel-row${active?' is-active':''}${selected.has(group.key)?' is-checked':''}`} key={group.key}>
+     {canAssign&&selecting&&<Checkbox aria-label={`选择 ${group.label}`} checked={selected.has(group.key)} onChange={event=>toggle(group.key,event.target.checked)}/>}
+     <button type="button" className="contact-group-panel-open" onClick={()=>onSelect(selection(dimension,group))}>
+      <span className="contact-group-panel-name"><strong title={group.label}>{group.label}</strong><b>{group.count}</b></span>
+      <span className="contact-group-panel-meta"><time dateTime={group.latestImportedAt??undefined}>{importedAtLabel(group.latestImportedAt)}</time><span>{(group.sourceLevel1??[])[0]||'未设置'}</span></span>
+     </button>
+    </div>;
+   })}
+   {query.isLoading&&<div className="contact-group-panel-empty"><Spin size="small"/></div>}
+   {!query.isLoading&&!error&&groups.length===0&&<div className="contact-group-panel-empty">没有分组</div>}
   </div>
-  {(data?.total??0)>CENTER_CONTACT_GROUP_LIMITS.page&&<Pagination size="small" current={page} pageSize={CENTER_CONTACT_GROUP_LIMITS.page} total={data?.total??0} showSizeChanger={false} onChange={setPage}/>}
- </div>;
+  {(data?.total??0)>CENTER_CONTACT_GROUP_LIMITS.page&&<Pagination size="small" simple current={page} pageSize={CENTER_CONTACT_GROUP_LIMITS.page} total={data?.total??0} onChange={setPage}/>}
+ </aside>;
 }

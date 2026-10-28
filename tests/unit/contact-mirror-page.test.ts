@@ -101,6 +101,27 @@ describe('indexed SQLite contact pages', () => {
       expect(store.page(ctx, input), JSON.stringify(input)).toEqual(contactMirrorPage(rows, input, ctx.userId));
     }
   });
+  it('applies center group dimensions inside the local mirror instead of returning the same page for every group', () => {
+    const { store } = fixture();
+    const rows = [
+      row(1, { sourceDetail: 'batch-a.xlsx', sourceLevel1: 'Alice', country: 'Brazil', companyId: 11, companyName: 'Alpha', clientType: 'agent' }),
+      row(2, { sourceDetail: null, sourceLevel1: '展会', sourceLevel2: '秋季', country: 'Chile', companyId: 12, companyName: 'Beta', clientType: 'direct' }),
+      row(3, { sourceDetail: '', sourceLevel1: '', sourceLevel2: '', country: null, companyId: 13, companyName: 'Gamma', clientType: null }),
+    ];
+    store.replaceContacts(ctx, rows);
+    const grouped: CenterContactQuery[] = [
+      { ...query, limit: 50, groupDimension: 'batch', groupKey: 'batch-a.xlsx' },
+      { ...query, limit: 50, groupDimension: 'batch', groupKey: '展会' },
+      { ...query, limit: 50, groupDimension: 'batch', groupKey: 'unset' },
+      { ...query, limit: 50, groupDimension: 'country', groupKey: 'Chile' },
+      { ...query, limit: 50, groupDimension: 'company', groupKey: '12' },
+      { ...query, limit: 50, groupDimension: 'clientType', groupKey: 'agent' },
+    ];
+    for (const input of grouped) expect(store.page(ctx, input), JSON.stringify(input)).toEqual(contactMirrorPage(rows, input, ctx.userId));
+    expect(store.page(ctx, grouped[0]!).items.map(item => item.contactId)).toEqual([1]);
+    expect(store.page(ctx, grouped[1]!).items.map(item => item.contactId)).toEqual([2]);
+    expect(store.page(ctx, grouped[3]!).items.map(item => item.contactId)).toEqual([2]);
+  });
   it('keeps indexes current through upsert, stale writes, details, deletion and reopen', () => {
     const { raw, store } = fixture(); const initial = row(1); store.replaceContacts(ctx, [initial]);
     store.upsertContacts(ctx, [{ ...initial, contactVersion: 4, firstName: 'MÜLLER', updatedAt: '2026-10-15T00:00:00Z' }]);

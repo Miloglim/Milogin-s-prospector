@@ -44,7 +44,7 @@ export async function companyDetailIn(c:PoolClient,a:LeadActor,input:{companyId:
  }
  return failure('UNAVAILABLE','公司联系人过多，请在联系人列表筛选查看');
 }
-async function companyEvent(c:PoolClient,a:LeadActor,type:string,companyId:number){await c.query("INSERT INTO identity.outbox(event_type,user_id,product_id,revision,payload,recipient_user_ids) VALUES($1,$2,'crm',1,$3,$4::uuid[])",[type,a.userId,JSON.stringify({companyId}),[a.userId]]);}
+async function companyEvent(c:PoolClient,a:LeadActor,type:string,companyId:number){await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,payload,recipient_user_ids) VALUES($1,$2,'crm',1,$3,$4::uuid[])",[type,a.userId,JSON.stringify({companyId}),[a.userId]]);}
 export async function createCompanyIn(c:PoolClient,a:LeadActor,input:CompanyCreate):Promise<Result<CompanyDetail>>{
  if(!createAllowed(a))return failure('FORBIDDEN','无公司创建权限');
  return lifecycleCached(c,a,'company-create',input,async()=>{

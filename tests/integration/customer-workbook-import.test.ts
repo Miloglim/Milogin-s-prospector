@@ -23,10 +23,10 @@ const row = (ref: string, fields: Partial<WorkbookImportRow> = {}): WorkbookImpo
 const input = (rows: WorkbookImportRow[], fields: Partial<WorkbookImportRequest> = {}): WorkbookImportRequest => ({ source, sourceDetail: 'synthetic workbook only', kind: 'operations', idempotencyKey: randomUUID(), rows, ...fields });
 async function actor(role: CrmRole) {
  const id = randomUUID(), token = randomBytes(32).toString('base64url');
- await pool.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)', [id, `synthetic B1 ${role}`]);
- await pool.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)", [id, role]);
- await pool.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)", [id, role === 'operations' ? 'shared' : 'own', JSON.stringify(capabilitiesFor([role]))]);
- await pool.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+$3*interval '1 second','api')", [tokenAdapter.hash(token), id, SESSION_SECONDS]);
+ await pool.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)', [id, `synthetic B1 ${role}`]);
+ await pool.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)", [id, role]);
+ await pool.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)", [id, role === 'operations' ? 'shared' : 'own', JSON.stringify(capabilitiesFor([role]))]);
+ await pool.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+$3*interval '1 second','api')", [tokenAdapter.hash(token), id, SESSION_SECONDS]);
  return { id, token };
 }
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('B1 synthetic PostgreSQL workbook import', () => {
@@ -89,8 +89,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('B1 synthetic Post
   const sibling = (await pool.query('SELECT contact_id FROM crm_customer_contacts WHERE customer_id=$1 ORDER BY contact_id DESC LIMIT 1', [appended.rows[0]!.customerId])).rows[0];
   expect(await contactActions.contactDetail(sales.token, { customerId: appended.rows[0]!.customerId, contactId: sibling.contact_id })).toMatchObject({ error: { code: 'NOT_FOUND' } });
   const request = input([row('replay-capability')]); unwrap(await service.importWorkbook(ops.token, request));
-  await pool.query("UPDATE identity.product_access SET capabilities=$2 WHERE user_id=$1 AND product_id='crm'", [ops.id, JSON.stringify(['leads.publish'])]);
-  try { expect(await service.importWorkbook(ops.token, request)).toMatchObject({ error: { code: 'FORBIDDEN' } }); } finally { await pool.query("UPDATE identity.product_access SET capabilities=$2 WHERE user_id=$1 AND product_id='crm'", [ops.id, JSON.stringify(capabilitiesFor(['operations']))]); }
+  await pool.query("UPDATE public.identity_product_access SET capabilities=$2 WHERE user_id=$1 AND product_id='crm'", [ops.id, JSON.stringify(['leads.publish'])]);
+  try { expect(await service.importWorkbook(ops.token, request)).toMatchObject({ error: { code: 'FORBIDDEN' } }); } finally { await pool.query("UPDATE public.identity_product_access SET capabilities=$2 WHERE user_id=$1 AND product_id='crm'", [ops.id, JSON.stringify(capabilitiesFor(['operations']))]); }
   const own = unwrap(await service.importWorkbook(sales.token, request));
   expect(unwrap(await service.detail(sales.token, own.rows[0]!.customerId!))).toMatchObject({ origin: 'personal', ownerUserId: sales.id });
  });
@@ -138,16 +138,16 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('B1 synthetic Post
   expect(current).toMatchObject({id:contact.contactId,source});
   expect(current.crm_deleted_at).toBeNull();
   expect(current.crm_contact_version).toBeGreaterThan(version);
-  expect((await pool.query("SELECT count(*)::int AS n FROM identity.outbox WHERE event_type='crm.contact.updated' AND payload->>'contactId'=$1",[String(contact.contactId)])).rows[0].n).toBeGreaterThan(0);
+  expect((await pool.query("SELECT count(*)::int AS n FROM public.identity_outbox WHERE event_type='crm.contact.updated' AND payload->>'contactId'=$1",[String(contact.contactId)])).rows[0].n).toBeGreaterThan(0);
  });
  it('rolls back company, customer, mapping and evidence together when atomic outbox insertion fails', async () => {
   await pool.query("CREATE OR REPLACE FUNCTION crm_b1_synthetic_outbox_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic failure'; RETURN NEW; END $$");
   const trigger = `b1_test_${sales.id.replace(/-/g, '')}`;
-  await pool.query(`CREATE TRIGGER ${trigger} BEFORE INSERT ON identity.outbox FOR EACH ROW WHEN (NEW.user_id='${sales.id}'::uuid) EXECUTE FUNCTION crm_b1_synthetic_outbox_failure()`);
+  await pool.query(`CREATE TRIGGER ${trigger} BEFORE INSERT ON public.identity_outbox FOR EACH ROW WHEN (NEW.user_id='${sales.id}'::uuid) EXECUTE FUNCTION crm_b1_synthetic_outbox_failure()`);
   try {
    const request = input([row('rollback-personal')], { kind: 'personal' }); expect(await service.importWorkbook(sales.token, request)).toMatchObject({ error: { code: 'DATABASE_ERROR' } });
    const count = await pool.query('SELECT count(*)::int AS count FROM crm_workbook_source_mappings WHERE actor_id=$1 AND source_ref=$2', [sales.id, 'rollback-personal']); expect(count.rows[0].count).toBe(0);
    const company = await pool.query('SELECT count(*)::int AS count FROM companies WHERE name=$1', ['Synthetic rollback-personal']); expect(company.rows[0].count).toBe(0);
-  } finally { await pool.query(`DROP TRIGGER ${trigger} ON identity.outbox`); }
+  } finally { await pool.query(`DROP TRIGGER ${trigger} ON public.identity_outbox`); }
  });
 });

@@ -15,7 +15,7 @@ function unwrap<T>(result: Result<T>): T { if (!result.ok) throw Error(`${result
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail events outer rollback PostgreSQL', () => {
   it('isolates selected contacts, deduplicates, keeps monotonic touch and commits fact/activity/outbox together', async () => {
     const pool = new Pool(readTestDatabaseConfig()), client = await pool.connect();
-    const counts = async () => (await client.query('SELECT (SELECT count(*) FROM identity.users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM crm_shared_activities) AS activities,(SELECT count(*) FROM identity.outbox) AS outbox,(SELECT count(*) FROM crm_schema_migrations) AS migrations')).rows[0];
+    const counts = async () => (await client.query('SELECT (SELECT count(*) FROM public.identity_users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM crm_shared_activities) AS activities,(SELECT count(*) FROM public.identity_outbox) AS outbox,(SELECT count(*) FROM crm_schema_migrations) AS migrations')).rows[0];
     const before = await counts(); await client.query('BEGIN');
     try {
       let lease = Promise.resolve();
@@ -29,10 +29,10 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail even
       const actors: Array<{ id: string; hash: string; token: string }> = [];
       for (const role of ['operations', 'sales', 'sales'] as const) {
         const id = randomUUID(), token = randomBytes(32).toString('base64url');
-        await client.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)', [id, `rollback-${id}`]);
-        await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)", [id, role]);
-        await client.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)", [id, role === 'operations' ? 'shared' : 'own', JSON.stringify(capabilitiesFor([role]))]);
-        await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')", [tokenAdapter.hash(token), id]);
+        await client.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)', [id, `rollback-${id}`]);
+        await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)", [id, role]);
+        await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)", [id, role === 'operations' ? 'shared' : 'own', JSON.stringify(capabilitiesFor([role]))]);
+        await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')", [tokenAdapter.hash(token), id]);
         actors.push({ id, hash: tokenAdapter.hash(token), token });
       }
       const [ops, sales, other] = actors as [typeof actors[number], typeof actors[number], typeof actors[number]];
@@ -100,15 +100,15 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail even
       expect(board.items.some(item => item.customerId === customerId)).toBe(true);
       const touchClear = unwrap(await repo.contactFollowup(ops.hash, { contactId: sibling, customerId, expectedVersion: bounced.contact.contactVersion!, idempotencyKey: randomUUID(), method: 'other', note: 'explicit clear', contactStatus: 'uncontacted' }));
       expect(touchClear.contact).toMatchObject({ status: '', touchStatus: 'uncontacted', tags: [] });
-      expect((await client.query("SELECT count(*)::int AS n FROM identity.outbox WHERE payload->>'mailEventId'=$1", [sent.eventId])).rows[0].n).toBe(1);
-      const outbox = (await client.query("SELECT payload,recipient_user_ids FROM identity.outbox WHERE payload->>'mailEventId'=$1", [sent.eventId])).rows[0];
+      expect((await client.query("SELECT count(*)::int AS n FROM public.identity_outbox WHERE payload->>'mailEventId'=$1", [sent.eventId])).rows[0].n).toBe(1);
+      const outbox = (await client.query("SELECT payload,recipient_user_ids FROM public.identity_outbox WHERE payload->>'mailEventId'=$1", [sent.eventId])).rows[0];
       expect(outbox.recipient_user_ids.sort()).toEqual([ops.id, sales.id].sort());
       expect(JSON.stringify(outbox.payload)).not.toContain(event.preview); expect(JSON.stringify(outbox.payload)).not.toContain(sender);
       const notifications = new PostgresNotificationRepository(facade, { write: () => {} }); unwrap(await notifications.migrate()); unwrap(await notifications.dispatch());
       expect(unwrap(await notifications.feed(ops.hash, { deviceId: 'rollback-mail', after: '0', limit: 100 })).items.some(item => item.eventType === 'crm.contact.followup' && item.contactId === contactId)).toBe(true);
       // Atomicity: a failed notification insert must roll back the new event and its activity/status.
       await client.query("CREATE FUNCTION pg_temp.mail_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture mail outbox'; RETURN NEW; END $$");
-      await client.query("CREATE TRIGGER mail_test_outbox_fail BEFORE INSERT ON identity.outbox FOR EACH ROW WHEN (NEW.event_type='crm.contact.followup') EXECUTE FUNCTION pg_temp.mail_fail()");
+      await client.query("CREATE TRIGGER mail_test_outbox_fail BEFORE INSERT ON public.identity_outbox FOR EACH ROW WHEN (NEW.event_type='crm.contact.followup') EXECUTE FUNCTION pg_temp.mail_fail()");
       const failedInput = { ...event, eventKey: randomUUID(), occurredAt: '2024-01-02T00:00:00.000Z' };
       const versionBefore = unwrap(await repo.contactDetail(sales.hash, { contactId, customerId })).contact.contactVersion;
       expect(await mail.recordContactMailEvent(sales.hash, failedInput)).toMatchObject({ ok: false, error: { code: 'DATABASE_ERROR' } });
@@ -116,7 +116,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail even
       expect(unwrap(await repo.contactDetail(sales.hash, { contactId, customerId })).contact).toMatchObject({ contactVersion: versionBefore, touchStatus: 'contacted' });
       expect(await repo.contactFollowup(sales.hash, { contactId, customerId, expectedVersion: versionBefore!, idempotencyKey: randomUUID(), method: 'phone', note: 'atomic explicit status and stage', contactStatus: 'replied', stage: 'cooperating' })).toMatchObject({ ok: false, error: { code: 'DATABASE_ERROR' } });
       expect(unwrap(await repo.contactDetail(sales.hash, { contactId, customerId })).contact).toMatchObject({ contactVersion: versionBefore, touchStatus: 'contacted', status: 'reached', tags: [] });
-      await client.query('DROP TRIGGER mail_test_outbox_fail ON identity.outbox');
+      await client.query('DROP TRIGGER mail_test_outbox_fail ON public.identity_outbox');
       const service = createContactMailService(mail, tokenAdapter), http = createServer(createContactMailHandler(service));
       await new Promise<void>(resolve => http.listen(0, '127.0.0.1', resolve));
       try {
@@ -125,7 +125,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail even
         expect((await fetch(base + CONTACT_MAIL_ROUTE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(event) })).status).toBe(401);
         expect((await fetch(base + CONTACT_MAIL_ROUTE, { method: 'POST', headers, body: JSON.stringify({ ...event, rawBody: 'private' }) })).status).toBe(400);
       } finally { http.closeAllConnections(); await new Promise<void>(resolve => http.close(() => resolve())); }
-      await client.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1', [sales.id]);
+      await client.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1', [sales.id]);
       expect(await mail.recordContactMailEvent(sales.hash, event)).toMatchObject({ ok: false, error: { code: 'UNAUTHORIZED' } });
     } finally { await client.query('ROLLBACK'); expect(await counts()).toEqual(before); client.release(); await pool.end(); }
   }, 30000);

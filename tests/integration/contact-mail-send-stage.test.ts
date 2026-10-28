@@ -15,7 +15,7 @@ function unwrap<T>(result: Result<T>): T { if (!result.ok) throw Error(result.er
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('confirmed center send round PostgreSQL outer rollback', () => {
   it('advances once from current locked round, keeps reply/classification and rolls back every effect on outbox failure', async () => {
     const pool = new Pool(readTestDatabaseConfig()), client = await pool.connect();
-    const counts = async () => (await client.query('SELECT (SELECT count(*) FROM identity.users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM companies) AS companies,(SELECT count(*) FROM crm_contact_mail_events) AS events,(SELECT count(*) FROM crm_shared_activities) AS activities,(SELECT count(*) FROM identity.outbox) AS outbox,(SELECT count(*) FROM crm_schema_migrations) AS migrations')).rows[0];
+    const counts = async () => (await client.query('SELECT (SELECT count(*) FROM public.identity_users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM companies) AS companies,(SELECT count(*) FROM crm_contact_mail_events) AS events,(SELECT count(*) FROM crm_shared_activities) AS activities,(SELECT count(*) FROM public.identity_outbox) AS outbox,(SELECT count(*) FROM crm_schema_migrations) AS migrations')).rows[0];
     const before = await counts();
     await client.query('BEGIN');
     try {
@@ -26,7 +26,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('confirmed center 
       unwrap(await repo.migrate());
       unwrap(await repo.migrate());
       expect((await client.query('SELECT count(*)::int AS n FROM crm_schema_migrations WHERE version=$1', [CONTACT_MAIL_SEND_STAGE_VERSION])).rows[0].n).toBe(1);
-      const fixed = (await client.query("SELECT user_id FROM identity.users WHERE display_name='Agent 测试用户' AND active=true")).rows[0];
+      const fixed = (await client.query("SELECT user_id FROM public.identity_users WHERE display_name='Agent 测试用户' AND active=true")).rows[0];
       expect(fixed).toBeDefined();
       const actor: LeadActor = { userId: fixed.user_id, roles: ['sales'], capabilities: capabilitiesFor(['sales']), scope: 'own' };
       const companyId = (await client.query("INSERT INTO companies(name) VALUES('N4 rollback send stage') RETURNING id")).rows[0].id;
@@ -67,7 +67,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('confirmed center 
       const afterUpgrade = await counts();
       expect(afterUpgrade).toMatchObject({ events: beforeUpgrade.events, activities: beforeUpgrade.activities });
       expect(Number(afterUpgrade.outbox)).toBe(Number(beforeUpgrade.outbox) + 1);
-      expect((await client.query("SELECT count(*)::int AS n FROM identity.outbox WHERE payload->>'mailEventId'=$1", [old.eventId])).rows[0].n).toBe(2);
+      expect((await client.query("SELECT count(*)::int AS n FROM public.identity_outbox WHERE payload->>'mailEventId'=$1", [old.eventId])).rows[0].n).toBe(2);
       expect(unwrap(await recordContactMailEventIn(client, actor, { ...oldInput, advanceSendStage: true })).contact.stage).toBe('f3');
       expect(await counts()).toEqual(afterUpgrade);
       // Replay returns the current version, never the historical receipt version.
@@ -77,7 +77,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('confirmed center 
       const snapshot = unwrap(await contactDetailIn(client, actor, input));
       const snapshotCounts = await counts();
       await client.query("CREATE FUNCTION pg_temp.n4_mail_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'N4 outbox rollback'; END $$");
-      await client.query("CREATE TRIGGER n4_mail_outbox_fail BEFORE INSERT ON identity.outbox FOR EACH ROW WHEN (NEW.event_type='crm.contact.followup') EXECUTE FUNCTION pg_temp.n4_mail_fail()");
+      await client.query("CREATE TRIGGER n4_mail_outbox_fail BEFORE INSERT ON public.identity_outbox FOR EACH ROW WHEN (NEW.event_type='crm.contact.followup') EXECUTE FUNCTION pg_temp.n4_mail_fail()");
       await client.query('SAVEPOINT n4_atomic');
       await expect(recordContactMailEventIn(client, actor, { ...input, eventKey: randomUUID() })).rejects.toThrow('N4 outbox rollback');
       await client.query('ROLLBACK TO SAVEPOINT n4_atomic');
@@ -88,7 +88,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('confirmed center 
       expect(await counts()).toEqual(snapshotCounts);
       expect(unwrap(await contactDetailIn(client, actor, input))).toEqual(snapshot);
       expect((await client.query('SELECT send_stage_advanced FROM crm_contact_mail_events WHERE event_id=$1', [upgradeFailure.eventId])).rows[0].send_stage_advanced).toBe(false);
-      expect((await client.query("SELECT count(*)::int AS n FROM identity.outbox WHERE payload->>'mailEventId'=$1", [first.eventId])).rows[0].n).toBe(1);
+      expect((await client.query("SELECT count(*)::int AS n FROM public.identity_outbox WHERE payload->>'mailEventId'=$1", [first.eventId])).rows[0].n).toBe(1);
     } finally {
       await client.query('ROLLBACK');
       expect(await counts()).toEqual(before);

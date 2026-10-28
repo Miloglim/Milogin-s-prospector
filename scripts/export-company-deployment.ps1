@@ -32,9 +32,9 @@ $navigatorDump = Join-Path $output 'navigator.dump'
 try {
     $env:PGPASSWORD = $pg.appPassword
     & $pgDump --dbname=$centerDsn --format=custom --no-owner --no-privileges --file=$centerDump `
-        --exclude-table-data=identity.sessions `
-        --exclude-table-data=identity.desktop_refresh_tokens `
-        --exclude-table-data=identity.management_challenges
+        --exclude-table-data=public.identity_sessions `
+        --exclude-table-data=public.identity_desktop_refresh_tokens `
+        --exclude-table-data=public.identity_management_challenges
     if ($LASTEXITCODE -ne 0) { throw '中心库导出失败' }
 
     $navigatorUri = [Uri]$navigatorDsn

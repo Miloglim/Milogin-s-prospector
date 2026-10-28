@@ -63,16 +63,16 @@ function writeCredentials(email, password) {
 
 async function ensureAllProductAccess(client, userId) {
   for (const role of ROLES) {
-    await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2) ON CONFLICT DO NOTHING", [userId, role]);
+    await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2) ON CONFLICT DO NOTHING", [userId, role]);
   }
   for (const role of ["operations", "sales"]) {
-    await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'navigator',$2) ON CONFLICT DO NOTHING", [userId, role]);
+    await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'navigator',$2) ON CONFLICT DO NOTHING", [userId, role]);
   }
-  await client.query(`INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities)
+  await client.query(`INSERT INTO public.identity_product_access(user_id,product_id,active,scope,capabilities)
     VALUES($1,'crm',true,'summary',$2)
     ON CONFLICT(user_id,product_id) DO UPDATE SET active=true,scope='summary',capabilities=EXCLUDED.capabilities`,
     [userId, JSON.stringify(capabilitiesFor(ROLES))]);
-  await client.query(`INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities)
+  await client.query(`INSERT INTO public.identity_product_access(user_id,product_id,active,scope,capabilities)
     VALUES($1,'navigator',true,'summary',NULL)
     ON CONFLICT(user_id,product_id) DO UPDATE SET active=true,scope='summary'`, [userId]);
 }
@@ -100,7 +100,7 @@ async function main() {
       await client.query("BEGIN");
       await client.query("SELECT pg_advisory_xact_lock($1)", [ADMIN_LOCK]);
       const existing = await client.query(`SELECT u.user_id, e.email
-        FROM identity.users u JOIN identity.login_emails e USING(user_id)
+        FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id)
         WHERE u.identity_admin AND u.active AND u.deleted_at IS NULL FOR UPDATE OF u`);
       const same = existing.rows.find(row => String(row.email).toLowerCase() === email);
       if (existing.rows.length && !same) throw new Error("正式中心已有超级管理员，拒绝创建第二个");
@@ -114,13 +114,13 @@ async function main() {
         throw new Error("一次性管理员凭据文件已存在，拒绝覆盖");
       }
       const userId = randomUUID();
-      await client.query(`INSERT INTO identity.users(user_id,display_name,identity_admin,must_change_password)
+      await client.query(`INSERT INTO public.identity_users(user_id,display_name,identity_admin,must_change_password)
         VALUES($1,'Milogin 管理员',true,false)`, [userId]);
-      await client.query("INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)", [userId, email]);
-      await client.query(`INSERT INTO identity.credentials(user_id,password_hash,hash_scheme)
+      await client.query("INSERT INTO public.identity_login_emails(user_id,email) VALUES($1,$2)", [userId, email]);
+      await client.query(`INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme)
         VALUES($1,$2,'scrypt-v1')`, [userId, passwordHash]);
       await ensureAllProductAccess(client, userId);
-      await client.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,reason)
+      await client.query(`INSERT INTO public.identity_management_audit(actor_id,target_id,action,reason)
         VALUES($1,$1,'identity.bootstrap','正式部署默认产品超级管理员初始化，拥有 CRM 与 Navigator 权限')`, [userId]);
       await client.query("COMMIT");
       if (passwordInput.generated) writeCredentials(email, password);

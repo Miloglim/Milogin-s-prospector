@@ -1,11 +1,12 @@
 services:
   postgres:
     image: postgres:16-alpine
+    profiles: ["local-db"]
     restart: unless-stopped
     environment:
       POSTGRES_DB: milogin_center
       POSTGRES_USER: milogin_app
-      POSTGRES_PASSWORD: ${PROSPECTOR_DB_PASSWORD:?set PROSPECTOR_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${PROSPECTOR_CENTER_PG_PASSWORD:?set PROSPECTOR_CENTER_PG_PASSWORD}
     volumes:
       - prospector-postgres:/var/lib/postgresql/data
     healthcheck:
@@ -17,9 +18,6 @@ services:
   center:
     build: .
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       PROSPECTOR_CENTER_MODE: production
       PROSPECTOR_CENTER_PUBLIC_ORIGIN: ${PROSPECTOR_CENTER_PUBLIC_ORIGIN:?set PROSPECTOR_CENTER_PUBLIC_ORIGIN}
@@ -27,9 +25,10 @@ services:
       PROSPECTOR_NAVIGATOR_ENTRY_URL: ${PROSPECTOR_NAVIGATOR_ENTRY_URL:?set PROSPECTOR_NAVIGATOR_ENTRY_URL}
       PROSPECTOR_CENTER_BIND_HOST: 0.0.0.0
       PROSPECTOR_CENTER_RUNTIME_DIR: /var/lib/prospector-center
-      PROSPECTOR_CENTER_PG_HOST: postgres
-      PROSPECTOR_CENTER_PG_PORT: 5432
-      PROSPECTOR_CENTER_PG_PASSWORD: ${PROSPECTOR_DB_PASSWORD:?set PROSPECTOR_DB_PASSWORD}
+      PROSPECTOR_CENTER_PG_HOST: ${PROSPECTOR_CENTER_PG_HOST:?set PROSPECTOR_CENTER_PG_HOST}
+      PROSPECTOR_CENTER_PG_PORT: ${PROSPECTOR_CENTER_PG_PORT:-5432}
+      PROSPECTOR_CENTER_PG_USER: ${PROSPECTOR_CENTER_PG_USER:?set PROSPECTOR_CENTER_PG_USER}
+      PROSPECTOR_CENTER_PG_PASSWORD: ${PROSPECTOR_CENTER_PG_PASSWORD:?set PROSPECTOR_CENTER_PG_PASSWORD}
     volumes:
       - prospector-center:/var/lib/prospector-center
     ports:
@@ -38,6 +37,8 @@ services:
   bootstrap-admin:
     build: .
     profiles: ["tools"]
+    healthcheck:
+      disable: true
     depends_on:
       center:
         condition: service_healthy
@@ -45,9 +46,10 @@ services:
       PROSPECTOR_CENTER_MODE: production
       PROSPECTOR_CENTER_PUBLIC_ORIGIN: ${PROSPECTOR_CENTER_PUBLIC_ORIGIN:?set PROSPECTOR_CENTER_PUBLIC_ORIGIN}
       PROSPECTOR_CENTER_RUNTIME_DIR: /var/lib/prospector-center
-      PROSPECTOR_CENTER_PG_HOST: postgres
-      PROSPECTOR_CENTER_PG_PORT: 5432
-      PROSPECTOR_CENTER_PG_PASSWORD: ${PROSPECTOR_DB_PASSWORD:?set PROSPECTOR_DB_PASSWORD}
+      PROSPECTOR_CENTER_PG_HOST: ${PROSPECTOR_CENTER_PG_HOST:?set PROSPECTOR_CENTER_PG_HOST}
+      PROSPECTOR_CENTER_PG_PORT: ${PROSPECTOR_CENTER_PG_PORT:-5432}
+      PROSPECTOR_CENTER_PG_USER: ${PROSPECTOR_CENTER_PG_USER:?set PROSPECTOR_CENTER_PG_USER}
+      PROSPECTOR_CENTER_PG_PASSWORD: ${PROSPECTOR_CENTER_PG_PASSWORD:?set PROSPECTOR_CENTER_PG_PASSWORD}
       PROSPECTOR_ADMIN_EMAIL: ${PROSPECTOR_ADMIN_EMAIL:?set PROSPECTOR_ADMIN_EMAIL}
     command: ["node", "scripts/bootstrap-production-admin.mjs", "--generate-password", "--credentials-file", "/var/lib/prospector-center/bootstrap-admin.json"]
     volumes:

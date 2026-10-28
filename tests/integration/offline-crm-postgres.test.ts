@@ -14,15 +14,15 @@ function unwrap<T>(result:Result<T>):T {if(!result.ok)throw Error(`${result.erro
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('offline CRM against isolated PostgreSQL',()=>{
   it('creates, imports, replays lost responses, maps contacts and retains version conflicts with full rollback',async()=>{
     const pool=new Pool(readTestDatabaseConfig());const client=await pool.connect();
-    const counts=async()=>{const row=await client.query('SELECT (SELECT count(*) FROM identity.users) AS users,(SELECT count(*) FROM crm_customers) AS customers,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM crm_import_batches) AS batches,(SELECT count(*) FROM crm_shared_activities) AS activities');return row.rows[0];};
+    const counts=async()=>{const row=await client.query('SELECT (SELECT count(*) FROM public.identity_users) AS users,(SELECT count(*) FROM crm_customers) AS customers,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM crm_import_batches) AS batches,(SELECT count(*) FROM crm_shared_activities) AS activities');return row.rows[0];};
     const before=await counts();
     await client.query('BEGIN');
     try {
       const userId=randomUUID(),token=randomBytes(32).toString('base64url'),capabilities=capabilitiesFor(['sales']);
-      await client.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)',[userId,'Synthetic offline CRM']);
-      await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm','sales')",[userId]);
-      await client.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm','own',$2)",[userId,JSON.stringify(capabilities)]);
-      await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),userId]);
+      await client.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)',[userId,'Synthetic offline CRM']);
+      await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm','sales')",[userId]);
+      await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm','own',$2)",[userId,JSON.stringify(capabilities)]);
+      await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),userId]);
       // Real repositories keep their transaction boundaries via savepoints; fixture outer transaction always rolls back.
       const facade={options:pool.options,connect:async()=>({query:(sql:string,args?:unknown[])=>client.query(sql==='BEGIN'?'SAVEPOINT offline_call':sql==='COMMIT'?'RELEASE SAVEPOINT offline_call':sql==='ROLLBACK'?'ROLLBACK TO SAVEPOINT offline_call':sql,args),release:()=>{}})} as unknown as Pool;
       const center=createLeadService(new PostgresLeadRepository(facade,{write:()=>{}}),tokenAdapter);

@@ -59,7 +59,7 @@ try {
     const {PasswordAdapter}=require('./dist-server/adapters/password');
     const {initializeFixtures}=require('./dist-server/adapters/fixtures');
     (async()=>{const pool=new Pool(readTestDatabaseConfig()),log={write:()=>{}};
-      try{for(const [file,name] of [['repository','PostgresCrmRepository'],['auth-repository','PostgresAuthRepository'],['admin-repository','PostgresAdminRepository'],['lead-repository','PostgresLeadRepository'],['notification-repository','PostgresNotificationRepository'],['task-repository','PostgresTaskRepository'],['opportunity-repository','PostgresOpportunityRepository']]){
+      try{for(const [file,name] of [['repository','PostgresCrmRepository'],['auth-repository','PostgresAuthRepository'],['admin-repository','PostgresAdminRepository'],['lead-repository','PostgresLeadRepository'],['notification-repository','PostgresNotificationRepository'],['task-repository','PostgresTaskRepository'],['opportunity-repository','PostgresOpportunityRepository'],['contact-change-repository','PostgresContactChangeRepository'],['campaign-repository','PostgresCampaignRepository']]){
         const repo=new (require('./dist-server/adapters/postgres/'+file)[name])(pool,log),r=await repo.migrate();if(!r.ok)throw Error('Migration failed');
       }const passwords=new PasswordAdapter(${PASSWORD_CONCURRENCY});await passwords.initialize();await initializeFixtures(new (require('./dist-server/adapters/postgres/auth-repository').PostgresAuthRepository)(pool,log),passwords,true);
       }finally{await pool.end();}})().catch(()=>{process.stderr.write('Test initialization failed\\n');process.exitCode=1;});`;

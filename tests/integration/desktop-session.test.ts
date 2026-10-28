@@ -73,19 +73,19 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
     const account = await request(ROUTES.login, { email: registrationEmail, password });
     expect(account.status).toBe(200);
     expect(account.body.data.identity).toMatchObject({ email: registrationEmail, identityAdmin: false, emailVerified: false, crmRoles: ['sales'] });
-    const scope = await pool.query("SELECT scope,active FROM identity.product_access WHERE user_id=$1 AND product_id='crm'", [account.body.data.identity.userId]);
+    const scope = await pool.query("SELECT scope,active FROM public.identity_product_access WHERE user_id=$1 AND product_id='crm'", [account.body.data.identity.userId]);
     expect(scope.rows).toEqual([{ scope: 'own', active: true }]);
     expect((await request(API_ROUTES.users, undefined, account.body.data.token)).status).toBe(403);
-    const saved = await pool.query('SELECT password_hash FROM identity.credentials WHERE user_id=$1', [account.body.data.identity.userId]);
+    const saved = await pool.query('SELECT password_hash FROM public.identity_credentials WHERE user_id=$1', [account.body.data.identity.userId]);
     expect(saved.rows[0].password_hash).not.toBe(password);
     expect(await passwords.verify(password, saved.rows[0].password_hash)).toBe(true);
-    const audit = await pool.query("SELECT action FROM identity.management_audit WHERE target_id=$1 AND action='identity.register'", [account.body.data.identity.userId]);
+    const audit = await pool.query("SELECT action FROM public.identity_management_audit WHERE target_id=$1 AND action='identity.register'", [account.body.data.identity.userId]);
     expect(audit.rows).toHaveLength(1);
   });
 
   it('persists only hashes, restores after server restart and rotates with one concurrent winner', async () => {
     const session = await login();
-    const saved = await pool.query('SELECT s.session_id,s.token_hash,r.token_hash AS refresh_hash FROM identity.sessions s JOIN identity.desktop_refresh_tokens r USING(session_id) WHERE s.token_hash=$1', [tokenAdapter.hash(session.token)]);
+    const saved = await pool.query('SELECT s.session_id,s.token_hash,r.token_hash AS refresh_hash FROM public.identity_sessions s JOIN public.identity_desktop_refresh_tokens r USING(session_id) WHERE s.token_hash=$1', [tokenAdapter.hash(session.token)]);
     expect(saved.rows[0].refresh_hash).toBe(tokenAdapter.hash(session.refreshToken));
     expect(JSON.stringify(saved.rows)).not.toContain(session.refreshToken);
     await close(); await start();
@@ -99,7 +99,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
     expect((await request(API_ROUTES.me, undefined, winner.token)).status).toBe(200);
     expect((await refresh(session.refreshToken)).status).toBe(401);
     expect((await request(ROUTES.me, undefined, winner.token)).status).toBe(200);
-    expect((await pool.query('SELECT session_id FROM identity.sessions WHERE token_hash=$1', [tokenAdapter.hash(winner.token)])).rows[0].session_id).toBe(saved.rows[0].session_id);
+    expect((await pool.query('SELECT session_id FROM public.identity_sessions WHERE token_hash=$1', [tokenAdapter.hash(winner.token)])).rows[0].session_id).toBe(saved.rows[0].session_id);
   });
   it('logout revokes the entire rotated family but preserves another device and account', async () => {
     const session = await login(), second = await login(), other = await login('b');
@@ -112,15 +112,15 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
   });
   it('allows renewal after bearer expires but enforces idle and absolute expiry', async () => {
     const expiredBearer = await login();
-    await pool.query("UPDATE identity.sessions SET created_at=now()-interval '2 seconds',expires_at=now()-interval '1 second' WHERE token_hash=$1", [tokenAdapter.hash(expiredBearer.token)]);
+    await pool.query("UPDATE public.identity_sessions SET created_at=now()-interval '2 seconds',expires_at=now()-interval '1 second' WHERE token_hash=$1", [tokenAdapter.hash(expiredBearer.token)]);
     expect((await refresh(expiredBearer.refreshToken)).status).toBe(200);
     for (const column of ['idle_expires_at', 'absolute_expires_at']) {
       const session = await login();
-      await pool.query(`UPDATE identity.desktop_refresh_tokens SET idle_expires_at=now()-interval '1 second'${column === 'absolute_expires_at' ? ",absolute_expires_at=now()-interval '1 second'" : ''} WHERE token_hash=$1`, [tokenAdapter.hash(session.refreshToken)]);
+      await pool.query(`UPDATE public.identity_desktop_refresh_tokens SET idle_expires_at=now()-interval '1 second'${column === 'absolute_expires_at' ? ",absolute_expires_at=now()-interval '1 second'" : ''} WHERE token_hash=$1`, [tokenAdapter.hash(session.refreshToken)]);
       expect((await refresh(session.refreshToken)).status).toBe(401);
     }
     const nearAbsolute = await login();
-    await pool.query("UPDATE identity.desktop_refresh_tokens SET idle_expires_at=now()+interval '30 seconds',absolute_expires_at=now()+interval '30 seconds' WHERE token_hash=$1", [tokenAdapter.hash(nearAbsolute.refreshToken)]);
+    await pool.query("UPDATE public.identity_desktop_refresh_tokens SET idle_expires_at=now()+interval '30 seconds',absolute_expires_at=now()+interval '30 seconds' WHERE token_hash=$1", [tokenAdapter.hash(nearAbsolute.refreshToken)]);
     const rotated = (await refresh(nearAbsolute.refreshToken)).body.data;
     expect(new Date(rotated.expiresAt).getTime() - Date.now()).toBeLessThan(31 * SECOND_MS);
   });
@@ -130,16 +130,16 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
     expect(admin.ok).toBe(true);
     if (!admin.ok) throw new Error('admin login failed');
     const session = await login();
-    const id = (await pool.query('SELECT session_id FROM identity.sessions WHERE token_hash=$1', [tokenAdapter.hash(session.token)])).rows[0].session_id;
+    const id = (await pool.query('SELECT session_id FROM public.identity_sessions WHERE token_hash=$1', [tokenAdapter.hash(session.token)])).rows[0].session_id;
     const rotated = (await refresh(session.refreshToken)).body.data;
     expect((await new PostgresAdminRepository(pool, log).mutate(tokenAdapter.hash(admin.data.token), { action: 'session.revoke', userId: users.a, sessionId: id, reason: 'isolated desktop session test' })).ok).toBe(true);
     expect((await refresh(rotated.refreshToken)).status).toBe(401);
     for (const change of ['active=false', 'security_revision=security_revision+1']) {
       const target = await login('b');
-      await pool.query(`UPDATE identity.users SET ${change} WHERE user_id=$1`, [users.b]);
+      await pool.query(`UPDATE public.identity_users SET ${change} WHERE user_id=$1`, [users.b]);
       expect((await refresh(target.refreshToken)).status).toBe(401);
       expect((await request(ROUTES.me, undefined, target.token)).status).toBe(401);
-      await pool.query('UPDATE identity.users SET active=true WHERE user_id=$1', [users.b]);
+      await pool.query('UPDATE public.identity_users SET active=true WHERE user_id=$1', [users.b]);
     }
   });
   it('supports restricted first-password change without granting CRM and revokes every old session', async () => {
@@ -167,7 +167,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
   });
   it('re-reads current product capabilities on renewal and does not resurrect revoked product access', async () => {
     const session = await login('b');
-    await pool.query('UPDATE identity.product_grants SET active=false WHERE user_id=$1', [users.b]);
+    await pool.query('UPDATE public.identity_product_grants SET active=false WHERE user_id=$1', [users.b]);
     const rotated = await refresh(session.refreshToken);
     expect(rotated.status).toBe(200);
     expect(rotated.body.data.identity.crmRoles).toEqual([]);

@@ -26,16 +26,16 @@ let ops:Member,sales:Member,other:Member,extra:Member;
 function unwrap<T>(r:Result<T>):T{if(!r.ok)throw Error(r.error.code);return r.data;}
 async function member(role:CrmRole):Promise<Member>{
  const id=randomUUID(),token=randomBytes(32).toString('base64url'),name=`${source} ${role}`;
- await pool.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)',[id,name]);
- await pool.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
- await pool.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
- await pool.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);
+ await pool.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)',[id,name]);
+ await pool.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
+ await pool.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
+ await pool.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);
  return {id,token,name};
 }
 async function get(path:string,actor:Member=ops){const response=await fetch(base+path,{headers:{authorization:`Bearer ${actor.token}`}});return {status:response.status,body:await response.json() as any};}
 async function dispatch(){
  // A batch containing only non-projected management events returns zero deliveries but may leave later events queued.
- while(true){unwrap(await notifications.dispatch());const remaining=await pool.query('SELECT 1 FROM identity.outbox o WHERE NOT EXISTS(SELECT 1 FROM crm_notification_consumed c WHERE c.event_id=o.event_id) LIMIT 1');if(!remaining.rows.length)return;}
+ while(true){unwrap(await notifications.dispatch());const remaining=await pool.query('SELECT 1 FROM public.identity_outbox o WHERE NOT EXISTS(SELECT 1 FROM crm_notification_consumed c WHERE c.event_id=o.event_id) LIMIT 1');if(!remaining.rows.length)return;}
 }
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('CRM experience authorized PostgreSQL/HTTP projections',()=>{
  beforeAll(async()=>{
@@ -85,14 +85,14 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('CRM experience auth
   unwrap(await actions.contactFollowup(sales.token,{...ref,expectedVersion:2,idempotencyKey:randomUUID(),note:'First exact activity'}));
   unwrap(await actions.contactFollowup(sales.token,{...ref,expectedVersion:3,idempotencyKey:randomUUID(),note:'Second exact activity'}));
   const detail=unwrap(await actions.contactDetail(ops.token,ref));expect(detail.activities.map(x=>x.note).sort()).toEqual(['First exact activity','Second exact activity']);expect(detail.activities.map(x=>x.actorName)).toEqual([sales.name,sales.name]);
-  await pool.query('UPDATE companies SET name=$2 WHERE id=(SELECT company_id FROM crm_customers WHERE customer_id=$1)',[id,'UX current company']);await pool.query('UPDATE identity.users SET display_name=$2 WHERE user_id=$1',[sales.id,'Current actor name']);await dispatch();
+  await pool.query('UPDATE companies SET name=$2 WHERE id=(SELECT company_id FROM crm_customers WHERE customer_id=$1)',[id,'UX current company']);await pool.query('UPDATE public.identity_users SET display_name=$2 WHERE user_id=$1',[sales.id,'Current actor name']);await dispatch();
   const url='/api/crm/notifications?deviceId=ux&after=0&limit=100',feed=(await get(url,sales)).body.data.items.filter((x:any)=>x.customerId===id);
   expect(feed).toHaveLength(4);expect(feed.every((x:any)=>x.summary.companyName==='UX current company')).toBe(true);expect(feed.filter((x:any)=>x.eventType==='crm.contact.followup').every((x:any)=>x.summary.actorName==='Current actor name')).toBe(true);
   const notify=(await get(url,extra)).body.data.items.find((x:any)=>x.requestId===pending.requestId);expect(notify).toMatchObject({canOpen:false,customerId:'',version:0,assignmentStatus:'accepted',summary:{companyName:'UX current company'}});expect(JSON.stringify(notify)).not.toContain('@example.invalid');expect(notify).not.toHaveProperty('contactId');
-  const payloads=(await pool.query('SELECT payload FROM identity.outbox WHERE customer_id=$1',[id])).rows;expect(JSON.stringify(payloads)).not.toContain('exact activity');
+  const payloads=(await pool.query('SELECT payload FROM public.identity_outbox WHERE customer_id=$1',[id])).rows;expect(JSON.stringify(payloads)).not.toContain('exact activity');
   await pool.query('UPDATE crm_contact_assignment_requests SET target_user_id=$2 WHERE request_id=$1',[pending.requestId,other.id]);
   const revoked=(await get(url,sales)).body.data.items.filter((x:any)=>x.requestId===pending.requestId);expect(revoked.length).toBeGreaterThan(0);expect(revoked.every((x:any)=>!x.canOpen&&x.customerId==='')).toBe(true);expect((await get(url,sales)).body.data.items.some((x:any)=>x.customerId===id&&x.eventType==='crm.contact.followup')).toBe(false);
   expect((await get(`/api/crm/contacts/${ref.contactId}?customerId=${id}`,sales)).status).toBe(404);
-  await pool.query("UPDATE identity.product_access SET active=false WHERE user_id=$1 AND product_id='crm'",[extra.id]);expect((await get(url,extra)).status).toBe(403);
+  await pool.query("UPDATE public.identity_product_access SET active=false WHERE user_id=$1 AND product_id='crm'",[extra.id]);expect((await get(url,extra)).status).toBe(403);
  },TIMEOUT);
 });

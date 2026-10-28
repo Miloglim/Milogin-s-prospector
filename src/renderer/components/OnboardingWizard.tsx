@@ -4,8 +4,7 @@ import "./OnboardingWizard.css";
 import { DEFAULT_MAIL_SERVERS } from "../../shared/mail-defaults";
 
 // ── 新手向导（复刻旧 PE OOBE：全屏覆盖 + 步骤滑入 + 完成页 Logo/渐变字 + 毛玻璃退出 + 可拖拽教程卡）──
-// 触发：启动后无 SMTP 账号自动弹出；点过「跳过」或走完向导后不再自动弹（config.general.onboarding）；
-// Shift+点击侧边栏版本号强制重开（open-onboarding 事件，不受该标记影响）。
+// 自动触发由 AppLayout 按当前中心账号判断；本组件只消费 open-onboarding 事件和手动重开。
 // 步骤：①邮箱（保存即服务端 SMTP/IMAP 连通性验证）②署名 ③通用设置 → 完成页 → 教程卡。
 
 type IpcResult<T> = { success: boolean; data?: T; error?: string };
@@ -48,7 +47,7 @@ const STEP_DESCS = [
 
 type Phase = "closed" | "opening" | "open" | "hiding" | "finishing" | "fadeout";
 
-export function OnboardingWizard({ autoCheck = true, prefillEmail = "", openSignal = 0 }: { autoCheck?: boolean; prefillEmail?: string; openSignal?: number }) {
+export function OnboardingWizard({ prefillEmail = "", openSignal = 0 }: { prefillEmail?: string; openSignal?: number }) {
   const [phase, setPhase] = useState<Phase>("closed");
   const [step, setStep] = useState(0);            // 0..3 表单步，4=完成页
   const [back, setBack] = useState(false);         // 步骤动画方向
@@ -73,24 +72,12 @@ export function OnboardingWizard({ autoCheck = true, prefillEmail = "", openSign
   useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
   const later = (ms: number, fn: () => void) => { timers.current.push(window.setTimeout(fn, ms)); };
 
-  // 启动检测 + Shift+版本号强制重开
+  // AppLayout 请求打开，或 Shift+版本号强制重开
   useEffect(() => {
     const open = () => { setStep(0); setBack(false); setForm({ ...INITIAL, user: prefillEmail }); setErrs(new Set()); setServerErr(""); setPhase("opening"); };
-    const check = async () => {
-      // 两条并发查：串行会让「该不该弹」多等一个 IPC 往返
-      const [r, cfg] = await Promise.all([
-        window.api.invoke("accounts:list") as Promise<IpcResult<unknown[]>>,
-        window.api.invoke("system:getConfig") as Promise<IpcResult<{ general?: { onboarding?: string } }>>,
-      ]);
-      // 用户处置过（跳过 / 走完）就永远不再自动弹——即使后来把账号删空也不打扰；
-      // 要看向导只能 Shift+点版本号（下面的 open-onboarding 通道，不看这个标记）
-      if (cfg?.success && cfg.data?.general?.onboarding) return;
-      if (r?.success && (r.data?.length ?? 0) === 0) later(300, open);
-    };
-    if (autoCheck) void check();
     window.addEventListener("open-onboarding", open);
     return () => window.removeEventListener("open-onboarding", open);
-  }, [autoCheck, prefillEmail]);
+  }, [prefillEmail]);
   useEffect(() => {
     if (openSignal > 0) {
       setStep(0); setBack(false); setForm({ ...INITIAL, user: prefillEmail }); setErrs(new Set()); setServerErr(""); setAdvancedOpen(false); setPhase("opening");

@@ -34,14 +34,23 @@ describe('center database environment boundary', () => {
     const dockerEnv = {
       PROSPECTOR_CENTER_PG_HOST: 'postgres',
       PROSPECTOR_CENTER_PG_PORT: '5432',
+      PROSPECTOR_CENTER_PG_USER: 'company_prospector',
       PROSPECTOR_CENTER_PG_PASSWORD: 'example-password',
     };
     expect(readProductionDatabaseConfig(dockerEnv)).toMatchObject({
-      host: 'postgres', port: 5432, database: 'milogin_center', user: 'milogin_app',
+      host: 'postgres', port: 5432, database: 'milogin_center', user: 'company_prospector', application_name: 'prospector-center',
     });
     expect(() => readProductionDatabaseConfig({ ...dockerEnv, PROSPECTOR_CENTER_PG_HOST: 'not_a_host/path' })).toThrow();
     expect(() => readProductionDatabaseConfig({ ...dockerEnv, PROSPECTOR_CENTER_PG_PORT: '70000' })).toThrow();
     expect(() => readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_DSN: PRODUCTION_DSN, PROSPECTOR_CENTER_PG_HOST: 'postgres' })).toThrow();
+  });
+
+  it('accepts a KMS-injected database user without accepting a different DSN user', () => {
+    const user = 'company_prospector';
+    const dsn = `postgresql://${user}:example-password@127.0.0.1:5432/milogin_center`;
+    expect(readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_USER: user, PROSPECTOR_CENTER_PG_DSN: dsn }))
+      .toMatchObject({ database: 'milogin_center', user, application_name: 'prospector-center' });
+    expect(() => readProductionDatabaseConfig({ PROSPECTOR_CENTER_PG_USER: 'another_user', PROSPECTOR_CENTER_PG_DSN: dsn })).toThrow();
   });
 
   it('rejects pools from the wrong environment and unknown modes', async () => {

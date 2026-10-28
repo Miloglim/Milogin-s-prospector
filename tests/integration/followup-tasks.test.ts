@@ -31,17 +31,17 @@ describe.skipIf(!enabled)('followup tasks PostgreSQL rollback-only',()=>{
  afterEach(async()=>{if(c){await c.query('ROLLBACK');c.release();}if(pool)await pool.end();});
  async function user(role:CrmRole):Promise<User>{
   const id=randomUUID(),token=Buffer.from(randomUUID()+randomUUID()).toString('base64url').slice(0,43),hash=tokens.hash(token),scope=role==='sales'?'own':role==='admin'?'summary':'shared',capabilities=capabilitiesFor([role]);
-  await c.query('INSERT INTO identity.users(user_id,display_name,active) VALUES($1,$2,true)',[id,'Rollback task user']);
-  await c.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
-  await c.query("INSERT INTO identity.product_access(user_id,product_id,scope) VALUES($1,'crm',$2)",[id,scope]);
-  await c.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) SELECT $1,user_id,security_revision,now()+interval '1 hour','api' FROM identity.users WHERE user_id=$2",[hash,id]);
+  await c.query('INSERT INTO public.identity_users(user_id,display_name,active) VALUES($1,$2,true)',[id,'Rollback task user']);
+  await c.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
+  await c.query("INSERT INTO public.identity_product_access(user_id,product_id,scope) VALUES($1,'crm',$2)",[id,scope]);
+  await c.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) SELECT $1,user_id,security_revision,now()+interval '1 hour','api' FROM public.identity_users WHERE user_id=$2",[hash,id]);
   return {id,token,hash,roles:[role],scope,capabilities};
  }
  async function customer(owner=sales,creator=sales){const co=await c.query("INSERT INTO companies(name) VALUES('Rollback task customer') RETURNING id");const r=await c.query("INSERT INTO crm_customers(company_id,source,customer_key,source_detail,state,owner_user_id,created_by,origin) VALUES($1,'rollback-task',$2,'synthetic','owned',$3,$4,$5) RETURNING customer_id",[co.rows[0].id,randomUUID(),owner.id,creator.id,creator===owner?'personal':'operations']);return r.rows[0].customer_id as string;}
  async function task(id?:string):Promise<FollowupTask>{const customerId=id??await customer();return unwrap(await service.create(sales.token,{customerId,title:'Call synthetic customer',dueAt:'2020-01-01T00:00:00Z',expectedCustomerVersion:1,idempotencyKey:randomUUID()}));}
  function command(t:FollowupTask){return {taskId:t.taskId,expectedVersion:t.version,idempotencyKey:randomUUID()};}
- async function event(t:FollowupTask){return (await c.query("SELECT * FROM identity.outbox WHERE customer_id=$1 AND event_type='crm.task.due' ORDER BY (payload->>'taskVersion')::int,event_id",[t.customerId])).rows.at(-1);}
- async function notificationRepo(){const n=new PostgresNotificationRepository(wrapped,log);await c.query('INSERT INTO crm_notification_consumed(event_id) SELECT event_id FROM identity.outbox WHERE NOT EXISTS(SELECT 1 FROM crm_notification_consumed x WHERE x.event_id=identity.outbox.event_id)');return n;}
+ async function event(t:FollowupTask){return (await c.query("SELECT * FROM public.identity_outbox WHERE customer_id=$1 AND event_type='crm.task.due' ORDER BY (payload->>'taskVersion')::int,event_id",[t.customerId])).rows.at(-1);}
+ async function notificationRepo(){const n=new PostgresNotificationRepository(wrapped,log);await c.query('INSERT INTO crm_notification_consumed(event_id) SELECT event_id FROM public.identity_outbox WHERE NOT EXISTS(SELECT 1 FROM crm_notification_consumed x WHERE x.event_id=public.identity_outbox.event_id)');return n;}
  it('creates once, retries after customer version advances, and rejects conflicting reuse',async()=>{
   const id=await customer(),input={customerId:id,title:'Call synthetic customer',dueAt:'2020-01-01T00:00:00Z',expectedCustomerVersion:1,idempotencyKey:randomUUID()};
   const first=unwrap(await service.create(sales.token,input));await c.query('UPDATE crm_customers SET version=version+1 WHERE customer_id=$1',[id]);
@@ -73,7 +73,7 @@ describe.skipIf(!enabled)('followup tasks PostgreSQL rollback-only',()=>{
   expect(await service.detail(other.token,t.taskId)).toMatchObject({error:{code:'NOT_FOUND'}});
   expect(await service.complete(ops.token,{...command(t),feedback:'no'})).toMatchObject({error:{code:'FORBIDDEN'}});
   expect(unwrap(await service.list(admin.token,{customerId:id,limit:25,offset:0})).total).toBe(1);
-  await c.query("UPDATE identity.product_access SET capabilities='[\"leads.import\"]' WHERE user_id=$1 AND product_id='crm'",[ops.id]);
+  await c.query("UPDATE public.identity_product_access SET capabilities='[\"leads.import\"]' WHERE user_id=$1 AND product_id='crm'",[ops.id]);
   expect(unwrap(await service.list(ops.token,{customerId:id,limit:25,offset:0}))).toEqual({items:[],total:0});
  });
  it('derives new responsibility atomically on transfer and never revives old notices after transfer back',async()=>{
@@ -89,25 +89,25 @@ describe.skipIf(!enabled)('followup tasks PostgreSQL rollback-only',()=>{
   expect((await c.query('SELECT task_version FROM crm_task_due_receipts WHERE task_id=$1 ORDER BY task_version',[t.taskId])).rows).toEqual([{task_version:1},{task_version:2},{task_version:3}]);
  });
  it('stops actions and notices for inactive/revoked accounts then backfills eligible due tasks',async()=>{
-  const t=await task();await c.query('UPDATE identity.users SET active=false WHERE user_id=$1',[sales.id]);
+  const t=await task();await c.query('UPDATE public.identity_users SET active=false WHERE user_id=$1',[sales.id]);
   expect(await service.complete(sales.token,{...command(t),feedback:'no'})).toMatchObject({error:{code:'UNAUTHORIZED'}});await repo.processDue(50);expect(await event(t)).toBeUndefined();
-  await c.query('UPDATE identity.users SET active=true WHERE user_id=$1',[sales.id]);await c.query("UPDATE identity.product_access SET active=false WHERE user_id=$1 AND product_id='crm'",[sales.id]);await repo.processDue(50);expect(await event(t)).toBeUndefined();
-  await c.query("UPDATE identity.product_access SET active=true,capabilities='[\"leads.claim\"]' WHERE user_id=$1 AND product_id='crm'",[sales.id]);await repo.processDue(50);expect(await event(t)).toBeUndefined();
-  await c.query("UPDATE identity.product_access SET capabilities=NULL WHERE user_id=$1 AND product_id='crm'",[sales.id]);await repo.processDue(50);expect(await event(t)).toBeTruthy();
+  await c.query('UPDATE public.identity_users SET active=true WHERE user_id=$1',[sales.id]);await c.query("UPDATE public.identity_product_access SET active=false WHERE user_id=$1 AND product_id='crm'",[sales.id]);await repo.processDue(50);expect(await event(t)).toBeUndefined();
+  await c.query("UPDATE public.identity_product_access SET active=true,capabilities='[\"leads.claim\"]' WHERE user_id=$1 AND product_id='crm'",[sales.id]);await repo.processDue(50);expect(await event(t)).toBeUndefined();
+  await c.query("UPDATE public.identity_product_access SET capabilities=NULL WHERE user_id=$1 AND product_id='crm'",[sales.id]);await repo.processDue(50);expect(await event(t)).toBeTruthy();
  });
  it('bounds due batches and rolls back event+receipt together on outbox failure',async()=>{
   const t=await task();await task();const count=unwrap(await repo.processDue(1));expect(count).toBe(1);unwrap(await repo.processDue(1));
   const next=await task();await c.query("CREATE FUNCTION crm_b3_outbox_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic'; END $$");
-  await c.query(`CREATE TRIGGER crm_b3_outbox_failure BEFORE INSERT ON identity.outbox FOR EACH ROW WHEN (NEW.customer_id='${next.customerId}'::uuid) EXECUTE FUNCTION crm_b3_outbox_failure()`);
+  await c.query(`CREATE TRIGGER crm_b3_outbox_failure BEFORE INSERT ON public.identity_outbox FOR EACH ROW WHEN (NEW.customer_id='${next.customerId}'::uuid) EXECUTE FUNCTION crm_b3_outbox_failure()`);
   expect(await repo.processDue(50)).toMatchObject({error:{code:'DATABASE_ERROR'}});
   expect(await event(next)).toBeUndefined();expect((await c.query('SELECT 1 FROM crm_task_due_receipts WHERE task_id=$1',[next.taskId])).rows).toHaveLength(0);
-  await c.query('DROP TRIGGER crm_b3_outbox_failure ON identity.outbox');expect((await repo.processDue(50)).ok).toBe(true);
+  await c.query('DROP TRIGGER crm_b3_outbox_failure ON public.identity_outbox');expect((await repo.processDue(50)).ok).toBe(true);
   expect((await c.query('SELECT 1 FROM crm_task_due_receipts WHERE task_id=$1',[t.taskId])).rows).toHaveLength(1);
  });
  it('skips an older revoked unassigned administrator task before bounded pagination',async()=>{
   const id=await customer(ops,ops);await c.query("UPDATE crm_customers SET owner_user_id=NULL,state='draft',origin='operations' WHERE customer_id=$1",[id]);
   const blocked=unwrap(await service.create(ops.token,{customerId:id,title:'Old operations task',dueAt:'2010-01-01T00:00:00Z',expectedCustomerVersion:1,idempotencyKey:randomUUID()}));
-  await c.query("UPDATE identity.product_access SET capabilities='[\"leads.develop\"]' WHERE user_id=$1 AND product_id='crm'",[ops.id]);
+  await c.query("UPDATE public.identity_product_access SET capabilities='[\"leads.develop\"]' WHERE user_id=$1 AND product_id='crm'",[ops.id]);
   const live=await task();expect(unwrap(await repo.processDue(1))).toBe(1);expect(await event(blocked)).toBeUndefined();expect(await event(live)).toBeTruthy();
  });
  it('database rejects null completion feedback and migration remains repeatable',async()=>{

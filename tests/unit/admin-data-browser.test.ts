@@ -12,10 +12,10 @@ describe("management data browser boundary", () => {
     const ids = ADMIN_DATA_TABLES.map(table => table.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(findAdminDataTable("public.contacts")?.label).toBe("联系人");
-    expect(findAdminDataTable("identity.credentials")).toBeUndefined();
-    expect(findAdminDataTable("identity.sessions")).toBeUndefined();
-    expect(findAdminDataTable("identity.desktop_refresh_tokens")).toBeUndefined();
-    expect(findAdminDataTable("identity.management_challenges")).toBeUndefined();
+    expect(findAdminDataTable("public.identity_credentials")).toBeUndefined();
+    expect(findAdminDataTable("public.identity_sessions")).toBeUndefined();
+    expect(findAdminDataTable("public.identity_desktop_refresh_tokens")).toBeUndefined();
+    expect(findAdminDataTable("public.identity_management_challenges")).toBeUndefined();
   });
 
   it("rejects credential-like columns while allowing ordinary business columns", () => {

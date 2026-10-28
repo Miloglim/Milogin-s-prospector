@@ -119,9 +119,12 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   online?: boolean;
 } = {}) {
   const location = useRouterState({ select: s => s.location });
+  const portKey = dataPort?.key ?? 'local';
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const [pageState, setPageState] = useState({ key: portKey, page: 1 });
+  const page = pageState.key === portKey ? pageState.page : 1;
+  const setPage = (next: number) => setPageState({ key: portKey, page: next });
   const [addOpen, setAddOpen] = useState(false);
   const [returnInboxId, setReturnInboxId] = useState<number | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -155,6 +158,15 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   const deleteContact = useDeleteContact(dataPort);
   const qc = useQueryClient();
 
+  useEffect(() => {
+    setPageState({ key: portKey, page: 1 });
+    setSelectedRowKeys([]);
+    setDetailContact(null);
+    setPendingDetailId(null);
+    const scroller = tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-content');
+    if (scroller) scroller.scrollTop = 0;
+  }, [portKey]);
+
   const contacts = data?.success ? (data.data?.items || []) : [];
   const total = data?.success ? (data.data?.total || 0) : 0;
 
@@ -173,19 +185,27 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
     let timer: ReturnType<typeof setTimeout>;
     let drag: { y: number; top: number } | null = null;
     let travel = 0, maximum = 0;
-    const update = () => {
+    let frame = 0;
+    const paint = () => {
+      frame = 0;
+      thumb.style.transform = `translateY(${maximum ? scroller.scrollTop / maximum * travel : 0}px)`;
+      rail.setAttribute('aria-valuenow', String(Math.round(scroller.scrollTop)));
+    };
+    const schedulePaint = () => {
+      if (!frame) frame = requestAnimationFrame(paint);
+    };
+    const measure = () => {
       const height = scroller.clientHeight;
       maximum = Math.max(0, scroller.scrollHeight - height);
       const thumbHeight = Math.min(height, Math.max(SCROLL_THUMB_MIN_HEIGHT, height * height / scroller.scrollHeight));
       travel = height - thumbHeight;
       rail.hidden = maximum === 0; rail.style.height = `${height}px`;
       thumb.style.height = `${thumbHeight}px`;
-      thumb.style.transform = `translateY(${maximum ? scroller.scrollTop / maximum * travel : 0}px)`;
       rail.setAttribute('aria-valuemin', '0'); rail.setAttribute('aria-valuemax', String(maximum));
-      rail.setAttribute('aria-valuenow', String(Math.round(scroller.scrollTop)));
+      paint();
     };
     const show = () => {
-      update(); rail.classList.add('is-active'); clearTimeout(timer);
+      rail.classList.add('is-active'); schedulePaint(); clearTimeout(timer);
       timer = setTimeout(() => { if (!drag) rail.classList.remove('is-active'); }, SCROLL_THUMB_HIDE_MS);
     };
     rail.onpointerdown = event => {
@@ -201,12 +221,12 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
       if (delta === undefined && !['Home', 'End'].includes(event.key)) return;
       event.preventDefault(); scroller.scrollTop = event.key === 'Home' ? 0 : event.key === 'End' ? maximum : scroller.scrollTop + delta!; show();
     };
-    const observer = new ResizeObserver(update);
+    const observer = new ResizeObserver(measure);
     observer.observe(scroller); if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
     let previousTop = scroller.scrollTop;
-    const onScroll = () => { update(); if (scroller.scrollTop !== previousTop) { previousTop = scroller.scrollTop; show(); } };
-    scroller.addEventListener('scroll', onScroll, { passive: true }); update();
-    return () => { clearTimeout(timer); observer.disconnect(); scroller.removeEventListener('scroll', onScroll); rail.remove(); };
+    const onScroll = () => { if (scroller.scrollTop !== previousTop) { previousTop = scroller.scrollTop; show(); } };
+    scroller.addEventListener('scroll', onScroll, { passive: true }); measure();
+    return () => { clearTimeout(timer); if (frame) cancelAnimationFrame(frame); observer.disconnect(); scroller.removeEventListener('scroll', onScroll); rail.remove(); };
   }, [dataUpdatedAt]);
 
   useEffect(() => {

@@ -130,14 +130,14 @@ async function targetInventory(target, centerIds) {
   if (!centerIds.length) return { accounts: new Map(), mappings: new Map(), events: new Map() };
   const accounts = await target.query(`SELECT u.user_id::text AS user_id,u.display_name,e.email,p.avatar_id,p.bio,
       g.total_xp,g.cycle,g.level
-      FROM identity.users u JOIN identity.login_emails e USING(user_id)
-      LEFT JOIN identity.user_profiles p USING(user_id)
-      LEFT JOIN identity.account_growth_projection g USING(user_id)
+      FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id)
+      LEFT JOIN public.identity_user_profiles p USING(user_id)
+      LEFT JOIN public.identity_account_growth_projection g USING(user_id)
       WHERE u.user_id=ANY($1::uuid[]) ORDER BY u.user_id,e.email`,[centerIds]);
   const mappings = await target.query(`SELECT legacy_user_id,legacy_login_alias,center_user_id::text,status
-      FROM identity.legacy_account_mappings WHERE source_product=$1`,[SOURCE_PRODUCT]);
+      FROM public.identity_legacy_account_mappings WHERE source_product=$1`,[SOURCE_PRODUCT]);
   const events = await target.query(`SELECT user_id::text,event_type,subject_key,points,rule_version,occurred_at
-      FROM identity.account_experience_events WHERE source_product=$1 AND user_id=ANY($2::uuid[])`,[SOURCE_PRODUCT,centerIds]);
+      FROM public.identity_account_experience_events WHERE source_product=$1 AND user_id=ANY($2::uuid[])`,[SOURCE_PRODUCT,centerIds]);
   const accountMap = new Map();
   for (const row of accounts.rows) {
     const existing = accountMap.get(row.user_id) ?? { ...row, emails: [] };
@@ -181,10 +181,10 @@ async function main() {
   try {
     const [sourceData, centerIds] = await Promise.all([
       sourceInventory(source),
-      target.query("SELECT user_id::text FROM identity.users WHERE active AND deleted_at IS NULL").then(result => result.rows.map(row => row.user_id)),
+      target.query("SELECT user_id::text FROM public.identity_users WHERE active AND deleted_at IS NULL").then(result => result.rows.map(row => row.user_id)),
     ]);
     const targetData = await targetInventory(target, centerIds);
-    const migrationActor = (await target.query("SELECT user_id::text FROM identity.users WHERE identity_admin AND active AND deleted_at IS NULL ORDER BY created_at LIMIT 2")).rows;
+    const migrationActor = (await target.query("SELECT user_id::text FROM public.identity_users WHERE identity_admin AND active AND deleted_at IS NULL ORDER BY created_at LIMIT 2")).rows;
     if (APPLY && migrationActor.length !== 1) throw new Error("正式迁移需要唯一活动超级管理员作为审计主体");
     const eventsByLegacyUser = new Map();
     for (const row of sourceData.events) {
@@ -248,37 +248,37 @@ async function main() {
     if (!APPLY) return;
     await target.query("BEGIN");
     try {
-      await target.query("SELECT user_id FROM identity.users WHERE user_id=ANY($1::uuid[]) FOR UPDATE", [plans.map(plan => plan.centerId)]);
+      await target.query("SELECT user_id FROM public.identity_users WHERE user_id=ANY($1::uuid[]) FOR UPDATE", [plans.map(plan => plan.centerId)]);
       for (const plan of plans) {
-        await target.query("UPDATE identity.users SET display_name=$2,management_revision=management_revision+1 WHERE user_id=$1 AND display_name<>$2", [plan.centerId, plan.displayName]);
-        await target.query(`INSERT INTO identity.user_profiles(user_id,avatar_id,bio) VALUES($1,$2,'')
+        await target.query("UPDATE public.identity_users SET display_name=$2,management_revision=management_revision+1 WHERE user_id=$1 AND display_name<>$2", [plan.centerId, plan.displayName]);
+        await target.query(`INSERT INTO public.identity_user_profiles(user_id,avatar_id,bio) VALUES($1,$2,'')
           ON CONFLICT(user_id) DO UPDATE SET avatar_id=EXCLUDED.avatar_id,updated_at=now()
-          WHERE identity.user_profiles.avatar_id='default' OR identity.user_profiles.avatar_id=EXCLUDED.avatar_id`, [plan.centerId, plan.avatar]);
+          WHERE public.identity_user_profiles.avatar_id='default' OR public.identity_user_profiles.avatar_id=EXCLUDED.avatar_id`, [plan.centerId, plan.avatar]);
         if (plan.mappingMissing) {
-          await target.query(`INSERT INTO identity.legacy_account_mappings
+          await target.query(`INSERT INTO public.identity_legacy_account_mappings
             (source_product,legacy_user_id,legacy_login_alias,center_user_id,status,requires_password_reset,reason)
             VALUES('navigator',$1,$2,$3,'migrated',false,'账号资料与成长迁移时补齐显式映射')`,
           [plan.account.legacy_user_id, String(plan.account.name).trim().toLowerCase(), plan.centerId]);
         }
-        await target.query(`INSERT INTO identity.account_growth_projection(user_id,total_xp,cycle,level,today_xp,today_key)
+        await target.query(`INSERT INTO public.identity_account_growth_projection(user_id,total_xp,cycle,level,today_xp,today_key)
           VALUES($1,$2,$3,$4,$5,$6)
           ON CONFLICT(user_id) DO UPDATE SET total_xp=EXCLUDED.total_xp,cycle=EXCLUDED.cycle,level=EXCLUDED.level,today_xp=EXCLUDED.today_xp,today_key=EXCLUDED.today_key,updated_at=now()`,
         [plan.centerId, plan.growth.total, plan.growth.cycle, plan.growth.level, plan.growth.todayXp, todayKey]);
         if (plan.events.length) {
           const events = plan.events.map(event => ({ event_id: event.eventId, user_id: plan.centerId, event_type: event.eventType, subject_key: event.subjectKey, points: event.points, rule_version: event.ruleVersion, occurred_at: event.occurredAt }));
-          await target.query(`INSERT INTO identity.account_experience_events
+          await target.query(`INSERT INTO public.identity_account_experience_events
             (event_id,user_id,source_product,event_type,subject_key,points,rule_version,occurred_at)
             SELECT event_id,user_id,'navigator',event_type,subject_key,points,rule_version,occurred_at
             FROM jsonb_to_recordset($1::jsonb) AS x(event_id uuid,user_id uuid,event_type text,subject_key text,points integer,rule_version integer,occurred_at timestamptz)
             ON CONFLICT DO NOTHING`, [JSON.stringify(events)]);
         }
-        await target.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,product_id,reason)
+        await target.query(`INSERT INTO public.identity_management_audit(actor_id,target_id,action,product_id,reason)
           VALUES($1,$2,'identity.navigator.profile.migrated','navigator',$3)`,
         [migrationActor[0].user_id, plan.centerId, `账号资料与成长迁移；events=${plan.events.length};total_xp=${plan.growth.total}`]);
       }
       const verify = await target.query(`SELECT p.user_id::text,p.total_xp,p.cycle,p.level,
-        (SELECT count(*)::int FROM identity.account_experience_events e WHERE e.user_id=p.user_id AND e.source_product='navigator') AS events
-        FROM identity.account_growth_projection p WHERE p.user_id=ANY($1::uuid[])`, [plans.map(plan => plan.centerId)]);
+        (SELECT count(*)::int FROM public.identity_account_experience_events e WHERE e.user_id=p.user_id AND e.source_product='navigator') AS events
+        FROM public.identity_account_growth_projection p WHERE p.user_id=ANY($1::uuid[])`, [plans.map(plan => plan.centerId)]);
       const projections = new Map(verify.rows.map(row => [row.user_id, row]));
       for (const plan of plans) {
         const current = projections.get(plan.centerId);

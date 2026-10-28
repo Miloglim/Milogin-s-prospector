@@ -5,7 +5,6 @@ import { Pool, type PoolClient } from 'pg';
 import { readTestDatabaseConfig } from '../../server/adapters/postgres/config';
 import { PostgresAdminRepository } from '../../server/adapters/postgres/admin-repository';
 import { PostgresAuthRepository } from '../../server/adapters/postgres/auth-repository';
-import { USER_LIFECYCLE_SQL } from '../../server/adapters/postgres/user-lifecycle-schema';
 import type { ChallengeDraft } from '../../server/core/admin';
 
 const enabled=process.env.PROSPECTOR_LIFECYCLE_TEST==='1';
@@ -14,12 +13,10 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
  const logs:string[]=[];
  beforeEach(async()=>{
   pool=new Pool(readTestDatabaseConfig());c=await pool.connect();await c.query('BEGIN');
-  const column=await c.query("SELECT 1 FROM information_schema.columns WHERE table_schema='identity' AND table_name='users' AND column_name='deleted_at'");
-  if(!column.rows.length)await c.query(USER_LIFECYCLE_SQL);
   actorId=JSON.parse(readFileSync('.work/pg-crm/online-fixtures.json','utf8')).accounts.find((x:any)=>x.email==='agent-admin@example.invalid').userId;
-  await c.query('UPDATE identity.users SET identity_admin=true,active=true,must_change_password=false WHERE user_id=$1',[actorId]);
+  await c.query('UPDATE public.identity_users SET identity_admin=true,active=true,must_change_password=false WHERE user_id=$1',[actorId]);
   hash=createHash('sha256').update(randomUUID()).digest('hex');
-  await c.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) SELECT $1,user_id,security_revision,now()+interval '1 hour','browser' FROM identity.users WHERE user_id=$2",[hash,actorId]);
+  await c.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) SELECT $1,user_id,security_revision,now()+interval '1 hour','browser' FROM public.identity_users WHERE user_id=$2",[hash,actorId]);
   // The repository's transactions become savepoints inside an outer rollback.
   // No successful mutation can commit test accounts into the shared database.
   const wrapped={options:pool.options,connect:async()=>({release:()=>{},query:async(sql:string,params?:any[])=>{
@@ -34,9 +31,9 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
  afterEach(async()=>{if(c){await c.query('ROLLBACK');c.release();}if(pool)await pool.end();expect(logs.splice(0)).toEqual([]);});
  async function target(active=true){
   const id=randomUUID(),email=`lifecycle-${id}@example.invalid`;
-  await c.query('INSERT INTO identity.users(user_id,display_name,active) VALUES($1,$2,$3)',[id,'Rollback-only account',active]);
-  await c.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[id,email]);
-  if(active)await c.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,'synthetic-hash','scrypt-v1')",[id]);
+  await c.query('INSERT INTO public.identity_users(user_id,display_name,active) VALUES($1,$2,$3)',[id,'Rollback-only account',active]);
+  await c.query('INSERT INTO public.identity_login_emails(user_id,email) VALUES($1,$2)',[id,email]);
+  if(active)await c.query("INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme) VALUES($1,'synthetic-hash','scrypt-v1')",[id]);
   return {id,email};
  }
  function challenge(id:string,email:string,purpose:'activate'|'recover'='recover'):ChallengeDraft{return {userId:id,email,displayName:'New account',purpose,tokenHash:createHash('sha256').update(randomUUID()).digest('hex'),expiresAt:new Date(Date.now()+600000).toISOString()};}
@@ -46,9 +43,9 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
    const command={action:'user.create' as const,email,role,reason:'rollback test'};
    expect((await repo.mutate(hash,command,undefined,'synthetic-initial-hash')).ok).toBe(true);
    expect((await repo.mutate(hash,command,undefined,'synthetic-initial-hash')).ok).toBe(false);
-   const row=(await c.query('SELECT u.user_id,u.active,u.must_change_password,u.identity_admin,c.password_hash FROM identity.users u JOIN identity.login_emails e USING(user_id) JOIN identity.credentials c USING(user_id) WHERE e.email=$1',[email])).rows[0];
+   const row=(await c.query('SELECT u.user_id,u.active,u.must_change_password,u.identity_admin,c.password_hash FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) JOIN public.identity_credentials c USING(user_id) WHERE e.email=$1',[email])).rows[0];
    expect(row.active).toBe(true);expect(row.must_change_password).toBe(true);expect(row.identity_admin).toBe(role==='admin');
-   const grants=(await c.query('SELECT role FROM identity.product_grants WHERE user_id=$1',[row.user_id])).rows.map(x=>x.role);
+   const grants=(await c.query('SELECT role FROM public.identity_product_grants WHERE user_id=$1',[row.user_id])).rows.map(x=>x.role);
    expect(grants).toContain(role);expect(row.password_hash).toBe('synthetic-initial-hash');
   }
  });
@@ -61,43 +58,43 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
   expect((await repo.consume(reissued.tokenHash,'synthetic-hash')).ok).toBe(true);
   expect((await repo.consume(reissued.tokenHash,'other-hash')).ok).toBe(false);
   expect((await repo.mutate(hash,command,challenge('',email,'activate'))).ok).toBe(false);
-  const row=(await c.query('SELECT u.active,u.identity_admin FROM identity.users u JOIN identity.login_emails e USING(user_id) WHERE e.email=$1',[email])).rows[0];
+  const row=(await c.query('SELECT u.active,u.identity_admin FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) WHERE e.email=$1',[email])).rows[0];
   expect(row).toEqual({active:true,identity_admin:false});
  });
  it('rejects activation reissue for credentialed disabled and deleted identities',async()=>{
-  const t=await target();await c.query('UPDATE identity.users SET active=false WHERE user_id=$1',[t.id]);
+  const t=await target();await c.query('UPDATE public.identity_users SET active=false WHERE user_id=$1',[t.id]);
   const command={action:'challenge.issue' as const,email:t.email,displayName:'Existing account',purpose:'activate' as const,reason:'rollback test'};
   expect(await repo.mutate(hash,command,challenge(t.id,t.email,'activate'))).toMatchObject({error:{code:'CONFLICT'}});
-  await c.query('DELETE FROM identity.credentials WHERE user_id=$1',[t.id]);await c.query('UPDATE identity.users SET deleted_at=now() WHERE user_id=$1',[t.id]);
+  await c.query('DELETE FROM public.identity_credentials WHERE user_id=$1',[t.id]);await c.query('UPDATE public.identity_users SET deleted_at=now() WHERE user_id=$1',[t.id]);
   expect(await repo.mutate(hash,command,challenge(t.id,t.email,'activate'))).toMatchObject({error:{code:'CONFLICT'}});
  });
  it('reset is account-bound, revokes sessions immediately and changes password once',async()=>{
   const t=await target(),draft=challenge(t.id,t.email);
-  await c.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at) VALUES($1,$2,1,now()+interval '1 hour')",['b'.repeat(64),t.id]);
+  await c.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at) VALUES($1,$2,1,now()+interval '1 hour')",['b'.repeat(64),t.id]);
   expect((await repo.mutate(hash,{action:'user.reset-password',userId:t.id,revision:1,reason:'reset test'},draft)).ok).toBe(true);
-  expect((await c.query('SELECT revoked_at IS NOT NULL AS revoked FROM identity.sessions WHERE user_id=$1',[t.id])).rows[0].revoked).toBe(true);
+  expect((await c.query('SELECT revoked_at IS NOT NULL AS revoked FROM public.identity_sessions WHERE user_id=$1',[t.id])).rows[0].revoked).toBe(true);
   expect((await repo.consume(draft.tokenHash,'new-synthetic-hash')).ok).toBe(true);
   expect((await repo.consume(draft.tokenHash,'again')).ok).toBe(false);
-  expect((await c.query('SELECT password_hash FROM identity.credentials WHERE user_id=$1',[t.id])).rows[0].password_hash).toBe('new-synthetic-hash');
+  expect((await c.query('SELECT password_hash FROM public.identity_credentials WHERE user_id=$1',[t.id])).rows[0].password_hash).toBe('new-synthetic-hash');
  });
  it('soft deletion hides identity, retains email/audit, rejects reactivation and invalidates reset links',async()=>{
   const t=await target(),draft=challenge(t.id,t.email);
   expect((await repo.mutate(hash,{action:'user.reset-password',userId:t.id,revision:1,reason:'reset'},draft)).ok).toBe(true);
   expect((await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:2,reason:'departed'})).ok).toBe(true);
-  const row=(await c.query('SELECT active,deleted_at IS NOT NULL AS deleted FROM identity.users WHERE user_id=$1',[t.id])).rows[0];expect(row).toEqual({active:false,deleted:true});
+  const row=(await c.query('SELECT active,deleted_at IS NOT NULL AS deleted FROM public.identity_users WHERE user_id=$1',[t.id])).rows[0];expect(row).toEqual({active:false,deleted:true});
   const page=await repo.users(hash,{search:t.email,limit:25,offset:0});expect(page.ok&&page.data.total).toBe(0);
-  await c.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) SELECT $1,user_id,security_revision,now()+interval '1 hour','api' FROM identity.users WHERE user_id=$2",['c'.repeat(64),actorId]);
+  await c.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) SELECT $1,user_id,security_revision,now()+interval '1 hour','api' FROM public.identity_users WHERE user_id=$2",['c'.repeat(64),actorId]);
   const authRepo=new PostgresAuthRepository({options:pool.options,on:()=>{},query:c.query.bind(c)} as any,{write:(_level,_context,message)=>logs.push(message)});
   const directory=await authRepo.listUsers('c'.repeat(64));expect(directory.ok).toBe(true);
   if(directory.ok)expect(directory.data.some(user=>user.userId===t.id)).toBe(false);
-  expect((await c.query('SELECT email FROM identity.login_emails WHERE user_id=$1',[t.id])).rows).toHaveLength(1);
-  expect((await c.query("SELECT 1 FROM identity.management_audit WHERE target_id=$1 AND action='user.delete'",[t.id])).rows).toHaveLength(1);
+  expect((await c.query('SELECT email FROM public.identity_login_emails WHERE user_id=$1',[t.id])).rows).toHaveLength(1);
+  expect((await c.query("SELECT 1 FROM public.identity_management_audit WHERE target_id=$1 AND action='user.delete'",[t.id])).rows).toHaveLength(1);
   expect((await repo.consume(draft.tokenHash,'bad')).ok).toBe(false);
   expect((await repo.mutate(hash,{action:'user.update',userId:t.id,revision:3,active:true,identityAdmin:false,reason:'reactivate'})).ok).toBe(false);
  });
  it('requires explicit restore for an archived identity and keeps active creation blocked',async()=>{
   const t=await target();
-  await c.query("INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,'crm','sales',true),($1,'navigator','sales',true)",[t.id]);
+  await c.query("INSERT INTO public.identity_product_grants(user_id,product_id,role,active) VALUES($1,'crm','sales',true),($1,'navigator','sales',true)",[t.id]);
   expect((await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:1,reason:'departed'})).ok).toBe(true);
   expect((await repo.users(hash,{search:t.email,limit:25,offset:0})).ok).toBe(true);
   const active=await repo.users(hash,{search:t.email,limit:25,offset:0});
@@ -108,10 +105,10 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
   expect(duplicate.ok).toBe(false);if(!duplicate.ok)expect(duplicate.error.message).toContain('已归档');
   const restored=await repo.mutate(hash,{action:'user.restore',userId:t.id,revision:2,reason:'restore'},undefined,'new-synthetic-hash');
   expect(restored.ok,JSON.stringify(restored)).toBe(true);
-  const row=(await c.query('SELECT user_id,active,deleted_at,must_change_password,management_revision FROM identity.users WHERE user_id=$1',[t.id])).rows[0];
+  const row=(await c.query('SELECT user_id,active,deleted_at,must_change_password,management_revision FROM public.identity_users WHERE user_id=$1',[t.id])).rows[0];
   expect(row).toMatchObject({user_id:t.id,active:true,deleted_at:null,must_change_password:true,management_revision:3});
-  expect((await c.query('SELECT password_hash FROM identity.credentials WHERE user_id=$1',[t.id])).rows[0].password_hash).toBe('new-synthetic-hash');
-  const grants=(await c.query("SELECT product_id,role,active FROM identity.product_grants WHERE user_id=$1 ORDER BY product_id,role",[t.id])).rows;
+  expect((await c.query('SELECT password_hash FROM public.identity_credentials WHERE user_id=$1',[t.id])).rows[0].password_hash).toBe('new-synthetic-hash');
+  const grants=(await c.query("SELECT product_id,role,active FROM public.identity_product_grants WHERE user_id=$1 ORDER BY product_id,role",[t.id])).rows;
   expect(grants).toEqual([{product_id:'crm',role:'sales',active:true},{product_id:'navigator',role:'sales',active:true}]);
  });
  it('sorts users by permission priority before creation time',async()=>{
@@ -126,9 +123,9 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
   ] as const;
   for(const user of users){
    const id=randomUUID(),email=`${prefix}-${user.key}@example.invalid`;
-   await c.query('INSERT INTO identity.users(user_id,display_name,active,identity_admin) VALUES($1,$2,true,$3)',[id,user.key,user.identityAdmin]);
-   await c.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[id,email]);
-   if(user.role)await c.query("INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,'crm',$2,true)",[id,user.role]);
+   await c.query('INSERT INTO public.identity_users(user_id,display_name,active,identity_admin) VALUES($1,$2,true,$3)',[id,user.key,user.identityAdmin]);
+   await c.query('INSERT INTO public.identity_login_emails(user_id,email) VALUES($1,$2)',[id,email]);
+   if(user.role)await c.query("INSERT INTO public.identity_product_grants(user_id,product_id,role,active) VALUES($1,'crm',$2,true)",[id,user.role]);
   }
   const page=await repo.users(hash,{search:prefix,limit:25,offset:0});
   expect(page.ok).toBe(true);
@@ -139,22 +136,22 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
  it('blocks stale revisions, self deletion and deletion of an owner',async()=>{
   const t=await target();
   expect((await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:99,reason:'stale'})).ok).toBe(false);
-  const revision=(await c.query('SELECT management_revision FROM identity.users WHERE user_id=$1',[actorId])).rows[0].management_revision;
+  const revision=(await c.query('SELECT management_revision FROM public.identity_users WHERE user_id=$1',[actorId])).rows[0].management_revision;
   expect((await repo.mutate(hash,{action:'user.delete',userId:actorId,revision,reason:'self'})).ok).toBe(false);
   const company=(await c.query("INSERT INTO companies(name) VALUES('Rollback test') RETURNING id")).rows[0].id;
   await c.query("INSERT INTO crm_customers(company_id,source,customer_key,source_detail,state,owner_user_id,created_by,origin) VALUES($1,'test',$2,'test','owned',$3,$4,'personal')",[company,randomUUID(),t.id,actorId]);
   const result=await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:1,reason:'owner'});
   expect(result.ok).toBe(false);if(!result.ok)expect(result.error.message).toContain('转交');
-  expect((await c.query('SELECT active FROM identity.users WHERE user_id=$1',[t.id])).rows[0].active).toBe(true);
+  expect((await c.query('SELECT active FROM public.identity_users WHERE user_id=$1',[t.id])).rows[0].active).toBe(true);
  });
  it('blocks ordinary administrators and protects the last credentialed super administrator',async()=>{
   const t=await target();
-  await c.query('UPDATE identity.users SET identity_admin=false WHERE user_id=$1',[actorId]);
+  await c.query('UPDATE public.identity_users SET identity_admin=false WHERE user_id=$1',[actorId]);
   expect((await repo.mutate(hash,{action:'user.create',email:`denied-${randomUUID()}@example.invalid`,role:'admin',reason:'forbidden'},undefined,'synthetic-hash')).ok).toBe(false);
   expect((await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:1,reason:'forbidden'})).ok).toBe(false);
-  await c.query('UPDATE identity.users SET active=false WHERE identity_admin');
-  await c.query('UPDATE identity.users SET identity_admin=true,active=true WHERE user_id=ANY($1::uuid[])',[[actorId,t.id]]);
-  await c.query('DELETE FROM identity.credentials WHERE user_id=$1',[actorId]);
+  await c.query('UPDATE public.identity_users SET active=false WHERE identity_admin');
+  await c.query('UPDATE public.identity_users SET identity_admin=true,active=true WHERE user_id=ANY($1::uuid[])',[[actorId,t.id]]);
+  await c.query('DELETE FROM public.identity_credentials WHERE user_id=$1',[actorId]);
   const result=await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:1,reason:'last'});
   expect(result.ok).toBe(false);if(!result.ok)expect(result.error.message).toContain('至少一名');
  });

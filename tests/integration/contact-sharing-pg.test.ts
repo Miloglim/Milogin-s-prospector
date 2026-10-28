@@ -12,7 +12,7 @@ function unwrap<T>(r:Result<T>):T { if(!r.ok)throw Error(`${r.error.code}: ${r.e
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact sharing rollback PostgreSQL',()=>{
  it('enforces field grants, mail independence, same-record visibility and revoke',async()=>{
   const pool=new Pool(readTestDatabaseConfig()),client=await pool.connect();
-  const counts=async()=>(await client.query('SELECT (SELECT count(*) FROM identity.users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM identity.outbox) AS events')).rows[0];
+  const counts=async()=>(await client.query('SELECT (SELECT count(*) FROM public.identity_users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM public.identity_outbox) AS events')).rows[0];
   const before=await counts();await client.query('BEGIN');
   try {
    let lease=Promise.resolve();
@@ -22,10 +22,10 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact sharing rol
    unwrap(await repo.migrate());
    const actors=[];
    for(const role of ['operations','sales','sales','auditor'] as const){const id=randomUUID(),token=randomBytes(32).toString('base64url');
-    await client.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)',[id,`rollback-${id}`]);
-    await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
-    await client.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
-    await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);actors.push({id,hash:tokenAdapter.hash(token)});
+    await client.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)',[id,`rollback-${id}`]);
+    await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
+    await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
+    await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);actors.push({id,hash:tokenAdapter.hash(token)});
    }
    const [ops,sales,other,auditor]=actors as [{id:string;hash:string},{id:string;hash:string},{id:string;hash:string},{id:string;hash:string}];
    const co=(await client.query("INSERT INTO companies(name,backcheck_data) VALUES('rollback-only-company',$1) RETURNING id",[JSON.stringify({verified:'fixture'})])).rows[0].id,id=randomUUID();
@@ -70,11 +70,11 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact sharing rol
    expect(await repo.contactDetail(other.hash,ref)).toMatchObject({ok:false});expect(unwrap(await repo.listContacts(other.hash,{search:'rollback-only',limit:50,offset:0})).total).toBe(0);
    expect(unwrap(await repo.contactDetail(sales.hash,ref)).contact.ownerUserId).toBe(sales.id);
    const fresh=unwrap(await repo.contactDetail(sales.hash,ref));const second=unwrap(await repo.createShare(sales.hash,{...ref,expectedVersion:fresh.contact.contactVersion!,targetUserId:other.id,editableFields:[],canFollowup:false,canChangeStage:false,idempotencyKey:k()}));unwrap(await repo.decideShare(other.hash,'accept',{shareId:second.shareId,expectedVersion:1,idempotencyKey:k()}));
-   await client.query("UPDATE identity.product_access SET capabilities='[]'::jsonb WHERE user_id=$1 AND product_id='crm'",[sales.id]);expect(await repo.contactDetail(other.hash,ref)).toMatchObject({ok:false});expect(unwrap(await repo.listContacts(other.hash,{search:'rollback-only',limit:50,offset:0})).total).toBe(0);
+   await client.query("UPDATE public.identity_product_access SET capabilities='[]'::jsonb WHERE user_id=$1 AND product_id='crm'",[sales.id]);expect(await repo.contactDetail(other.hash,ref)).toMatchObject({ok:false});expect(unwrap(await repo.listContacts(other.hash,{search:'rollback-only',limit:50,offset:0})).total).toBe(0);
    const leave={shareId:second.shareId,expectedVersion:2,idempotencyKey:k()};expect(unwrap(await repo.decideShare(other.hash,'revoke',leave)).status).toBe('revoked');expect(unwrap(await repo.decideShare(other.hash,'revoke',leave)).status).toBe('revoked');
    // Simulate a center ownership transition inside the rollback fixture only. There is
    // no accepted-contact transfer endpoint; this tests authorization after the change.
-   await client.query("UPDATE identity.product_access SET capabilities=$2::jsonb WHERE user_id=$1 AND product_id='crm'",[sales.id,JSON.stringify(capabilitiesFor(['sales']))]);
+   await client.query("UPDATE public.identity_product_access SET capabilities=$2::jsonb WHERE user_id=$1 AND product_id='crm'",[sales.id,JSON.stringify(capabilitiesFor(['sales']))]);
    await client.query('UPDATE crm_contact_assignment_requests SET target_user_id=$2,version=version+1 WHERE request_id=$1',[req.requestId,other.id]);
    await client.query('UPDATE contacts SET crm_contact_version=crm_contact_version+1 WHERE id=$1',[ref.contactId]);
    expect(await repo.contactDetail(sales.hash,ref)).toMatchObject({ok:false,error:{code:'NOT_FOUND'}});

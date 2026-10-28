@@ -1,5 +1,5 @@
 import { OPPORTUNITY_LIMITS,OPPORTUNITY_STAGES } from '../../core/opportunities';
-export const OPPORTUNITY_VERSION='018-opportunities';
+export const OPPORTUNITY_VERSION='018-opportunities-public';
 export const OPPORTUNITY_LOCK=19041018;
 const STAGES=OPPORTUNITY_STAGES.map(s=>`'${s}'`).join(',');
 const MONEY=`CHECK((amount IS NULL AND currency IS NULL) OR (amount IS NOT NULL AND currency IS NOT NULL AND amount>=0 AND amount<power(10::numeric,${OPPORTUNITY_LIMITS.amountWholeDigits}) AND scale(amount)<=${OPPORTUNITY_LIMITS.amountFractionDigits} AND currency ~ '^[A-Z]{3}$'))`;
@@ -12,8 +12,8 @@ CREATE TABLE crm_opportunities (
  source text NOT NULL DEFAULT '' CHECK(length(source)<=${OPPORTUNITY_LIMITS.source}),
  stage text NOT NULL DEFAULT 'inquiry' CHECK(stage IN (${STAGES})),amount numeric,currency text,${MONEY},
  lost_reason text CHECK(btrim(lost_reason)<>'' AND length(lost_reason)<=${OPPORTUNITY_LIMITS.reason}),evidence text CHECK(btrim(evidence)<>'' AND length(evidence)<=${OPPORTUNITY_LIMITS.evidence}),
- version integer NOT NULL DEFAULT 1 CHECK(version>0),created_by uuid NOT NULL REFERENCES identity.users(user_id),
- created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),closed_at timestamptz,closed_by uuid REFERENCES identity.users(user_id),
+ version integer NOT NULL DEFAULT 1 CHECK(version>0),created_by uuid NOT NULL REFERENCES public.identity_users(user_id),
+ created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),closed_at timestamptz,closed_by uuid REFERENCES public.identity_users(user_id),
  UNIQUE(opportunity_id,customer_id),
  CHECK((stage IN ('closed_won','closed_lost') AND closed_at IS NOT NULL AND closed_by IS NOT NULL) OR (stage NOT IN ('closed_won','closed_lost') AND closed_at IS NULL AND closed_by IS NULL)),
  CHECK((stage='closed_won' AND evidence IS NOT NULL AND amount IS NOT NULL AND lost_reason IS NULL) OR (stage='closed_lost' AND lost_reason IS NOT NULL AND evidence IS NULL) OR (stage NOT IN ('closed_won','closed_lost') AND evidence IS NULL AND lost_reason IS NULL))
@@ -22,7 +22,7 @@ CREATE INDEX idx_crm_opportunities_customer ON crm_opportunities(customer_id,cre
 CREATE TABLE crm_opportunity_stage_history (
  history_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),opportunity_id uuid NOT NULL REFERENCES crm_opportunities(opportunity_id),
  from_stage text CHECK(from_stage IN (${STAGES})),to_stage text NOT NULL CHECK(to_stage IN (${STAGES})),
- actor_id uuid NOT NULL REFERENCES identity.users(user_id),occurred_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),occurred_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  amount numeric,currency text,${MONEY},lost_reason text,evidence text,
  CHECK(from_stage IS DISTINCT FROM to_stage),
  CHECK((to_stage='closed_won' AND evidence IS NOT NULL AND btrim(evidence)<>'' AND length(evidence)<=${OPPORTUNITY_LIMITS.evidence} AND amount IS NOT NULL AND lost_reason IS NULL) OR (to_stage='closed_lost' AND lost_reason IS NOT NULL AND btrim(lost_reason)<>'' AND length(lost_reason)<=${OPPORTUNITY_LIMITS.reason} AND evidence IS NULL) OR (to_stage NOT IN ('closed_won','closed_lost') AND evidence IS NULL AND lost_reason IS NULL))

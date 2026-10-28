@@ -64,12 +64,12 @@ export const ADMIN_DATA_BROWSER_LIMITS = {
 
 /** Security, token, challenge, and refresh-credential tables are intentionally absent. */
 export const ADMIN_DATA_TABLES: readonly AdminDataTableDefinition[] = [
-  { id: "identity.users", group: "账号与权限", label: "用户", description: "中心账号、启用状态与权限修订", schema: "identity", table: "users", keyColumn: "user_id", defaultSort: "created_at", defaultDirection: "desc" },
-  { id: "identity.login_emails", group: "账号与权限", label: "登录邮箱", description: "账号登录邮箱与验证状态", schema: "identity", table: "login_emails", keyColumn: "email", defaultSort: "email", defaultDirection: "asc" },
-  { id: "identity.products", group: "账号与权限", label: "产品", description: "统一管理中心产品目录", schema: "identity", table: "products", keyColumn: "product_id", defaultSort: "product_id", defaultDirection: "asc" },
-  { id: "identity.product_grants", group: "账号与权限", label: "产品角色", description: "用户在各产品中的角色授权", schema: "identity", table: "product_grants", keyColumn: "user_id", defaultSort: "user_id", defaultDirection: "asc" },
-  { id: "identity.product_access", group: "账号与权限", label: "产品准入", description: "产品启用状态、数据范围与能力", schema: "identity", table: "product_access", keyColumn: "user_id", defaultSort: "user_id", defaultDirection: "asc" },
-  { id: "identity.management_audit", group: "账号与权限", label: "管理审计", description: "中心后台管理动作与原因", schema: "identity", table: "management_audit", keyColumn: "id", defaultSort: "created_at", defaultDirection: "desc" },
+    { id: "public.identity_users", group: "账号与权限", label: "用户", description: "中心账号、启用状态与权限修订", schema: "public", table: "identity_users", keyColumn: "user_id", defaultSort: "created_at", defaultDirection: "desc" },
+    { id: "public.identity_login_emails", group: "账号与权限", label: "登录邮箱", description: "账号登录邮箱与验证状态", schema: "public", table: "identity_login_emails", keyColumn: "email", defaultSort: "email", defaultDirection: "asc" },
+    { id: "public.identity_products", group: "账号与权限", label: "产品", description: "统一管理中心产品目录", schema: "public", table: "identity_products", keyColumn: "product_id", defaultSort: "product_id", defaultDirection: "asc" },
+    { id: "public.identity_product_grants", group: "账号与权限", label: "产品角色", description: "用户在各产品中的角色授权", schema: "public", table: "identity_product_grants", keyColumn: "user_id", defaultSort: "user_id", defaultDirection: "asc" },
+    { id: "public.identity_product_access", group: "账号与权限", label: "产品准入", description: "产品启用状态、数据范围与能力", schema: "public", table: "identity_product_access", keyColumn: "user_id", defaultSort: "user_id", defaultDirection: "asc" },
+    { id: "public.identity_management_audit", group: "账号与权限", label: "管理审计", description: "中心后台管理动作与原因", schema: "public", table: "identity_management_audit", keyColumn: "id", defaultSort: "created_at", defaultDirection: "desc" },
   { id: "public.companies", group: "客户与联系人", label: "公司", description: "共享公司主档与背调资料", schema: "public", table: "companies", keyColumn: "id", defaultSort: "created_at", defaultDirection: "desc" },
   { id: "public.contacts", group: "客户与联系人", label: "联系人", description: "中心联系人主档与联系状态", schema: "public", table: "contacts", keyColumn: "id", defaultSort: "updated_at", defaultDirection: "desc" },
   { id: "public.crm_customers", group: "客户与联系人", label: "客户", description: "客户容器、归属、来源与关系阶段", schema: "public", table: "crm_customers", keyColumn: "customer_id", defaultSort: "created_at", defaultDirection: "desc" },

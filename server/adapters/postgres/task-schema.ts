@@ -1,20 +1,20 @@
 import { TASK_LIMITS } from '../../core/tasks';
-export const TASK_VERSION='017-followup-tasks';
+export const TASK_VERSION='017-followup-tasks-public';
 export const TASK_LOCK=19041017;
 export const TASK_SQL=`
 CREATE TABLE crm_followup_tasks (
  task_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
  title text NOT NULL CHECK(btrim(title)<>'' AND length(title)<=${TASK_LIMITS.title}),due_at timestamptz NOT NULL CHECK(isfinite(due_at)),
  status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','completed')),version integer NOT NULL DEFAULT 1 CHECK(version>0),
- created_by uuid NOT NULL REFERENCES identity.users(user_id),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
- completed_at timestamptz,completed_by uuid REFERENCES identity.users(user_id),feedback text,
+ created_by uuid NOT NULL REFERENCES public.identity_users(user_id),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
+ completed_at timestamptz,completed_by uuid REFERENCES public.identity_users(user_id),feedback text,
  CHECK((status='open' AND completed_at IS NULL AND completed_by IS NULL AND feedback IS NULL) OR (status='completed' AND completed_at IS NOT NULL AND completed_by IS NOT NULL AND feedback IS NOT NULL AND btrim(feedback)<>'' AND length(feedback)<=${TASK_LIMITS.feedback}))
 );
 CREATE INDEX idx_crm_tasks_customer ON crm_followup_tasks(customer_id,due_at,task_id);
 CREATE INDEX idx_crm_tasks_due ON crm_followup_tasks(due_at,task_id) WHERE status='open';
 CREATE TABLE crm_task_due_receipts (
  task_id uuid NOT NULL REFERENCES crm_followup_tasks(task_id),task_version integer NOT NULL CHECK(task_version>0),
- responsible_user_id uuid NOT NULL REFERENCES identity.users(user_id),event_id uuid NOT NULL UNIQUE REFERENCES identity.outbox(event_id),
+ responsible_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),event_id uuid NOT NULL UNIQUE REFERENCES public.identity_outbox(event_id),
  PRIMARY KEY(task_id,task_version)
 );
 CREATE FUNCTION crm_tasks_customer_owner_changed() RETURNS trigger LANGUAGE plpgsql AS $$

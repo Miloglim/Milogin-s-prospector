@@ -35,14 +35,14 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('registration real
   it.each(['abc!123', 'abc 123', '密码123456', '12345'])('rejects invalid password without creating any identity: %j', async password => {
     const email = `${randomUUID()}@example.invalid`;
     expect((await register(email, password)).status).toBe(400);
-    expect((await pool.query('SELECT 1 FROM identity.login_emails WHERE email=$1', [email])).rows).toEqual([]);
+    expect((await pool.query('SELECT 1 FROM public.identity_login_emails WHERE email=$1', [email])).rows).toEqual([]);
   });
   it('rejects Chinese email and creates one ordinary user for a valid plus-address', async () => {
     expect((await register(`中文${randomUUID()}@example.invalid`, 'Abc123')).status).toBe(400);
     const email = `New.Name+${randomUUID()}@example.invalid`;
     expect((await register(email, 'Abc123')).status).toBe(200);
-    const rows = (await pool.query(`SELECT u.identity_admin,g.product_id,g.role FROM identity.users u JOIN identity.login_emails e USING(user_id)
-      JOIN identity.product_grants g USING(user_id) WHERE e.email=$1 ORDER BY g.product_id`, [email.toLowerCase()])).rows;
+    const rows = (await pool.query(`SELECT u.identity_admin,g.product_id,g.role FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id)
+      JOIN public.identity_product_grants g USING(user_id) WHERE e.email=$1 ORDER BY g.product_id`, [email.toLowerCase()])).rows;
     expect(rows).toEqual([
       { identity_admin: false, product_id: 'crm', role: 'sales' },
       { identity_admin: false, product_id: 'navigator', role: 'sales' },
@@ -54,8 +54,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('registration real
   it('creates both sales products when registration comes from Navigator', async () => {
     const email = `Navigator.${randomUUID()}@example.invalid`.toLowerCase();
     expect((await register(email, 'Abc123', 'navigator')).status).toBe(200);
-    const grants = (await pool.query(`SELECT g.product_id,g.role,a.active,a.scope FROM identity.users u JOIN identity.login_emails e USING(user_id)
-      JOIN identity.product_grants g USING(user_id) LEFT JOIN identity.product_access a ON a.user_id=u.user_id AND a.product_id=g.product_id
+    const grants = (await pool.query(`SELECT g.product_id,g.role,a.active,a.scope FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id)
+      JOIN public.identity_product_grants g USING(user_id) LEFT JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id=g.product_id
       WHERE e.email=$1 ORDER BY g.product_id`, [email])).rows;
     expect(grants).toEqual([
       { product_id: 'crm', role: 'sales', active: true, scope: 'own' },
@@ -70,13 +70,13 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('registration real
   it('refuses self-registration for an archived identity', async () => {
     const email = `restore.${randomUUID()}@example.invalid`.toLowerCase();
     expect((await register(email, 'Abc123')).status).toBe(200);
-    const before = (await pool.query('SELECT user_id,security_revision FROM identity.users u JOIN identity.login_emails e USING(user_id) WHERE e.email=$1', [email])).rows[0];
-    await pool.query('UPDATE identity.users SET deleted_at=now(),active=false WHERE user_id=$1',[before.user_id]);
-    await pool.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[before.user_id]);
+    const before = (await pool.query('SELECT user_id,security_revision FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) WHERE e.email=$1', [email])).rows[0];
+    await pool.query('UPDATE public.identity_users SET deleted_at=now(),active=false WHERE user_id=$1',[before.user_id]);
+    await pool.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[before.user_id]);
     const response=await register(email, 'Def456', 'navigator');
     expect(response.status).toBe(409);
     expect((await response.json() as any).error.message).toContain('已归档');
-    const after = (await pool.query('SELECT user_id,active,deleted_at,security_revision FROM identity.users u JOIN identity.login_emails e USING(user_id) WHERE e.email=$1', [email])).rows[0];
+    const after = (await pool.query('SELECT user_id,active,deleted_at,security_revision FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) WHERE e.email=$1', [email])).rows[0];
     expect(after).toMatchObject({ user_id:before.user_id,active:false,deleted_at:expect.any(Date) });
     expect(after.security_revision).toBe(before.security_revision);
   });

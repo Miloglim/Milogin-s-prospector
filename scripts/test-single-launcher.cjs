@@ -8,8 +8,8 @@ assert.ok(url,'SMOKE_RENDERER_URL must point to the running launcher');
 fs.writeFileSync(bootstrap,`const {app}=require('electron');app.setPath('userData',${JSON.stringify(profile)});require(${JSON.stringify(path.join(root,'dist/main/index.js'))});`);
 let app,browser;const errors=[];
 (async()=>{
- const env={...process.env,NODE_OPTIONS:'',ELECTRON_RENDERER_URL:url};
- for(const key of ['ELECTRON_RUN_AS_NODE','PROSPECTOR_DEV_PROFILE','PROSPECTOR_DEV_AUTOLOGIN'])delete env[key];
+ const env={...process.env,NODE_OPTIONS:'',ELECTRON_RENDERER_URL:url,PROSPECTOR_DEV_PROFILE:profile};
+ for(const key of ['ELECTRON_RUN_AS_NODE','PROSPECTOR_DEV_AUTOLOGIN'])delete env[key];
  app=await _electron.launch({executablePath:path.join(root,'node_modules/electron/dist/electron.exe'),args:[bootstrap,'--remote-debugging-port=0'],env,cwd:root});
  const page=await app.firstWindow();page.on('pageerror',e=>errors.push(e.message));await page.locator('#email').waitFor();
  const debugPort=Number(fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0]);

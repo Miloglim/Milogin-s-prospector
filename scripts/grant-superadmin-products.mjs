@@ -15,21 +15,21 @@ const pool = new Pool({ host: config.host, port: config.port, database: config.d
 const client = await pool.connect();
 try {
   await client.query('BEGIN');
-  const admins = await client.query(`SELECT u.user_id,e.email FROM identity.users u
-    JOIN identity.login_emails e USING(user_id)
+  const admins = await client.query(`SELECT u.user_id,e.email FROM public.identity_users u
+    JOIN public.identity_login_emails e USING(user_id)
     WHERE u.active AND u.identity_admin AND u.deleted_at IS NULL ORDER BY e.email FOR UPDATE`);
   for (const { user_id: userId, email } of admins.rows) {
     for (const [productId, role] of [['crm','admin'],['navigator','admin']]) {
-      await client.query(`INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,$2,$3,true)
+      await client.query(`INSERT INTO public.identity_product_grants(user_id,product_id,role,active) VALUES($1,$2,$3,true)
         ON CONFLICT(user_id,product_id,role) DO UPDATE SET active=true`, [userId, productId, role]);
     }
-    await client.query(`INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities)
+    await client.query(`INSERT INTO public.identity_product_access(user_id,product_id,active,scope,capabilities)
       VALUES($1,'crm',true,'summary',$2) ON CONFLICT(user_id,product_id)
       DO UPDATE SET active=true,scope='summary',capabilities=EXCLUDED.capabilities`, [userId, JSON.stringify(crmCapabilities)]);
-    await client.query(`INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities)
+    await client.query(`INSERT INTO public.identity_product_access(user_id,product_id,active,scope,capabilities)
       VALUES($1,'navigator',true,'summary',NULL) ON CONFLICT(user_id,product_id)
       DO UPDATE SET active=true,scope='summary',capabilities=NULL`, [userId]);
-    await client.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,product_id,reason)
+    await client.query(`INSERT INTO public.identity_management_audit(actor_id,target_id,action,product_id,reason)
       VALUES($1,$1,'identity.superadmin.product_grant','crm','中心超级管理员补齐 Prospector/Navigator 产品管理员权限')`, [userId]);
   }
   await client.query('COMMIT');

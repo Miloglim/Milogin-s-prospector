@@ -87,8 +87,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
   it("serves only the authenticated account's shared profile and derived growth", async () => {
     const token = tokens.admin!;
     const userId = users.admin!.userId;
-    await pool.query("INSERT INTO identity.user_profiles(user_id,avatar_id,bio) VALUES($1,'av-04','') ON CONFLICT(user_id) DO UPDATE SET avatar_id='av-04',bio=''", [userId]);
-    await pool.query("INSERT INTO identity.account_growth_projection(user_id,total_xp,cycle,level,today_xp,today_key) VALUES($1,6612,7,28,18,CURRENT_DATE) ON CONFLICT(user_id) DO UPDATE SET total_xp=6612,cycle=7,level=28,today_xp=18,today_key=CURRENT_DATE", [userId]);
+    await pool.query("INSERT INTO public.identity_user_profiles(user_id,avatar_id,bio) VALUES($1,'av-04','') ON CONFLICT(user_id) DO UPDATE SET avatar_id='av-04',bio=''", [userId]);
+    await pool.query("INSERT INTO public.identity_account_growth_projection(user_id,total_xp,cycle,level,today_xp,today_key) VALUES($1,6612,7,28,18,CURRENT_DATE) ON CONFLICT(user_id) DO UPDATE SET total_xp=6612,cycle=7,level=28,today_xp=18,today_key=CURRENT_DATE", [userId]);
     try {
       expect((await request(API_ROUTES.accountProfile)).status).toBe(401);
       const profile = await request(API_ROUTES.accountProfile, { token });
@@ -98,8 +98,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
         growth: { totalXp: 6612, cycle: 7, level: 28, levelProgress: 16, levelCost: 21 },
       } });
     } finally {
-      await pool.query("DELETE FROM identity.account_growth_projection WHERE user_id=$1", [userId]);
-      await pool.query("DELETE FROM identity.user_profiles WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_account_growth_projection WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_user_profiles WHERE user_id=$1", [userId]);
     }
   });
   it("keeps missing shared profile and growth unknown instead of inventing values", async () => {
@@ -112,7 +112,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
   });
   it("updates only the current account's shared display name, avatar and bio", async () => {
     const token = tokens.admin!, userId = users.admin!.userId;
-    const auditBefore = (await pool.query("SELECT count(*)::int AS n FROM identity.management_audit WHERE target_id=$1 AND action='identity.profile.updated'", [userId])).rows[0].n;
+    const auditBefore = (await pool.query("SELECT count(*)::int AS n FROM public.identity_management_audit WHERE target_id=$1 AND action='identity.profile.updated'", [userId])).rows[0].n;
     const updated = await request(API_ROUTES.accountProfile, { method: "POST", token, body: { displayName: "Zayne Center", avatarId: "av-04", bio: "shared profile" } });
     expect(updated.status).toBe(200);
     expect(updated.body).toMatchObject({ ok: true, data: { userId, displayName: "Zayne Center", avatarId: "av-04", bio: "shared profile" } });
@@ -121,16 +121,16 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
       const current = await request(API_ROUTES.accountProfile, { token });
       expect(current.body.data).toMatchObject({ userId, displayName: "Zayne Center", avatarId: "av-04", bio: "shared profile" });
       expect((await request(API_ROUTES.accountProfile, { method: "POST", token, body: { displayName: "Zayne Center", avatarId: "av-04", bio: "shared profile" } })).status).toBe(200);
-      const auditAfter = (await pool.query("SELECT count(*)::int AS n FROM identity.management_audit WHERE target_id=$1 AND action='identity.profile.updated'", [userId])).rows[0].n;
+      const auditAfter = (await pool.query("SELECT count(*)::int AS n FROM public.identity_management_audit WHERE target_id=$1 AND action='identity.profile.updated'", [userId])).rows[0].n;
       expect(auditAfter).toBe(auditBefore + 1);
     } finally {
-      await pool.query("UPDATE identity.users SET display_name='admin' WHERE user_id=$1", [userId]);
-      await pool.query("DELETE FROM identity.user_profiles WHERE user_id=$1", [userId]);
+      await pool.query("UPDATE public.identity_users SET display_name='admin' WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_user_profiles WHERE user_id=$1", [userId]);
     }
   });
   it("records idempotent product growth within the shared daily cap", async () => {
     const token = tokens.admin!, userId = users.admin!.userId, occurredAt = new Date().toISOString();
-    await pool.query("INSERT INTO identity.product_access(user_id,product_id,active,scope) VALUES($1,'navigator',true,'summary') ON CONFLICT(user_id,product_id) DO UPDATE SET active=true", [userId]);
+    await pool.query("INSERT INTO public.identity_product_access(user_id,product_id,active,scope) VALUES($1,'navigator',true,'summary') ON CONFLICT(user_id,product_id) DO UPDATE SET active=true", [userId]);
     try {
       const first = await request(API_ROUTES.accountGrowth, { method: "POST", token, body: { eventId: "event-1", sourceProduct: "navigator", eventType: "daily_effective_search", subjectKey: "day-1", points: 18, ruleVersion: 2, occurredAt } });
       expect(first.body).toMatchObject({ ok: true, data: { awarded: true, awardedPoints: 18, summary: { totalXp: 18, todayXp: 18 } } });
@@ -141,16 +141,16 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
       const uncapped = await request(API_ROUTES.accountGrowth, { method: "POST", token, body: { eventId: "event-3", sourceProduct: "navigator", eventType: "pending_approved", subjectKey: "pending-1", points: 2, ruleVersion: 2, occurredAt } });
       expect(uncapped.body).toMatchObject({ ok: true, data: { awarded: true, awardedPoints: 2, summary: { totalXp: 32, todayXp: 32 } } });
     } finally {
-      await pool.query("DELETE FROM identity.account_experience_events WHERE user_id=$1 AND source_product='navigator'", [userId]);
-      await pool.query("DELETE FROM identity.account_growth_projection WHERE user_id=$1", [userId]);
-      await pool.query("DELETE FROM identity.product_access WHERE user_id=$1 AND product_id='navigator'", [userId]);
+      await pool.query("DELETE FROM public.identity_account_experience_events WHERE user_id=$1 AND source_product='navigator'", [userId]);
+      await pool.query("DELETE FROM public.identity_account_growth_projection WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_product_access WHERE user_id=$1 AND product_id='navigator'", [userId]);
     }
   });
   it("changes the central credential through a normal API session and revokes that session", async () => {
     const userId = randomUUID(), email = `${prefix}-password@example.invalid`, newPassword = "NewPassword123";
-    await pool.query("INSERT INTO identity.users(user_id,display_name) VALUES($1,'Password fixture')", [userId]);
-    await pool.query("INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)", [userId, email]);
-    await pool.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')", [userId, await passwords.hash(password)]);
+    await pool.query("INSERT INTO public.identity_users(user_id,display_name) VALUES($1,'Password fixture')", [userId]);
+    await pool.query("INSERT INTO public.identity_login_emails(user_id,email) VALUES($1,$2)", [userId, email]);
+    await pool.query("INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')", [userId, await passwords.hash(password)]);
     try {
       const signedIn = await request(API_ROUTES.login, { method: "POST", body: { email, password } });
       expect(signedIn.status).toBe(200);
@@ -161,14 +161,14 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
       const credential = await repo.credential(email);
       expect(credential.ok && credential.data ? await passwords.verify(newPassword, credential.data.passwordHash) : false).toBe(true);
     } finally {
-      await pool.query("DELETE FROM identity.management_audit WHERE target_id=$1", [userId]);
-      await pool.query("DELETE FROM crm_notification_consumed WHERE event_id IN (SELECT event_id FROM identity.outbox WHERE user_id=$1)", [userId]);
-      await pool.query("DELETE FROM identity.outbox WHERE user_id=$1", [userId]);
-      await pool.query("DELETE FROM identity.sessions WHERE user_id=$1", [userId]);
-      await pool.query("DELETE FROM identity.audit WHERE user_id=$1", [userId]);
-      await pool.query("DELETE FROM identity.credentials WHERE user_id=$1", [userId]);
-      await pool.query("DELETE FROM identity.login_emails WHERE user_id=$1", [userId]);
-      await pool.query("DELETE FROM identity.users WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_management_audit WHERE target_id=$1", [userId]);
+      await pool.query("DELETE FROM crm_notification_consumed WHERE event_id IN (SELECT event_id FROM public.identity_outbox WHERE user_id=$1)", [userId]);
+      await pool.query("DELETE FROM public.identity_outbox WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_sessions WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_audit WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_credentials WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_login_emails WHERE user_id=$1", [userId]);
+      await pool.query("DELETE FROM public.identity_users WHERE user_id=$1", [userId]);
     }
   });
   it("enforces manager and product roles server-side, ignoring claimed role", async () => {
@@ -198,7 +198,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
   it("rejects forged/expired sessions and preserves independent logout across restart", async () => {
     expect((await request(API_ROUTES.me,{token:randomBytes(32).toString("base64url")})).status).toBe(401);
     const expiring = await login("a");
-    await pool.query("UPDATE identity.sessions SET created_at=now()-interval '2 seconds',expires_at=now()-interval '1 second' WHERE token_hash=$1",[tokenAdapter.hash(expiring)]);
+    await pool.query("UPDATE public.identity_sessions SET created_at=now()-interval '2 seconds',expires_at=now()-interval '1 second' WHERE token_hash=$1",[tokenAdapter.hash(expiring)]);
     expect((await request(API_ROUTES.me,{token:expiring})).status).toBe(401);
     expect((await request(API_ROUTES.logout,{method:"POST",token:tokens.a})).status).toBe(200);
     expect((await request(API_ROUTES.me,{token:tokens.a})).status).toBe(401);
@@ -207,17 +207,17 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
     expect((await request(API_ROUTES.me,{token:tokens.b})).status).toBe(200);
   });
   it("reads current disable/revision/grants rather than trusting saved login roles", async () => {
-    await pool.query("UPDATE identity.product_grants SET active=false WHERE user_id=$1",[users.b!.userId]);
+    await pool.query("UPDATE public.identity_product_grants SET active=false WHERE user_id=$1",[users.b!.userId]);
     expect((await request(API_ROUTES.crmAccess,{token:tokens.b})).status).toBe(403);
-    await pool.query("UPDATE identity.users SET active=false WHERE user_id=$1",[users.b!.userId]);
+    await pool.query("UPDATE public.identity_users SET active=false WHERE user_id=$1",[users.b!.userId]);
     expect((await request(API_ROUTES.me,{token:tokens.b})).status).toBe(401);
-    await pool.query("UPDATE identity.users SET security_revision=security_revision+1 WHERE user_id=$1",[users.ops!.userId]);
+    await pool.query("UPDATE public.identity_users SET security_revision=security_revision+1 WHERE user_id=$1",[users.ops!.userId]);
     expect((await request(API_ROUTES.me,{token:tokens.ops})).status).toBe(401);
     const original = users.b!;
     const originalHash=(await repo.credential(original.email));
     const fixture = await repo.ensureFixture({ ...original,displayName:"changed",identityAdmin:true,crmRoles:["admin"],passwordHash:await passwords.hash(password) });
     expect(fixture.ok).toBe(true);
-    expect((await pool.query("SELECT active FROM identity.users WHERE user_id=$1",[original.userId])).rows[0].active).toBe(false);
+    expect((await pool.query("SELECT active FROM public.identity_users WHERE user_id=$1",[original.userId])).rows[0].active).toBe(false);
     expect(await repo.credential(original.email)).toEqual(originalHash);
   }, TIMEOUT_MS);
   it("returns generic login errors and bounds attempts", async () => {
@@ -269,12 +269,12 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === "1")("real HTTP and PG 
   });
   it("keeps migrations idempotent, detects checksum drift and fails closed on database errors", async () => {
     expect((await repo.migrate()).ok).toBe(true);
-    const before = await pool.query("SELECT checksum FROM crm_schema_migrations WHERE version='002-identity-foundation'");
+    const before = await pool.query("SELECT checksum FROM crm_schema_migrations WHERE version='002-identity-foundation-public'");
     try {
-      await pool.query("UPDATE crm_schema_migrations SET checksum='bad' WHERE version='002-identity-foundation'");
+      await pool.query("UPDATE crm_schema_migrations SET checksum='bad' WHERE version='002-identity-foundation-public'");
       expect((await repo.migrate()).ok).toBe(false);
-    } finally { await pool.query("UPDATE crm_schema_migrations SET checksum=$1 WHERE version='002-identity-foundation'",[before.rows[0].checksum]); }
-    expect((await pool.query("SELECT count(*)::int AS n FROM crm_schema_migrations WHERE version IN ('001-crm-foundation','002-identity-foundation')")).rows[0].n).toBe(2);
+    } finally { await pool.query("UPDATE crm_schema_migrations SET checksum=$1 WHERE version='002-identity-foundation-public'",[before.rows[0].checksum]); }
+    expect((await pool.query("SELECT count(*)::int AS n FROM crm_schema_migrations WHERE version IN ('001-crm-foundation','002-identity-foundation-public')")).rows[0].n).toBe(2);
     const broken = new Pool({ ...readTestDatabaseConfig(), password:randomBytes(32).toString("hex"),connectionTimeoutMillis:100 });
     const unavailable = new PostgresAuthRepository(broken, logger);
     expect((await unavailable.ready()).ok).toBe(false);

@@ -96,7 +96,7 @@ async function importContact(c: PoolClient, actor: LeadActor, input: WorkbookImp
  return { status: 'appended', customerId: current.customer_id };
 }
 async function event(c: PoolClient, actor: LeadActor, id: string, version: number, type: string, contactId?:number) {
- await c.query('INSERT INTO identity.outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)', [type, actor.userId, 'crm', version, id, JSON.stringify({ customerId: id, version, ...(contactId?{contactId}:{}) })]);
+ await c.query('INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)', [type, actor.userId, 'crm', version, id, JSON.stringify({ customerId: id, version, ...(contactId?{contactId}:{}) })]);
 }
 /** Caller owns authorization, advisory serialization, idempotency and the transaction. */
 export async function importWorkbookIn(c: PoolClient, actor: LeadActor, input: WorkbookImportRequest): Promise<Result<WorkbookImportReceipt>> {

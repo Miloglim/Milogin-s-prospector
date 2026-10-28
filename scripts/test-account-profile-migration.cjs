@@ -40,7 +40,7 @@ async function seed() {
   try {
     await client.query(authSchema);
     await client.query(adminSchema);
-    await client.query('ALTER TABLE identity.users ADD COLUMN deleted_at timestamptz');
+    await client.query('ALTER TABLE public.identity_users ADD COLUMN deleted_at timestamptz');
     await client.query(profileSchema);
     await client.query(growthSchema);
     await client.query(mappingSchema);
@@ -53,8 +53,8 @@ async function seed() {
       UNIQUE(user_id,event_type,subject_key)
     )`);
     const centerId = randomUUID(), legacyId = 'usr_profile_migration_fixture', email = 'zayne@example.invalid';
-    await client.query("INSERT INTO identity.users(user_id,display_name,identity_admin) VALUES($1,'zayne',true)", [centerId]);
-    await client.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)', [centerId, email]);
+    await client.query("INSERT INTO public.identity_users(user_id,display_name,identity_admin) VALUES($1,'zayne',true)", [centerId]);
+    await client.query('INSERT INTO public.identity_login_emails(user_id,email) VALUES($1,$2)', [centerId, email]);
     await client.query("INSERT INTO operators(user_id,name,display_name,preferences_json,active) VALUES($1,$2,'Zayne',$3,1)", [legacyId, email, JSON.stringify({ avatar_id: 'av-04' })]);
     await client.query("INSERT INTO account_experience_events VALUES('legacy-event',$1,'legacy_growth','legacy-day',10,1,'2026-09-30T10:00:00+08:00')", [legacyId]);
     await client.query("INSERT INTO account_experience_events VALUES('current-event',$1,'daily_effective_search',$2,18,2,'2026-10-21T09:00:00+08:00')", [legacyId, `day:${legacyId}`]);
@@ -76,12 +76,12 @@ async function verify(fixture, auditCount) {
   const client = new Client({ ...base, database });
   await client.connect();
   try {
-    const user = (await client.query('SELECT display_name,management_revision FROM identity.users WHERE user_id=$1', [fixture.centerId])).rows[0];
-    const profile = (await client.query('SELECT avatar_id,bio FROM identity.user_profiles WHERE user_id=$1', [fixture.centerId])).rows[0];
-    const growth = (await client.query('SELECT total_xp,cycle,level,today_xp FROM identity.account_growth_projection WHERE user_id=$1', [fixture.centerId])).rows[0];
-    const events = (await client.query("SELECT count(*)::int AS count FROM identity.account_experience_events WHERE user_id=$1 AND source_product='navigator'", [fixture.centerId])).rows[0].count;
-    const mapping = (await client.query("SELECT status,center_user_id::text FROM identity.legacy_account_mappings WHERE source_product='navigator' AND legacy_user_id=$1", [fixture.legacyId])).rows[0];
-    const audits = (await client.query("SELECT count(*)::int AS count FROM identity.management_audit WHERE target_id=$1 AND action='identity.navigator.profile.migrated'", [fixture.centerId])).rows[0].count;
+    const user = (await client.query('SELECT display_name,management_revision FROM public.identity_users WHERE user_id=$1', [fixture.centerId])).rows[0];
+    const profile = (await client.query('SELECT avatar_id,bio FROM public.identity_user_profiles WHERE user_id=$1', [fixture.centerId])).rows[0];
+    const growth = (await client.query('SELECT total_xp,cycle,level,today_xp FROM public.identity_account_growth_projection WHERE user_id=$1', [fixture.centerId])).rows[0];
+    const events = (await client.query("SELECT count(*)::int AS count FROM public.identity_account_experience_events WHERE user_id=$1 AND source_product='navigator'", [fixture.centerId])).rows[0].count;
+    const mapping = (await client.query("SELECT status,center_user_id::text FROM public.identity_legacy_account_mappings WHERE source_product='navigator' AND legacy_user_id=$1", [fixture.legacyId])).rows[0];
+    const audits = (await client.query("SELECT count(*)::int AS count FROM public.identity_management_audit WHERE target_id=$1 AND action='identity.navigator.profile.migrated'", [fixture.centerId])).rows[0].count;
     assert.deepEqual(user, { display_name: 'Zayne', management_revision: 2 });
     assert.deepEqual(profile, { avatar_id: 'av-04', bio: '' });
     assert.deepEqual(growth, { total_xp: 30, cycle: 1, level: 3, today_xp: 18 });
@@ -96,7 +96,7 @@ async function corruptEvent(fixture) {
   const client = new Client({ ...base, database });
   await client.connect();
   try {
-    await client.query("UPDATE identity.account_experience_events SET points=19 WHERE user_id=$1 AND source_product='navigator' AND event_type='daily_effective_search'", [fixture.centerId]);
+    await client.query("UPDATE public.identity_account_experience_events SET points=19 WHERE user_id=$1 AND source_product='navigator' AND event_type='daily_effective_search'", [fixture.centerId]);
   } finally { await client.end(); }
 }
 

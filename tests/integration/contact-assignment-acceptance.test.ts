@@ -19,7 +19,7 @@ function unwrap<T>(r:Result<T>):T { if(!r.ok)throw Error(`${r.error.code}: ${r.e
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact acceptance rollback PostgreSQL',()=>{
  it('keeps sibling contacts private, requires acceptance and atomically records contact-only followup',async()=>{
   const pool=new Pool(readTestDatabaseConfig()),client=await pool.connect();
-  const counts=async()=>(await client.query('SELECT (SELECT count(*) FROM identity.users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM identity.outbox) AS events')).rows[0];
+  const counts=async()=>(await client.query('SELECT (SELECT count(*) FROM public.identity_users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM public.identity_outbox) AS events')).rows[0];
   const before=await counts();await client.query('BEGIN');
   try {
    let lease=Promise.resolve();
@@ -29,18 +29,21 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact acceptance 
    unwrap(await repo.migrate());
    const actors=[];
    for(const role of ['operations','operations','sales','sales','auditor'] as const){const id=randomUUID(),token=randomBytes(32).toString('base64url');
-    await client.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)',[id,`rollback-${id}`]);
-    await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
-    await client.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
-    await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);actors.push({id,hash:tokenAdapter.hash(token)});
+    await client.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)',[id,`rollback-${id}`]);
+    await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
+    await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
+    await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);actors.push({id,hash:tokenAdapter.hash(token)});
    }
    const [ops,otherOps,sales,other,auditor]=actors as [{id:string;hash:string},{id:string;hash:string},{id:string;hash:string},{id:string;hash:string},{id:string;hash:string}];
-   const co=(await client.query("INSERT INTO companies(name,backcheck_data) VALUES('rollback-only-company',$1) RETURNING id",[JSON.stringify({verified:'fixture'})])).rows[0].id,id=randomUUID();
-   await client.query("INSERT INTO crm_customers(customer_id,company_id,source,customer_key,source_detail,created_by,origin) VALUES($1,$2,'rollback',$1::uuid::text,'fixture',$3,'operations')",[id,co,ops.id]);
-   const contacts:number[]=[];
-   for(const name of ['Selected','Sibling']){const ct=(await client.query('INSERT INTO contacts(email,first_name,company_id) VALUES($1,$2,$3) RETURNING id',[`${randomUUID()}@example.invalid`,name,co])).rows[0].id;contacts.push(ct);await client.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[id,ct]);}
+   const co=(await client.query("INSERT INTO companies(name,backcheck_data) VALUES('rollback-only-company',$1) RETURNING id",[JSON.stringify({verified:'fixture'})])).rows[0].id,id=randomUUID(),batchSource=`fixture-${id}`;
+   await client.query("INSERT INTO crm_customers(customer_id,company_id,source,customer_key,source_detail,created_by,origin) VALUES($1,$2,'rollback',$1::uuid::text,$4,$3,'operations')",[id,co,ops.id,batchSource]);
+   const contacts:number[]=[],contactEmails:string[]=[];
+   for(const name of ['Selected','Sibling']){const email=`${randomUUID()}@example.invalid`;contactEmails.push(email);const ct=(await client.query("INSERT INTO contacts(email,first_name,company_id,source_level1,source_detail) VALUES($1,$2,$3,'Trade show',$4) RETURNING id",[email,name,co,batchSource])).rows[0].id;contacts.push(ct);await client.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[id,ct]);}
+   const batchGroup=unwrap(await repo.listContactGroups(ops.hash,{dimension:'batch',scope:'all',search:batchSource,limit:24,offset:0})).items[0]!;
+   expect(batchGroup).toMatchObject({label:batchSource,sourceLevel1:['Trade show']});expect(batchGroup.latestImportedAt).toEqual(expect.any(String));
+   expect(unwrap(await repo.listContactGroups(ops.hash,{dimension:'batch',scope:'all',search:contactEmails[0]!,limit:24,offset:0})).items[0]).toMatchObject({label:batchSource});
    const companyGroup=unwrap(await repo.listContactGroups(ops.hash,{dimension:'company',scope:'all',search:'rollback-only-company',limit:24,offset:0})).items[0]!;
-   expect(companyGroup).toMatchObject({label:'rollback-only-company',count:2,companyCount:1,countryCount:0,touchedCount:0,companies:['rollback-only-company']});expect(unwrap(await repo.listContacts(ops.hash,{search:'',limit:50,offset:0,groupDimension:'company',groupKey:companyGroup.key})).total).toBe(2);
+   expect(companyGroup).toMatchObject({label:'rollback-only-company',count:2,companyCount:1,countryCount:0,touchedCount:0,companies:['rollback-only-company'],sourceLevel1:['Trade show']});expect(companyGroup.latestImportedAt).toEqual(expect.any(String));expect(unwrap(await repo.listContacts(ops.hash,{search:'',limit:50,offset:0,groupDimension:'company',groupKey:companyGroup.key})).total).toBe(2);
    const companyRef={customerId:id,contactId:contacts[0]!};
    expect(unwrap(await repo.listContacts(otherOps.hash,{search:'rollback-only',limit:50,offset:0})).total).toBe(2);
    expect(unwrap(await assignments.contactDetail(otherOps.hash,companyRef))).toMatchObject({canEdit:true,canFollowup:true,company:{canEdit:true}});
@@ -119,20 +122,20 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact acceptance 
    unwrap(await assignments.decideContactAssignment(sales.hash,'reject',{requestId:second.requestId,expectedVersion:1,idempotencyKey:randomUUID()}));
    const third=unwrap(await assignments.createContactAssignments(ops.hash,{...input,contacts:[{customerId:id,contactId:sibling,expectedVersion:1}],idempotencyKey:randomUUID()})).items[0]!;
    unwrap(await assignments.decideContactAssignment(ops.hash,'cancel',{requestId:third.requestId,expectedVersion:1,idempotencyKey:randomUUID()}));
-   expect((await client.query("SELECT count(*)::int n FROM identity.outbox WHERE payload->>'requestId'=$1 AND event_type='crm.contact.assignment.accepted'",[request.requestId])).rows[0].n).toBe(1);
+   expect((await client.query("SELECT count(*)::int n FROM public.identity_outbox WHERE payload->>'requestId'=$1 AND event_type='crm.contact.assignment.accepted'",[request.requestId])).rows[0].n).toBe(1);
    const race=await Promise.all([sales,other].map(target=>assignments.createContactAssignments(ops.hash,{...input,targetUserId:target.id,contacts:[{customerId:id,contactId:sibling,expectedVersion:1}],idempotencyKey:randomUUID()})));
    expect(race.filter(r=>r.ok)).toHaveLength(1);
    const racing=race.find(r=>r.ok)!;if(!racing.ok)throw Error('missing race winner');const fourth=racing.data.items[0]!;
    await client.query("CREATE FUNCTION pg_temp.ca_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture outbox'; RETURN NEW; END $$");
-   await client.query(`CREATE TRIGGER ca_test_outbox_fail BEFORE INSERT ON identity.outbox FOR EACH ROW WHEN (NEW.event_type='crm.contact.assignment.accepted') EXECUTE FUNCTION pg_temp.ca_fail()`);
+   await client.query(`CREATE TRIGGER ca_test_outbox_fail BEFORE INSERT ON public.identity_outbox FOR EACH ROW WHEN (NEW.event_type='crm.contact.assignment.accepted') EXECUTE FUNCTION pg_temp.ca_fail()`);
    const target=fourth.targetUserId===sales.id?sales:other,atomicDecision={requestId:fourth.requestId,expectedVersion:1,idempotencyKey:randomUUID()};
    expect(await assignments.decideContactAssignment(target.hash,'accept',atomicDecision)).toMatchObject({ok:false,error:{code:'DATABASE_ERROR'}});
    expect((await client.query('SELECT status FROM crm_contact_assignment_requests WHERE request_id=$1',[fourth.requestId])).rows[0].status).toBe('pending');
    expect((await client.query('SELECT crm_contact_version FROM contacts WHERE id=$1',[sibling])).rows[0].crm_contact_version).toBe(1);
-   await client.query('DROP TRIGGER ca_test_outbox_fail ON identity.outbox');unwrap(await assignments.decideContactAssignment(target.hash,'accept',atomicDecision));
+   await client.query('DROP TRIGGER ca_test_outbox_fail ON public.identity_outbox');unwrap(await assignments.decideContactAssignment(target.hash,'accept',atomicDecision));
    const server=createServer(createContactAssignmentHandler(createContactAssignmentService(assignments,tokenAdapter)));await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
    try {const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
-    const token=(await client.query('SELECT token_hash FROM identity.sessions WHERE user_id=$1',[sales.id])).rows[0].token_hash;
+    const token=(await client.query('SELECT token_hash FROM public.identity_sessions WHERE user_id=$1',[sales.id])).rows[0].token_hash;
     const httpService=createContactAssignmentService(assignments,{...tokenAdapter,hash:()=>token});
     const http=createServer(createContactAssignmentHandler(httpService));await new Promise<void>(resolve=>http.listen(0,'127.0.0.1',resolve));
     try {const authenticated=`http://127.0.0.1:${(http.address() as {port:number}).port}`,headers={Authorization:`Bearer ${'a'.repeat(43)}`,'Content-Type':'application/json'};
@@ -142,8 +145,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact acceptance 
     } finally {http.closeAllConnections();await new Promise<void>(resolve=>http.close(()=>resolve()));}
     expect((await (await fetch(`${base}/api/crm/contacts/${selected}?customerId=${id}`)).json()).ok).toBe(false);
    } finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
-   await client.query('UPDATE identity.users SET identity_admin=true WHERE user_id=$1',[auditor.id]);
-   const adminHash=tokenAdapter.hash(randomBytes(32).toString('base64url'));await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','browser')",[adminHash,auditor.id]);
+   await client.query('UPDATE public.identity_users SET identity_admin=true WHERE user_id=$1',[auditor.id]);
+   const adminHash=tokenAdapter.hash(randomBytes(32).toString('base64url'));await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','browser')",[adminHash,auditor.id]);
    const adminRepo=new PostgresAdminRepository(facade,{write:()=>{}});
    expect(await adminRepo.mutate(adminHash,{action:'user.delete',userId:sales.id,revision:1,reason:'rollback only'})).toMatchObject({ok:false,error:{code:'CONFLICT'}});
    expect(await adminRepo.mutate(adminHash,{action:'user.delete',userId:ops.id,revision:1,reason:'rollback only'})).toMatchObject({ok:false,error:{code:'CONFLICT'}});

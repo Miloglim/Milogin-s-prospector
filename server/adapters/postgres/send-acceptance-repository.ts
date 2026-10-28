@@ -98,7 +98,7 @@ export async function acceptSendIn(client: PoolClient, actor: LeadActor, input: 
     if (!old) await client.query(`INSERT INTO crm_contact_mail_events(event_id,actor_id,contact_id,customer_id,event_key,mailbox_key,message_key,kind,direction,occurred_at,subject,preview,from_email,to_emails,cc_emails,digest,archive_only)
       VALUES($1,$2,$3,$4,$5,$6,$7,'sent','outbound',$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,true)`,
       [eventId, actor.userId, event.contactId, event.customerId, event.eventKey, event.mailboxKey, event.messageKey, event.occurredAt, event.subject, event.preview, event.fromEmail, JSON.stringify(event.toEmails), JSON.stringify(event.ccEmails), contactMailFingerprint(event)]);
-    await client.query(`INSERT INTO identity.outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids)
+    await client.query(`INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids)
       VALUES('crm.contact.mail.archived',$1,'crm',1,$2,$3::jsonb,'{}'::uuid[])`,
       [actor.userId, event.customerId, JSON.stringify({ contactId: event.contactId, customerId: event.customerId, mailEventId: eventId, authorizationId: input.authorizationId })]);
   }

@@ -1,0 +1,4740 @@
+-- Milogin center PostgreSQL bootstrap for shared public schema.
+-- Generated from a clean isolated Prospector database plus the current Navigator public schema.
+-- Contains 89 tables and 2 views; no Navigator business rows.
+-- Contains schema, migration checksums and required product seed rows; no business or account data.
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 18.6
+-- Dumped by pg_dump version 18.6
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: public; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA IF NOT EXISTS public;
+
+
+--
+-- Name: crm_contact_change_capture(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.crm_contact_change_capture() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $_$
+BEGIN
+ IF NEW.product_id='crm' AND NEW.customer_id IS NOT NULL AND (
+   NEW.event_type = ANY(ARRAY[
+     'crm.contact.updated','crm.contact.followup','crm.contact.deleted',
+     'crm.contact.assignment.requested','crm.contact.assignment.accepted',
+     'crm.contact.assignment.rejected','crm.contact.assignment.cancelled',
+     'crm.contact.share.accepted','crm.contact.share.revoked','crm.contact.share.updated'
+   ]) OR NEW.event_type = ANY(ARRAY['crm.customer.created','crm.customer.updated'])
+ ) THEN
+  INSERT INTO crm_contact_changes(event_id,recipient_user_id,contact_id,customer_id,event_type,version)
+  SELECT NEW.event_id,u.user_id,ct.id,NEW.customer_id,NEW.event_type,COALESCE(NEW.revision,1)
+  FROM crm_customer_contacts cc JOIN contacts ct ON ct.id=cc.contact_id CROSS JOIN public.identity_users u
+  LEFT JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active
+  LEFT JOIN public.identity_product_grants g ON g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role='admin'
+  WHERE cc.customer_id=NEW.customer_id
+    AND ((NEW.event_type = ANY(ARRAY['crm.customer.created','crm.customer.updated'])) OR ((NEW.payload->>'contactId') ~ '^[0-9]+$' AND ct.id=(NEW.payload->>'contactId')::integer))
+    AND u.active AND NOT u.must_change_password AND pa.user_id IS NOT NULL
+    AND (u.user_id=NEW.user_id OR u.user_id=ANY(COALESCE(NEW.recipient_user_ids,'{}'::uuid[])) OR (g.user_id IS NOT NULL AND pa.scope IN ('shared','summary') AND (u.identity_admin OR pa.capabilities IS NULL OR pa.capabilities ? 'leads.read.all')))
+  ON CONFLICT(event_id,recipient_user_id,contact_id) DO NOTHING;
+ END IF;
+ RETURN NEW;
+END $_$;
+
+
+--
+-- Name: crm_opportunities_customer_owner_changed(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.crm_opportunities_customer_owner_changed() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+ IF OLD.owner_user_id IS DISTINCT FROM NEW.owner_user_id THEN
+  UPDATE crm_opportunities SET version=version+1,updated_at=clock_timestamp() WHERE customer_id=NEW.customer_id AND stage NOT IN ('closed_won','closed_lost');
+ END IF;
+ RETURN NEW;
+END $$;
+
+
+--
+-- Name: crm_opportunity_history_append_only(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.crm_opportunity_history_append_only() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN RAISE EXCEPTION 'Opportunity stage history is append only' USING ERRCODE='23514'; END $$;
+
+
+--
+-- Name: crm_tasks_customer_owner_changed(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.crm_tasks_customer_owner_changed() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+ IF OLD.owner_user_id IS DISTINCT FROM NEW.owner_user_id THEN
+  UPDATE crm_followup_tasks SET version=version+1,updated_at=clock_timestamp() WHERE customer_id=NEW.customer_id AND status='open';
+ END IF;
+ RETURN NEW;
+END $$;
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: companies; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.companies (
+    id integer NOT NULL,
+    name text NOT NULL,
+    domain text,
+    industry text,
+    country text,
+    size text,
+    backcheck_data jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    crm_created_by uuid,
+    crm_deleted_at timestamp with time zone,
+    crm_deleted_by uuid,
+    customer_type text,
+    CONSTRAINT companies_backcheck_data_check CHECK (((backcheck_data IS NULL) OR (jsonb_typeof(backcheck_data) = 'object'::text))),
+    CONSTRAINT companies_customer_type_check CHECK (((customer_type IS NULL) OR (customer_type = ANY (ARRAY['代理'::text, '直客'::text])))),
+    CONSTRAINT companies_name_check CHECK ((btrim(name) <> ''::text))
+);
+
+
+--
+-- Name: companies_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.companies ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.companies_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: contacts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.contacts (
+    id integer NOT NULL,
+    email text,
+    company_id integer,
+    first_name text,
+    last_name text,
+    title text,
+    phone text,
+    linkedin text,
+    country text,
+    client_type text,
+    language text,
+    stage text DEFAULT 'cold'::text NOT NULL,
+    status text DEFAULT ''::text NOT NULL,
+    tags jsonb DEFAULT '[]'::jsonb NOT NULL,
+    extra jsonb DEFAULT '{}'::jsonb NOT NULL,
+    assignee text DEFAULT ''::text NOT NULL,
+    source text DEFAULT 'manual'::text NOT NULL,
+    source_detail text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    crm_touch_status text DEFAULT 'uncontacted'::text NOT NULL,
+    crm_contact_version integer DEFAULT 1 NOT NULL,
+    crm_deleted_at timestamp with time zone,
+    crm_deleted_by uuid,
+    whatsapp text,
+    source_level1 text,
+    source_level2 text,
+    CONSTRAINT contacts_crm_contact_version_check CHECK ((crm_contact_version > 0)),
+    CONSTRAINT contacts_crm_touch_status_check CHECK ((crm_touch_status = ANY (ARRAY['uncontacted'::text, 'contacted'::text, 'replied'::text, 'bounced'::text, 'autoreply'::text]))),
+    CONSTRAINT contacts_email_check CHECK (((email = lower(btrim(email))) AND (email <> ''::text))),
+    CONSTRAINT contacts_extra_check CHECK ((jsonb_typeof(extra) = 'object'::text)),
+    CONSTRAINT contacts_tags_check CHECK ((jsonb_typeof(tags) = 'array'::text))
+);
+
+
+--
+-- Name: contacts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.contacts ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.contacts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: crm_assignment_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_assignment_history (
+    id bigint NOT NULL,
+    customer_id uuid NOT NULL,
+    owner_user_id uuid NOT NULL,
+    actor_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: crm_assignment_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.crm_assignment_history ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.crm_assignment_history_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: crm_campaign_attempts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_campaign_attempts (
+    attempt_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    target_id uuid NOT NULL,
+    execution_key text NOT NULL,
+    state text NOT NULL,
+    requested_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone,
+    error text,
+    CONSTRAINT crm_campaign_attempts_state_check CHECK ((state = ANY (ARRAY['planned'::text, 'accepted'::text, 'rejected'::text, 'unknown'::text])))
+);
+
+
+--
+-- Name: crm_campaign_receipts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_campaign_receipts (
+    receipt_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    attempt_id uuid NOT NULL,
+    state text NOT NULL,
+    recorded_at timestamp with time zone DEFAULT now() NOT NULL,
+    detail text,
+    CONSTRAINT crm_campaign_receipts_state_check CHECK ((state = ANY (ARRAY['accepted'::text, 'rejected'::text, 'unknown'::text])))
+);
+
+
+--
+-- Name: crm_campaign_targets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_campaign_targets (
+    target_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    campaign_id uuid NOT NULL,
+    contact_id integer NOT NULL,
+    customer_id uuid NOT NULL,
+    contact_version integer NOT NULL,
+    round integer NOT NULL,
+    state text DEFAULT 'pending'::text NOT NULL,
+    next_touch_at timestamp with time zone,
+    lease_owner text,
+    lease_until timestamp with time zone,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    last_error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT crm_campaign_targets_attempt_count_check CHECK ((attempt_count >= 0)),
+    CONSTRAINT crm_campaign_targets_check CHECK ((((state = 'leased'::text) AND (lease_owner IS NOT NULL) AND (lease_until IS NOT NULL)) OR (state <> 'leased'::text))),
+    CONSTRAINT crm_campaign_targets_contact_version_check CHECK ((contact_version > 0)),
+    CONSTRAINT crm_campaign_targets_round_check CHECK ((round >= 0)),
+    CONSTRAINT crm_campaign_targets_state_check CHECK ((state = ANY (ARRAY['pending'::text, 'leased'::text, 'blocked'::text, 'completed'::text, 'unknown'::text, 'revoked'::text])))
+);
+
+
+--
+-- Name: crm_campaigns; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_campaigns (
+    campaign_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    created_by uuid NOT NULL,
+    name text NOT NULL,
+    state text DEFAULT 'draft'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    auto_send boolean DEFAULT false NOT NULL,
+    idempotency_key text NOT NULL,
+    confirmed_at timestamp with time zone,
+    paused_at timestamp with time zone,
+    stopped_at timestamp with time zone,
+    stop_reason text,
+    next_run_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT crm_campaigns_auto_send_check CHECK ((auto_send = false)),
+    CONSTRAINT crm_campaigns_check CHECK ((((state = 'draft'::text) AND (confirmed_at IS NULL)) OR ((state <> 'draft'::text) AND (confirmed_at IS NOT NULL)))),
+    CONSTRAINT crm_campaigns_check1 CHECK ((((state = 'paused'::text) AND (paused_at IS NOT NULL)) OR ((state <> 'paused'::text) AND (paused_at IS NULL)))),
+    CONSTRAINT crm_campaigns_idempotency_key_check CHECK (((length(idempotency_key) >= 1) AND (length(idempotency_key) <= 128))),
+    CONSTRAINT crm_campaigns_name_check CHECK (((btrim(name) <> ''::text) AND (length(name) <= 200))),
+    CONSTRAINT crm_campaigns_state_check CHECK ((state = ANY (ARRAY['draft'::text, 'scheduled'::text, 'running'::text, 'paused'::text, 'stopped'::text, 'completed'::text]))),
+    CONSTRAINT crm_campaigns_stop_reason_check CHECK (((stop_reason IS NULL) OR (length(stop_reason) <= 500))),
+    CONSTRAINT crm_campaigns_version_check CHECK ((version > 0))
+);
+
+
+--
+-- Name: crm_contact_assignment_group_members; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_contact_assignment_group_members (
+    group_id uuid NOT NULL,
+    request_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: crm_contact_assignment_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_contact_assignment_requests (
+    request_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    contact_id integer NOT NULL,
+    customer_id uuid NOT NULL,
+    target_user_id uuid NOT NULL,
+    actor_id uuid NOT NULL,
+    notify_user_ids uuid[] DEFAULT '{}'::uuid[] NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    decided_at timestamp with time zone,
+    CONSTRAINT crm_contact_assignment_requests_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'accepted'::text, 'rejected'::text, 'cancelled'::text]))),
+    CONSTRAINT crm_contact_assignment_requests_version_check CHECK ((version > 0))
+);
+
+
+--
+-- Name: crm_contact_change_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.crm_contact_change_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: crm_contact_changes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_contact_changes (
+    change_seq bigint DEFAULT nextval('public.crm_contact_change_seq'::regclass) NOT NULL,
+    event_id uuid NOT NULL,
+    recipient_user_id uuid NOT NULL,
+    contact_id integer NOT NULL,
+    customer_id uuid NOT NULL,
+    event_type text NOT NULL,
+    version integer NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT crm_contact_changes_version_check CHECK ((version > 0))
+);
+
+
+--
+-- Name: crm_contact_mail_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_contact_mail_events (
+    event_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    actor_id uuid NOT NULL,
+    contact_id integer NOT NULL,
+    customer_id uuid NOT NULL,
+    event_key text NOT NULL,
+    mailbox_key text NOT NULL,
+    message_key text NOT NULL,
+    kind text NOT NULL,
+    direction text NOT NULL,
+    occurred_at timestamp with time zone NOT NULL,
+    subject text NOT NULL,
+    preview text NOT NULL,
+    from_email text NOT NULL,
+    to_emails jsonb NOT NULL,
+    cc_emails jsonb NOT NULL,
+    digest text NOT NULL,
+    recorded_at timestamp with time zone DEFAULT now() NOT NULL,
+    activity_id bigint,
+    send_stage_advanced boolean DEFAULT false NOT NULL,
+    classification_correction jsonb,
+    classification_revision integer,
+    archive_only boolean DEFAULT false NOT NULL,
+    CONSTRAINT crm_contact_mail_events_cc_emails_check CHECK (((jsonb_typeof(cc_emails) = 'array'::text) AND (jsonb_array_length(cc_emails) <= 100))),
+    CONSTRAINT crm_contact_mail_events_direction_check CHECK ((direction = ANY (ARRAY['inbound'::text, 'outbound'::text]))),
+    CONSTRAINT crm_contact_mail_events_event_key_check CHECK (((length(event_key) >= 1) AND (length(event_key) <= 256))),
+    CONSTRAINT crm_contact_mail_events_from_email_check CHECK (((length(from_email) >= 1) AND (length(from_email) <= 254))),
+    CONSTRAINT crm_contact_mail_events_kind_check CHECK ((kind = ANY (ARRAY['received'::text, 'sent'::text, 'replied'::text, 'autoreply'::text, 'bounced'::text, 'cc'::text]))),
+    CONSTRAINT crm_contact_mail_events_mailbox_key_check CHECK (((length(mailbox_key) >= 1) AND (length(mailbox_key) <= 128))),
+    CONSTRAINT crm_contact_mail_events_message_key_check CHECK (((length(message_key) >= 1) AND (length(message_key) <= 256))),
+    CONSTRAINT crm_contact_mail_events_preview_check CHECK ((length(preview) <= 2000)),
+    CONSTRAINT crm_contact_mail_events_subject_check CHECK ((length(subject) <= 998)),
+    CONSTRAINT crm_contact_mail_events_to_emails_check CHECK (((jsonb_typeof(to_emails) = 'array'::text) AND (jsonb_array_length(to_emails) <= 100))),
+    CONSTRAINT crm_mail_correction_shape CHECK ((((classification_correction IS NULL) AND (classification_revision IS NULL)) OR ((classification_correction IS NOT NULL) AND (classification_revision IS NOT NULL) AND (classification_revision > 0) AND (direction = 'inbound'::text) AND (NOT send_stage_advanced) AND (jsonb_typeof(classification_correction) = 'object'::text) AND (classification_correction ?& ARRAY['previousEventKey'::text, 'classification'::text]) AND (((classification_correction - 'previousEventKey'::text) - 'classification'::text) = '{}'::jsonb) AND (jsonb_typeof((classification_correction -> 'classification'::text)) = 'string'::text) AND ((classification_correction ->> 'classification'::text) = ANY (ARRAY['other'::text, 'replied'::text, 'autoreply'::text, 'bounced'::text])) AND (kind =
+CASE (classification_correction ->> 'classification'::text)
+    WHEN 'other'::text THEN 'received'::text
+    ELSE (classification_correction ->> 'classification'::text)
+END) AND (((classification_correction -> 'previousEventKey'::text) = 'null'::jsonb) OR (jsonb_typeof((classification_correction -> 'previousEventKey'::text)) = 'string'::text)))))
+);
+
+
+--
+-- Name: crm_contact_shares; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_contact_shares (
+    share_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    contact_id integer NOT NULL,
+    customer_id uuid NOT NULL,
+    grantor_user_id uuid NOT NULL,
+    target_user_id uuid NOT NULL,
+    editable_fields jsonb DEFAULT '[]'::jsonb NOT NULL,
+    can_followup boolean DEFAULT false NOT NULL,
+    can_change_stage boolean DEFAULT false NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    decided_at timestamp with time zone,
+    CONSTRAINT crm_contact_shares_check CHECK ((grantor_user_id <> target_user_id)),
+    CONSTRAINT crm_contact_shares_editable_fields_check CHECK (((jsonb_typeof(editable_fields) = 'array'::text) AND (editable_fields <@ '["firstName", "lastName", "title", "phone", "whatsapp", "linkedinUrl", "country", "language", "clientType"]'::jsonb))),
+    CONSTRAINT crm_contact_shares_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'accepted'::text, 'rejected'::text, 'revoked'::text]))),
+    CONSTRAINT crm_contact_shares_version_check CHECK ((version > 0))
+);
+
+
+--
+-- Name: crm_customer_contacts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_customer_contacts (
+    customer_id uuid NOT NULL,
+    contact_id integer NOT NULL
+);
+
+
+--
+-- Name: crm_customers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_customers (
+    customer_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id integer NOT NULL,
+    source text NOT NULL,
+    customer_key text NOT NULL,
+    source_detail text NOT NULL,
+    state text DEFAULT 'draft'::text NOT NULL,
+    owner_user_id uuid,
+    created_by uuid NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    origin text DEFAULT 'operations'::text NOT NULL,
+    business_type text,
+    development_restriction text,
+    source_created_at timestamp with time zone,
+    relationship_stage text DEFAULT 'cold'::text NOT NULL,
+    stage_needs_review boolean DEFAULT false NOT NULL,
+    legacy_stage_snapshot jsonb DEFAULT '[]'::jsonb NOT NULL,
+    CONSTRAINT crm_customers_check CHECK (((state = 'owned'::text) = (owner_user_id IS NOT NULL))),
+    CONSTRAINT crm_customers_origin_check CHECK ((origin = ANY (ARRAY['operations'::text, 'personal'::text]))),
+    CONSTRAINT crm_customers_relationship_stage_check CHECK ((relationship_stage = ANY (ARRAY['cold'::text, 'reaching'::text, 'quoting'::text, 'trial'::text, 'cooperating'::text, 'lost'::text, 'other'::text]))),
+    CONSTRAINT crm_customers_state_check CHECK ((state = ANY (ARRAY['draft'::text, 'published'::text, 'owned'::text, 'paused'::text]))),
+    CONSTRAINT crm_customers_version_check CHECK ((version > 0))
+);
+
+
+--
+-- Name: crm_device_cursors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_device_cursors (
+    user_id uuid NOT NULL,
+    device_id text NOT NULL,
+    cursor bigint DEFAULT 0 NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: crm_event_deliveries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_event_deliveries (
+    delivery_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    event_id uuid NOT NULL,
+    recipient_user_id uuid NOT NULL,
+    projection_type text NOT NULL,
+    delivery_seq bigint NOT NULL,
+    customer_id uuid NOT NULL,
+    event_type text NOT NULL,
+    version integer NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT crm_event_deliveries_delivery_seq_check CHECK ((delivery_seq > 0)),
+    CONSTRAINT crm_event_deliveries_projection_type_check CHECK ((projection_type = 'lead'::text))
+);
+
+
+--
+-- Name: crm_feed_heads; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_feed_heads (
+    user_id uuid NOT NULL,
+    delivery_seq bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT crm_feed_heads_delivery_seq_check CHECK ((delivery_seq >= 0))
+);
+
+
+--
+-- Name: crm_followup_tasks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_followup_tasks (
+    task_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    customer_id uuid NOT NULL,
+    title text NOT NULL,
+    due_at timestamp with time zone NOT NULL,
+    status text DEFAULT 'open'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone,
+    completed_by uuid,
+    feedback text,
+    opportunity_id uuid,
+    CONSTRAINT crm_followup_tasks_check CHECK ((((status = 'open'::text) AND (completed_at IS NULL) AND (completed_by IS NULL) AND (feedback IS NULL)) OR ((status = 'completed'::text) AND (completed_at IS NOT NULL) AND (completed_by IS NOT NULL) AND (feedback IS NOT NULL) AND (btrim(feedback) <> ''::text) AND (length(feedback) <= 20000)))),
+    CONSTRAINT crm_followup_tasks_due_at_check CHECK (isfinite(due_at)),
+    CONSTRAINT crm_followup_tasks_status_check CHECK ((status = ANY (ARRAY['open'::text, 'completed'::text]))),
+    CONSTRAINT crm_followup_tasks_title_check CHECK (((btrim(title) <> ''::text) AND (length(title) <= 500))),
+    CONSTRAINT crm_followup_tasks_version_check CHECK ((version > 0))
+);
+
+
+--
+-- Name: crm_import_batches; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_import_batches (
+    batch_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    actor_id uuid NOT NULL,
+    source text NOT NULL,
+    source_detail text NOT NULL,
+    mapping jsonb DEFAULT '{}'::jsonb NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: crm_import_rows; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_import_rows (
+    row_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    batch_id uuid NOT NULL,
+    row_index integer NOT NULL,
+    customer_key text NOT NULL,
+    raw_row jsonb NOT NULL,
+    customer_id uuid,
+    status text NOT NULL,
+    CONSTRAINT crm_import_rows_status_check CHECK ((status = ANY (ARRAY['created'::text, 'appended'::text, 'duplicate'::text, 'invalid'::text, 'unmatched'::text, 'ambiguous'::text, 'restricted_conflict'::text])))
+);
+
+
+--
+-- Name: crm_lead_idempotency; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_lead_idempotency (
+    actor_id uuid NOT NULL,
+    operation text NOT NULL,
+    key text NOT NULL,
+    digest text NOT NULL,
+    response jsonb NOT NULL
+);
+
+
+--
+-- Name: crm_notification_consumed; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_notification_consumed (
+    event_id uuid NOT NULL,
+    consumed_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: crm_notification_reads; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_notification_reads (
+    user_id uuid NOT NULL,
+    delivery_id uuid NOT NULL,
+    read_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: crm_opportunities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_opportunities (
+    opportunity_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    customer_id uuid NOT NULL,
+    title text NOT NULL,
+    description text DEFAULT ''::text NOT NULL,
+    pol text,
+    pod text,
+    container_type text,
+    source text DEFAULT ''::text NOT NULL,
+    stage text DEFAULT 'inquiry'::text NOT NULL,
+    amount numeric,
+    currency text,
+    lost_reason text,
+    evidence text,
+    version integer DEFAULT 1 NOT NULL,
+    created_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    closed_at timestamp with time zone,
+    closed_by uuid,
+    CONSTRAINT crm_opportunities_check CHECK ((((amount IS NULL) AND (currency IS NULL)) OR ((amount IS NOT NULL) AND (currency IS NOT NULL) AND (amount >= (0)::numeric) AND (amount < power((10)::numeric, (12)::numeric)) AND (scale(amount) <= 2) AND (currency ~ '^[A-Z]{3}$'::text)))),
+    CONSTRAINT crm_opportunities_check1 CHECK ((((stage = ANY (ARRAY['closed_won'::text, 'closed_lost'::text])) AND (closed_at IS NOT NULL) AND (closed_by IS NOT NULL)) OR ((stage <> ALL (ARRAY['closed_won'::text, 'closed_lost'::text])) AND (closed_at IS NULL) AND (closed_by IS NULL)))),
+    CONSTRAINT crm_opportunities_check2 CHECK ((((stage = 'closed_won'::text) AND (evidence IS NOT NULL) AND (amount IS NOT NULL) AND (lost_reason IS NULL)) OR ((stage = 'closed_lost'::text) AND (lost_reason IS NOT NULL) AND (evidence IS NULL)) OR ((stage <> ALL (ARRAY['closed_won'::text, 'closed_lost'::text])) AND (evidence IS NULL) AND (lost_reason IS NULL)))),
+    CONSTRAINT crm_opportunities_container_type_check CHECK ((length(container_type) <= 128)),
+    CONSTRAINT crm_opportunities_description_check CHECK ((length(description) <= 20000)),
+    CONSTRAINT crm_opportunities_evidence_check CHECK (((btrim(evidence) <> ''::text) AND (length(evidence) <= 4096))),
+    CONSTRAINT crm_opportunities_lost_reason_check CHECK (((btrim(lost_reason) <> ''::text) AND (length(lost_reason) <= 2000))),
+    CONSTRAINT crm_opportunities_pod_check CHECK ((length(pod) <= 128)),
+    CONSTRAINT crm_opportunities_pol_check CHECK ((length(pol) <= 128)),
+    CONSTRAINT crm_opportunities_source_check CHECK ((length(source) <= 500)),
+    CONSTRAINT crm_opportunities_stage_check CHECK ((stage = ANY (ARRAY['inquiry'::text, 'quote_sent'::text, 'negotiation'::text, 'booking_confirmed'::text, 'closed_won'::text, 'closed_lost'::text]))),
+    CONSTRAINT crm_opportunities_title_check CHECK (((btrim(title) <> ''::text) AND (length(title) <= 500))),
+    CONSTRAINT crm_opportunities_version_check CHECK ((version > 0))
+);
+
+
+--
+-- Name: crm_opportunity_stage_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_opportunity_stage_history (
+    history_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    opportunity_id uuid NOT NULL,
+    from_stage text,
+    to_stage text NOT NULL,
+    actor_id uuid NOT NULL,
+    occurred_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    amount numeric,
+    currency text,
+    lost_reason text,
+    evidence text,
+    CONSTRAINT crm_opportunity_stage_history_check CHECK ((((amount IS NULL) AND (currency IS NULL)) OR ((amount IS NOT NULL) AND (currency IS NOT NULL) AND (amount >= (0)::numeric) AND (amount < power((10)::numeric, (12)::numeric)) AND (scale(amount) <= 2) AND (currency ~ '^[A-Z]{3}$'::text)))),
+    CONSTRAINT crm_opportunity_stage_history_check1 CHECK ((from_stage IS DISTINCT FROM to_stage)),
+    CONSTRAINT crm_opportunity_stage_history_check2 CHECK ((((to_stage = 'closed_won'::text) AND (evidence IS NOT NULL) AND (btrim(evidence) <> ''::text) AND (length(evidence) <= 4096) AND (amount IS NOT NULL) AND (lost_reason IS NULL)) OR ((to_stage = 'closed_lost'::text) AND (lost_reason IS NOT NULL) AND (btrim(lost_reason) <> ''::text) AND (length(lost_reason) <= 2000) AND (evidence IS NULL)) OR ((to_stage <> ALL (ARRAY['closed_won'::text, 'closed_lost'::text])) AND (evidence IS NULL) AND (lost_reason IS NULL)))),
+    CONSTRAINT crm_opportunity_stage_history_from_stage_check CHECK ((from_stage = ANY (ARRAY['inquiry'::text, 'quote_sent'::text, 'negotiation'::text, 'booking_confirmed'::text, 'closed_won'::text, 'closed_lost'::text]))),
+    CONSTRAINT crm_opportunity_stage_history_to_stage_check CHECK ((to_stage = ANY (ARRAY['inquiry'::text, 'quote_sent'::text, 'negotiation'::text, 'booking_confirmed'::text, 'closed_won'::text, 'closed_lost'::text])))
+);
+
+
+--
+-- Name: crm_relations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_relations (
+    id integer NOT NULL,
+    contact_id_a integer NOT NULL,
+    contact_id_b integer NOT NULL,
+    relation_type text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT crm_relations_check CHECK ((contact_id_a <> contact_id_b))
+);
+
+
+--
+-- Name: crm_relations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.crm_relations ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.crm_relations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: crm_schema_migrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_schema_migrations (
+    version text NOT NULL,
+    checksum text NOT NULL,
+    applied_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: crm_send_authorizations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_send_authorizations (
+    authorization_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    actor_id uuid NOT NULL,
+    send_key text NOT NULL,
+    contact_id integer NOT NULL,
+    customer_id uuid NOT NULL,
+    recipient_email text NOT NULL,
+    from_email text NOT NULL,
+    subject text NOT NULL,
+    authorized_recipients jsonb NOT NULL,
+    authorized_cc jsonb NOT NULL,
+    request_fingerprint text NOT NULL,
+    owner_user_id uuid,
+    allow_advance_stage boolean NOT NULL,
+    issued_at timestamp with time zone NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    consumed_event_id uuid,
+    consumed_fingerprint text,
+    archived_after_revocation boolean,
+    CONSTRAINT crm_send_authorizations_authorized_cc_check CHECK ((jsonb_typeof(authorized_cc) = 'array'::text)),
+    CONSTRAINT crm_send_authorizations_authorized_recipients_check CHECK ((jsonb_typeof(authorized_recipients) = 'array'::text)),
+    CONSTRAINT crm_send_authorizations_check CHECK ((expires_at > issued_at)),
+    CONSTRAINT crm_send_authorizations_check1 CHECK ((((consumed_event_id IS NULL) AND (consumed_fingerprint IS NULL) AND (archived_after_revocation IS NULL)) OR ((consumed_event_id IS NOT NULL) AND (consumed_fingerprint IS NOT NULL) AND (archived_after_revocation IS NOT NULL)))),
+    CONSTRAINT crm_send_authorizations_send_key_check CHECK (((length(send_key) >= 1) AND (length(send_key) <= 256)))
+);
+
+
+--
+-- Name: crm_shared_activities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_shared_activities (
+    id bigint NOT NULL,
+    customer_id uuid NOT NULL,
+    interaction_id integer,
+    actor_id uuid NOT NULL,
+    note text NOT NULL,
+    stage text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    method text DEFAULT 'legacy'::text NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+    recorded_at timestamp with time zone DEFAULT now() NOT NULL,
+    contact_id integer,
+    contact_status text,
+    opportunity_id uuid,
+    CONSTRAINT crm_activity_touch_requires_contact CHECK (((contact_status IS NULL) OR ((contact_id IS NOT NULL) AND (method <> ALL (ARRAY['note'::text, 'legacy'::text]))))),
+    CONSTRAINT crm_shared_activities_contact_status_check CHECK (((contact_status IS NULL) OR (contact_status = ANY (ARRAY['uncontacted'::text, 'contacted'::text, 'replied'::text, 'bounced'::text, 'autoreply'::text])))),
+    CONSTRAINT crm_shared_activities_method_check CHECK ((method = ANY (ARRAY['legacy'::text, 'email'::text, 'phone'::text, 'visit'::text, 'other'::text, 'note'::text])))
+);
+
+
+--
+-- Name: crm_shared_activities_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.crm_shared_activities ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.crm_shared_activities_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: crm_task_due_receipts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_task_due_receipts (
+    task_id uuid NOT NULL,
+    task_version integer NOT NULL,
+    responsible_user_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    CONSTRAINT crm_task_due_receipts_task_version_check CHECK ((task_version > 0))
+);
+
+
+--
+-- Name: crm_workbook_source_mappings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_workbook_source_mappings (
+    actor_id uuid NOT NULL,
+    source text NOT NULL,
+    origin text NOT NULL,
+    entity text NOT NULL,
+    source_ref text NOT NULL,
+    customer_ref text NOT NULL,
+    customer_id uuid NOT NULL,
+    contact_id integer,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT crm_workbook_source_mappings_check CHECK (((entity = 'contact'::text) = (contact_id IS NOT NULL))),
+    CONSTRAINT crm_workbook_source_mappings_entity_check CHECK ((entity = ANY (ARRAY['customer'::text, 'contact'::text]))),
+    CONSTRAINT crm_workbook_source_mappings_origin_check CHECK ((origin = ANY (ARRAY['personal'::text, 'operations'::text])))
+);
+
+
+--
+-- Name: identity_account_experience_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_account_experience_events (
+    event_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    source_product text NOT NULL,
+    event_type text NOT NULL,
+    subject_key text NOT NULL,
+    points integer NOT NULL,
+    rule_version integer NOT NULL,
+    occurred_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_account_experience_events_event_type_check CHECK ((btrim(event_type) <> ''::text)),
+    CONSTRAINT identity_account_experience_events_points_check CHECK ((points > 0)),
+    CONSTRAINT identity_account_experience_events_rule_version_check CHECK ((rule_version > 0)),
+    CONSTRAINT identity_account_experience_events_source_product_check CHECK ((btrim(source_product) <> ''::text)),
+    CONSTRAINT identity_account_experience_events_subject_key_check CHECK ((btrim(subject_key) <> ''::text))
+);
+
+
+--
+-- Name: identity_account_growth_projection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_account_growth_projection (
+    user_id uuid NOT NULL,
+    total_xp integer DEFAULT 0 NOT NULL,
+    cycle integer DEFAULT 1 NOT NULL,
+    level integer DEFAULT 1 NOT NULL,
+    today_xp integer DEFAULT 0 NOT NULL,
+    today_key date,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_account_growth_projection_cycle_check CHECK ((cycle > 0)),
+    CONSTRAINT identity_account_growth_projection_level_check CHECK ((level > 0)),
+    CONSTRAINT identity_account_growth_projection_today_xp_check CHECK ((today_xp >= 0)),
+    CONSTRAINT identity_account_growth_projection_total_xp_check CHECK ((total_xp >= 0))
+);
+
+
+--
+-- Name: identity_audit; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_audit (
+    id bigint NOT NULL,
+    user_id uuid,
+    event text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_audit_event_check CHECK ((event = ANY (ARRAY['login'::text, 'logout'::text, 'fixture'::text])))
+);
+
+
+--
+-- Name: identity_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.identity_audit ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.identity_audit_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: identity_credentials; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_credentials (
+    user_id uuid NOT NULL,
+    password_hash text NOT NULL,
+    hash_scheme text NOT NULL,
+    changed_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_credentials_hash_scheme_check CHECK ((hash_scheme = ANY (ARRAY['scrypt-v1'::text, 'pbkdf2_sha256'::text])))
+);
+
+
+--
+-- Name: identity_desktop_refresh_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_desktop_refresh_tokens (
+    token_hash text NOT NULL,
+    session_id uuid NOT NULL,
+    absolute_expires_at timestamp with time zone NOT NULL,
+    idle_expires_at timestamp with time zone NOT NULL,
+    consumed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_desktop_refresh_tokens_check CHECK ((idle_expires_at <= absolute_expires_at)),
+    CONSTRAINT identity_desktop_refresh_tokens_token_hash_check CHECK ((token_hash ~ '^[a-f0-9]{64}$'::text))
+);
+
+
+--
+-- Name: identity_legacy_account_mappings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_legacy_account_mappings (
+    source_product text NOT NULL,
+    legacy_user_id text NOT NULL,
+    legacy_login_alias text NOT NULL,
+    center_user_id uuid,
+    status text NOT NULL,
+    requires_password_reset boolean DEFAULT true CONSTRAINT identity_legacy_account_mappin_requires_password_reset_not_null NOT NULL,
+    reason text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_legacy_account_mappings_legacy_login_alias_check CHECK ((legacy_login_alias = lower(btrim(legacy_login_alias)))),
+    CONSTRAINT identity_legacy_account_mappings_legacy_user_id_check CHECK ((btrim(legacy_user_id) <> ''::text)),
+    CONSTRAINT identity_legacy_account_mappings_source_product_check CHECK ((source_product = 'navigator'::text)),
+    CONSTRAINT identity_legacy_account_mappings_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'matched'::text, 'needs_review'::text, 'migrated'::text, 'rejected'::text])))
+);
+
+
+--
+-- Name: identity_login_aliases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_login_aliases (
+    alias text NOT NULL,
+    user_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_login_aliases_alias_check CHECK (((alias = lower(btrim(alias))) AND ((char_length(alias) >= 1) AND (char_length(alias) <= 128))))
+);
+
+
+--
+-- Name: identity_login_emails; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_login_emails (
+    user_id uuid NOT NULL,
+    email text NOT NULL,
+    verified_at timestamp with time zone,
+    CONSTRAINT identity_login_emails_email_check CHECK (((email = lower(btrim(email))) AND (email <> ''::text)))
+);
+
+
+--
+-- Name: identity_management_audit; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_management_audit (
+    id bigint NOT NULL,
+    actor_id uuid NOT NULL,
+    target_id uuid,
+    action text NOT NULL,
+    product_id text,
+    reason text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_management_audit_reason_check CHECK ((btrim(reason) <> ''::text))
+);
+
+
+--
+-- Name: identity_management_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.identity_management_audit ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.identity_management_audit_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: identity_management_challenges; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_management_challenges (
+    token_hash text NOT NULL,
+    user_id uuid NOT NULL,
+    purpose text NOT NULL,
+    issuer_id uuid NOT NULL,
+    email text NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    consumed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_management_challenges_purpose_check CHECK ((purpose = ANY (ARRAY['activate'::text, 'recover'::text]))),
+    CONSTRAINT identity_management_challenges_token_hash_check CHECK ((token_hash ~ '^[a-f0-9]{64}$'::text))
+);
+
+
+--
+-- Name: identity_outbox; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_outbox (
+    event_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    event_type text NOT NULL,
+    user_id uuid NOT NULL,
+    product_id text,
+    revision integer NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    customer_id uuid,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    recipient_user_ids uuid[]
+);
+
+
+--
+-- Name: identity_product_access; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_product_access (
+    user_id uuid NOT NULL,
+    product_id text NOT NULL,
+    active boolean DEFAULT true NOT NULL,
+    scope text NOT NULL,
+    capabilities jsonb,
+    CONSTRAINT identity_product_access_capabilities_check CHECK (((capabilities IS NULL) OR (jsonb_typeof(capabilities) = 'array'::text))),
+    CONSTRAINT identity_product_access_scope_check CHECK ((scope = ANY (ARRAY['own'::text, 'shared'::text, 'summary'::text])))
+);
+
+
+--
+-- Name: identity_product_grants; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_product_grants (
+    user_id uuid NOT NULL,
+    product_id text NOT NULL,
+    role text NOT NULL,
+    active boolean DEFAULT true NOT NULL,
+    CONSTRAINT identity_product_grants_product_id_check CHECK ((product_id = ANY (ARRAY['crm'::text, 'navigator'::text]))),
+    CONSTRAINT identity_product_grants_role_check CHECK ((role = ANY (ARRAY['admin'::text, 'operations'::text, 'sales'::text, 'auditor'::text])))
+);
+
+
+--
+-- Name: identity_products; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_products (
+    product_id text NOT NULL,
+    name text NOT NULL,
+    connected boolean DEFAULT false NOT NULL,
+    description text NOT NULL
+);
+
+
+--
+-- Name: identity_sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_sessions (
+    token_hash text NOT NULL,
+    user_id uuid NOT NULL,
+    security_revision integer NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    session_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    client text DEFAULT 'api'::text NOT NULL,
+    CONSTRAINT identity_sessions_check CHECK ((expires_at > created_at)),
+    CONSTRAINT identity_sessions_client_check CHECK ((client = ANY (ARRAY['api'::text, 'browser'::text]))),
+    CONSTRAINT identity_sessions_token_hash_check CHECK ((token_hash ~ '^[a-f0-9]{64}$'::text))
+);
+
+
+--
+-- Name: identity_user_profiles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_user_profiles (
+    user_id uuid NOT NULL,
+    avatar_id text DEFAULT 'default'::text NOT NULL,
+    bio text DEFAULT ''::text NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT identity_user_profiles_avatar_id_check CHECK (((char_length(avatar_id) >= 1) AND (char_length(avatar_id) <= 64))),
+    CONSTRAINT identity_user_profiles_bio_check CHECK ((char_length(bio) <= 500))
+);
+
+
+--
+-- Name: identity_users; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identity_users (
+    user_id uuid NOT NULL,
+    display_name text NOT NULL,
+    active boolean DEFAULT true NOT NULL,
+    identity_admin boolean DEFAULT false NOT NULL,
+    security_revision integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    management_revision integer DEFAULT 1 NOT NULL,
+    deleted_at timestamp with time zone,
+    must_change_password boolean DEFAULT false NOT NULL,
+    CONSTRAINT deleted_user_inactive CHECK (((deleted_at IS NULL) OR (NOT active))),
+    CONSTRAINT identity_users_display_name_check CHECK ((btrim(display_name) <> ''::text)),
+    CONSTRAINT identity_users_security_revision_check CHECK ((security_revision > 0))
+);
+
+
+--
+-- Name: interactions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.interactions (
+    id integer NOT NULL,
+    contact_id integer NOT NULL,
+    type text NOT NULL,
+    direction text DEFAULT 'internal'::text NOT NULL,
+    channel text DEFAULT 'crm'::text NOT NULL,
+    body_preview text,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT interactions_channel_check CHECK ((channel = 'crm'::text)),
+    CONSTRAINT interactions_direction_check CHECK ((direction = 'internal'::text)),
+    CONSTRAINT interactions_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT interactions_type_check CHECK ((type = ANY (ARRAY['followup'::text, 'stage'::text])))
+);
+
+
+--
+-- Name: interactions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.interactions ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.interactions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: companies companies_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.companies
+    ADD CONSTRAINT companies_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: contacts contacts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contacts
+    ADD CONSTRAINT contacts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crm_assignment_history crm_assignment_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_assignment_history
+    ADD CONSTRAINT crm_assignment_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crm_campaign_attempts crm_campaign_attempts_execution_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_attempts
+    ADD CONSTRAINT crm_campaign_attempts_execution_key_key UNIQUE (execution_key);
+
+
+--
+-- Name: crm_campaign_attempts crm_campaign_attempts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_attempts
+    ADD CONSTRAINT crm_campaign_attempts_pkey PRIMARY KEY (attempt_id);
+
+
+--
+-- Name: crm_campaign_receipts crm_campaign_receipts_attempt_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_receipts
+    ADD CONSTRAINT crm_campaign_receipts_attempt_id_key UNIQUE (attempt_id);
+
+
+--
+-- Name: crm_campaign_receipts crm_campaign_receipts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_receipts
+    ADD CONSTRAINT crm_campaign_receipts_pkey PRIMARY KEY (receipt_id);
+
+
+--
+-- Name: crm_campaign_targets crm_campaign_targets_campaign_id_contact_id_round_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_targets
+    ADD CONSTRAINT crm_campaign_targets_campaign_id_contact_id_round_key UNIQUE (campaign_id, contact_id, round);
+
+
+--
+-- Name: crm_campaign_targets crm_campaign_targets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_targets
+    ADD CONSTRAINT crm_campaign_targets_pkey PRIMARY KEY (target_id);
+
+
+--
+-- Name: crm_campaigns crm_campaigns_created_by_idempotency_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaigns
+    ADD CONSTRAINT crm_campaigns_created_by_idempotency_key_key UNIQUE (created_by, idempotency_key);
+
+
+--
+-- Name: crm_campaigns crm_campaigns_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaigns
+    ADD CONSTRAINT crm_campaigns_pkey PRIMARY KEY (campaign_id);
+
+
+--
+-- Name: crm_contact_assignment_group_members crm_contact_assignment_group_members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_assignment_group_members
+    ADD CONSTRAINT crm_contact_assignment_group_members_pkey PRIMARY KEY (request_id);
+
+
+--
+-- Name: crm_contact_assignment_requests crm_contact_assignment_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_assignment_requests
+    ADD CONSTRAINT crm_contact_assignment_requests_pkey PRIMARY KEY (request_id);
+
+
+--
+-- Name: crm_contact_changes crm_contact_changes_event_id_recipient_user_id_contact_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_changes
+    ADD CONSTRAINT crm_contact_changes_event_id_recipient_user_id_contact_id_key UNIQUE (event_id, recipient_user_id, contact_id);
+
+
+--
+-- Name: crm_contact_changes crm_contact_changes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_changes
+    ADD CONSTRAINT crm_contact_changes_pkey PRIMARY KEY (change_seq);
+
+
+--
+-- Name: crm_contact_mail_events crm_contact_mail_events_actor_id_event_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_mail_events
+    ADD CONSTRAINT crm_contact_mail_events_actor_id_event_key_key UNIQUE (actor_id, event_key);
+
+
+--
+-- Name: crm_contact_mail_events crm_contact_mail_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_mail_events
+    ADD CONSTRAINT crm_contact_mail_events_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: crm_contact_shares crm_contact_shares_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_shares
+    ADD CONSTRAINT crm_contact_shares_pkey PRIMARY KEY (share_id);
+
+
+--
+-- Name: crm_customer_contacts crm_customer_contacts_pair; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_customer_contacts
+    ADD CONSTRAINT crm_customer_contacts_pair UNIQUE (customer_id, contact_id);
+
+
+--
+-- Name: crm_customer_contacts crm_customer_contacts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_customer_contacts
+    ADD CONSTRAINT crm_customer_contacts_pkey PRIMARY KEY (contact_id);
+
+
+--
+-- Name: crm_customers crm_customers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_customers
+    ADD CONSTRAINT crm_customers_pkey PRIMARY KEY (customer_id);
+
+
+--
+-- Name: crm_customers crm_customers_source_customer_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_customers
+    ADD CONSTRAINT crm_customers_source_customer_key_key UNIQUE (source, customer_key);
+
+
+--
+-- Name: crm_device_cursors crm_device_cursors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_device_cursors
+    ADD CONSTRAINT crm_device_cursors_pkey PRIMARY KEY (user_id, device_id);
+
+
+--
+-- Name: crm_event_deliveries crm_event_deliveries_event_id_recipient_user_id_projection__key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_event_deliveries
+    ADD CONSTRAINT crm_event_deliveries_event_id_recipient_user_id_projection__key UNIQUE (event_id, recipient_user_id, projection_type);
+
+
+--
+-- Name: crm_event_deliveries crm_event_deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_event_deliveries
+    ADD CONSTRAINT crm_event_deliveries_pkey PRIMARY KEY (delivery_id);
+
+
+--
+-- Name: crm_event_deliveries crm_event_deliveries_recipient_user_id_delivery_seq_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_event_deliveries
+    ADD CONSTRAINT crm_event_deliveries_recipient_user_id_delivery_seq_key UNIQUE (recipient_user_id, delivery_seq);
+
+
+--
+-- Name: crm_feed_heads crm_feed_heads_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_feed_heads
+    ADD CONSTRAINT crm_feed_heads_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: crm_followup_tasks crm_followup_tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_followup_tasks
+    ADD CONSTRAINT crm_followup_tasks_pkey PRIMARY KEY (task_id);
+
+
+--
+-- Name: crm_import_batches crm_import_batches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_import_batches
+    ADD CONSTRAINT crm_import_batches_pkey PRIMARY KEY (batch_id);
+
+
+--
+-- Name: crm_import_rows crm_import_rows_batch_id_row_index_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_import_rows
+    ADD CONSTRAINT crm_import_rows_batch_id_row_index_key UNIQUE (batch_id, row_index);
+
+
+--
+-- Name: crm_import_rows crm_import_rows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_import_rows
+    ADD CONSTRAINT crm_import_rows_pkey PRIMARY KEY (row_id);
+
+
+--
+-- Name: crm_lead_idempotency crm_lead_idempotency_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_lead_idempotency
+    ADD CONSTRAINT crm_lead_idempotency_pkey PRIMARY KEY (actor_id, operation, key);
+
+
+--
+-- Name: crm_notification_consumed crm_notification_consumed_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_notification_consumed
+    ADD CONSTRAINT crm_notification_consumed_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: crm_notification_reads crm_notification_reads_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_notification_reads
+    ADD CONSTRAINT crm_notification_reads_pkey PRIMARY KEY (user_id, delivery_id);
+
+
+--
+-- Name: crm_opportunities crm_opportunities_opportunity_id_customer_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_opportunities
+    ADD CONSTRAINT crm_opportunities_opportunity_id_customer_id_key UNIQUE (opportunity_id, customer_id);
+
+
+--
+-- Name: crm_opportunities crm_opportunities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_opportunities
+    ADD CONSTRAINT crm_opportunities_pkey PRIMARY KEY (opportunity_id);
+
+
+--
+-- Name: crm_opportunity_stage_history crm_opportunity_stage_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_opportunity_stage_history
+    ADD CONSTRAINT crm_opportunity_stage_history_pkey PRIMARY KEY (history_id);
+
+
+--
+-- Name: crm_relations crm_relations_contact_id_a_contact_id_b_relation_type_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_relations
+    ADD CONSTRAINT crm_relations_contact_id_a_contact_id_b_relation_type_key UNIQUE (contact_id_a, contact_id_b, relation_type);
+
+
+--
+-- Name: crm_relations crm_relations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_relations
+    ADD CONSTRAINT crm_relations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crm_schema_migrations crm_schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_schema_migrations
+    ADD CONSTRAINT crm_schema_migrations_pkey PRIMARY KEY (version);
+
+
+--
+-- Name: crm_send_authorizations crm_send_authorizations_actor_id_send_key_contact_id_custom_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_send_authorizations
+    ADD CONSTRAINT crm_send_authorizations_actor_id_send_key_contact_id_custom_key UNIQUE (actor_id, send_key, contact_id, customer_id);
+
+
+--
+-- Name: crm_send_authorizations crm_send_authorizations_consumed_event_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_send_authorizations
+    ADD CONSTRAINT crm_send_authorizations_consumed_event_id_key UNIQUE (consumed_event_id);
+
+
+--
+-- Name: crm_send_authorizations crm_send_authorizations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_send_authorizations
+    ADD CONSTRAINT crm_send_authorizations_pkey PRIMARY KEY (authorization_id);
+
+
+--
+-- Name: crm_shared_activities crm_shared_activities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_shared_activities
+    ADD CONSTRAINT crm_shared_activities_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crm_task_due_receipts crm_task_due_receipts_event_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_task_due_receipts
+    ADD CONSTRAINT crm_task_due_receipts_event_id_key UNIQUE (event_id);
+
+
+--
+-- Name: crm_task_due_receipts crm_task_due_receipts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_task_due_receipts
+    ADD CONSTRAINT crm_task_due_receipts_pkey PRIMARY KEY (task_id, task_version);
+
+
+--
+-- Name: crm_workbook_source_mappings crm_workbook_source_mappings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_workbook_source_mappings
+    ADD CONSTRAINT crm_workbook_source_mappings_pkey PRIMARY KEY (actor_id, source, origin, entity, source_ref);
+
+
+--
+-- Name: identity_account_experience_events identity_account_experience_e_user_id_source_product_event__key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_account_experience_events
+    ADD CONSTRAINT identity_account_experience_e_user_id_source_product_event__key UNIQUE (user_id, source_product, event_type, subject_key);
+
+
+--
+-- Name: identity_account_experience_events identity_account_experience_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_account_experience_events
+    ADD CONSTRAINT identity_account_experience_events_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: identity_account_growth_projection identity_account_growth_projection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_account_growth_projection
+    ADD CONSTRAINT identity_account_growth_projection_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: identity_audit identity_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_audit
+    ADD CONSTRAINT identity_audit_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: identity_credentials identity_credentials_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_credentials
+    ADD CONSTRAINT identity_credentials_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: identity_desktop_refresh_tokens identity_desktop_refresh_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_desktop_refresh_tokens
+    ADD CONSTRAINT identity_desktop_refresh_tokens_pkey PRIMARY KEY (token_hash);
+
+
+--
+-- Name: identity_legacy_account_mappings identity_legacy_account_mappi_source_product_legacy_login_a_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_legacy_account_mappings
+    ADD CONSTRAINT identity_legacy_account_mappi_source_product_legacy_login_a_key UNIQUE (source_product, legacy_login_alias);
+
+
+--
+-- Name: identity_legacy_account_mappings identity_legacy_account_mappings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_legacy_account_mappings
+    ADD CONSTRAINT identity_legacy_account_mappings_pkey PRIMARY KEY (source_product, legacy_user_id);
+
+
+--
+-- Name: identity_login_aliases identity_login_aliases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_login_aliases
+    ADD CONSTRAINT identity_login_aliases_pkey PRIMARY KEY (alias);
+
+
+--
+-- Name: identity_login_emails identity_login_emails_email_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_login_emails
+    ADD CONSTRAINT identity_login_emails_email_key UNIQUE (email);
+
+
+--
+-- Name: identity_login_emails identity_login_emails_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_login_emails
+    ADD CONSTRAINT identity_login_emails_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: identity_management_audit identity_management_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_management_audit
+    ADD CONSTRAINT identity_management_audit_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: identity_management_challenges identity_management_challenges_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_management_challenges
+    ADD CONSTRAINT identity_management_challenges_pkey PRIMARY KEY (token_hash);
+
+
+--
+-- Name: identity_outbox identity_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_outbox
+    ADD CONSTRAINT identity_outbox_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: identity_product_access identity_product_access_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_product_access
+    ADD CONSTRAINT identity_product_access_pkey PRIMARY KEY (user_id, product_id);
+
+
+--
+-- Name: identity_product_grants identity_product_grants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_product_grants
+    ADD CONSTRAINT identity_product_grants_pkey PRIMARY KEY (user_id, product_id, role);
+
+
+--
+-- Name: identity_products identity_products_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_products
+    ADD CONSTRAINT identity_products_pkey PRIMARY KEY (product_id);
+
+
+--
+-- Name: identity_sessions identity_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_sessions
+    ADD CONSTRAINT identity_sessions_pkey PRIMARY KEY (token_hash);
+
+
+--
+-- Name: identity_sessions identity_sessions_session_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_sessions
+    ADD CONSTRAINT identity_sessions_session_id_key UNIQUE (session_id);
+
+
+--
+-- Name: identity_user_profiles identity_user_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_user_profiles
+    ADD CONSTRAINT identity_user_profiles_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: identity_users identity_users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_users
+    ADD CONSTRAINT identity_users_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: interactions interactions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.interactions
+    ADD CONSTRAINT interactions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_companies_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_companies_name ON public.companies USING btree (name);
+
+
+--
+-- Name: idx_contact_share_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_contact_share_active ON public.crm_contact_shares USING btree (contact_id, target_user_id) WHERE (status = ANY (ARRAY['pending'::text, 'accepted'::text]));
+
+
+--
+-- Name: idx_contact_share_incoming; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_contact_share_incoming ON public.crm_contact_shares USING btree (target_user_id, status, created_at DESC);
+
+
+--
+-- Name: idx_contact_share_outgoing; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_contact_share_outgoing ON public.crm_contact_shares USING btree (grantor_user_id, status, created_at DESC);
+
+
+--
+-- Name: idx_contacts_company_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_contacts_company_id ON public.contacts USING btree (company_id);
+
+
+--
+-- Name: idx_contacts_email; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_contacts_email ON public.contacts USING btree (lower(btrim(email)));
+
+
+--
+-- Name: idx_contacts_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_contacts_status ON public.contacts USING btree (status);
+
+
+--
+-- Name: idx_contacts_updated_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_contacts_updated_at ON public.contacts USING btree (updated_at DESC, id DESC);
+
+
+--
+-- Name: idx_crm_activities_occurred; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_activities_occurred ON public.crm_shared_activities USING btree (customer_id, occurred_at DESC, id DESC);
+
+
+--
+-- Name: idx_crm_activity_opportunity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_activity_opportunity ON public.crm_shared_activities USING btree (opportunity_id) WHERE (opportunity_id IS NOT NULL);
+
+
+--
+-- Name: idx_crm_campaign_attempts_target; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_campaign_attempts_target ON public.crm_campaign_attempts USING btree (target_id, requested_at);
+
+
+--
+-- Name: idx_crm_campaign_targets_due; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_campaign_targets_due ON public.crm_campaign_targets USING btree (next_touch_at, target_id) WHERE (state = 'pending'::text);
+
+
+--
+-- Name: idx_crm_campaign_targets_lease; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_campaign_targets_lease ON public.crm_campaign_targets USING btree (lease_until, target_id) WHERE (state = 'leased'::text);
+
+
+--
+-- Name: idx_crm_campaigns_due; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_campaigns_due ON public.crm_campaigns USING btree (next_run_at, campaign_id) WHERE (state = ANY (ARRAY['scheduled'::text, 'running'::text]));
+
+
+--
+-- Name: idx_crm_companies_creator; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_companies_creator ON public.companies USING btree (crm_created_by) WHERE (crm_deleted_at IS NULL);
+
+
+--
+-- Name: idx_crm_contact_active_assignment; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_crm_contact_active_assignment ON public.crm_contact_assignment_requests USING btree (contact_id) WHERE (status = ANY (ARRAY['pending'::text, 'accepted'::text]));
+
+
+--
+-- Name: idx_crm_contact_assignment_actor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_contact_assignment_actor ON public.crm_contact_assignment_requests USING btree (actor_id, status, created_at DESC);
+
+
+--
+-- Name: idx_crm_contact_assignment_group_member; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_contact_assignment_group_member ON public.crm_contact_assignment_group_members USING btree (group_id, request_id);
+
+
+--
+-- Name: idx_crm_contact_assignment_target; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_contact_assignment_target ON public.crm_contact_assignment_requests USING btree (target_user_id, status, created_at DESC);
+
+
+--
+-- Name: idx_crm_contact_changes_user_seq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_contact_changes_user_seq ON public.crm_contact_changes USING btree (recipient_user_id, change_seq);
+
+
+--
+-- Name: idx_crm_contact_mail_history; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_contact_mail_history ON public.crm_contact_mail_events USING btree (customer_id, contact_id, occurred_at DESC, event_id DESC);
+
+
+--
+-- Name: idx_crm_customer_contacts_customer; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_customer_contacts_customer ON public.crm_customer_contacts USING btree (customer_id, contact_id);
+
+
+--
+-- Name: idx_crm_customers_creator_origin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_customers_creator_origin ON public.crm_customers USING btree (created_by, origin);
+
+
+--
+-- Name: idx_crm_customers_owner; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_customers_owner ON public.crm_customers USING btree (owner_user_id, state);
+
+
+--
+-- Name: idx_crm_opportunities_customer; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_opportunities_customer ON public.crm_opportunities USING btree (customer_id, created_at, opportunity_id);
+
+
+--
+-- Name: idx_crm_opportunity_history; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_opportunity_history ON public.crm_opportunity_stage_history USING btree (opportunity_id, occurred_at, history_id);
+
+
+--
+-- Name: idx_crm_shared_activities_customer; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_shared_activities_customer ON public.crm_shared_activities USING btree (customer_id, id DESC);
+
+
+--
+-- Name: idx_crm_task_opportunity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_task_opportunity ON public.crm_followup_tasks USING btree (opportunity_id) WHERE (opportunity_id IS NOT NULL);
+
+
+--
+-- Name: idx_crm_tasks_customer; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_tasks_customer ON public.crm_followup_tasks USING btree (customer_id, due_at, task_id);
+
+
+--
+-- Name: idx_crm_tasks_due; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_crm_tasks_due ON public.crm_followup_tasks USING btree (due_at, task_id) WHERE (status = 'open'::text);
+
+
+--
+-- Name: idx_desktop_refresh_session; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_desktop_refresh_session ON public.identity_desktop_refresh_tokens USING btree (session_id);
+
+
+--
+-- Name: idx_identity_growth_events_user_time; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_identity_growth_events_user_time ON public.identity_account_experience_events USING btree (user_id, occurred_at DESC, event_id);
+
+
+--
+-- Name: idx_identity_legacy_mapping_center_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_identity_legacy_mapping_center_user ON public.identity_legacy_account_mappings USING btree (center_user_id);
+
+
+--
+-- Name: idx_identity_legacy_mapping_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_identity_legacy_mapping_status ON public.identity_legacy_account_mappings USING btree (source_product, status);
+
+
+--
+-- Name: idx_identity_login_aliases_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_identity_login_aliases_user ON public.identity_login_aliases USING btree (user_id);
+
+
+--
+-- Name: idx_identity_sessions_expiry; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_identity_sessions_expiry ON public.identity_sessions USING btree (expires_at);
+
+
+--
+-- Name: idx_identity_sessions_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_identity_sessions_user ON public.identity_sessions USING btree (user_id);
+
+
+--
+-- Name: idx_interactions_contact_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_interactions_contact_id ON public.interactions USING btree (contact_id, id DESC);
+
+
+--
+-- Name: idx_mail_activity_projection; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_mail_activity_projection ON public.crm_contact_mail_events USING btree (activity_id) WHERE (activity_id IS NOT NULL);
+
+
+--
+-- Name: idx_mail_correction_revision; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_mail_correction_revision ON public.crm_contact_mail_events USING btree (actor_id, mailbox_key, message_key, contact_id, customer_id, classification_revision) WHERE (classification_revision IS NOT NULL);
+
+
+--
+-- Name: idx_mail_message_stream; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_mail_message_stream ON public.crm_contact_mail_events USING btree (actor_id, mailbox_key, message_key, contact_id, customer_id);
+
+
+--
+-- Name: identity_outbox crm_contact_change_capture; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER crm_contact_change_capture AFTER INSERT ON public.identity_outbox FOR EACH ROW EXECUTE FUNCTION public.crm_contact_change_capture();
+
+
+--
+-- Name: crm_customers crm_opportunities_customer_owner_changed; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER crm_opportunities_customer_owner_changed AFTER UPDATE OF owner_user_id ON public.crm_customers FOR EACH ROW EXECUTE FUNCTION public.crm_opportunities_customer_owner_changed();
+
+
+--
+-- Name: crm_opportunity_stage_history crm_opportunity_history_append_only; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER crm_opportunity_history_append_only BEFORE DELETE OR UPDATE ON public.crm_opportunity_stage_history FOR EACH ROW EXECUTE FUNCTION public.crm_opportunity_history_append_only();
+
+
+--
+-- Name: crm_customers crm_tasks_customer_owner_changed; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER crm_tasks_customer_owner_changed AFTER UPDATE OF owner_user_id ON public.crm_customers FOR EACH ROW EXECUTE FUNCTION public.crm_tasks_customer_owner_changed();
+
+
+--
+-- Name: companies companies_crm_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.companies
+    ADD CONSTRAINT companies_crm_created_by_fkey FOREIGN KEY (crm_created_by) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: companies companies_crm_deleted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.companies
+    ADD CONSTRAINT companies_crm_deleted_by_fkey FOREIGN KEY (crm_deleted_by) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: contacts contacts_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contacts
+    ADD CONSTRAINT contacts_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+
+--
+-- Name: contacts contacts_crm_deleted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contacts
+    ADD CONSTRAINT contacts_crm_deleted_by_fkey FOREIGN KEY (crm_deleted_by) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_shared_activities crm_activity_opportunity_customer_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_shared_activities
+    ADD CONSTRAINT crm_activity_opportunity_customer_fk FOREIGN KEY (opportunity_id, customer_id) REFERENCES public.crm_opportunities(opportunity_id, customer_id);
+
+
+--
+-- Name: crm_assignment_history crm_assignment_history_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_assignment_history
+    ADD CONSTRAINT crm_assignment_history_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_assignment_history crm_assignment_history_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_assignment_history
+    ADD CONSTRAINT crm_assignment_history_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_assignment_history crm_assignment_history_owner_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_assignment_history
+    ADD CONSTRAINT crm_assignment_history_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_campaign_attempts crm_campaign_attempts_target_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_attempts
+    ADD CONSTRAINT crm_campaign_attempts_target_id_fkey FOREIGN KEY (target_id) REFERENCES public.crm_campaign_targets(target_id);
+
+
+--
+-- Name: crm_campaign_receipts crm_campaign_receipts_attempt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_receipts
+    ADD CONSTRAINT crm_campaign_receipts_attempt_id_fkey FOREIGN KEY (attempt_id) REFERENCES public.crm_campaign_attempts(attempt_id);
+
+
+--
+-- Name: crm_campaign_targets crm_campaign_targets_campaign_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_targets
+    ADD CONSTRAINT crm_campaign_targets_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.crm_campaigns(campaign_id) ON DELETE CASCADE;
+
+
+--
+-- Name: crm_campaign_targets crm_campaign_targets_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaign_targets
+    ADD CONSTRAINT crm_campaign_targets_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_campaigns crm_campaigns_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_campaigns
+    ADD CONSTRAINT crm_campaigns_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_contact_assignment_group_members crm_contact_assignment_group_members_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_assignment_group_members
+    ADD CONSTRAINT crm_contact_assignment_group_members_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.crm_contact_assignment_requests(request_id) ON DELETE CASCADE;
+
+
+--
+-- Name: crm_contact_assignment_requests crm_contact_assignment_requests_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_assignment_requests
+    ADD CONSTRAINT crm_contact_assignment_requests_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_contact_assignment_requests crm_contact_assignment_requests_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_assignment_requests
+    ADD CONSTRAINT crm_contact_assignment_requests_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id);
+
+
+--
+-- Name: crm_contact_assignment_requests crm_contact_assignment_requests_customer_id_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_assignment_requests
+    ADD CONSTRAINT crm_contact_assignment_requests_customer_id_contact_id_fkey FOREIGN KEY (customer_id, contact_id) REFERENCES public.crm_customer_contacts(customer_id, contact_id);
+
+
+--
+-- Name: crm_contact_assignment_requests crm_contact_assignment_requests_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_assignment_requests
+    ADD CONSTRAINT crm_contact_assignment_requests_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_contact_assignment_requests crm_contact_assignment_requests_target_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_assignment_requests
+    ADD CONSTRAINT crm_contact_assignment_requests_target_user_id_fkey FOREIGN KEY (target_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_contact_changes crm_contact_changes_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_changes
+    ADD CONSTRAINT crm_contact_changes_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_contact_changes crm_contact_changes_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_changes
+    ADD CONSTRAINT crm_contact_changes_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.identity_outbox(event_id);
+
+
+--
+-- Name: crm_contact_changes crm_contact_changes_recipient_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_changes
+    ADD CONSTRAINT crm_contact_changes_recipient_user_id_fkey FOREIGN KEY (recipient_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_contact_mail_events crm_contact_mail_events_activity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_mail_events
+    ADD CONSTRAINT crm_contact_mail_events_activity_id_fkey FOREIGN KEY (activity_id) REFERENCES public.crm_shared_activities(id);
+
+
+--
+-- Name: crm_contact_mail_events crm_contact_mail_events_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_mail_events
+    ADD CONSTRAINT crm_contact_mail_events_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_contact_mail_events crm_contact_mail_events_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_mail_events
+    ADD CONSTRAINT crm_contact_mail_events_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id);
+
+
+--
+-- Name: crm_contact_mail_events crm_contact_mail_events_customer_id_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_mail_events
+    ADD CONSTRAINT crm_contact_mail_events_customer_id_contact_id_fkey FOREIGN KEY (customer_id, contact_id) REFERENCES public.crm_customer_contacts(customer_id, contact_id);
+
+
+--
+-- Name: crm_contact_mail_events crm_contact_mail_events_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_mail_events
+    ADD CONSTRAINT crm_contact_mail_events_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_contact_shares crm_contact_shares_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_shares
+    ADD CONSTRAINT crm_contact_shares_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id);
+
+
+--
+-- Name: crm_contact_shares crm_contact_shares_customer_id_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_shares
+    ADD CONSTRAINT crm_contact_shares_customer_id_contact_id_fkey FOREIGN KEY (customer_id, contact_id) REFERENCES public.crm_customer_contacts(customer_id, contact_id);
+
+
+--
+-- Name: crm_contact_shares crm_contact_shares_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_shares
+    ADD CONSTRAINT crm_contact_shares_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_contact_shares crm_contact_shares_grantor_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_shares
+    ADD CONSTRAINT crm_contact_shares_grantor_user_id_fkey FOREIGN KEY (grantor_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_contact_shares crm_contact_shares_target_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_contact_shares
+    ADD CONSTRAINT crm_contact_shares_target_user_id_fkey FOREIGN KEY (target_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_customer_contacts crm_customer_contacts_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_customer_contacts
+    ADD CONSTRAINT crm_customer_contacts_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id);
+
+
+--
+-- Name: crm_customer_contacts crm_customer_contacts_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_customer_contacts
+    ADD CONSTRAINT crm_customer_contacts_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_customers crm_customers_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_customers
+    ADD CONSTRAINT crm_customers_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+
+--
+-- Name: crm_customers crm_customers_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_customers
+    ADD CONSTRAINT crm_customers_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_customers crm_customers_owner_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_customers
+    ADD CONSTRAINT crm_customers_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_device_cursors crm_device_cursors_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_device_cursors
+    ADD CONSTRAINT crm_device_cursors_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_event_deliveries crm_event_deliveries_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_event_deliveries
+    ADD CONSTRAINT crm_event_deliveries_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_event_deliveries crm_event_deliveries_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_event_deliveries
+    ADD CONSTRAINT crm_event_deliveries_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.identity_outbox(event_id);
+
+
+--
+-- Name: crm_event_deliveries crm_event_deliveries_recipient_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_event_deliveries
+    ADD CONSTRAINT crm_event_deliveries_recipient_user_id_fkey FOREIGN KEY (recipient_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_feed_heads crm_feed_heads_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_feed_heads
+    ADD CONSTRAINT crm_feed_heads_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_followup_tasks crm_followup_tasks_completed_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_followup_tasks
+    ADD CONSTRAINT crm_followup_tasks_completed_by_fkey FOREIGN KEY (completed_by) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_followup_tasks crm_followup_tasks_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_followup_tasks
+    ADD CONSTRAINT crm_followup_tasks_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_followup_tasks crm_followup_tasks_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_followup_tasks
+    ADD CONSTRAINT crm_followup_tasks_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_import_batches crm_import_batches_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_import_batches
+    ADD CONSTRAINT crm_import_batches_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_import_rows crm_import_rows_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_import_rows
+    ADD CONSTRAINT crm_import_rows_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.crm_import_batches(batch_id);
+
+
+--
+-- Name: crm_import_rows crm_import_rows_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_import_rows
+    ADD CONSTRAINT crm_import_rows_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_lead_idempotency crm_lead_idempotency_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_lead_idempotency
+    ADD CONSTRAINT crm_lead_idempotency_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_notification_consumed crm_notification_consumed_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_notification_consumed
+    ADD CONSTRAINT crm_notification_consumed_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.identity_outbox(event_id);
+
+
+--
+-- Name: crm_notification_reads crm_notification_reads_delivery_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_notification_reads
+    ADD CONSTRAINT crm_notification_reads_delivery_id_fkey FOREIGN KEY (delivery_id) REFERENCES public.crm_event_deliveries(delivery_id);
+
+
+--
+-- Name: crm_notification_reads crm_notification_reads_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_notification_reads
+    ADD CONSTRAINT crm_notification_reads_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_opportunities crm_opportunities_closed_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_opportunities
+    ADD CONSTRAINT crm_opportunities_closed_by_fkey FOREIGN KEY (closed_by) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_opportunities crm_opportunities_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_opportunities
+    ADD CONSTRAINT crm_opportunities_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_opportunities crm_opportunities_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_opportunities
+    ADD CONSTRAINT crm_opportunities_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_opportunity_stage_history crm_opportunity_stage_history_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_opportunity_stage_history
+    ADD CONSTRAINT crm_opportunity_stage_history_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_opportunity_stage_history crm_opportunity_stage_history_opportunity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_opportunity_stage_history
+    ADD CONSTRAINT crm_opportunity_stage_history_opportunity_id_fkey FOREIGN KEY (opportunity_id) REFERENCES public.crm_opportunities(opportunity_id);
+
+
+--
+-- Name: crm_relations crm_relations_contact_id_a_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_relations
+    ADD CONSTRAINT crm_relations_contact_id_a_fkey FOREIGN KEY (contact_id_a) REFERENCES public.contacts(id);
+
+
+--
+-- Name: crm_relations crm_relations_contact_id_b_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_relations
+    ADD CONSTRAINT crm_relations_contact_id_b_fkey FOREIGN KEY (contact_id_b) REFERENCES public.contacts(id);
+
+
+--
+-- Name: crm_send_authorizations crm_send_authorizations_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_send_authorizations
+    ADD CONSTRAINT crm_send_authorizations_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_send_authorizations crm_send_authorizations_consumed_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_send_authorizations
+    ADD CONSTRAINT crm_send_authorizations_consumed_event_id_fkey FOREIGN KEY (consumed_event_id) REFERENCES public.crm_contact_mail_events(event_id);
+
+
+--
+-- Name: crm_send_authorizations crm_send_authorizations_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_send_authorizations
+    ADD CONSTRAINT crm_send_authorizations_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id);
+
+
+--
+-- Name: crm_send_authorizations crm_send_authorizations_customer_id_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_send_authorizations
+    ADD CONSTRAINT crm_send_authorizations_customer_id_contact_id_fkey FOREIGN KEY (customer_id, contact_id) REFERENCES public.crm_customer_contacts(customer_id, contact_id);
+
+
+--
+-- Name: crm_send_authorizations crm_send_authorizations_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_send_authorizations
+    ADD CONSTRAINT crm_send_authorizations_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_send_authorizations crm_send_authorizations_owner_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_send_authorizations
+    ADD CONSTRAINT crm_send_authorizations_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_shared_activities crm_shared_activities_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_shared_activities
+    ADD CONSTRAINT crm_shared_activities_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_shared_activities crm_shared_activities_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_shared_activities
+    ADD CONSTRAINT crm_shared_activities_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id);
+
+
+--
+-- Name: crm_shared_activities crm_shared_activities_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_shared_activities
+    ADD CONSTRAINT crm_shared_activities_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: crm_shared_activities crm_shared_activities_interaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_shared_activities
+    ADD CONSTRAINT crm_shared_activities_interaction_id_fkey FOREIGN KEY (interaction_id) REFERENCES public.interactions(id);
+
+
+--
+-- Name: crm_task_due_receipts crm_task_due_receipts_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_task_due_receipts
+    ADD CONSTRAINT crm_task_due_receipts_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.identity_outbox(event_id);
+
+
+--
+-- Name: crm_task_due_receipts crm_task_due_receipts_responsible_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_task_due_receipts
+    ADD CONSTRAINT crm_task_due_receipts_responsible_user_id_fkey FOREIGN KEY (responsible_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_task_due_receipts crm_task_due_receipts_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_task_due_receipts
+    ADD CONSTRAINT crm_task_due_receipts_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.crm_followup_tasks(task_id);
+
+
+--
+-- Name: crm_followup_tasks crm_task_opportunity_customer_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_followup_tasks
+    ADD CONSTRAINT crm_task_opportunity_customer_fk FOREIGN KEY (opportunity_id, customer_id) REFERENCES public.crm_opportunities(opportunity_id, customer_id);
+
+
+--
+-- Name: crm_workbook_source_mappings crm_workbook_source_mappings_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_workbook_source_mappings
+    ADD CONSTRAINT crm_workbook_source_mappings_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: crm_workbook_source_mappings crm_workbook_source_mappings_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_workbook_source_mappings
+    ADD CONSTRAINT crm_workbook_source_mappings_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id);
+
+
+--
+-- Name: crm_workbook_source_mappings crm_workbook_source_mappings_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_workbook_source_mappings
+    ADD CONSTRAINT crm_workbook_source_mappings_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: identity_account_experience_events identity_account_experience_events_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_account_experience_events
+    ADD CONSTRAINT identity_account_experience_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id) ON DELETE CASCADE;
+
+
+--
+-- Name: identity_account_growth_projection identity_account_growth_projection_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_account_growth_projection
+    ADD CONSTRAINT identity_account_growth_projection_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id) ON DELETE CASCADE;
+
+
+--
+-- Name: identity_audit identity_audit_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_audit
+    ADD CONSTRAINT identity_audit_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_credentials identity_credentials_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_credentials
+    ADD CONSTRAINT identity_credentials_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_desktop_refresh_tokens identity_desktop_refresh_tokens_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_desktop_refresh_tokens
+    ADD CONSTRAINT identity_desktop_refresh_tokens_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.identity_sessions(session_id);
+
+
+--
+-- Name: identity_legacy_account_mappings identity_legacy_account_mappings_center_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_legacy_account_mappings
+    ADD CONSTRAINT identity_legacy_account_mappings_center_user_id_fkey FOREIGN KEY (center_user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_login_aliases identity_login_aliases_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_login_aliases
+    ADD CONSTRAINT identity_login_aliases_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id) ON DELETE CASCADE;
+
+
+--
+-- Name: identity_login_emails identity_login_emails_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_login_emails
+    ADD CONSTRAINT identity_login_emails_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_management_audit identity_management_audit_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_management_audit
+    ADD CONSTRAINT identity_management_audit_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_management_audit identity_management_audit_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_management_audit
+    ADD CONSTRAINT identity_management_audit_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.identity_products(product_id);
+
+
+--
+-- Name: identity_management_audit identity_management_audit_target_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_management_audit
+    ADD CONSTRAINT identity_management_audit_target_id_fkey FOREIGN KEY (target_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_management_challenges identity_management_challenges_issuer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_management_challenges
+    ADD CONSTRAINT identity_management_challenges_issuer_id_fkey FOREIGN KEY (issuer_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_management_challenges identity_management_challenges_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_management_challenges
+    ADD CONSTRAINT identity_management_challenges_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_outbox identity_outbox_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_outbox
+    ADD CONSTRAINT identity_outbox_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.crm_customers(customer_id);
+
+
+--
+-- Name: identity_outbox identity_outbox_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_outbox
+    ADD CONSTRAINT identity_outbox_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.identity_products(product_id);
+
+
+--
+-- Name: identity_outbox identity_outbox_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_outbox
+    ADD CONSTRAINT identity_outbox_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_product_access identity_product_access_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_product_access
+    ADD CONSTRAINT identity_product_access_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.identity_products(product_id);
+
+
+--
+-- Name: identity_product_access identity_product_access_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_product_access
+    ADD CONSTRAINT identity_product_access_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_product_grants identity_product_grants_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_product_grants
+    ADD CONSTRAINT identity_product_grants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_sessions identity_sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_sessions
+    ADD CONSTRAINT identity_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id);
+
+
+--
+-- Name: identity_user_profiles identity_user_profiles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_user_profiles
+    ADD CONSTRAINT identity_user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.identity_users(user_id) ON DELETE CASCADE;
+
+
+--
+-- Name: interactions interactions_contact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.interactions
+    ADD CONSTRAINT interactions_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id);
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+--
+-- PostgreSQL database dump
+--
+
+
+-- Dumped from database version 18.6
+-- Dumped by pg_dump version 18.6
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+--
+-- Navigator tables and views for the shared public schema.
+--
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: account_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_events (
+    event_id text NOT NULL,
+    user_id text NOT NULL,
+    actor_id text NOT NULL,
+    actor_name text NOT NULL,
+    action text NOT NULL,
+    detail_json text NOT NULL,
+    created_at text NOT NULL
+);
+
+
+--
+-- Name: account_experience_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_experience_events (
+    event_id text NOT NULL,
+    user_id text NOT NULL,
+    event_type text NOT NULL,
+    subject_key text NOT NULL,
+    points integer NOT NULL,
+    rule_version integer NOT NULL,
+    created_at text NOT NULL,
+    CONSTRAINT account_experience_events_points_check CHECK ((points > 0))
+);
+
+
+--
+-- Name: account_growth_sync_outbox; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_growth_sync_outbox (
+    event_id text NOT NULL,
+    user_id text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    last_error text,
+    created_at text NOT NULL,
+    sent_at text,
+    CONSTRAINT account_growth_sync_outbox_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'sent'::text])))
+);
+
+
+--
+-- Name: account_notifications; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_notifications (
+    notification_id text NOT NULL,
+    recipient_id text NOT NULL,
+    actor_id text,
+    actor_name text NOT NULL,
+    kind text NOT NULL,
+    title text NOT NULL,
+    summary text NOT NULL,
+    entity_type text,
+    entity_id text,
+    payload_json text DEFAULT '{}'::text NOT NULL,
+    read_at text,
+    resolved_at text,
+    resolved_action text,
+    created_at text NOT NULL,
+    dedupe_key text NOT NULL
+);
+
+
+--
+-- Name: account_profiles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_profiles (
+    user_id text NOT NULL,
+    profile_json text DEFAULT '{}'::text NOT NULL,
+    experience_json text DEFAULT '{}'::text NOT NULL,
+    updated_at text,
+    updated_by text
+);
+
+
+--
+-- Name: account_recovery_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_recovery_requests (
+    name text NOT NULL,
+    status text DEFAULT 'requested'::text NOT NULL,
+    requested_at text NOT NULL,
+    resolved_at text,
+    resolved_by text,
+    CONSTRAINT account_recovery_requests_status_check CHECK ((status = ANY (ARRAY['requested'::text, 'resolved'::text])))
+);
+
+
+--
+-- Name: account_security; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_security (
+    user_id text NOT NULL,
+    must_change_password integer DEFAULT 0 NOT NULL,
+    revision integer DEFAULT 0 NOT NULL,
+    CONSTRAINT account_security_must_change_password_check CHECK ((must_change_password = ANY (ARRAY[0, 1])))
+);
+
+
+--
+-- Name: alias_scope; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.alias_scope (
+    alias text NOT NULL,
+    kind text NOT NULL,
+    target text NOT NULL,
+    scope_group text DEFAULT '*'::text NOT NULL,
+    evidence_count integer DEFAULT 0,
+    source text DEFAULT 'manual'::text NOT NULL,
+    note text,
+    created_at text,
+    CONSTRAINT alias_scope_kind_check CHECK ((kind = ANY (ARRAY['pol'::text, 'pod'::text, 'carrier'::text, 'route'::text, 'space_type'::text, 'ctype'::text, 'price'::text, 'remark'::text, 'schedule'::text]))),
+    CONSTRAINT alias_scope_source_check CHECK ((source = ANY (ARRAY['manual'::text, 'seed_v1'::text, 'candidate_approved'::text, 'imported'::text])))
+);
+
+
+--
+-- Name: announcements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.announcements (
+    id text NOT NULL,
+    title text NOT NULL,
+    body_html text NOT NULL,
+    group_name text DEFAULT ''::text NOT NULL,
+    tags_json text NOT NULL,
+    author_id text NOT NULL,
+    author_name text NOT NULL,
+    created_at text NOT NULL,
+    updated_at text NOT NULL,
+    pin_state text DEFAULT 'none'::text NOT NULL,
+    pin_requested_by text,
+    pin_reviewed_by text,
+    pin_reviewed_at text,
+    deleted integer DEFAULT 0 NOT NULL,
+    revision integer DEFAULT 1 NOT NULL,
+    expires_on text,
+    target_groups_json text DEFAULT '[]'::text NOT NULL,
+    target_routes_json text DEFAULT '[]'::text NOT NULL,
+    CONSTRAINT announcements_pin_state_check CHECK ((pin_state = ANY (ARRAY['none'::text, 'pending'::text, 'approved'::text, 'rejected'::text])))
+);
+
+
+--
+-- Name: api_request_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.api_request_events (
+    request_id text NOT NULL,
+    created_at text NOT NULL,
+    method text NOT NULL,
+    path text NOT NULL,
+    status_code integer NOT NULL,
+    duration_ms integer NOT NULL,
+    user_id text,
+    role text DEFAULT ''::text NOT NULL,
+    client_ip text DEFAULT ''::text NOT NULL,
+    CONSTRAINT api_request_events_duration_ms_check CHECK ((duration_ms >= 0)),
+    CONSTRAINT api_request_events_status_code_check CHECK (((status_code >= 100) AND (status_code <= 599)))
+);
+
+
+--
+-- Name: auth_sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.auth_sessions (
+    token_hash text NOT NULL,
+    operator_name text NOT NULL,
+    client_ip text NOT NULL,
+    expires_at integer NOT NULL,
+    created_at text NOT NULL
+);
+
+
+--
+-- Name: carriers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.carriers (
+    code text NOT NULL,
+    name_en text,
+    name_cn text,
+    scac text,
+    sort integer DEFAULT 900,
+    aliases text,
+    active integer DEFAULT 1,
+    note text,
+    created_at text,
+    website_url text
+);
+
+
+--
+-- Name: chat_groups; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chat_groups (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    cid text,
+    default_pol text,
+    region text,
+    owner text,
+    active integer DEFAULT 1,
+    note text,
+    source text DEFAULT 'manual'::text,
+    created_at text
+);
+
+
+--
+-- Name: chat_groups_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.chat_groups_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: chat_groups_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.chat_groups_id_seq OWNED BY public.chat_groups.id;
+
+
+--
+-- Name: company_mappings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.company_mappings (
+    business_user_id bigint NOT NULL,
+    kind text NOT NULL,
+    local_name text NOT NULL,
+    company_id bigint NOT NULL,
+    company_code text,
+    company_name text,
+    country text,
+    status text DEFAULT 'pending'::text NOT NULL,
+    note text,
+    updated_by text,
+    updated_at integer NOT NULL,
+    revision integer DEFAULT 1 NOT NULL,
+    CONSTRAINT company_mappings_company_id_check CHECK ((company_id > 0)),
+    CONSTRAINT company_mappings_kind_check CHECK ((kind = ANY (ARRAY['port'::text, 'carrier'::text]))),
+    CONSTRAINT company_mappings_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'confirmed'::text, 'disabled'::text])))
+);
+
+
+--
+-- Name: company_rate_results; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.company_rate_results (
+    task_id text NOT NULL,
+    pair_key text NOT NULL,
+    items_json text NOT NULL,
+    error text,
+    created_at integer NOT NULL,
+    expires_at integer NOT NULL
+);
+
+
+--
+-- Name: company_rate_tasks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.company_rate_tasks (
+    task_id text NOT NULL,
+    user_id text NOT NULL,
+    kind text NOT NULL,
+    query_signature text NOT NULL,
+    query_json text NOT NULL,
+    status text NOT NULL,
+    error text,
+    created_at integer NOT NULL,
+    updated_at integer NOT NULL,
+    activity_query_id text DEFAULT ''::text NOT NULL,
+    CONSTRAINT company_rate_tasks_kind_check CHECK ((kind = ANY (ARRAY['company'::text, 'realtime'::text]))),
+    CONSTRAINT company_rate_tasks_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'complete'::text, 'partial'::text, 'failed'::text, 'timeout'::text])))
+);
+
+
+--
+-- Name: field_defaults; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.field_defaults (
+    id bigint NOT NULL,
+    scope_key text NOT NULL,
+    field text NOT NULL,
+    default_value text NOT NULL,
+    evidence_count integer DEFAULT 0,
+    source text DEFAULT 'audit_scan'::text NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    note text,
+    created_at text,
+    CONSTRAINT field_defaults_status_check CHECK ((status = ANY (ARRAY['active'::text, 'retired'::text])))
+);
+
+
+--
+-- Name: field_defaults_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.field_defaults_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: field_defaults_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.field_defaults_id_seq OWNED BY public.field_defaults.id;
+
+
+--
+-- Name: freight_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.freight_items (
+    id bigint NOT NULL,
+    content_key text NOT NULL,
+    record_type text DEFAULT 'unclassified'::text NOT NULL,
+    pol text,
+    pod text,
+    route text,
+    carrier text,
+    container_type text,
+    price_usd integer,
+    vessel_voyage text,
+    cutoff_raw text,
+    box_desc text,
+    box_qty integer,
+    space_type text,
+    validity_raw text,
+    valid_from text,
+    valid_to text,
+    etd text,
+    free_days integer,
+    dead_freight integer,
+    transit_days integer,
+    remark text,
+    source_group text,
+    sender text,
+    message_time text,
+    message_text text,
+    image_url text,
+    status text,
+    overridden_time text,
+    synced_at text,
+    mid text,
+    image_file text,
+    supersedes text,
+    origin text DEFAULT 'manual'::text NOT NULL,
+    ai_flag text,
+    entry_id text NOT NULL,
+    service_name text,
+    destination_terminal text,
+    publisher_id text,
+    source_group_id text,
+    source_sender_id text,
+    source_sender_open_id text,
+    currency text DEFAULT 'USD'::text NOT NULL,
+    CONSTRAINT freight_items_box_qty_check CHECK (((box_qty IS NULL) OR (box_qty >= 0))),
+    CONSTRAINT freight_items_dead_freight_check CHECK (((dead_freight IS NULL) OR (dead_freight >= 0))),
+    CONSTRAINT freight_items_free_days_check CHECK (((free_days IS NULL) OR (free_days >= 0))),
+    CONSTRAINT freight_items_price_usd_check CHECK (((price_usd IS NULL) OR (price_usd >= 0))),
+    CONSTRAINT freight_items_record_type_check CHECK ((record_type = ANY (ARRAY['rates'::text, 'space'::text, 'unclassified'::text]))),
+    CONSTRAINT freight_items_transit_days_check CHECK (((transit_days IS NULL) OR (transit_days >= 0))),
+    CONSTRAINT freight_items_valid_from_check CHECK (((valid_from IS NULL) OR (valid_from = ''::text) OR (valid_from ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'::text))),
+    CONSTRAINT freight_items_valid_to_check CHECK (((valid_to IS NULL) OR (valid_to = ''::text) OR (valid_to ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'::text)))
+);
+
+
+--
+-- Name: freight_items_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.freight_items_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: freight_items_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.freight_items_id_seq OWNED BY public.freight_items.id;
+
+
+--
+-- Name: freight_rates; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.freight_rates AS
+ SELECT id,
+    content_key,
+    record_type,
+    pol,
+    pod,
+    route,
+    carrier,
+    container_type,
+    price_usd,
+    vessel_voyage,
+    cutoff_raw,
+    box_desc,
+    box_qty,
+    space_type,
+    validity_raw,
+    valid_from,
+    valid_to,
+    etd,
+    free_days,
+    dead_freight,
+    transit_days,
+    remark,
+    source_group,
+    sender,
+    message_time,
+    message_text,
+    image_url,
+    status,
+    overridden_time,
+    synced_at,
+    mid,
+    image_file,
+    supersedes,
+    origin,
+    ai_flag,
+    price_usd AS freight_usd
+   FROM public.freight_items
+  WHERE (record_type = 'rates'::text);
+
+
+--
+-- Name: item_feedback; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.item_feedback (
+    id text NOT NULL,
+    submission_id text NOT NULL,
+    entry_id text NOT NULL,
+    field text NOT NULL,
+    old_value text NOT NULL,
+    suggested_value text NOT NULL,
+    author_user_id text NOT NULL,
+    author_name text NOT NULL,
+    note text NOT NULL,
+    created_at text NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    resolved_at text,
+    resolved_by text,
+    CONSTRAINT item_feedback_status_check CHECK ((status = ANY (ARRAY['active'::text, 'withdrawn'::text, 'rejected'::text, 'stale'::text])))
+);
+
+
+--
+-- Name: message_board_posts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.message_board_posts (
+    id text NOT NULL,
+    user_id text NOT NULL,
+    author_name text NOT NULL,
+    content text NOT NULL,
+    created_at text NOT NULL
+);
+
+
+--
+-- Name: operators; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.operators (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    title text,
+    routes text,
+    groups text,
+    match_mode text DEFAULT 'any'::text,
+    active integer DEFAULT 1,
+    role text DEFAULT 'operator'::text NOT NULL,
+    password_hash text,
+    password_changed_at text,
+    note text,
+    created_at text,
+    user_id text,
+    display_name text,
+    preferences_json text,
+    publisher_name text,
+    publisher_id text,
+    CONSTRAINT operators_role_check CHECK ((role = ANY (ARRAY['superadmin'::text, 'admin'::text, 'operator'::text, 'sales'::text])))
+);
+
+
+--
+-- Name: operators_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.operators_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: operators_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.operators_id_seq OWNED BY public.operators.id;
+
+
+--
+-- Name: pending_records; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pending_records (
+    id bigint NOT NULL,
+    kind text NOT NULL,
+    payload text NOT NULL,
+    origin text DEFAULT 'agent'::text NOT NULL,
+    resolved text,
+    action text,
+    target_key text,
+    check_status text DEFAULT 'pending'::text NOT NULL,
+    errors text,
+    warnings text,
+    review_status text DEFAULT 'awaiting'::text NOT NULL,
+    final_key text,
+    reviewed_by text,
+    reviewed_at text,
+    note text,
+    created_at text,
+    orig_payload text,
+    edit_log text,
+    entry_id text NOT NULL,
+    publisher_id text
+);
+
+
+--
+-- Name: pending_records_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.pending_records_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: pending_records_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.pending_records_id_seq OWNED BY public.pending_records.id;
+
+
+--
+-- Name: pending_shadow; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pending_shadow (
+    id bigint NOT NULL,
+    source_pending_id integer NOT NULL,
+    mode text NOT NULL,
+    kind text NOT NULL,
+    payload text NOT NULL,
+    resolved text,
+    errors text,
+    diff_summary text,
+    note text,
+    created_at text
+);
+
+
+--
+-- Name: pending_shadow_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.pending_shadow_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: pending_shadow_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.pending_shadow_id_seq OWNED BY public.pending_shadow.id;
+
+
+--
+-- Name: port_groups; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.port_groups (
+    name text NOT NULL,
+    label text,
+    members text,
+    specials text,
+    kind text DEFAULT 'pod'::text,
+    active integer DEFAULT 1,
+    note text,
+    created_at text,
+    aliases text
+);
+
+
+--
+-- Name: port_routes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.port_routes (
+    port_name text NOT NULL,
+    route_name text NOT NULL,
+    source text DEFAULT 'manual'::text NOT NULL,
+    note text,
+    created_at text
+);
+
+
+--
+-- Name: ports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ports (
+    name text NOT NULL,
+    country text,
+    city text,
+    city_pinyin text,
+    name_en text,
+    name_cn text,
+    aliases text,
+    kind text DEFAULT 'pod'::text,
+    route text,
+    source text,
+    locode_ref text,
+    active integer DEFAULT 1,
+    note text,
+    created_at text
+);
+
+
+--
+-- Name: prospector_codes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prospector_codes (
+    code_hash text NOT NULL,
+    user_id text NOT NULL,
+    security_hash text NOT NULL,
+    redirect_uri text NOT NULL,
+    challenge text NOT NULL,
+    expires_at integer NOT NULL,
+    consumed integer DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: prospector_grants; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prospector_grants (
+    grant_id text NOT NULL,
+    revoked integer DEFAULT 0 NOT NULL,
+    expires_at integer NOT NULL
+);
+
+
+--
+-- Name: prospector_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prospector_tokens (
+    token_hash text NOT NULL,
+    grant_id text NOT NULL,
+    user_id text NOT NULL,
+    security_hash text NOT NULL,
+    kind text NOT NULL,
+    expires_at integer NOT NULL,
+    revoked integer DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: publisher_dingtalk_ids; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.publisher_dingtalk_ids (
+    identity_key text NOT NULL,
+    publisher_id text NOT NULL,
+    created_at text NOT NULL
+);
+
+
+--
+-- Name: publisher_legacy_names; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.publisher_legacy_names (
+    sender_name text NOT NULL,
+    publisher_id text NOT NULL
+);
+
+
+--
+-- Name: publisher_sources; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.publisher_sources (
+    source_key text NOT NULL,
+    publisher_id text NOT NULL,
+    source_group text,
+    sender_name text,
+    identity_kind text NOT NULL,
+    created_at text NOT NULL
+);
+
+
+--
+-- Name: quote_publishers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.quote_publishers (
+    publisher_id text NOT NULL,
+    publisher_name text NOT NULL,
+    created_at text NOT NULL,
+    merged_into text
+);
+
+
+--
+-- Name: quote_usage_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.quote_usage_events (
+    event_id text NOT NULL,
+    user_id text NOT NULL,
+    role text NOT NULL,
+    action text NOT NULL,
+    quote_kind text NOT NULL,
+    item_count integer DEFAULT 0 NOT NULL,
+    field_type text DEFAULT ''::text NOT NULL,
+    event_date text NOT NULL,
+    client_ip text DEFAULT ''::text NOT NULL,
+    created_at text NOT NULL,
+    CONSTRAINT quote_usage_events_action_check CHECK ((action = ANY (ARRAY['editor_opened'::text, 'item_selected'::text, 'item_deselected'::text, 'row_added'::text, 'row_removed'::text, 'table_cleared'::text, 'format_reset'::text, 'copied'::text, 'cell_edited'::text, 'column_changed'::text]))),
+    CONSTRAINT quote_usage_events_field_type_check CHECK ((field_type = ANY (ARRAY[''::text, 'price'::text, 'port'::text, 'date'::text, 'route'::text, 'transit'::text, 'carrier'::text, 'vessel'::text, 'container'::text, 'remark'::text, 'custom'::text, 'format'::text, 'other'::text]))),
+    CONSTRAINT quote_usage_events_item_count_check CHECK (((item_count >= 0) AND (item_count <= 500))),
+    CONSTRAINT quote_usage_events_quote_kind_check CHECK ((quote_kind = ANY (ARRAY['rates'::text, 'space'::text, 'both'::text])))
+);
+
+
+--
+-- Name: review_issues; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.review_issues (
+    source_group text NOT NULL,
+    message_id text NOT NULL,
+    message_text text NOT NULL,
+    media_ids text NOT NULL,
+    reasons text NOT NULL,
+    status text DEFAULT 'open'::text NOT NULL,
+    created_at text NOT NULL,
+    updated_at text NOT NULL,
+    resolved_by text,
+    resolved_at text
+);
+
+
+--
+-- Name: routes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.routes (
+    name text NOT NULL,
+    region text,
+    sort integer DEFAULT 900,
+    aliases text,
+    active integer DEFAULT 1,
+    note text,
+    created_at text
+);
+
+
+--
+-- Name: rule_candidates; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.rule_candidates (
+    id bigint NOT NULL,
+    scope_kind text NOT NULL,
+    scope_key text NOT NULL,
+    target_layer text NOT NULL,
+    pattern_type text NOT NULL,
+    alias text NOT NULL,
+    kind text NOT NULL,
+    suggested_target text NOT NULL,
+    reason text,
+    confidence real DEFAULT 0,
+    evidence_count integer DEFAULT 0,
+    evidence_refs text,
+    source text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    reviewed_by text,
+    reviewed_at text,
+    reviewer_note text,
+    created_at text DEFAULT to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai'::text), 'YYYY-MM-DD HH24:MI:SS'::text),
+    CONSTRAINT rule_candidates_pattern_type_check CHECK ((pattern_type = ANY (ARRAY['alias'::text, 'default'::text, 'correction'::text]))),
+    CONSTRAINT rule_candidates_scope_kind_check CHECK ((scope_kind = ANY (ARRAY['sender+carrier+group'::text, 'sender+group'::text, 'carrier+group'::text, 'group+column'::text, 'group'::text]))),
+    CONSTRAINT rule_candidates_source_check CHECK ((source = ANY (ARRAY['difflib_scan'::text, 'agent_observation'::text, 'audit_correction'::text, 'manual'::text]))),
+    CONSTRAINT rule_candidates_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'expired'::text]))),
+    CONSTRAINT rule_candidates_target_layer_check CHECK ((target_layer = ANY (ARRAY['alias_scope'::text, 'master_aliases'::text, 'field_default'::text])))
+);
+
+
+--
+-- Name: rule_candidates_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.rule_candidates_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: rule_candidates_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.rule_candidates_id_seq OWNED BY public.rule_candidates.id;
+
+
+--
+-- Name: sales_group_visits; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sales_group_visits (
+    user_id text NOT NULL,
+    source_group text NOT NULL,
+    click_count integer DEFAULT 0 NOT NULL,
+    last_clicked_at text NOT NULL,
+    CONSTRAINT sales_group_visits_click_count_check CHECK ((click_count >= 0))
+);
+
+
+--
+-- Name: senders; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.senders (
+    name text NOT NULL,
+    active integer DEFAULT 1,
+    note text,
+    source text DEFAULT 'manual'::text,
+    created_at text
+);
+
+
+--
+-- Name: space_records; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.space_records AS
+ SELECT id,
+    content_key,
+    record_type,
+    pol,
+    pod,
+    route,
+    carrier,
+    container_type,
+    price_usd,
+    vessel_voyage,
+    cutoff_raw,
+    box_desc,
+    box_qty,
+    space_type,
+    validity_raw,
+    valid_from,
+    valid_to,
+    etd,
+    free_days,
+    dead_freight,
+    transit_days,
+    remark,
+    source_group,
+    sender,
+    message_time,
+    message_text,
+    image_url,
+    status,
+    overridden_time,
+    synced_at,
+    mid,
+    image_file,
+    supersedes,
+    origin,
+    ai_flag
+   FROM public.freight_items
+  WHERE (record_type = 'space'::text);
+
+
+--
+-- Name: user_activity_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_activity_events (
+    event_id text NOT NULL,
+    user_id text NOT NULL,
+    role text NOT NULL,
+    event_type text NOT NULL,
+    event_date text NOT NULL,
+    properties_json text DEFAULT '{}'::text NOT NULL,
+    result_count integer,
+    client_ip text DEFAULT ''::text NOT NULL,
+    client_event_id text,
+    created_at text NOT NULL,
+    CONSTRAINT user_activity_events_event_type_check CHECK ((event_type = ANY (ARRAY['page_open'::text, 'sales_search'::text]))),
+    CONSTRAINT user_activity_events_result_count_check CHECK (((result_count IS NULL) OR (result_count >= 0)))
+);
+
+
+--
+-- Name: chat_groups id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_groups ALTER COLUMN id SET DEFAULT nextval('public.chat_groups_id_seq'::regclass);
+
+
+--
+-- Name: field_defaults id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.field_defaults ALTER COLUMN id SET DEFAULT nextval('public.field_defaults_id_seq'::regclass);
+
+
+--
+-- Name: freight_items id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.freight_items ALTER COLUMN id SET DEFAULT nextval('public.freight_items_id_seq'::regclass);
+
+
+--
+-- Name: operators id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operators ALTER COLUMN id SET DEFAULT nextval('public.operators_id_seq'::regclass);
+
+
+--
+-- Name: pending_records id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pending_records ALTER COLUMN id SET DEFAULT nextval('public.pending_records_id_seq'::regclass);
+
+
+--
+-- Name: pending_shadow id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pending_shadow ALTER COLUMN id SET DEFAULT nextval('public.pending_shadow_id_seq'::regclass);
+
+
+--
+-- Name: rule_candidates id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rule_candidates ALTER COLUMN id SET DEFAULT nextval('public.rule_candidates_id_seq'::regclass);
+
+
+--
+-- Name: account_events account_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_events
+    ADD CONSTRAINT account_events_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: account_experience_events account_experience_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_experience_events
+    ADD CONSTRAINT account_experience_events_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: account_experience_events account_experience_events_user_id_event_type_subject_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_experience_events
+    ADD CONSTRAINT account_experience_events_user_id_event_type_subject_key_key UNIQUE (user_id, event_type, subject_key);
+
+
+--
+-- Name: account_growth_sync_outbox account_growth_sync_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_growth_sync_outbox
+    ADD CONSTRAINT account_growth_sync_outbox_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: account_notifications account_notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_notifications
+    ADD CONSTRAINT account_notifications_pkey PRIMARY KEY (notification_id);
+
+
+--
+-- Name: account_notifications account_notifications_recipient_id_dedupe_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_notifications
+    ADD CONSTRAINT account_notifications_recipient_id_dedupe_key_key UNIQUE (recipient_id, dedupe_key);
+
+
+--
+-- Name: account_profiles account_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_profiles
+    ADD CONSTRAINT account_profiles_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: account_recovery_requests account_recovery_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_recovery_requests
+    ADD CONSTRAINT account_recovery_requests_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: account_security account_security_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_security
+    ADD CONSTRAINT account_security_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: alias_scope alias_scope_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.alias_scope
+    ADD CONSTRAINT alias_scope_pkey PRIMARY KEY (alias, kind, scope_group);
+
+
+--
+-- Name: announcements announcements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.announcements
+    ADD CONSTRAINT announcements_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: api_request_events api_request_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_request_events
+    ADD CONSTRAINT api_request_events_pkey PRIMARY KEY (request_id);
+
+
+--
+-- Name: auth_sessions auth_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_sessions
+    ADD CONSTRAINT auth_sessions_pkey PRIMARY KEY (token_hash);
+
+
+--
+-- Name: carriers carriers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.carriers
+    ADD CONSTRAINT carriers_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: chat_groups chat_groups_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_groups
+    ADD CONSTRAINT chat_groups_name_key UNIQUE (name);
+
+
+--
+-- Name: chat_groups chat_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_groups
+    ADD CONSTRAINT chat_groups_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: company_mappings company_mappings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_mappings
+    ADD CONSTRAINT company_mappings_pkey PRIMARY KEY (business_user_id, kind, local_name);
+
+
+--
+-- Name: company_rate_results company_rate_results_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_rate_results
+    ADD CONSTRAINT company_rate_results_pkey PRIMARY KEY (task_id, pair_key);
+
+
+--
+-- Name: company_rate_tasks company_rate_tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_rate_tasks
+    ADD CONSTRAINT company_rate_tasks_pkey PRIMARY KEY (task_id);
+
+
+--
+-- Name: field_defaults field_defaults_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.field_defaults
+    ADD CONSTRAINT field_defaults_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: field_defaults field_defaults_scope_key_field_default_value_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.field_defaults
+    ADD CONSTRAINT field_defaults_scope_key_field_default_value_key UNIQUE (scope_key, field, default_value);
+
+
+--
+-- Name: freight_items freight_items_content_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.freight_items
+    ADD CONSTRAINT freight_items_content_key_key UNIQUE (content_key);
+
+
+--
+-- Name: freight_items freight_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.freight_items
+    ADD CONSTRAINT freight_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: item_feedback item_feedback_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.item_feedback
+    ADD CONSTRAINT item_feedback_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: message_board_posts message_board_posts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.message_board_posts
+    ADD CONSTRAINT message_board_posts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: operators operators_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operators
+    ADD CONSTRAINT operators_name_key UNIQUE (name);
+
+
+--
+-- Name: operators operators_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operators
+    ADD CONSTRAINT operators_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pending_records pending_records_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pending_records
+    ADD CONSTRAINT pending_records_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pending_shadow pending_shadow_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pending_shadow
+    ADD CONSTRAINT pending_shadow_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pending_shadow pending_shadow_source_pending_id_mode_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pending_shadow
+    ADD CONSTRAINT pending_shadow_source_pending_id_mode_key UNIQUE (source_pending_id, mode);
+
+
+--
+-- Name: port_groups port_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.port_groups
+    ADD CONSTRAINT port_groups_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: port_routes port_routes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.port_routes
+    ADD CONSTRAINT port_routes_pkey PRIMARY KEY (port_name, route_name);
+
+
+--
+-- Name: ports ports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ports
+    ADD CONSTRAINT ports_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: prospector_codes prospector_codes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospector_codes
+    ADD CONSTRAINT prospector_codes_pkey PRIMARY KEY (code_hash);
+
+
+--
+-- Name: prospector_grants prospector_grants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospector_grants
+    ADD CONSTRAINT prospector_grants_pkey PRIMARY KEY (grant_id);
+
+
+--
+-- Name: prospector_tokens prospector_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospector_tokens
+    ADD CONSTRAINT prospector_tokens_pkey PRIMARY KEY (token_hash);
+
+
+--
+-- Name: publisher_dingtalk_ids publisher_dingtalk_ids_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.publisher_dingtalk_ids
+    ADD CONSTRAINT publisher_dingtalk_ids_pkey PRIMARY KEY (identity_key);
+
+
+--
+-- Name: publisher_legacy_names publisher_legacy_names_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.publisher_legacy_names
+    ADD CONSTRAINT publisher_legacy_names_pkey PRIMARY KEY (sender_name);
+
+
+--
+-- Name: publisher_sources publisher_sources_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.publisher_sources
+    ADD CONSTRAINT publisher_sources_pkey PRIMARY KEY (source_key);
+
+
+--
+-- Name: quote_publishers quote_publishers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quote_publishers
+    ADD CONSTRAINT quote_publishers_pkey PRIMARY KEY (publisher_id);
+
+
+--
+-- Name: quote_usage_events quote_usage_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quote_usage_events
+    ADD CONSTRAINT quote_usage_events_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: review_issues review_issues_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.review_issues
+    ADD CONSTRAINT review_issues_pkey PRIMARY KEY (source_group, message_id);
+
+
+--
+-- Name: routes routes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.routes
+    ADD CONSTRAINT routes_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: rule_candidates rule_candidates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rule_candidates
+    ADD CONSTRAINT rule_candidates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: rule_candidates rule_candidates_scope_kind_scope_key_alias_kind_suggested_t_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rule_candidates
+    ADD CONSTRAINT rule_candidates_scope_kind_scope_key_alias_kind_suggested_t_key UNIQUE (scope_kind, scope_key, alias, kind, suggested_target);
+
+
+--
+-- Name: sales_group_visits sales_group_visits_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_group_visits
+    ADD CONSTRAINT sales_group_visits_pkey PRIMARY KEY (user_id, source_group);
+
+
+--
+-- Name: senders senders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.senders
+    ADD CONSTRAINT senders_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: user_activity_events user_activity_events_client_event_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_activity_events
+    ADD CONSTRAINT user_activity_events_client_event_id_key UNIQUE (client_event_id);
+
+
+--
+-- Name: user_activity_events user_activity_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_activity_events
+    ADD CONSTRAINT user_activity_events_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: idx_account_events_action; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_events_action ON public.account_events USING btree (action);
+
+
+--
+-- Name: idx_account_events_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_events_created_at ON public.account_events USING btree (created_at);
+
+
+--
+-- Name: idx_account_events_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_events_user_id ON public.account_events USING btree (user_id);
+
+
+--
+-- Name: idx_account_experience_events_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_experience_events_created_at ON public.account_experience_events USING btree (created_at);
+
+
+--
+-- Name: idx_account_experience_events_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_experience_events_user_id ON public.account_experience_events USING btree (user_id);
+
+
+--
+-- Name: idx_account_growth_sync_outbox_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_growth_sync_outbox_status ON public.account_growth_sync_outbox USING btree (status, created_at);
+
+
+--
+-- Name: idx_account_notifications_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_notifications_created_at ON public.account_notifications USING btree (created_at);
+
+
+--
+-- Name: idx_account_notifications_entity_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_notifications_entity_id ON public.account_notifications USING btree (entity_id);
+
+
+--
+-- Name: idx_account_notifications_read_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_notifications_read_at ON public.account_notifications USING btree (read_at);
+
+
+--
+-- Name: idx_account_notifications_recipient_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_account_notifications_recipient_id ON public.account_notifications USING btree (recipient_id);
+
+
+--
+-- Name: idx_api_request_events_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_request_events_created_at ON public.api_request_events USING btree (created_at);
+
+
+--
+-- Name: idx_api_request_events_path; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_request_events_path ON public.api_request_events USING btree (path);
+
+
+--
+-- Name: idx_api_request_events_status_code; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_request_events_status_code ON public.api_request_events USING btree (status_code);
+
+
+--
+-- Name: idx_api_request_events_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_request_events_user_id ON public.api_request_events USING btree (user_id);
+
+
+--
+-- Name: idx_auth_sessions_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_auth_sessions_expires_at ON public.auth_sessions USING btree (expires_at);
+
+
+--
+-- Name: idx_auth_sessions_operator_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_auth_sessions_operator_name ON public.auth_sessions USING btree (operator_name);
+
+
+--
+-- Name: idx_company_rate_results_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_company_rate_results_expires_at ON public.company_rate_results USING btree (expires_at);
+
+
+--
+-- Name: idx_company_rate_tasks_activity_query_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_company_rate_tasks_activity_query_id ON public.company_rate_tasks USING btree (activity_query_id);
+
+
+--
+-- Name: idx_company_rate_tasks_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_company_rate_tasks_created_at ON public.company_rate_tasks USING btree (created_at);
+
+
+--
+-- Name: idx_company_rate_tasks_kind; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_company_rate_tasks_kind ON public.company_rate_tasks USING btree (kind);
+
+
+--
+-- Name: idx_company_rate_tasks_query_signature; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_company_rate_tasks_query_signature ON public.company_rate_tasks USING btree (query_signature);
+
+
+--
+-- Name: idx_company_rate_tasks_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_company_rate_tasks_user_id ON public.company_rate_tasks USING btree (user_id);
+
+
+--
+-- Name: idx_freight_items_carrier; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_carrier ON public.freight_items USING btree (carrier);
+
+
+--
+-- Name: idx_freight_items_container_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_container_type ON public.freight_items USING btree (container_type);
+
+
+--
+-- Name: idx_freight_items_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_freight_items_entry_id ON public.freight_items USING btree (entry_id);
+
+
+--
+-- Name: idx_freight_items_message_time; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_message_time ON public.freight_items USING btree (message_time);
+
+
+--
+-- Name: idx_freight_items_origin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_origin ON public.freight_items USING btree (origin);
+
+
+--
+-- Name: idx_freight_items_pod; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_pod ON public.freight_items USING btree (pod);
+
+
+--
+-- Name: idx_freight_items_pol; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_pol ON public.freight_items USING btree (pol);
+
+
+--
+-- Name: idx_freight_items_publisher_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_publisher_id ON public.freight_items USING btree (publisher_id);
+
+
+--
+-- Name: idx_freight_items_record_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_record_type ON public.freight_items USING btree (record_type);
+
+
+--
+-- Name: idx_freight_items_route; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_route ON public.freight_items USING btree (route);
+
+
+--
+-- Name: idx_freight_items_source_group; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_source_group ON public.freight_items USING btree (source_group);
+
+
+--
+-- Name: idx_freight_items_space_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_space_type ON public.freight_items USING btree (space_type);
+
+
+--
+-- Name: idx_freight_items_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_status ON public.freight_items USING btree (status);
+
+
+--
+-- Name: idx_freight_items_supersedes; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_freight_items_supersedes ON public.freight_items USING btree (supersedes);
+
+
+--
+-- Name: idx_item_feedback_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_item_feedback_active ON public.item_feedback USING btree (entry_id, field) WHERE (status = 'active'::text);
+
+
+--
+-- Name: idx_item_feedback_entry; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_item_feedback_entry ON public.item_feedback USING btree (entry_id, created_at);
+
+
+--
+-- Name: idx_message_board_posts_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_message_board_posts_created_at ON public.message_board_posts USING btree (created_at);
+
+
+--
+-- Name: idx_message_board_posts_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_message_board_posts_user_id ON public.message_board_posts USING btree (user_id);
+
+
+--
+-- Name: idx_operators_publisher_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_operators_publisher_id ON public.operators USING btree (publisher_id);
+
+
+--
+-- Name: idx_operators_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_operators_user_id ON public.operators USING btree (user_id);
+
+
+--
+-- Name: idx_pending_records_bulk_gate; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pending_records_bulk_gate ON public.pending_records USING btree (review_status, kind, check_status, id) WHERE (review_status = 'awaiting'::text);
+
+
+--
+-- Name: idx_pending_records_bulk_source; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pending_records_bulk_source ON public.pending_records USING btree (COALESCE(NULLIF(rtrim(
+CASE
+    WHEN (substr(TRIM(BOTH FROM ((payload)::jsonb ->> '消息ID'::text)), 1, 5) = 'msg//'::text) THEN substr(TRIM(BOTH FROM ((payload)::jsonb ->> '消息ID'::text)), 6)
+    ELSE TRIM(BOTH FROM ((payload)::jsonb ->> '消息ID'::text))
+END, '='::text), ''::text), ('row-'::text || (id)::text))) WHERE (review_status = 'awaiting'::text);
+
+
+--
+-- Name: idx_pending_records_check_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pending_records_check_status ON public.pending_records USING btree (check_status);
+
+
+--
+-- Name: idx_pending_records_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pending_records_created_at ON public.pending_records USING btree (created_at);
+
+
+--
+-- Name: idx_pending_records_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_pending_records_entry_id ON public.pending_records USING btree (entry_id);
+
+
+--
+-- Name: idx_pending_records_kind; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pending_records_kind ON public.pending_records USING btree (kind);
+
+
+--
+-- Name: idx_pending_records_publisher_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pending_records_publisher_id ON public.pending_records USING btree (publisher_id);
+
+
+--
+-- Name: idx_pending_records_review_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pending_records_review_status ON public.pending_records USING btree (review_status);
+
+
+--
+-- Name: idx_port_routes_route_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_port_routes_route_name ON public.port_routes USING btree (route_name);
+
+
+--
+-- Name: idx_publisher_sources_publisher_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_publisher_sources_publisher_id ON public.publisher_sources USING btree (publisher_id);
+
+
+--
+-- Name: idx_quote_usage_events_action; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_quote_usage_events_action ON public.quote_usage_events USING btree (action);
+
+
+--
+-- Name: idx_quote_usage_events_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_quote_usage_events_created_at ON public.quote_usage_events USING btree (created_at);
+
+
+--
+-- Name: idx_quote_usage_events_event_date; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_quote_usage_events_event_date ON public.quote_usage_events USING btree (event_date);
+
+
+--
+-- Name: idx_quote_usage_events_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_quote_usage_events_user_id ON public.quote_usage_events USING btree (user_id);
+
+
+--
+-- Name: idx_user_activity_events_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_user_activity_events_created_at ON public.user_activity_events USING btree (created_at);
+
+
+--
+-- Name: idx_user_activity_events_event_date; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_user_activity_events_event_date ON public.user_activity_events USING btree (event_date);
+
+
+--
+-- Name: idx_user_activity_events_event_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_user_activity_events_event_type ON public.user_activity_events USING btree (event_type);
+
+
+--
+-- Name: idx_user_activity_events_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_user_activity_events_user_id ON public.user_activity_events USING btree (user_id);
+
+
+--
+-- Name: port_routes port_routes_port_name_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.port_routes
+    ADD CONSTRAINT port_routes_port_name_fkey FOREIGN KEY (port_name) REFERENCES public.ports(name) ON DELETE CASCADE;
+
+
+--
+-- Name: port_routes port_routes_route_name_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.port_routes
+    ADD CONSTRAINT port_routes_route_name_fkey FOREIGN KEY (route_name) REFERENCES public.routes(name) ON DELETE RESTRICT;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+
+
+
+-- Data for Name: crm_schema_migrations; Type: TABLE DATA; Schema: public; Owner: prospector_crm_test
+--
+
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('001-crm-foundation', 'f2ca21badbde498b6c4c03c25a99ea19cd547811e58a12491974671be8f2276c', '2026-10-28 14:40:52.56066+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('002-identity-foundation-public', 'cb4d0d3921ffab36519cfe91eed6ed1ec990f5ec674345100fb21b8a84fae873', '2026-10-28 14:40:52.633427+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('003-management-m1-public', '840c66668ffaa2adf18bf1ae48cd30e84a5b9536444567a13c20afe25c10889e', '2026-10-28 14:40:52.69478+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('015-user-lifecycle-public', 'e3d1b6c08fc19ccc6729eba110a632d6eb44aadb3241d79d19c30627a4b25395', '2026-10-28 14:40:52.69478+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('005-navigator-access-public', 'c2390f65c42709ab84547b7b13581a64eb5875851db8c56b03074249f02180f9', '2026-10-28 14:40:52.69478+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('006-navigator-product-public', '6ba288e9d4a0a5998f870149de82c918c564524259252b84054339506c9f0e23', '2026-10-28 14:40:52.69478+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('004-mandatory-password-change-public', '7bd0aa8e5c6a39865f1d85a69a2ca51724d077dbce80f9094d3f0df50db2bcf6', '2026-10-28 14:40:52.760916+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('007-desktop-session-rotation-public', 'd98dfb10e00a106597fc1c9b83d5af38aae55fc0602bfe62d5fc3f3203ebc825', '2026-10-28 14:40:52.764901+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('026-unified-account-profile-public', '366fcbe823a97f4b67167e9f41fe33b1f8f721a4a181880f94db0883b918fc2f', '2026-10-28 14:40:52.776389+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('027-unified-account-growth-public', 'ed0983006e35d5dea0a1babef0fd5d8765d64e8cc5ab822e8b27ed60a7387983', '2026-10-28 14:40:52.793705+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('028-legacy-pbkdf2-compat-public', '9031ee98f654c9f7c34873bae98a79deb871cddcd8a8fcc9c442b1a9c82e2853', '2026-10-28 14:40:52.810138+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('029-legacy-account-mapping-public', '879e2f3303d8255575b2497d67a5f7abbde90e28230a462ffb0436ae06cbdee9', '2026-10-28 14:40:52.81229+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('005-lead-collaboration-public', 'ddfbe2cd999789b7ceb4574782ddff2db2ca119789ee731b8e145f1398b1c573', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('008-center-customers', 'dc2ac7da570cba56206857f1bae1aad896205d98e8394554a5077a7053834498', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('011-customer-workbook-profile-public', 'd15052d67ae69c02f78782c9c2e2ad3522da4eb9f8a82e0b3a8b0f422879c37d', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('012-customer-followup', '338f0b2f42e3115e51d5ab6d91fc7827c7f3063ee7f3bd24743c843f80c8869a', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('019-contact-assignment-acceptance-public', '07e4e0ab192a2e943c7379b98f57328741acf2aa8adadba9ba7d32500a973e14', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('020-contact-mail-events-public', '0e6070508dfb57f44e8dcdf7a2a920398f6c41ce76000ff40f3e3f46cb16f20d', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('021-contact-mail-send-stage-public', '51a4ec344b07f45b42c419af14a61ac78c29d1ec2a219cc56a130826f93d7fff', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('022-crm-lifecycle-public', '234ee395246ebd0a17fabad742dc50923602b2876d2661c8389ce7716b3cefd3', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('023-contact-sharing-public', 'b783bedeb2766dbacc18560774370dd1b416820d8db7f0c628a15b27d328e164', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('024-mail-classification-correction', '0e5ec928ebe2b67e4d69e2f9530428ea5a1519f8830ce0ad4e168e9a70ad7ed1', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('025-send-acceptance-public', '58b7612462b15df703a79e9ad27cf59e779d2a010016fbe23b6c4e8cdb538bd9', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('030-lead-field-extension', '7367e476e2fb57a5aa356911899b3f371367dc83bcf21b87c32cc61a125a9e6a', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('031-contact-touch-outcomes', '911b5157af3502a80fab3603700257710142d4d7ec9fee5da06ad3c8759d27fe', '2026-10-28 14:40:52.84113+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('006-notification-m2-public', '6a9238836f6ca1fe37af077bf5ce711d39fb8e3f38e7cc44e197e1b9ad901a80', '2026-10-28 14:40:53.007211+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('009-directed-assignment-public', '19d30b25744a62b61496ab1ee2dc2c1b8216027e9c2997cb17e7197fd7480c36', '2026-10-28 14:40:53.007211+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('017-followup-tasks-public', '4fc8e4297af3a873dcc5ed103bcca2fd5a3728e24ab307134e7a350e6754a765', '2026-10-28 14:40:53.042565+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('018-opportunities-public', 'dac70db1480cf059567e22bd8a52fb5bb5f7b8ce688674a6096507586e42ae02', '2026-10-28 14:40:53.065114+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('008-contact-change-import-capture-public', 'e1869d071d3aa6e1ab1aecf29e479c61e112679d7704e91564c4b140c7d14395', '2026-10-28 14:40:53.102171+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('026-server-campaigns-n7-public', '021ccb866273af65e2e55fef6b87361c687f7624f51518c708e55d135b24446d', '2026-10-28 14:40:53.124952+08');
+INSERT INTO public.crm_schema_migrations (version, checksum, applied_at) VALUES ('050-contact-assignment-groups', '532e5bdfc6eb033390a3f95ba5ba9d072b7e4e9d2b70b91949e843507d0f7db1', '2026-10-28 14:40:53.173032+08');
+
+
+--
+-- Data for Name: identity_products; Type: TABLE DATA; Schema: public; Owner: prospector_crm_test
+--
+
+INSERT INTO public.identity_products (product_id, name, connected, description) VALUES ('crm', 'Prospector', true, '测试身份与授权已接入；业务交互尚未在线接入');
+INSERT INTO public.identity_products (product_id, name, connected, description) VALUES ('navigator', 'Navigator', true, '中心身份、产品准入与运价库账号授权已接入；运价业务仍由 Navigator 服务提供');
+
+
+--
+-- PostgreSQL database dump complete
+--

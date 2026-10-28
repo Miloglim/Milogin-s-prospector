@@ -22,7 +22,7 @@ async function main(){
  const pool=new Pool(readTestDatabaseConfig());
  try{
   const repo=new PostgresAuthRepository(pool,log);if(!(await repo.migrate()).ok)throw Error('Migration rejected');
-  const initialized=await pool.query("SELECT e.user_id FROM identity.login_emails e WHERE e.email=$1 AND EXISTS(SELECT 1 FROM identity.management_audit a WHERE a.target_id=e.user_id AND a.action='identity.bootstrap')",[BOOTSTRAP_ADMIN_EMAIL]);
+  const initialized=await pool.query("SELECT e.user_id FROM public.identity_login_emails e WHERE e.email=$1 AND EXISTS(SELECT 1 FROM public.identity_management_audit a WHERE a.target_id=e.user_id AND a.action='identity.bootstrap')",[BOOTSTRAP_ADMIN_EMAIL]);
   if(initialized.rows.length){recordInitialized(initialized.rows[0].user_id);log.write('INFO','identity.bootstrap','初始化已执行；保留当前密码与权限，不重复重置');return;}
   if(fs.existsSync(MARKER))throw Error('Bootstrap identity does not match local record');
   let password=process.env.PROSPECTOR_ADMIN_INITIAL_PASSWORD;
@@ -37,20 +37,20 @@ async function main(){
   const client=await pool.connect();let id;
   try{
    await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock($1)',[ADMIN_LOCK]);
-   const done=await client.query("SELECT e.user_id FROM identity.login_emails e WHERE e.email=$1 AND EXISTS(SELECT 1 FROM identity.management_audit a WHERE a.target_id=e.user_id AND a.action='identity.bootstrap')",[BOOTSTRAP_ADMIN_EMAIL]);
+   const done=await client.query("SELECT e.user_id FROM public.identity_login_emails e WHERE e.email=$1 AND EXISTS(SELECT 1 FROM public.identity_management_audit a WHERE a.target_id=e.user_id AND a.action='identity.bootstrap')",[BOOTSTRAP_ADMIN_EMAIL]);
    if(done.rows.length){
     id=done.rows[0].user_id;await client.query('COMMIT');recordInitialized(id);log.write('INFO','identity.bootstrap','另一初始化已完成，保留当前密码与权限');return;
    }
-   const users=await client.query('SELECT user_id,email FROM identity.login_emails WHERE email=ANY($1::text[])',[['admin@example.invalid',BOOTSTRAP_ADMIN_EMAIL]]);
+   const users=await client.query('SELECT user_id,email FROM public.identity_login_emails WHERE email=ANY($1::text[])',[['admin@example.invalid',BOOTSTRAP_ADMIN_EMAIL]]);
    if(users.rows.length>1)throw Error('Do not merge existing identities');
    id=users.rows[0]?.user_id??randomUUID();
-   if(!users.rows.length){await client.query("INSERT INTO identity.users(user_id,display_name,identity_admin,must_change_password) VALUES($1,'Milogin 管理员',true,true)",[id]);await client.query('INSERT INTO identity.login_emails(user_id,email) VALUES($1,$2)',[id,BOOTSTRAP_ADMIN_EMAIL]);}
-   else{await client.query('UPDATE identity.login_emails SET email=$2,verified_at=NULL WHERE user_id=$1',[id,BOOTSTRAP_ADMIN_EMAIL]);await client.query("UPDATE identity.users SET display_name='Milogin 管理员',active=true,identity_admin=true,must_change_password=true,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1",[id]);}
-   await client.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1') ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash,changed_at=now()",[id,hash]);
-   await client.query('DELETE FROM identity.product_grants WHERE user_id=$1',[id]);const roles=['admin','operations','sales','auditor'];for(const role of roles)await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
-   await client.query("INSERT INTO identity.product_access(user_id,product_id,active,scope,capabilities) VALUES($1,'crm',true,'summary',$2) ON CONFLICT(user_id,product_id) DO UPDATE SET active=true,scope='summary',capabilities=EXCLUDED.capabilities",[id,JSON.stringify(capabilitiesFor(roles))]);
-   await client.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[id]);await client.query('UPDATE identity.management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[id]);
-   await client.query("INSERT INTO identity.management_audit(actor_id,target_id,action,reason) VALUES($1,$1,'identity.bootstrap','本机一次性管理员初始化，首次登录必须改密')",[id]);
+   if(!users.rows.length){await client.query("INSERT INTO public.identity_users(user_id,display_name,identity_admin,must_change_password) VALUES($1,'Milogin 管理员',true,true)",[id]);await client.query('INSERT INTO public.identity_login_emails(user_id,email) VALUES($1,$2)',[id,BOOTSTRAP_ADMIN_EMAIL]);}
+   else{await client.query('UPDATE public.identity_login_emails SET email=$2,verified_at=NULL WHERE user_id=$1',[id,BOOTSTRAP_ADMIN_EMAIL]);await client.query("UPDATE public.identity_users SET display_name='Milogin 管理员',active=true,identity_admin=true,must_change_password=true,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1",[id]);}
+   await client.query("INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1') ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash,changed_at=now()",[id,hash]);
+   await client.query('DELETE FROM public.identity_product_grants WHERE user_id=$1',[id]);const roles=['admin','operations','sales','auditor'];for(const role of roles)await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
+   await client.query("INSERT INTO public.identity_product_access(user_id,product_id,active,scope,capabilities) VALUES($1,'crm',true,'summary',$2) ON CONFLICT(user_id,product_id) DO UPDATE SET active=true,scope='summary',capabilities=EXCLUDED.capabilities",[id,JSON.stringify(capabilitiesFor(roles))]);
+   await client.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[id]);await client.query('UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[id]);
+   await client.query("INSERT INTO public.identity_management_audit(actor_id,target_id,action,reason) VALUES($1,$1,'identity.bootstrap','本机一次性管理员初始化，首次登录必须改密')",[id]);
    await client.query('COMMIT');
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   recordInitialized(id);

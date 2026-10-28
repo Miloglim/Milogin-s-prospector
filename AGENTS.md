@@ -63,7 +63,7 @@
 
 ## 启动陷阱（2026-10-21）
 
-- `start.bat` 使用的开发启动器命名管道可能被“无 Electron 窗口的后端进程”继续占用。此状态必须以“短暂等待正常构建 → 清理确认无窗口的项目启动器 → 重新获取锁”自愈；无法确认占用者时要报错并让窗口停住，禁止打印警告后以成功码退出，否则用户只会看到闪退。
+- Electron 返回退出码 0 既可能是正常退出，也可能是 `app.relaunch()`。`dev-single.mjs` 必须短暂等待同一项目的替代 Electron：出现才保留 Vite；没有出现就关闭 Vite 和 esbuild。禁止为了支持账号切换而永久保留无窗口页面服务，否则每次启动都会叠加一套约 200 MB 的 Node 进程树。
 
 ## 正式安装包端点陷阱（2026-10-22）
 
@@ -118,8 +118,14 @@
 
 ## 服务器 Docker 部署陷阱（2026-10-27）
 
-- 生产中心不得继续假定 Windows `ProgramData` 或回环 PostgreSQL。容器只允许显式绑定 `127.0.0.1`/`0.0.0.0`，数据库主机由 `PROSPECTOR_CENTER_PG_HOST` 指定，但数据库名和用户必须保持 `milogin_center` / `milogin_app`。
+- 生产中心不得继续假定 Windows `ProgramData` 或回环 PostgreSQL。容器只允许显式绑定 `127.0.0.1`/`0.0.0.0`，数据库主机和用户由受保护环境指定，数据库名必须保持 `milogin_center`。
 - Docker 构建不得执行 Electron 原生模块安装脚本；镜像只复制中心服务、管理前端和一次性管理员初始化脚本。超级管理员密码不得写入 Compose、镜像或日志。
+
+## 公司共用 public 数据库陷阱（2026-10-28）
+
+- 公司只提供一个 `milogin_center` 数据库和一个应用账号，两个产品不得再创建 `navigator`、`prospector`、`identity` schema。中心表统一使用 `public.identity_*`；业务表共处 `public` 后，新增表必须带产品前缀并在全新隔离库验证重名、外键、索引和触发器。
+- `deployment-templates/company-postgres-bootstrap.sql` 只用于全新空库。它必须同时包含结构、`crm_schema_migrations` checksum 和 `identity_products` 种子；如果只建表不写迁移版本，容器启动会再次执行迁移并失败。
+- 公司数据库用户通过 `PROSPECTOR_CENTER_PG_USER`/KMS 注入，数据库名固定 `milogin_center`；Prospector 连接名必须是 `prospector-center`。同一数据库账号不是产品安全边界，钉钉身份映射和产品授权仍只能在中心服务端校验。
 
 ## 首次改密准入陷阱（2026-10-26）
 
@@ -171,6 +177,10 @@
 ## 联系人分组与分配组陷阱（2026-10-27）
 
 - 联系人一级分组必须在中心数据库聚合后再分页，不能只对当前联系人表的 50 行前端归类；进入卡片时用 `groupDimension/groupKey` 回到同一授权联系人查询，不能另造第二套联系人权限。
+- 联系人一级页采用“分组侧栏 + 原联系人表”的同页结构，点击分组只切换右侧成员，不再跳转并卸载一级页。右侧必须继续复用原 `ContactList`、搜索、更多、导入、分页和 `CenterContactDetail`，不能复制第二套表格或详情；组级多选仍在侧栏显式开启，导入后同时失效 `center-contacts` 与 `center-contact-groups`。
+- 一级页首次必须等默认分组选中后再挂载联系人表，禁止先以无分组状态查询全部联系人；分组切换不能通过 React `key` 重挂 `ContactList`。分页状态要绑定当前数据端口，切换分组时直接以第 1 页查询并保留上一帧表格，只重置行选择、已打开详情和滚动位置。
+- 联系人表必须与右侧工作区边框贴合，不能额外保留横向或底部内边距。自定义滚动条只在布局变化时测量尺寸，滚动事件必须按 `requestAnimationFrame` 合并，滚动阶段只更新 transform，禁止逐事件读取 `clientHeight/scrollHeight` 或重复写尺寸。
+- 分组筛选必须同时实现于中心 HTTP 和本地 SQLite 联系人镜像；镜像 `page()` 不能忽略 `groupDimension/groupKey`。批次键依次取 `sourceDetail/sourceLevel1/sourceLevel2`，公司键使用 `companyId`，国家与客户类型缺失时统一 `unset`，并为四类分组建立索引。旧二级页的 `height:auto/overflow-y:visible` 规则只能作用于 `.customer-legacy-page > .customer-contacts-page`，不能命中分栏内表格。
 - 一次分配必须共享稳定 `group_id`，历史请求无组映射时只能把 `request_id` 当单人组。组请求只发一条通知；组内明细保留逐条决定，组级决定只处理 pending 成员并保持事务原子性。
 - 组通知只能定位 `groupId`，不能任选组内某个 `requestId` 冒充整组。迁移 `crm_contact_assignment_group_members` 必须幂等，不能改写历史归属。
 
@@ -196,3 +206,8 @@
 - IMAP 时间窗口只负责限定候选集，超过单轮上限后必须用当前 `UIDVALIDITY + last UID` 推进；禁止每轮直接 `slice(0, 500)`，否则下一轮仍扫同一批，后面邮件永远排不到。进度框的 `scanned/total` 只是当前批次，不能冒充邮箱总量或新增数。
 - 邮箱账号通常已有历史存量，不能只靠 6 天窗口判断首次同步是否完整。本地入站邮件不足 200 封时必须检查服务器最新 200 个 UID 并补拉缺量；补拉与常规 UID 水位共用 500 封单轮上限，不能绕过水位或无限全库扫描。
 - 中心登录和发信账号是两条边界：登录邮箱不证明 SMTP/IMAP 服务商，中心登录密码不是邮箱密码或授权码。登录成功禁止自动写入 `email_accounts`，发信账号必须由用户在设置页明确配置。
+
+## 新手向导触发陷阱（2026-10-27）
+
+- 向导是否自动出现必须按当前中心账号判断，不能使用整台机器共用的邮箱或只看 `email_accounts` 是否为空。当前账号已有联系人/邮件活动、已有发信账号，或已记录 `onboarding=skipped/done` 时不得自动打扰；配置或资料状态无法确认时也不猜测弹出。
+- 文件导入生成的联系人批次标题以 `source_detail` 为首选，即原文件名；仅缺失时才回退一级、二级来源。分组的“导入时间”使用联系人 `created_at` 的最新值，不能拿业务修改时间 `updated_at` 冒充。

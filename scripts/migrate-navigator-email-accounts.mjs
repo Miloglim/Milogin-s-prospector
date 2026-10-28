@@ -59,33 +59,33 @@ async function main() {
   const target = new Client({ host: targetConfig.host, port: targetConfig.port, database: targetConfig.database, user: targetConfig.app, password: targetConfig.appPassword });
   await target.connect();
   try {
-    const identity = await target.query("SELECT user_id FROM identity.users WHERE identity_admin AND active AND deleted_at IS NULL ORDER BY created_at LIMIT 1");
+    const identity = await target.query("SELECT user_id FROM public.identity_users WHERE identity_admin AND active AND deleted_at IS NULL ORDER BY created_at LIMIT 1");
     if (identity.rowCount !== 1) throw new Error("中心超级管理员不存在或不唯一");
-    const existing = await target.query("SELECT email FROM identity.login_emails WHERE email = ANY($1::text[])", [accounts.map(account => account.email)]);
+    const existing = await target.query("SELECT email FROM public.identity_login_emails WHERE email = ANY($1::text[])", [accounts.map(account => account.email)]);
     if (existing.rowCount) throw new Error("目标中心已有待迁移邮箱，拒绝覆盖");
     await target.query("BEGIN");
     const migrated = [];
     for (const account of accounts) {
       const userId = randomUUID();
-      await target.query(`INSERT INTO identity.users(user_id,display_name,active,identity_admin,must_change_password)
+      await target.query(`INSERT INTO public.identity_users(user_id,display_name,active,identity_admin,must_change_password)
         VALUES($1,$2,true,false,false)`, [userId, account.displayName]);
-      await target.query("INSERT INTO identity.user_profiles(user_id) VALUES($1)", [userId]);
-      await target.query("INSERT INTO identity.login_aliases(alias,user_id) VALUES($1,$2)", [account.email, userId]);
-      await target.query("INSERT INTO identity.login_emails(user_id,email,verified_at) VALUES($1,$2,NULL)", [userId, account.email]);
-      await target.query("INSERT INTO identity.credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'pbkdf2_sha256')", [userId, account.passwordHash]);
-      await target.query("INSERT INTO identity.product_grants(user_id,product_id,role,active) VALUES($1,'navigator',$2,true)", [userId, account.role]);
-      await target.query("INSERT INTO identity.product_access(user_id,product_id,active,scope) VALUES($1,'navigator',true,$2)", [userId, account.role === "operations" ? "shared" : "own"]);
-      await target.query(`INSERT INTO identity.legacy_account_mappings
+      await target.query("INSERT INTO public.identity_user_profiles(user_id) VALUES($1)", [userId]);
+      await target.query("INSERT INTO public.identity_login_aliases(alias,user_id) VALUES($1,$2)", [account.email, userId]);
+      await target.query("INSERT INTO public.identity_login_emails(user_id,email,verified_at) VALUES($1,$2,NULL)", [userId, account.email]);
+      await target.query("INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'pbkdf2_sha256')", [userId, account.passwordHash]);
+      await target.query("INSERT INTO public.identity_product_grants(user_id,product_id,role,active) VALUES($1,'navigator',$2,true)", [userId, account.role]);
+      await target.query("INSERT INTO public.identity_product_access(user_id,product_id,active,scope) VALUES($1,'navigator',true,$2)", [userId, account.role === "operations" ? "shared" : "own"]);
+      await target.query(`INSERT INTO public.identity_legacy_account_mappings
         (source_product,legacy_user_id,legacy_login_alias,center_user_id,status,requires_password_reset,reason)
         VALUES('navigator',$1,$2,$3,'migrated',false,$4)`, [account.legacyUserId, account.email, userId, "邮箱账号已导入中心；首次成功登录后重算为 scrypt-v1"]);
-      await target.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,product_id,reason)
+      await target.query(`INSERT INTO public.identity_management_audit(actor_id,target_id,action,product_id,reason)
         VALUES($1,$2,'identity.navigator.migrated','navigator',$3)`, [identity.rows[0].user_id, userId, "Navigator 邮箱账号迁移到中心身份库"]);
       migrated.push({ email: account.email, role: account.role, displayNameDefaulted: account.displayNameDefaulted });
     }
     await target.query("COMMIT");
     const verify = await target.query(`SELECT count(*)::int AS users,
       count(*) FILTER (WHERE status='migrated')::int AS mappings
-      FROM identity.legacy_account_mappings WHERE source_product='navigator'`);
+      FROM public.identity_legacy_account_mappings WHERE source_product='navigator'`);
     if (verify.rows[0].mappings !== accounts.length) throw new Error("迁移后映射数量校验失败");
     log("INFO", `正式中心迁移完成 accounts=${migrated.length} display_name_defaulted=${migrated.filter(item => item.displayNameDefaulted).length}`);
   } catch (error) {

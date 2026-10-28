@@ -11,8 +11,8 @@ vi.mock('@tanstack/react-router', () => ({ useRouterState: () => ({ pathname: '/
 
 const timestamp = '2026-10-27T10:00:00.000Z';
 const groups = [
-  { key: 'batch-a', label: 'Batch A', count: 2, companyCount: 2, countryCount: 1, touchedCount: 1, companies: ['Acme', 'Northwind'], countries: ['Brazil'], clientTypes: ['代理'], latestUpdatedAt: timestamp },
-  { key: 'batch-b', label: 'Batch B', count: 2, companyCount: 2, countryCount: 2, touchedCount: 2, companies: ['Contoso', 'Fabrikam'], countries: ['Chile', 'Peru'], clientTypes: ['直客'], latestUpdatedAt: timestamp },
+  { key: 'batch-a', label: 'Batch A', count: 2, companyCount: 2, countryCount: 1, touchedCount: 1, companies: ['Acme', 'Northwind'], countries: ['Brazil'], clientTypes: ['代理'], sourceLevel1: ['阿里国际站'], latestImportedAt: timestamp, latestUpdatedAt: timestamp },
+  { key: 'batch-b', label: 'Batch B', count: 2, companyCount: 2, countryCount: 2, touchedCount: 2, companies: ['Contoso', 'Fabrikam'], countries: ['Chile', 'Peru'], clientTypes: ['直客'], sourceLevel1: ['展会'], latestImportedAt: timestamp, latestUpdatedAt: timestamp },
 ];
 const contacts = [1, 2, 3].map(contactId => ({ contactId, customerId: `customer-${contactId}`, customerVersion: 1, companyId: contactId, companyName: `Company ${contactId}`, email: `contact-${contactId}@example.invalid`, firstName: `Contact ${contactId}`, lastName: null, title: null, phone: null, linkedinUrl: null, country: 'Brazil', clientType: 'agent', language: 'en', stage: 'cold', status: 'reached', tags: [], extra: {}, touchStatus: 'contacted', assignee: '', source: 'fixture', sourceDetail: null, createdAt: timestamp, updatedAt: timestamp, ownerUserId: 'operations-fixture', ownerName: 'Operator', origin: 'operations', state: 'owned', canAssign: true }));
 
@@ -39,11 +39,12 @@ describe('contact group card assignment', () => {
     });
     Object.defineProperty(window, 'api', { configurable: true, value: { invoke } });
     await act(async () => { root.render(<QueryClientProvider client={queryClient}><LegacyCustomersPage /></QueryClientProvider>); });
-    await vi.waitFor(() => expect(host.querySelectorAll('.contact-group-card').length).toBe(items.length), { timeout: 2000 });
+    await vi.waitFor(() => expect(host.querySelectorAll('.contact-group-panel-row').length).toBe(items.length), { timeout: 2000 });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
   };
   const selectAllCards = async () => {
-    const checks = host.querySelectorAll<HTMLInputElement>('.contact-group-check input');
+    await act(async () => { Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '多选')!.click(); await flush(); });
+    const checks = host.querySelectorAll<HTMLInputElement>('.contact-group-panel-row input[type="checkbox"]');
     expect(checks.length).toBeGreaterThan(0);
     await act(async () => { checks.forEach(check => check.click()); await flush(); });
     await vi.waitFor(() => expect(host.querySelector('[aria-label="分配所选分组"]')).not.toBeNull());
@@ -51,6 +52,11 @@ describe('contact group card assignment', () => {
 
   it('deduplicates selected group contacts and opens one assignment batch', async () => {
     await mount(); await selectAllCards();
+    expect(host.querySelector<HTMLInputElement>('input[placeholder="搜索邮箱、姓名、公司..."]')).not.toBeNull();
+    expect(host.querySelector('.customer-contacts-page')).not.toBeNull();
+    expect(host.querySelectorAll('.contact-group-metric')).toHaveLength(4);
+    expect(host.querySelector('.contact-group-panel-row')?.textContent).toContain('Batch A');
+    expect(host.querySelector('.contact-group-panel-row')?.textContent).toContain('阿里国际站');
     const assign = host.querySelector<HTMLButtonElement>('[aria-label="分配所选分组"]')!;
     expect(assign.disabled).toBe(false);
     await act(async () => { assign.click(); await flush(); });
@@ -62,8 +68,10 @@ describe('contact group card assignment', () => {
   it('blocks a card selection above the assignment limit before reading contacts', async () => {
     await mount([{ ...groups[0], key: 'large-a', count: 101 }, { ...groups[1], key: 'large-b', count: 100 }]); await selectAllCards();
     const assign = host.querySelector<HTMLButtonElement>('[aria-label="分配所选分组"]')!;
+    const readsBefore = invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.CONTACT_LIST).length;
     expect(assign.disabled).toBe(true);
-    expect(invoke.mock.calls.some(call => call[0] === ONLINE_CHANNELS.CONTACT_LIST)).toBe(false);
-    expect(document.body.textContent).toContain('每次最多 200 人');
+    await act(async () => { assign.click(); await flush(); });
+    expect(invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.CONTACT_LIST)).toHaveLength(readsBefore);
+    expect(document.body.textContent).toContain('最多 200 人');
   });
 });

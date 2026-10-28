@@ -121,7 +121,7 @@ export async function importFlatLeadsIn(c: PoolClient, actor: LeadActor, input: 
               if (!contactId || !contactVersion) {
                 status='restricted_conflict'; message='联系人恢复结果不完整，请刷新后重试';
               } else {
-                await c.query('INSERT INTO identity.outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)',[newCustomer?'crm.customer.created':deletedContact?'crm.contact.updated':'crm.customer.updated',actor.userId,'crm',deletedContact?contactVersion:version,customerId,JSON.stringify({customerId,...(deletedContact?{contactId,version:contactVersion}:{version}),companyName:row.companyName})]);
+                await c.query('INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)',[newCustomer?'crm.customer.created':deletedContact?'crm.contact.updated':'crm.customer.updated',actor.userId,'crm',deletedContact?contactVersion:version,customerId,JSON.stringify({customerId,...(deletedContact?{contactId,version:contactVersion}:{version}),companyName:row.companyName})]);
               }
             }
           }

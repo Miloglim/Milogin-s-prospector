@@ -1,8 +1,8 @@
-export const CONTACT_SHARING_VERSION='023-contact-sharing';
+export const CONTACT_SHARING_VERSION='023-contact-sharing-public';
 export const CONTACT_SHARING_SQL=`
 CREATE TABLE crm_contact_shares (
  share_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),contact_id integer NOT NULL REFERENCES contacts(id),customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
- grantor_user_id uuid NOT NULL REFERENCES identity.users(user_id),target_user_id uuid NOT NULL REFERENCES identity.users(user_id),
+ grantor_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),target_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
  editable_fields jsonb NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(editable_fields)='array' AND editable_fields <@ '["firstName","lastName","title","phone","linkedinUrl","country","language","clientType"]'::jsonb),can_followup boolean NOT NULL DEFAULT false,can_change_stage boolean NOT NULL DEFAULT false,
  status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','revoked')),version integer NOT NULL DEFAULT 1 CHECK(version>0),
  created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),decided_at timestamptz,

@@ -55,6 +55,13 @@ export function contactDetailSnapshot(contact: CenterContact, cached?: CenterCon
   };
 }
 
+export function mirrorContactGroupKey(row: CenterContact, dimension: NonNullable<CenterContactQuery['groupDimension']>): string {
+  if (dimension === 'batch') return row.sourceDetail || row.sourceLevel1 || row.sourceLevel2 || 'unset';
+  if (dimension === 'country') return row.country || 'unset';
+  if (dimension === 'company') return String(row.companyId);
+  return row.clientType || 'unset';
+}
+
 /** The input is already the account-authorized projection, never an unfiltered center dump. */
 export function contactMirrorPage(rows: CenterContact[], query: CenterContactQuery, userId: string): CenterContactPage {
   const search = query.search.trim().toLowerCase();
@@ -67,6 +74,7 @@ export function contactMirrorPage(rows: CenterContact[], query: CenterContactQue
     if (query.scope === 'personal' && (row.origin !== 'personal' || row.ownerUserId !== userId)) return false;
     if (query.scope === 'assigned' && ((row.origin !== 'operations' || row.ownerUserId !== userId) && row.isShared !== true)) return false;
     if (query.assignment === 'accepted' && row.assignmentStatus !== 'accepted') return false;
+    if (query.groupDimension && query.groupKey !== undefined && mirrorContactGroupKey(row, query.groupDimension) !== query.groupKey) return false;
     if (query.followupOnly && !FOLLOWUP_TOUCH_STATUSES.includes(row.touchStatus)) return false;
     if (query.crmStage && stage(row) !== query.crmStage) return false;
     if (query.touchStatus && row.touchStatus !== query.touchStatus) return false;

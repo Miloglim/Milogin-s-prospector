@@ -6,6 +6,7 @@ import { KEEPALIVE_ROUTE_COMPONENTS } from "../../router";
 import { useOptionalIdentity } from '../../IdentityContext';
 import { OnboardingWizard } from "../OnboardingWizard";
 import { globalStatusNotices, GLOBAL_STATUS_TOAST_DURATION_SECONDS, type GlobalStatusNotice } from './app-layout-status';
+import { shouldPresentOnboarding, type OnboardingActivity } from './onboarding-gate';
 
 const { Content } = Layout;
 const EDGE_TO_EDGE_PATHS = new Set(['/inbox']);
@@ -127,38 +128,68 @@ export function AppLayout() {
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [onboardingEmail, setOnboardingEmail] = useState("");
   const [onboardingSignal, setOnboardingSignal] = useState(0);
+  const onboardingAccount = useRef<string | null>(null);
   useEffect(() => {
     const positions = new WeakMap<HTMLElement, { left: number; top: number }>();
     const timers = new WeakMap<HTMLElement, { x?: number; y?: number }>();
+    const pending = new WeakMap<HTMLElement, number>();
+    const frames = new Set<number>();
     const selector = '.prospector-page-table .ant-table-content, .prospector-page-table .ant-table-body';
     const onScroll = (event: Event) => {
       const element = event.target;
       if (!(element instanceof HTMLElement) || !element.matches(selector)) return;
-      const previous = positions.get(element) ?? { left: element.scrollLeft, top: element.scrollTop };
-      const next = { left: element.scrollLeft, top: element.scrollTop };
-      positions.set(element, next);
-      const timer = timers.get(element) ?? {};
-      if (next.left !== previous.left) {
-        element.classList.add('is-scrolling-x');
-        if (timer.x !== undefined) window.clearTimeout(timer.x);
-        timer.x = window.setTimeout(() => element.classList.remove('is-scrolling-x'), 520);
-      }
-      if (next.top !== previous.top) {
-        element.classList.add('is-scrolling-y');
-        if (timer.y !== undefined) window.clearTimeout(timer.y);
-        timer.y = window.setTimeout(() => element.classList.remove('is-scrolling-y'), 520);
-      }
-      timers.set(element, timer);
+      if (pending.has(element)) return;
+      const frame = window.requestAnimationFrame(() => {
+        frames.delete(frame); pending.delete(element);
+        const previous = positions.get(element) ?? { left: element.scrollLeft, top: element.scrollTop };
+        const next = { left: element.scrollLeft, top: element.scrollTop };
+        positions.set(element, next);
+        const timer = timers.get(element) ?? {};
+        if (next.left !== previous.left) {
+          element.classList.add('is-scrolling-x');
+          if (timer.x !== undefined) window.clearTimeout(timer.x);
+          timer.x = window.setTimeout(() => element.classList.remove('is-scrolling-x'), 520);
+        }
+        if (next.top !== previous.top) {
+          element.classList.add('is-scrolling-y');
+          if (timer.y !== undefined) window.clearTimeout(timer.y);
+          timer.y = window.setTimeout(() => element.classList.remove('is-scrolling-y'), 520);
+        }
+        timers.set(element, timer);
+      });
+      pending.set(element, frame); frames.add(frame);
     };
     document.addEventListener('scroll', onScroll, true);
-    return () => document.removeEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('scroll', onScroll, true);
+      frames.forEach(frame => window.cancelAnimationFrame(frame));
+    };
   }, []);
   useEffect(() => {
-    const email = session?.identity?.email?.trim().toLowerCase();
-    if (!email || window.localStorage.getItem("prospector:registered-email") !== email) return;
-    setOnboardingEmail(email);
-    setWelcomeOpen(true);
-  }, [session?.identity?.email]);
+    const identity = session?.identity;
+    const email = identity?.email?.trim().toLowerCase();
+    const accountKey = identity?.userId && session?.baseUrl ? `${session.baseUrl}:${identity.userId}` : '';
+    if (!identity || !email || identity.mustChangePassword || !accountKey || onboardingAccount.current === accountKey) return;
+    onboardingAccount.current = accountKey;
+    let active = true;
+    void Promise.all([
+      window.api.invoke('accounts:list') as Promise<{ success: boolean; data?: unknown[] }>,
+      window.api.invoke('system:getConfig') as Promise<{ success: boolean; data?: { general?: { onboarding?: 'skipped' | 'done' } } }>,
+      window.api.invoke('dashboard:stats') as Promise<{ success: boolean; data?: OnboardingActivity }>,
+    ]).then(([accounts, config, stats]) => {
+      if (!active) return;
+      const signals = {
+        configKnown: config?.success === true,
+        handled: config?.success ? config.data?.general?.onboarding : undefined,
+        mailboxCount: accounts?.success && Array.isArray(accounts.data) ? accounts.data.length : null,
+        activity: stats?.success && stats.data ? stats.data : null,
+      };
+      if (!shouldPresentOnboarding(signals)) return;
+      setOnboardingEmail(email);
+      setWelcomeOpen(true);
+    }).catch(() => { /* 初始化检查失败时不打断业务页，也不猜测弹向导。 */ });
+    return () => { active = false; };
+  }, [session?.baseUrl, session?.identity?.userId, session?.identity?.email, session?.identity?.mustChangePassword]);
   useEffect(() => {
     const open = () => setOnboardingSignal(value => value + 1);
     window.addEventListener("open-onboarding", open);
@@ -182,8 +213,17 @@ export function AppLayout() {
   }, [messageApi, statusNotices]);
   const openOnboarding = () => {
     setWelcomeOpen(false);
-    window.localStorage.removeItem("prospector:registered-email");
     window.dispatchEvent(new Event("open-onboarding"));
+  };
+  const skipOnboarding = () => {
+    setWelcomeOpen(false);
+    void (async () => {
+      try {
+        const cfg = await window.api.invoke('system:getConfig') as { success: boolean; data?: { general?: Record<string, unknown> } };
+        if (!cfg?.success) return;
+        await window.api.invoke('system:updateConfig', { general: { ...(cfg.data?.general || {}), onboarding: 'skipped' } });
+      } catch { /* 跳过标记失败只影响下次提示，不影响继续使用。 */ }
+    })();
   };
   return (
     <div className="app-shell">
@@ -200,10 +240,10 @@ export function AppLayout() {
         </Layout>
       </Layout>
       <Modal open={welcomeOpen} title="欢迎使用 Prospector" centered okText="配置账号" cancelText="稍后配置"
-        onOk={openOnboarding} onCancel={() => { setWelcomeOpen(false); window.localStorage.removeItem("prospector:registered-email"); }}>
+        onOk={openOnboarding} onCancel={skipOnboarding}>
         <p style={{ margin: 0, color: "#666" }}>是否现在配置邮箱账号？</p>
       </Modal>
-      <OnboardingWizard autoCheck={false} prefillEmail={onboardingEmail} openSignal={onboardingSignal} />
+      <OnboardingWizard prefillEmail={onboardingEmail} openSignal={onboardingSignal} />
     </div>
   );
 }

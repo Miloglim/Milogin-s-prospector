@@ -20,15 +20,15 @@ async function setup(configOverride: Record<string, unknown> = {}, dashboard?: a
 describe('same-origin browser administration boundary',()=>{
   it('serves the read-only data catalog and forwards validated paging queries',async()=>{
    const dataBrowser={
-    tables:vi.fn(async()=>success([{id:'identity.users',group:'账号与权限',label:'用户',description:'中心账号'}])),
-    page:vi.fn(async()=>success({table:{id:'identity.users',group:'账号与权限',label:'用户',description:'中心账号'},columns:[],rows:[],total:0,limit:50,offset:100,search:'alice',sort:'email',direction:'asc',keyColumn:'user_id'})),
+    tables:vi.fn(async()=>success([{id:'public.identity_users',group:'账号与权限',label:'用户',description:'中心账号'}])),
+    page:vi.fn(async()=>success({table:{id:'public.identity_users',group:'账号与权限',label:'用户',description:'中心账号'},columns:[],rows:[],total:0,limit:50,offset:100,search:'alice',sort:'email',direction:'asc',keyColumn:'user_id'})),
    };
    const base=await setup({},undefined,dataBrowser),headers={Cookie:`milogin_admin=${token}`};
    const catalog=await fetch(base+'/admin-api/data',{headers});
    expect(catalog.status).toBe(200);expect((await catalog.json()).data[0].label).toBe('用户');expect(dataBrowser.tables).toHaveBeenCalledWith(token);
-   const page=await fetch(base+'/admin-api/data?table=identity.users&search=alice&limit=50&offset=100&sort=email&direction=asc',{headers});
-   expect(page.status).toBe(200);expect((await page.json()).data.total).toBe(0);expect(dataBrowser.page).toHaveBeenCalledWith(token,{table:'identity.users',search:'alice',limit:50,offset:100,sort:'email',direction:'asc'});
-   expect((await fetch(base+'/admin-api/data?table=identity.users&direction=sideways',{headers})).status).toBe(400);
+   const page=await fetch(base+'/admin-api/data?table=public.identity_users&search=alice&limit=50&offset=100&sort=email&direction=asc',{headers});
+   expect(page.status).toBe(200);expect((await page.json()).data.total).toBe(0);expect(dataBrowser.page).toHaveBeenCalledWith(token,{table:'public.identity_users',search:'alice',limit:50,offset:100,sort:'email',direction:'asc'});
+   expect((await fetch(base+'/admin-api/data?table=public.identity_users&direction=sideways',{headers})).status).toBe(400);
    expect((await fetch(base+'/admin-api/data')).status).toBe(401);
   });
   it('combines the authenticated operations snapshot with Navigator health',async()=>{

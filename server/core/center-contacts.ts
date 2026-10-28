@@ -52,7 +52,8 @@ export interface CenterContactGroupQuery {
 export interface CenterContactGroup {
   key: string; label: string; count: number;
   companyCount?: number; countryCount?: number; touchedCount?: number;
-  companies?: string[]; countries?: string[]; clientTypes?: string[];
+  companies?: string[]; countries?: string[]; clientTypes?: string[]; sourceLevel1?: string[];
+  latestImportedAt?: string | null;
   latestUpdatedAt?: string | null;
 }
 export interface CenterContactGroupPage { items: CenterContactGroup[]; total: number; }

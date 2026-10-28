@@ -8,7 +8,7 @@ import type { Identity } from "../../server/core/auth";
 
 const identity: Identity = { userId: "admin", email: "admin@example.invalid", displayName: "管理员", emailVerified: true, identityAdmin: true, mustChangePassword: false, crmRoles: ["admin"] };
 const page = {
-  table: { id: "identity.users", group: "账号与权限", label: "用户", description: "中心账号、启用状态与权限修订" },
+  table: { id: "public.identity_users", group: "账号与权限", label: "用户", description: "中心账号、启用状态与权限修订" },
   columns: [
     { key: "user_id", label: "用户 ID", type: "uuid", kind: "text" as const, sortable: true, searchable: true },
     { key: "display_name", label: "姓名", type: "text", kind: "text" as const, sortable: true, searchable: true },
@@ -40,7 +40,7 @@ describe("read-only management data browser", () => {
     expect(host.textContent).toContain("共 1 行");
     expect(host.textContent).not.toContain("编辑");
     expect(host.textContent).not.toContain("删除");
-    expect(api.data).toHaveBeenCalledWith(expect.objectContaining({ table: "identity.users", limit: 25, offset: 0 }));
+    expect(api.data).toHaveBeenCalledWith(expect.objectContaining({ table: "public.identity_users", limit: 25, offset: 0 }));
     await act(async () => { (Array.from(host.querySelectorAll("button")).find(button => button.textContent?.replace(/\s/g, "") === "刷新") as HTMLButtonElement).click(); await new Promise(resolve => setTimeout(resolve, 10)); });
     expect(api.data).toHaveBeenCalledTimes(2);
   });

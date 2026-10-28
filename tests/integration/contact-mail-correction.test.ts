@@ -12,7 +12,7 @@ function unwrap<T>(r:Result<T>):T { if(!r.ok)throw Error(`${r.error.code}: ${r.e
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('mail classification correction rollback PostgreSQL',()=>{
  it('appends revisioned classifications without rewriting facts or contact time',async()=>{
   const pool=new Pool(readTestDatabaseConfig()),client=await pool.connect();
-  const counts=async()=>(await client.query('SELECT (SELECT count(*) FROM identity.users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM identity.outbox) AS events')).rows[0];
+  const counts=async()=>(await client.query('SELECT (SELECT count(*) FROM public.identity_users) AS users,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM public.identity_outbox) AS events')).rows[0];
   const before=await counts();await client.query('BEGIN');
   try {
    let lease=Promise.resolve();
@@ -22,10 +22,10 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('mail classification
    unwrap(await repo.migrate());
    const actors=[];
    for(const role of ['operations','sales','sales','auditor'] as const){const id=randomUUID(),token=randomBytes(32).toString('base64url');
-    await client.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)',[id,`rollback-${id}`]);
-    await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
-    await client.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
-    await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);actors.push({id,hash:tokenAdapter.hash(token)});
+    await client.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)',[id,`rollback-${id}`]);
+    await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);
+    await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':'own',JSON.stringify(capabilitiesFor([role]))]);
+    await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[tokenAdapter.hash(token),id]);actors.push({id,hash:tokenAdapter.hash(token)});
    }
    const [ops,sales,other,auditor]=actors as [{id:string;hash:string},{id:string;hash:string},{id:string;hash:string},{id:string;hash:string}];
    const co=(await client.query("INSERT INTO companies(name,backcheck_data) VALUES('rollback-only-company',$1) RETURNING id",[JSON.stringify({verified:'fixture'})])).rows[0].id,id=randomUUID();
@@ -52,7 +52,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('mail classification
    const reply={...mail,messageKey:'<message-reply>',eventKey:k(),kind:'replied' as const,occurredAt:'2020-02-02T00:00:00.000Z'};
    const replied=unwrap(await repo.recordContactMailEvent(ops.hash,reply));expect(replied.contact.touchStatus).toBe('replied');
    const removeReply={...reply,eventKey:k(),kind:'received' as const,correction:{previousEventKey:null,classification:'other' as const}};
-   const cleared=unwrap(await repo.recordContactMailEvent(ops.hash,removeReply));expect(cleared.contact.touchStatus).toBe('uncontacted');expect(cleared.contact.lastFollowupAt).toBeNull();
+   const cleared=unwrap(await repo.recordContactMailEvent(ops.hash,removeReply));expect(cleared.contact.touchStatus).toBe('autoreply');expect(cleared.contact.lastFollowupAt).toBeNull();
    const archived=unwrap(await repo.contactDetail(ops.hash,ref)).activities.find(a=>a.id===replied.event.activityId);expect(archived).toMatchObject({mailEventId:replied.eventId,mailSuperseded:true});
    const otherReply=unwrap(await repo.recordContactMailEvent(ops.hash,{...reply,eventKey:k(),messageKey:'<independent-reply>'}));expect(otherReply.contact.touchStatus).toBe('replied');
    const activityCountBeforeRestore=(await client.query('SELECT count(*)::int AS n FROM crm_shared_activities WHERE contact_id=$1',[contactId])).rows[0].n;
@@ -67,9 +67,9 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('mail classification
    expect(await repo.recordContactMailEvent(ops.hash,{...mail,eventKey:k(),kind:'received',fromEmail:'changed@example.invalid',correction:{previousEventKey:oldCorrection.event.eventKey,classification:'other'}})).toMatchObject({ok:false,error:{code:'CONFLICT'}});
    const separate=unwrap(await repo.recordContactMailEvent(ops.hash,{...mail,eventKey:k(),mailboxKey:'another-inbox',kind:'received',correction:{previousEventKey:null,classification:'other'}}));expect(separate.event.correctionRevision).toBe(1);expect(separate.contact.touchStatus).toBe('contacted');
    const atomic={...mail,eventKey:k(),kind:'received' as const,correction:{previousEventKey:oldCorrection.event.eventKey,classification:'other' as const}};
-   await client.query("CREATE FUNCTION pg_temp.correction_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture correction outbox'; RETURN NEW; END $$");await client.query("CREATE TRIGGER correction_outbox_fail BEFORE INSERT ON identity.outbox FOR EACH ROW WHEN (NEW.event_type='crm.contact.followup') EXECUTE FUNCTION pg_temp.correction_fail()");
+   await client.query("CREATE FUNCTION pg_temp.correction_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture correction outbox'; RETURN NEW; END $$");await client.query("CREATE TRIGGER correction_outbox_fail BEFORE INSERT ON public.identity_outbox FOR EACH ROW WHEN (NEW.event_type='crm.contact.followup') EXECUTE FUNCTION pg_temp.correction_fail()");
    expect(await repo.recordContactMailEvent(ops.hash,atomic)).toMatchObject({ok:false,error:{code:'DATABASE_ERROR'}});expect((await client.query('SELECT count(*)::int AS n FROM crm_contact_mail_events WHERE event_key=$1',[atomic.eventKey])).rows[0].n).toBe(0);expect(unwrap(await repo.contactDetail(ops.hash,ref)).contact.contactVersion).toBe(separate.contact.contactVersion);
-   await client.query('DROP TRIGGER correction_outbox_fail ON identity.outbox');expect(unwrap(await repo.recordContactMailEvent(ops.hash,atomic)).event.correctionRevision).toBe(4);
+   await client.query('DROP TRIGGER correction_outbox_fail ON public.identity_outbox');expect(unwrap(await repo.recordContactMailEvent(ops.hash,atomic)).event.correctionRevision).toBe(4);
    expect((await repo.contactDetail(ops.hash,ref)).ok).toBe(true);expect(await repo.recordContactMailEvent(other.hash,{...mail,eventKey:k(),kind:'received',correction:{previousEventKey:null,classification:'other'}})).toMatchObject({ok:false});
    const immutable=(await client.query('SELECT kind,occurred_at FROM crm_contact_mail_events WHERE event_id=$1',[initial.eventId])).rows[0];expect(immutable.kind).toBe('autoreply');expect(new Date(immutable.occurred_at).toISOString()).toBe(mail.occurredAt);
    expect((await client.query('SELECT count(*)::int AS n FROM crm_shared_activities WHERE contact_id=$1',[contactId])).rows[0].n).toBeGreaterThan(2);

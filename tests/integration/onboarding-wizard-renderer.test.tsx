@@ -20,7 +20,7 @@ describe('onboarding email account password', () => {
     document.body.append(host);
     root = createRoot(host);
     await act(async () => {
-      root.render(<OnboardingWizard autoCheck={false} prefillEmail="milogin@qq.com" openSignal={1} />);
+      root.render(<OnboardingWizard prefillEmail="milogin@qq.com" openSignal={1} />);
     });
   });
 

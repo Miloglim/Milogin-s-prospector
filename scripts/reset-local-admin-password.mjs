@@ -31,21 +31,21 @@ const pool = new Pool({ host: config.host, port: config.port, database: config.d
 const client = await pool.connect();
 try {
   await client.query('BEGIN');
-  const identity = await client.query(`SELECT u.user_id FROM identity.users u
-    JOIN identity.login_emails e USING(user_id)
+  const identity = await client.query(`SELECT u.user_id FROM public.identity_users u
+    JOIN public.identity_login_emails e USING(user_id)
     WHERE e.email=$1 AND u.active AND u.identity_admin AND u.deleted_at IS NULL FOR UPDATE`, [EMAIL]);
   if (identity.rowCount !== 1) throw new Error('Active formal center superadmin not found');
   const userId = identity.rows[0].user_id;
-  await client.query(`UPDATE identity.credentials SET password_hash=$2,hash_scheme='scrypt-v1',changed_at=now()
+  await client.query(`UPDATE public.identity_credentials SET password_hash=$2,hash_scheme='scrypt-v1',changed_at=now()
     WHERE user_id=$1`, [userId, passwordHash]);
-  await client.query(`UPDATE identity.users SET must_change_password=true,
+  await client.query(`UPDATE public.identity_users SET must_change_password=true,
     security_revision=security_revision+1,management_revision=management_revision+1
     WHERE user_id=$1`, [userId]);
-  await client.query(`UPDATE identity.desktop_refresh_tokens r SET consumed_at=now()
-    FROM identity.sessions s WHERE r.session_id=s.session_id AND s.user_id=$1 AND r.consumed_at IS NULL`, [userId]);
-  await client.query(`UPDATE identity.sessions SET revoked_at=now()
+  await client.query(`UPDATE public.identity_desktop_refresh_tokens r SET consumed_at=now()
+    FROM public.identity_sessions s WHERE r.session_id=s.session_id AND s.user_id=$1 AND r.consumed_at IS NULL`, [userId]);
+  await client.query(`UPDATE public.identity_sessions SET revoked_at=now()
     WHERE user_id=$1 AND revoked_at IS NULL`, [userId]);
-  await client.query(`INSERT INTO identity.management_audit(actor_id,target_id,action,reason)
+  await client.query(`INSERT INTO public.identity_management_audit(actor_id,target_id,action,reason)
     VALUES($1,$1,'identity.password.local_reset','本机维护恢复：随机临时密码，强制首次登录改密并撤销全部会话')`, [userId]);
   await client.query('COMMIT');
   process.stdout.write('{"ok":true,"email":"admin@yqn.com","must_change_password":true}\n');

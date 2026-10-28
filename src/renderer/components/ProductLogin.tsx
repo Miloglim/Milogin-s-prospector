@@ -63,7 +63,6 @@ export function ProductLogin() {
       const accountEmail = String(form.get('email') ?? '').trim();
       setNotice('');
       if (await session.register({ email: accountEmail, password })) {
-        window.localStorage.setItem('prospector:registered-email', accountEmail.toLowerCase());
         setEmail(accountEmail); setCreating(false); setNotice('账号已创建，请登录');
       }
     } else {

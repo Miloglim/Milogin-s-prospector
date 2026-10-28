@@ -31,10 +31,10 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1' && process.env.PROS
     await client.query('BEGIN');
     try {
       const user = randomUUID(), customer = randomUUID(), token = randomBytes(32).toString('base64url');
-      await client.query("INSERT INTO identity.users(user_id,display_name) VALUES($1,'Capacity fixture')", [user]);
-      await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm','sales')", [user]);
-      await client.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm','own',$2)", [user, JSON.stringify(capabilitiesFor(['sales']))]);
-      await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')", [tokenAdapter.hash(token), user]);
+      await client.query("INSERT INTO public.identity_users(user_id,display_name) VALUES($1,'Capacity fixture')", [user]);
+      await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm','sales')", [user]);
+      await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm','own',$2)", [user, JSON.stringify(capabilitiesFor(['sales']))]);
+      await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')", [tokenAdapter.hash(token), user]);
       const company = (await client.query("INSERT INTO companies(name) VALUES('Synthetic capacity company') RETURNING id")).rows[0].id;
       await client.query("INSERT INTO crm_customers(customer_id,company_id,source,source_detail,customer_key,created_by,owner_user_id,origin,state) VALUES($1,$2,'capacity','synthetic rollback fixture',$1::uuid::text,$3,$3,'personal','owned')", [customer, company, user]);
       await client.query(`WITH inserted AS (
@@ -85,17 +85,17 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('center contact li
   it('returns all contact rows, applies permissions before pagination and preserves literal filters with complete rollback', async () => {
     const pool = new Pool(readTestDatabaseConfig());
     const client = await pool.connect();
-    const counts = async () => (await client.query('SELECT (SELECT count(*) FROM identity.users) AS users,(SELECT count(*) FROM identity.sessions) AS sessions,(SELECT count(*) FROM companies) AS companies,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM crm_customers) AS customers,(SELECT count(*) FROM identity.outbox) AS events')).rows[0];
+    const counts = async () => (await client.query('SELECT (SELECT count(*) FROM public.identity_users) AS users,(SELECT count(*) FROM public.identity_sessions) AS sessions,(SELECT count(*) FROM companies) AS companies,(SELECT count(*) FROM contacts) AS contacts,(SELECT count(*) FROM crm_customers) AS customers,(SELECT count(*) FROM public.identity_outbox) AS events')).rows[0];
     const before = await counts();
     await client.query('BEGIN');
     try {
       const prefix = `center-read-${randomUUID()}`;
       async function actor(role: CrmRole, scope: 'own' | 'shared' = 'own') {
         const id = randomUUID(), token = randomBytes(32).toString('base64url');
-        await client.query('INSERT INTO identity.users(user_id,display_name) VALUES($1,$2)', [id, `${prefix} ${role}`]);
-        await client.query("INSERT INTO identity.product_grants(user_id,product_id,role) VALUES($1,'crm',$2)", [id, role]);
-        await client.query("INSERT INTO identity.product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)", [id, scope, JSON.stringify(capabilitiesFor([role]))]);
-        await client.query("INSERT INTO identity.sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')", [tokenAdapter.hash(token), id]);
+        await client.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)', [id, `${prefix} ${role}`]);
+        await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)", [id, role]);
+        await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)", [id, scope, JSON.stringify(capabilitiesFor([role]))]);
+        await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')", [tokenAdapter.hash(token), id]);
         return { id, token };
       }
       const user = await actor('sales'), other = await actor('sales'), manager = await actor('operations', 'shared'), admin = await actor('admin', 'shared');
@@ -177,7 +177,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('center contact li
         expect(response.status).toBe(200);
         expect((await response.json()).data.total).toBe(2);
       } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
-      await client.query('UPDATE identity.users SET active=false WHERE user_id=$1', [user.id]);
+      await client.query('UPDATE public.identity_users SET active=false WHERE user_id=$1', [user.id]);
       expect(await service.contacts(user.token, query)).toMatchObject({ ok: false, error: { code: 'UNAUTHORIZED' } });
     } finally {
       await client.query('ROLLBACK');

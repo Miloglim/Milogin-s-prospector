@@ -56,15 +56,15 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
   it('browses whitelisted business rows and refuses non-super-admins',async()=>{
     const catalog=await request('/admin-api/data');
     expect(catalog.status).toBe(200);
-    expect(catalog.body.data.map((table:any)=>table.id)).toContain('identity.users');
-    expect(catalog.body.data.map((table:any)=>table.id)).not.toContain('identity.credentials');
+    expect(catalog.body.data.map((table:any)=>table.id)).toContain('public.identity_users');
+    expect(catalog.body.data.map((table:any)=>table.id)).not.toContain('public.identity_credentials');
     expect(catalog.body.data.map((table:any)=>table.id)).not.toContain('public.crm_import_rows');
-    const users=await request(`/admin-api/data?table=identity.users&search=${encodeURIComponent(managerId)}&limit=100&offset=0`);
+    const users=await request(`/admin-api/data?table=public.identity_users&search=${encodeURIComponent(managerId)}&limit=100&offset=0`);
     expect(users.status).toBe(200);
     expect(users.body.data.rows.some((row:any)=>row.user_id===managerId)).toBe(true);
     expect(users.body.data.columns.some((column:any)=>/password|token|secret|hash/i.test(column.key))).toBe(false);
-    expect((await request('/admin-api/data?table=identity.credentials&limit=25&offset=0')).status).toBe(400);
-    expect((await request('/admin-api/data?table=identity.users&sort=password_hash&limit=25&offset=0')).status).toBe(400);
+    expect((await request('/admin-api/data?table=public.identity_credentials&limit=25&offset=0')).status).toBe(400);
+    expect((await request('/admin-api/data?table=public.identity_users&sort=password_hash&limit=25&offset=0')).status).toBe(400);
     expect((await request('/admin-api/data',undefined,sales)).status).toBe(403);
   });
   it('grants Navigator access only from its own product permission and revokes immediately',async()=>{
@@ -133,7 +133,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
   it('reissues activation for pending identities and invalidates the old link',async()=>{
     const email=`reissue-${randomUUID()}@example.invalid`,command={action:'challenge.issue',purpose:'activate',email,displayName:'pending reissue',reason:'test pending reissue'};
     const first=unwrap(await admin.mutate(manager,command,password));
-    await pool.query("UPDATE identity.management_challenges SET expires_at=now()-interval '1 second' WHERE token_hash=$1",[tokenAdapter.hash(first.challengeToken!)]);
+    await pool.query("UPDATE public.identity_management_challenges SET expires_at=now()-interval '1 second' WHERE token_hash=$1",[tokenAdapter.hash(first.challengeToken!)]);
     const second=unwrap(await admin.mutate(manager,command,password));
     expect((await admin.consume({token:first.challengeToken,password})).ok).toBe(false);
     unwrap(await admin.consume({token:second.challengeToken,password}));
@@ -141,7 +141,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
   },TIMEOUT);
   it('revokes selected sessions and keeps immutable management audit',async()=>{
     const sessions=unwrap(await admin.sessions(manager,salesId));expect(sessions.length).toBeGreaterThan(0);
-    const selected=(await pool.query('SELECT session_id FROM identity.sessions WHERE token_hash=$1',[tokenAdapter.hash(sales)])).rows[0].session_id;expect(sessions.some(x=>x.sessionId===selected)).toBe(true);
+    const selected=(await pool.query('SELECT session_id FROM public.identity_sessions WHERE token_hash=$1',[tokenAdapter.hash(sales)])).rows[0].session_id;expect(sessions.some(x=>x.sessionId===selected)).toBe(true);
     unwrap(await admin.mutate(manager,{action:'session.revoke',userId:salesId,sessionId:selected,reason:'test revoke'},password));
     expect((await auth.me(sales,'browser')).ok).toBe(false);
     const events=unwrap(await admin.audit(manager));expect(events.some(e=>e.action==='session.revoke')).toBe(true);
@@ -158,13 +158,13 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
     expect((await auth.me(login.token,'browser')).ok).toBe(false);
   },TIMEOUT);
   it('refuses last usable administrator disable',async()=>{
-    const active=await pool.query('SELECT user_id,identity_admin FROM identity.users WHERE active AND identity_admin');
+    const active=await pool.query('SELECT user_id,identity_admin FROM public.identity_users WHERE active AND identity_admin');
     const saved=active.rows.filter(row=>row.user_id!==managerId);
     try{
-      for(const row of saved)await pool.query('UPDATE identity.users SET identity_admin=false WHERE user_id=$1',[row.user_id]);
+      for(const row of saved)await pool.query('UPDATE public.identity_users SET identity_admin=false WHERE user_id=$1',[row.user_id]);
       const target=unwrap(await admin.users(manager,{search:managerId,limit:25,offset:0})).items[0]!;
       expect((await admin.mutate(manager,{action:'user.update',userId:managerId,revision:target.revision,active:false,identityAdmin:true,reason:'last admin test'},password)).ok).toBe(false);
-    }finally{for(const row of saved)await pool.query('UPDATE identity.users SET identity_admin=true WHERE user_id=$1',[row.user_id]);}
+    }finally{for(const row of saved)await pool.query('UPDATE public.identity_users SET identity_admin=true WHERE user_id=$1',[row.user_id]);}
   },TIMEOUT);
   it('serves actual static workbench with restrictive browser headers',async()=>{
     const response=await fetch(base+'/');expect(response.status).toBe(200);expect(response.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
@@ -179,15 +179,15 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
     expect((await request('/admin-api/me',undefined,apiToken)).status).toBe(401);
   },TIMEOUT);
   it('applies HTTP revocation and preserves it across server restart',async()=>{
-    const credential=await pool.query('SELECT email FROM identity.login_emails WHERE user_id=$1',[salesId]);
+    const credential=await pool.query('SELECT email FROM public.identity_login_emails WHERE user_id=$1',[salesId]);
     const second=unwrap(await auth.login({email:credential.rows[0].email,password},'browser')).token;
-    const sessions=unwrap(await admin.sessions(manager,salesId));const current=(await pool.query('SELECT session_id FROM identity.sessions WHERE token_hash=$1',[tokenAdapter.hash(second)])).rows[0].session_id;
+    const sessions=unwrap(await admin.sessions(manager,salesId));const current=(await pool.query('SELECT session_id FROM public.identity_sessions WHERE token_hash=$1',[tokenAdapter.hash(second)])).rows[0].session_id;
     expect(sessions.some(s=>s.sessionId===current)).toBe(true);
     expect((await request('/admin-api/command',{command:{action:'session.revoke',userId:salesId,sessionId:current,reason:'HTTP restart test'},password})).status).toBe(200);
     await close();await start();expect((await request('/admin-api/me',undefined,second)).status).toBe(401);expect((await request('/admin-api/me')).status).toBe(200);
   },TIMEOUT);
   it('serializes simultaneous administrator disable so one usable administrator remains',async()=>{
-    const saved=(await pool.query('SELECT user_id FROM identity.users WHERE active AND identity_admin')).rows;
+    const saved=(await pool.query('SELECT user_id FROM public.identity_users WHERE active AND identity_admin')).rows;
     const peers=[] as {userId:string;token:string;revision:number}[];
     try {
       for(const key of ['race-a','race-b']){
@@ -195,13 +195,13 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M1 actual PG manage
         unwrap(await authRepo.ensureFixture({userId,email,displayName:key,identityAdmin:true,crmRoles:[],passwordHash:await crypto.hash(password)}));
         peers.push({userId,token:unwrap(await auth.login({email,password},'browser')).token,revision:1});
       }
-      for(const row of saved)await pool.query('UPDATE identity.users SET identity_admin=false WHERE user_id=$1',[row.user_id]);
+      for(const row of saved)await pool.query('UPDATE public.identity_users SET identity_admin=false WHERE user_id=$1',[row.user_id]);
       const results=await Promise.all(peers.map(peer=>admin.mutate(peer.token,{action:'user.update',userId:peer.userId,revision:peer.revision,active:false,identityAdmin:false,reason:'concurrent last-admin test'},password)));
       expect(results.filter(r=>r.ok)).toHaveLength(1);expect(results.filter(r=>!r.ok)).toHaveLength(1);
-      const count=await pool.query('SELECT count(*)::int AS n FROM identity.users u JOIN identity.credentials c USING(user_id) WHERE u.active AND u.identity_admin');expect(count.rows[0].n).toBe(1);
+      const count=await pool.query('SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_credentials c USING(user_id) WHERE u.active AND u.identity_admin');expect(count.rows[0].n).toBe(1);
     }finally{
-      for(const row of saved)await pool.query('UPDATE identity.users SET identity_admin=true WHERE user_id=$1',[row.user_id]);
-      for(const peer of peers){await pool.query('UPDATE identity.users SET identity_admin=false,active=false WHERE user_id=$1',[peer.userId]);await pool.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1',[peer.userId]);}
+      for(const row of saved)await pool.query('UPDATE public.identity_users SET identity_admin=true WHERE user_id=$1',[row.user_id]);
+      for(const peer of peers){await pool.query('UPDATE public.identity_users SET identity_admin=false,active=false WHERE user_id=$1',[peer.userId]);await pool.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1',[peer.userId]);}
     }
   },TIMEOUT);
 });
