@@ -10,7 +10,7 @@
 
 ## 首次部署
 
-1. 由管理员在 `milogin_center/public` 执行 `deployment-templates/company-postgres-bootstrap.sql` 数据变更工单。脚本只用于空库，已有同名对象时不得直接覆盖。
+1. 由管理员在 `milogin_center/public` 依次执行两张数据变更工单：先运行 `deployment-templates/company-postgres-tables.sql`，审批执行后再运行 `deployment-templates/company-postgres-programmable.sql`。前者建表、索引、序列和迁移种子，后者建函数、触发器与视图；脚本只用于空库，已有同名对象时不得直接覆盖。`company-postgres-bootstrap.sql` 保留为本地完整基线。
 2. 通过 KMS/部署环境填写 `PROSPECTOR_CENTER_PG_HOST`、`PROSPECTOR_CENTER_PG_PORT`、`PROSPECTOR_CENTER_PG_USER` 和 `PROSPECTOR_CENTER_PG_PASSWORD`；真实账号密码不得进入仓库、Compose 或日志。
 3. 用反向代理把中心公开 HTTPS 地址转发到 `127.0.0.1:55847` 或 Docker 集群内的 `center:55847`。
 4. 启动中心：

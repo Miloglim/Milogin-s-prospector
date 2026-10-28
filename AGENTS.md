@@ -124,7 +124,7 @@
 ## 公司共用 public 数据库陷阱（2026-10-28）
 
 - 公司只提供一个 `milogin_center` 数据库和一个应用账号，两个产品不得再创建 `navigator`、`prospector`、`identity` schema。中心表统一使用 `public.identity_*`；业务表共处 `public` 后，新增表必须带产品前缀并在全新隔离库验证重名、外键、索引和触发器。
-- `deployment-templates/company-postgres-bootstrap.sql` 只用于全新空库。它必须同时包含结构、`crm_schema_migrations` checksum 和 `identity_products` 种子；如果只建表不写迁移版本，容器启动会再次执行迁移并失败。
+- `deployment-templates/company-postgres-bootstrap.sql` 只用于全新空库。它必须同时包含结构、`crm_schema_migrations` checksum 和 `identity_products` 种子；如果只建表不写迁移版本，容器启动会再次执行迁移并失败。DMS 禁止建 schema、顶层 SELECT，并把函数/触发器/视图归为可编程对象，因此工单必须按 `company-postgres-tables.sql` → `company-postgres-programmable.sql` 顺序执行；不要直接上传完整 bootstrap，也不要用 `跳过` 绕过预检查。
 - 公司数据库用户通过 `PROSPECTOR_CENTER_PG_USER`/KMS 注入，数据库名固定 `milogin_center`；Prospector 连接名必须是 `prospector-center`。同一数据库账号不是产品安全边界，钉钉身份映射和产品授权仍只能在中心服务端校验。
 
 ## 首次改密准入陷阱（2026-10-26）
