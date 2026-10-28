@@ -21,7 +21,7 @@ BEGIN
   WHERE cc.customer_id=NEW.customer_id
     AND ((NEW.event_type = ANY(ARRAY['crm.customer.created','crm.customer.updated'])) OR ((NEW.payload->>'contactId') ~ '^[0-9]+$' AND ct.id=(NEW.payload->>'contactId')::integer))
     AND u.active AND NOT u.must_change_password AND pa.user_id IS NOT NULL
-    AND (u.user_id=NEW.user_id OR u.user_id=ANY(COALESCE(NEW.recipient_user_ids,'{}'::uuid[])) OR (g.user_id IS NOT NULL AND pa.scope IN ('shared','summary') AND (u.identity_admin OR pa.capabilities IS NULL OR pa.capabilities ? 'leads.read.all')))
+    AND (u.user_id=NEW.user_id OR u.user_id=ANY(COALESCE(NEW.recipient_user_ids,'{}'::uuid[])) OR (g.user_id IS NOT NULL AND pa.scope IN ('shared','summary') AND (u.identity_admin OR pa.capabilities IS NULL OR jsonb_exists(pa.capabilities, 'leads.read.all'))))
   ON CONFLICT(event_id,recipient_user_id,contact_id) DO NOTHING;
  END IF;
  RETURN NEW;
