@@ -39,6 +39,7 @@ describe('center database environment boundary', () => {
     };
     expect(readProductionDatabaseConfig(dockerEnv)).toMatchObject({
       host: 'postgres', port: 5432, database: 'milogin_center', user: 'company_prospector', application_name: 'prospector-center',
+      options: '-c search_path=prospector,public',
     });
     expect(() => readProductionDatabaseConfig({ ...dockerEnv, PROSPECTOR_CENTER_PG_HOST: 'not_a_host/path' })).toThrow();
     expect(() => readProductionDatabaseConfig({ ...dockerEnv, PROSPECTOR_CENTER_PG_PORT: '70000' })).toThrow();

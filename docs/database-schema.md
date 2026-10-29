@@ -1,8 +1,27 @@
 # Prospector Database Schema
 
-## 2026-10-28 当前正式库映射：全部使用 public
+## 2026-10-29 公司三 schema 正式落位
 
-公司只提供一个 `milogin_center` 数据库并禁止创建额外 schema。当前代码中的实际表名以本文后续业务表定义和 `deployment-templates/company-postgres-bootstrap.sql` 为准；中心账号区不再使用 `identity` schema：
+`milogin_center` 已从全部对象集中在 `public` 改为三 schema：`public` 保留 17 张共享身份/公共表，`prospector` 保存 32 张 CRM 业务表，`navigator` 保存 40 张运价及运行表。迁移工单 `28630577` 仅执行 `ALTER TABLE/SEQUENCE SET SCHEMA`，89 张表、379 个约束、219 个索引和业务数据均保持不变。
+
+Prospector 生产连接使用 `search_path=prospector,public`，Navigator 使用 `FREIGHT_POSTGRES_SCHEMA=navigator` 生成 `search_path=navigator,public`。后续新建 Prospector 表必须落在 `prospector`，Navigator 表落在 `navigator`，共享账号和产品种子继续留在 `public`。
+
+## 2026-10-29 团队关系（051-team-foundation-public）
+
+中心 `public` 新增 4 张团队表。隔离库完整执行公司 bootstrap 后为 93 表、878 字段、948 约束、229 索引、33 条迁移记录和 2 个视图：
+
+| 表 | 作用 | 关键约束 |
+|---|---|---|
+| `prospector.crm_teams` | 团队主表 | `team_id` 主键；团队名大小写去重；负责人/创建人引用中心账号 |
+| `prospector.crm_team_members` | 团队成员关系 | `(team_id,user_id)` 主键；`user_id` 唯一；角色 leader/member |
+| `prospector.crm_team_invitations` | 团队邀请和决定 | 状态 pending/accepted/declined/cancelled；同团队同账号只能一条 pending |
+| `prospector.crm_team_idempotency` | 创建/邀请操作的幂等回执 | `(actor_id,operation,idempotency_key)` 主键；保存请求 digest 与 Result 数据 |
+
+负责人是团队成员关系上的角色，不改全局 `crmRoles`。当前版本不支持一个账号加入多个团队、子团队、移除成员或负责人转让。部署 SQL 已同步 `company-postgres-tables.sql` 和 `company-postgres-bootstrap.sql`。
+
+## 2026-10-28 历史映射：拆分前全部使用 public
+
+这是 2026-10-29 拆分前的历史映射。中心账号区仍保留在 `public`：
 
 - `identity.users` → `public.identity_users`
 - `identity.login_emails` → `public.identity_login_emails`
@@ -12,7 +31,7 @@
 - `identity.sessions` → `public.identity_sessions`
 - 其他中心表同理使用 `public.identity_*`。
 
-Navigator 的运价、账号投影和运行表也位于同一 `public`。统一 bootstrap 当前包含 89 张表和 2 个视图；历史交付文中出现的 `identity.*` 是当时结构记录，不代表当前部署 SQL。中心迁移版本增加 `-public` 后缀，应用启动按 checksum 核验，不能把旧 schema 的关键词替换当作已完成迁移。
+拆分后 Prospector 业务表迁入 `prospector`，Navigator 运价和运行表迁入 `navigator`。历史交付文中出现的 `identity.*` 和全部 `public` 业务表描述只代表当时结构，不代表当前部署 SQL。中心迁移版本仍按 checksum 核验，不能把旧 schema 的关键词替换当作已完成迁移。
 
 ## 2026-10-21 收件箱 IMAP 续抓游标
 

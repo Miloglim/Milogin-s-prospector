@@ -1,8 +1,6 @@
--- Milogin shared public schema: functions, triggers and views.
--- Run after company-postgres-tables.sql has been approved and executed.
-
-CREATE OR REPLACE FUNCTION public.crm_contact_change_capture() RETURNS trigger
+CREATE OR REPLACE FUNCTION prospector.crm_contact_change_capture() RETURNS trigger
     LANGUAGE plpgsql
+    SET search_path = prospector, public
     AS $_$
 BEGIN
  IF NEW.product_id='crm' AND NEW.customer_id IS NOT NULL AND (
@@ -27,8 +25,9 @@ BEGIN
  RETURN NEW;
 END $_$;
 
-CREATE OR REPLACE FUNCTION public.crm_opportunities_customer_owner_changed() RETURNS trigger
+CREATE OR REPLACE FUNCTION prospector.crm_opportunities_customer_owner_changed() RETURNS trigger
     LANGUAGE plpgsql
+    SET search_path = prospector, public
     AS $$
 BEGIN
  IF OLD.owner_user_id IS DISTINCT FROM NEW.owner_user_id THEN
@@ -37,13 +36,15 @@ BEGIN
  RETURN NEW;
 END $$;
 
-CREATE OR REPLACE FUNCTION public.crm_opportunity_history_append_only() RETURNS trigger
+CREATE OR REPLACE FUNCTION prospector.crm_opportunity_history_append_only() RETURNS trigger
     LANGUAGE plpgsql
+    SET search_path = prospector, public
     AS $$
 BEGIN RAISE EXCEPTION 'Opportunity stage history is append only' USING ERRCODE='23514'; END $$;
 
-CREATE OR REPLACE FUNCTION public.crm_tasks_customer_owner_changed() RETURNS trigger
+CREATE OR REPLACE FUNCTION prospector.crm_tasks_customer_owner_changed() RETURNS trigger
     LANGUAGE plpgsql
+    SET search_path = prospector, public
     AS $$
 BEGIN
  IF OLD.owner_user_id IS DISTINCT FROM NEW.owner_user_id THEN
@@ -53,18 +54,18 @@ BEGIN
 END $$;
 
 DROP TRIGGER IF EXISTS crm_contact_change_capture ON public.identity_outbox;
-CREATE TRIGGER crm_contact_change_capture AFTER INSERT ON public.identity_outbox FOR EACH ROW EXECUTE FUNCTION public.crm_contact_change_capture();
+CREATE TRIGGER crm_contact_change_capture AFTER INSERT ON public.identity_outbox FOR EACH ROW EXECUTE FUNCTION prospector.crm_contact_change_capture();
 
-DROP TRIGGER IF EXISTS crm_opportunities_customer_owner_changed ON public.crm_customers;
-CREATE TRIGGER crm_opportunities_customer_owner_changed AFTER UPDATE OF owner_user_id ON public.crm_customers FOR EACH ROW EXECUTE FUNCTION public.crm_opportunities_customer_owner_changed();
+DROP TRIGGER IF EXISTS crm_opportunities_customer_owner_changed ON prospector.crm_customers;
+CREATE TRIGGER crm_opportunities_customer_owner_changed AFTER UPDATE OF owner_user_id ON prospector.crm_customers FOR EACH ROW EXECUTE FUNCTION prospector.crm_opportunities_customer_owner_changed();
 
-DROP TRIGGER IF EXISTS crm_opportunity_history_append_only ON public.crm_opportunity_stage_history;
-CREATE TRIGGER crm_opportunity_history_append_only BEFORE DELETE OR UPDATE ON public.crm_opportunity_stage_history FOR EACH ROW EXECUTE FUNCTION public.crm_opportunity_history_append_only();
+DROP TRIGGER IF EXISTS crm_opportunity_history_append_only ON prospector.crm_opportunity_stage_history;
+CREATE TRIGGER crm_opportunity_history_append_only BEFORE DELETE OR UPDATE ON prospector.crm_opportunity_stage_history FOR EACH ROW EXECUTE FUNCTION prospector.crm_opportunity_history_append_only();
 
-DROP TRIGGER IF EXISTS crm_tasks_customer_owner_changed ON public.crm_customers;
-CREATE TRIGGER crm_tasks_customer_owner_changed AFTER UPDATE OF owner_user_id ON public.crm_customers FOR EACH ROW EXECUTE FUNCTION public.crm_tasks_customer_owner_changed();
+DROP TRIGGER IF EXISTS crm_tasks_customer_owner_changed ON prospector.crm_customers;
+CREATE TRIGGER crm_tasks_customer_owner_changed AFTER UPDATE OF owner_user_id ON prospector.crm_customers FOR EACH ROW EXECUTE FUNCTION prospector.crm_tasks_customer_owner_changed();
 
-CREATE OR REPLACE VIEW public.freight_rates AS
+CREATE OR REPLACE VIEW navigator.freight_rates AS
  SELECT id,
     content_key,
     record_type,
@@ -101,10 +102,10 @@ CREATE OR REPLACE VIEW public.freight_rates AS
     origin,
     ai_flag,
     price_usd AS freight_usd
-   FROM public.freight_items
+   FROM navigator.freight_items
   WHERE (record_type = 'rates'::text);
 
-CREATE OR REPLACE VIEW public.space_records AS
+CREATE OR REPLACE VIEW navigator.space_records AS
  SELECT id,
     content_key,
     record_type,
@@ -140,5 +141,5 @@ CREATE OR REPLACE VIEW public.space_records AS
     supersedes,
     origin,
     ai_flag
-   FROM public.freight_items
+   FROM navigator.freight_items
   WHERE (record_type = 'space'::text);

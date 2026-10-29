@@ -14,6 +14,8 @@ const DEFAULT_PRODUCTION_USER = "milogin_app";
 const LOCAL_HOST = "127.0.0.1";
 const DEFAULT_PRODUCTION_PORT = 5432;
 const MAX_PORT = 65535;
+const PRODUCTION_SEARCH_PATH = "prospector,public";
+const PRODUCTION_OPTIONS = `-c search_path=${PRODUCTION_SEARCH_PATH}`;
 export const CRM_CONFIG_RELATIVE_PATH = ".work/pg-crm/config.json";
 
 function productionHost(env: NodeJS.ProcessEnv): string {
@@ -33,7 +35,7 @@ function productionPool(host: string, port: number, user: string, password: stri
     host, port, database: PRODUCTION_DATABASE, user,
     password, max: CONNECTION_MAX,
     connectionTimeoutMillis: settings.connection_timeout_seconds * MILLISECONDS_PER_SECOND,
-    application_name: "prospector-center", ssl: false,
+    application_name: "prospector-center", options: PRODUCTION_OPTIONS, ssl: false,
   };
 }
 

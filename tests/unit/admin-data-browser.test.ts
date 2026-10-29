@@ -11,7 +11,7 @@ describe("management data browser boundary", () => {
   it("keeps only explicit business tables and never security credential tables", () => {
     const ids = ADMIN_DATA_TABLES.map(table => table.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(findAdminDataTable("public.contacts")?.label).toBe("联系人");
+    expect(findAdminDataTable("prospector.contacts")?.label).toBe("联系人");
     expect(findAdminDataTable("public.identity_credentials")).toBeUndefined();
     expect(findAdminDataTable("public.identity_sessions")).toBeUndefined();
     expect(findAdminDataTable("public.identity_desktop_refresh_tokens")).toBeUndefined();
