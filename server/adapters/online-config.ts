@@ -4,7 +4,7 @@ import { ONLINE_DEFAULTS, type OnlineConfig } from "../core/auth";
 export const ONLINE_CONFIG_PATH = ".work/pg-crm/online.json";
 const PORT_MAX = 65535;
 const SESSION_TTL_MAX_SECONDS = 86400;
-const PRODUCTION_HTTP_PORT = 55847;
+const DEFAULT_PRODUCTION_HTTP_PORT = 55847;
 const PRODUCTION_RUNTIME_DIRECTORY = "MiloginCenter";
 const DEFAULT_BIND_HOST = "127.0.0.1";
 const CONTAINER_BIND_HOST = "0.0.0.0";
@@ -13,6 +13,12 @@ function productionBindHost(env: NodeJS.ProcessEnv): string {
   const host = (env.PROSPECTOR_CENTER_BIND_HOST || DEFAULT_BIND_HOST).trim();
   if (!ALLOWED_BIND_HOSTS.has(host)) throw new Error('正式中心监听地址仅允许回环或容器内网');
   return host;
+}
+
+function productionPort(env: NodeJS.ProcessEnv): number {
+  const port = Number(env.APP_PORT || DEFAULT_PRODUCTION_HTTP_PORT);
+  if (!Number.isSafeInteger(port) || port < 1 || port > PORT_MAX) throw new Error('正式中心服务端口无效');
+  return port;
 }
 export function onlineRuntimeDirectory(env: NodeJS.ProcessEnv = process.env): string {
   const configured = env.PROSPECTOR_CENTER_RUNTIME_DIR?.trim();
@@ -43,7 +49,7 @@ export function readOnlineConfig(env: NodeJS.ProcessEnv = process.env): OnlineCo
       try { const parsedNavigator = new URL(candidate); if (!['http:', 'https:'].includes(parsedNavigator.protocol) || parsedNavigator.username || parsedNavigator.password) throw new Error(); }
       catch { throw new Error('Navigator 服务地址无效'); }
     }
-    return { ...ONLINE_DEFAULTS, host: productionBindHost(env), port: PRODUCTION_HTTP_PORT, navigator_url: navigatorUrl, navigator_entry_url: navigatorEntryUrl,
+    return { ...ONLINE_DEFAULTS, host: productionBindHost(env), port: productionPort(env), navigator_url: navigatorUrl, navigator_entry_url: navigatorEntryUrl,
       test_mode: false, public_origin: origin, ...(localHttp ? { local_http: true } : {}) };
   }
   if (env.PROSPECTOR_CENTER_MODE && env.PROSPECTOR_CENTER_MODE !== 'test') throw new Error('未知中心运行模式');

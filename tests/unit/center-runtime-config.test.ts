@@ -87,6 +87,7 @@ describe('center database environment boundary', () => {
       PROSPECTOR_CENTER_RUNTIME_DIR: '/var/lib/prospector-center',
     } as NodeJS.ProcessEnv;
     expect(readOnlineConfig(env)).toMatchObject({ host: '0.0.0.0', port: 55847 });
+    expect(readOnlineConfig({ ...env, APP_PORT: '22124' })).toMatchObject({ host: '0.0.0.0', port: 22124 });
     expect(onlineRuntimeDirectory(env)).toBe(resolve('/var/lib/prospector-center'));
     expect(() => readOnlineConfig({ ...env, PROSPECTOR_CENTER_BIND_HOST: '192.168.1.8' })).toThrow();
     expect(() => onlineRuntimeDirectory({ ...env, PROSPECTOR_CENTER_RUNTIME_DIR: 'relative/path' })).toThrow();

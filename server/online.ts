@@ -128,4 +128,4 @@ async function main() {
     server.on("error",()=>{ serverLog.write("ERROR","identity.runtime","服务运行错误"); process.exitCode=EXIT_FAILED; stop(); });
   } finally { if(!started) await pool.end(); }
 }
-void main().catch(()=>{ serverLog.write("ERROR","identity.runtime","中心启动失败；检查隔离配置与本机日志"); process.exitCode=EXIT_FAILED; });
+void main().catch((error)=>{ const message=error instanceof Error ? error.message : "未知错误"; serverLog.write("ERROR","identity.runtime",`中心启动失败：${message}`); process.exitCode=EXIT_FAILED; });
