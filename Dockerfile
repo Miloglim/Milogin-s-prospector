@@ -13,6 +13,8 @@ ENV APP_PORT=${APP_PORT} \
     ENV=${ENV} \
     IMAGE_TAG=${IMAGE_TAG} \
     CODE_VERSION=${GIT_COMMIT} \
+    NODE_OPTIONS=--v8-pool-size=0 \
+    UV_THREADPOOL_SIZE=1 \
     PROSPECTOR_CENTER_MODE=production \
     PROSPECTOR_CENTER_BIND_HOST=0.0.0.0 \
     PROSPECTOR_CENTER_RUNTIME_DIR=/var/lib/prospector-center
@@ -28,7 +30,7 @@ WORKDIR /opt/web/ws-${APP_PORT}
 COPY package.json package-lock.json ./
 RUN npm config set registry https://registry.npmmirror.com \
     && npm config set replace-registry-host always \
-    && npm ci --ignore-scripts
+    && npm ci --ignore-scripts --maxsockets=1
 
 COPY . .
 RUN npm run crm:pg:build \
