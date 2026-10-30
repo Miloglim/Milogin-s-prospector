@@ -2,7 +2,9 @@ FROM docker.m.daocloud.io/library/node:22-bookworm-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm config set replace-registry-host always \
+    && npm ci --ignore-scripts
 
 COPY . .
 RUN npm run crm:pg:build && npm run crm:admin:build
@@ -16,7 +18,10 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm config set replace-registry-host always \
+    && npm ci --omit=dev --ignore-scripts \
+    && npm cache clean --force
 
 COPY --from=build /app/dist-server ./dist-server
 COPY --from=build /app/dist-admin ./dist-admin
