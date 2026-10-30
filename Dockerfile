@@ -26,22 +26,10 @@ RUN mkdir -p /opt/web/ws-${APP_PORT} /var/lib/prospector-center \
 
 WORKDIR /opt/web/ws-${APP_PORT}
 
-COPY package.json package-lock.json ./
-RUN ulimit -u 4096 2>/dev/null || true; \
-    ulimit -s 16384 2>/dev/null || true; \
-    node --single-threaded --v8-pool-size=0 /usr/local/lib/node_modules/npm/bin/npm-cli.js ci \
-    --ignore-scripts \
-    --maxsockets=1 \
-    --registry=https://registry.npmmirror.com \
-    --replace-registry-host=always
+COPY deploy/prospector-prebuilt/dist-server ./dist-server
+COPY deploy/prospector-prebuilt/dist-admin ./dist-admin
 
-COPY . .
-RUN ulimit -u 4096 2>/dev/null || true; \
-    ulimit -s 16384 2>/dev/null || true; \
-    node --single-threaded --v8-pool-size=0 ./node_modules/typescript/bin/tsc -p tsconfig.server.json \
-    && node --single-threaded --v8-pool-size=0 ./node_modules/typescript/bin/tsc -p tsconfig.admin.json \
-    && node --single-threaded --v8-pool-size=0 scripts/build-admin.mjs \
-    && chown -R node:node /opt/web/ws-${APP_PORT} /var/lib/prospector-center
+RUN chown -R node:node /opt/web/ws-${APP_PORT} /var/lib/prospector-center
 
 ENV NODE_ENV=production
 
@@ -51,4 +39,4 @@ EXPOSE ${APP_PORT}
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node --single-threaded --v8-pool-size=0 -e "fetch('http://127.0.0.1:55847/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "--single-threaded", "--v8-pool-size=0", "dist-server/online.js"]
+CMD ["node", "--single-threaded", "--v8-pool-size=0", "dist-server/adapters/online.cjs"]
