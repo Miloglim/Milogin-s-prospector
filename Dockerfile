@@ -27,14 +27,18 @@ RUN mkdir -p /opt/web/ws-${APP_PORT} /var/lib/prospector-center \
 WORKDIR /opt/web/ws-${APP_PORT}
 
 COPY package.json package-lock.json ./
-RUN node --single-threaded --v8-pool-size=0 /usr/local/lib/node_modules/npm/bin/npm-cli.js ci \
+RUN ulimit -u 4096 2>/dev/null || true; \
+    ulimit -s 16384 2>/dev/null || true; \
+    node --single-threaded --v8-pool-size=0 /usr/local/lib/node_modules/npm/bin/npm-cli.js ci \
     --ignore-scripts \
     --maxsockets=1 \
     --registry=https://registry.npmmirror.com \
     --replace-registry-host=always
 
 COPY . .
-RUN node --single-threaded --v8-pool-size=0 ./node_modules/typescript/bin/tsc -p tsconfig.server.json \
+RUN ulimit -u 4096 2>/dev/null || true; \
+    ulimit -s 16384 2>/dev/null || true; \
+    node --single-threaded --v8-pool-size=0 ./node_modules/typescript/bin/tsc -p tsconfig.server.json \
     && node --single-threaded --v8-pool-size=0 ./node_modules/typescript/bin/tsc -p tsconfig.admin.json \
     && node --single-threaded --v8-pool-size=0 scripts/build-admin.mjs \
     && chown -R node:node /opt/web/ws-${APP_PORT} /var/lib/prospector-center
