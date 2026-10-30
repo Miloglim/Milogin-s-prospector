@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS build
+FROM docker.m.daocloud.io/library/node:22-bookworm-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -7,7 +7,7 @@ RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run crm:pg:build && npm run crm:admin:build
 
-FROM node:22-bookworm-slim AS runtime
+FROM docker.m.daocloud.io/library/node:22-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     PROSPECTOR_CENTER_MODE=production \
