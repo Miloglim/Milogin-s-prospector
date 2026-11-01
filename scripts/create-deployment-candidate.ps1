@@ -115,6 +115,13 @@ $forbidden = Get-ChildItem -LiteralPath $candidateRoot -Recurse -File -Force | W
 if ($forbidden) { throw "候选包包含禁止文件：$($forbidden.FullName -join ', ')" }
 
 Compress-Archive -Path (Join-Path $candidateRoot '*') -DestinationPath $packagePath -CompressionLevel Optimal
-Get-FileHash -LiteralPath $packagePath -Algorithm SHA256 | Format-List
+$packageSha = [System.Security.Cryptography.SHA256]::Create()
+try {
+  $packageHash = ([System.BitConverter]::ToString($packageSha.ComputeHash([System.IO.File]::ReadAllBytes($packagePath)))).Replace('-', '')
+} finally {
+  $packageSha.Dispose()
+}
+Write-Output "SHA256=$packageHash"
+Write-Output "ZIP=$packagePath"
 Write-Output "CANDIDATE=$packagePath"
 Write-Output "STAGING=$candidateRoot"
