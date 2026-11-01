@@ -10,6 +10,7 @@ export type CenterInvoke = <T>(channel: string, input?: unknown) => Promise<Resu
 const IMPORT_ROW_OFFSET = 2;
 const HEX_RADIX = 16;
 const HEX_WIDTH = 2;
+const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SERVER_IMPORT_KEY_LENGTH = 120;
 export const centerInvoke: CenterInvoke = (channel, input) => window.api.invoke(channel, input) as never;
 async function companyImportKey(companyName: string): Promise<string> {
@@ -42,8 +43,10 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
   const deleteRequests = new Map<string,ContactDelete>();
   async function remove(ids:number[]) {
     if(!isCurrent())return {success:false,error:"账号或权限已变化"};
+    if(!ids.length||new Set(ids).size!==ids.length)return {success:false,error:"联系人选择已变化，请刷新后重试"};
     const rows=ids.map(id=>records.get(id));
-    if(!rows.length||rows.some(row=>!row?.canDelete))return {success:false,error:"所选联系人不可删除"};
+    if(rows.some(row=>!row?.canDelete))return {success:false,error:"所选联系人不可删除"};
+    if(rows.some(row=>!row||!UUID_PATTERN.test(row.customerId)||!Number.isSafeInteger(row.contactVersion??row.customerVersion)||(row.contactVersion??row.customerVersion)<1))return {success:false,error:"联系人缺少中心编号或版本，请刷新后重试"};
     const contacts=rows.map(row=>({contactId:row!.contactId,customerId:row!.customerId,expectedVersion:row!.contactVersion??row!.customerVersion}));
     const signature=JSON.stringify(contacts);let request=deleteRequests.get(signature);if(!request){request={contacts,idempotencyKey:crypto.randomUUID()};deleteRequests.set(signature,request);}
     const result=await invoke<ContactDeleteReceipt>(ONLINE_CHANNELS.CONTACT_DELETE,request);

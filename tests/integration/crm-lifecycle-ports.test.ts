@@ -12,6 +12,14 @@ describe('original CRM lifecycle adapters',()=>{
  it('rejects mixed protected batches and stale-account operations before IPC',async()=>{
   let active=true;const invoke=vi.fn(async()=>({ok:true,data:{items:[row,{...row,contactId:43,canDelete:false}],total:2}}));const port=createCenterContactPort({key:'k',invoke:invoke as never,isCurrent:()=>active});await port.list();expect(await port.deleteBatch!([42,43])).toMatchObject({success:false});active=false;expect(await port.delete(42)).toMatchObject({success:false});expect(invoke).toHaveBeenCalledTimes(1);
  });
+ it('rejects incomplete center references with a refresh message before delete IPC',async()=>{
+  const invalid={...row,customerId:'legacy-42',contactVersion:0} as unknown as CenterContact;
+  const invoke=vi.fn(async()=>({ok:true,data:{items:[invalid],total:1}}));
+  const port=createCenterContactPort({key:'k',invoke:invoke as never});
+  await port.list();
+  expect(await port.delete(42)).toMatchObject({success:false,error:'联系人缺少中心编号或版本，请刷新后重试'});
+  expect(invoke).toHaveBeenCalledTimes(1);
+ });
  it('starts a fresh add request after a terminal duplicate receipt',async()=>{
   let attempt=0;const calls:Array<Record<string,unknown>>=[];
   const invoke=vi.fn(async(channel,input)=>{if(channel!==ONLINE_CHANNELS.IMPORT)throw Error(channel);calls.push(input as Record<string,unknown>);const status=++attempt===1?'duplicate':'created';return {ok:true,data:{batchId:'batch',version:1,rows:[{status,customerId:row.customerId}]}};});

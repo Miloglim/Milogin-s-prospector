@@ -270,6 +270,7 @@
 - 邮件 AI/规则写入 059 追加历史，人工锁定永久优先；060 关注项是主管行动提示，不是客户字段或正式任务本身。061 监控与 062 绩效只能查询派生与审计，不得保存销售评分结论或改变负责人/阶段。
 - `scripts/mock-dev-hierarchy.mjs` 必须按 `PROSPECTOR_MOCK_CRM_SCHEMA` 选择 `public`/`prospector`，并检查 051-064 与 canonical 表；累计 mock 的清理和重建只能触碰固定 `mock.hierarchy.` / `mock-dev-hierarchy-20261029` 数据。
 - 团队解散使用软生命周期：`crm_org_units.dissolved_at/dissolved_by` 隐藏组织，`crm_org_assignments.ended_at` 结束关系，解散审计只追加。公司根不能解散，有活动下级的运营组必须先处理下级；联系人、ownership、分配和来源组织快照不得随团队解散删除或改写。
+- 客户端与中心必须同节点验收。团队页“CRM接口不存在”先请求中心 `/api/crm/team-context`；若返回 404，是正式中心未升级，不是前端路由缺失。中心联系人删除前必须校验 UUID customerId、联系人版本和选择集合，缺少中心引用时提示刷新，不能把旧本地记录发成中心删除批次。
 
 ## 自动开发客户中心身份陷阱（2026-10-31）
 
