@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { buildQuotePrompt, buildMailBriefPrompt, stashDevLetterPreset, takeDevLetterPreset } from "../../src/renderer/lib/homeCards";
+import { canPickForSending } from "../../src/renderer/pages/campaigns/ContactPicker";
 
 // ═══════════════════════════════════════════════════════════════════
 // 首页功能卡片（docs/home-cards-spec.md）：
@@ -48,12 +49,35 @@ describe("自动开发信名单交接（localStorage 一次性）", () => {
   it("存进去、读走即删；坏数据当没有", () => {
     stashDevLetterPreset([1, 2, 3], "测试来源");
     const p = takeDevLetterPreset();
-    expect(p).toEqual({ ids: [1, 2, 3], note: "测试来源" });
+    expect(p).toEqual({ ids: [1, 2, 3], note: "测试来源", centerRefs: [] });
     expect(takeDevLetterPreset()).toBeNull();                  // 一次性：第二次读为空
 
     localStorage.setItem("dev-letter-preset", "{broken");
     expect(takeDevLetterPreset()).toBeNull();
     localStorage.removeItem("dev-letter-preset");
+  });
+
+  it("中心推荐会一并保留联系人引用，并且只接受完整引用", () => {
+    stashDevLetterPreset([7], "中心来源", [{ contactId: 7, customerId: "customer-7" }]);
+    expect(takeDevLetterPreset()).toEqual({
+      ids: [7], note: "中心来源", centerRefs: [{ contactId: 7, customerId: "customer-7" }],
+    });
+    localStorage.setItem("dev-letter-preset", JSON.stringify({
+      ids: [8], centerRefs: [{ contactId: 8 }],
+    }));
+    expect(takeDevLetterPreset()?.centerRefs).toEqual([]);
+  });
+});
+
+describe("发送任务选人权限", () => {
+  const row = (patch: Record<string, unknown>) => ({
+    id: 1, email: "buyer@example.invalid", centerReference: { contactId: 1, customerId: "customer-1" }, ...patch,
+  });
+
+  it("可发信与可跟进分离时仍允许选取，并优先使用明确发信权限", () => {
+    expect(canPickForSending(row({ canFollowup: false, canSendMail: true }) as never)).toBe(true);
+    expect(canPickForSending(row({ canFollowup: true, canSendMail: false }) as never)).toBe(false);
+    expect(canPickForSending(row({ isShared: true, canFollowup: true }) as never)).toBe(false);
   });
 });
 

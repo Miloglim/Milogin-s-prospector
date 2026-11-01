@@ -8,6 +8,7 @@ import { SqliteCenterSendReceipts, type StoredSendReceipt } from './center-send-
 import { CONTACT_ASSIGNMENT_ROUTES, type CenterContactDetail } from '../../../server/core/contact-assignments';
 import { CONTACT_MAIL_LIMITS } from '../../../server/core/contact-mail';
 import { SEND_ACCEPTANCE_ROUTES, type SendAuthorization, type SendAuthorizationInput } from '../../../server/core/send-acceptance';
+import { DESKTOP_AUTH_ROUTES } from '../../../server/core/desktop-session';
 import { okResult, failResult } from '../errors';
 import { writeBodyFile } from '../services/inbox.service';
 import { Log } from '../logger';
@@ -60,6 +61,11 @@ export function bindCenterSendRuntime(adapter:OnlineCrmAdapter,mirror:ContactMir
   }
   setCenterSendPort({
     contacts:rows,
+    async assertActiveDevice() {
+      const ctx=context();if(!ctx||!active(ctx)||!adapter.isOnline())return failResult('中心暂时不可用，批量发送已暂停');
+      const result=await adapter.requestLive<unknown>('GET',DESKTOP_AUTH_ROUTES.me);
+      return result.ok&&active(ctx)?okResult(undefined):failResult(!result.ok?result.error.message:'账号或设备已变化，批量发送已停止');
+    },
     async authorize(item:CenterSendItem) {
       const ctx=context();if(!ctx||!active(ctx)||!adapter.isOnline())return failResult('中心暂时不可用，发送已暂停');
       if(item.centerScope!==scopeKey(ctx))return failResult('发送任务不属于当前账号');

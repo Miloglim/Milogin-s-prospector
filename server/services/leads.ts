@@ -3,6 +3,7 @@ import type {TokenPort} from '../core/auth';
 import {LEAD_LIMITS,FOLLOWUP_METHODS,CONTACT_TOUCH_STATUSES,FOLLOWUP_TIME_LIMITS,type LeadRepository,type ImportRequest,type PublishRequest,type LeadCommand,type FollowupRequest,type LeadQuery,type CustomerCreate,type CustomerUpdate,type AssignRequest,type MemberQuery} from '../core/leads';
 import {normalizeSourceDate,WORKBOOK_LIMITS,type WorkbookImportRequest} from '../core/customer-import';
 import {centerContactGroupQuery,centerContactQuery} from '../core/center-contacts';
+import { validateLeadIngressDecisionQuery, validateLeadIngressResolution } from '../core/lead-ingress';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function record(v:unknown):v is Record<string,unknown>{return !!v&&typeof v==='object'&&!Array.isArray(v);}
 function text(v:unknown,max:number,min=1):v is string{return typeof v==='string'&&v.trim().length>=min&&v.length<=max;}
@@ -49,6 +50,8 @@ export function createLeadService(repo:LeadRepository,tokens:TokenPort){
  detail(token:string,id:string){return UUID.test(id)?run(token,h=>repo.detail(h,id)):Promise.resolve(failure('NOT_FOUND','客户不存在'));},
  claim(token:string,v:unknown){if(!command(v)||!keys(v as unknown as Record<string,unknown>,['customerId','expectedVersion','idempotencyKey']))return Promise.resolve(failure('INVALID_INPUT','领取参数无效'));return run(token,h=>repo.claim(h,v));},
  followup(token:string,v:unknown){if(!command(v)||!record(v)||!keys(v,['customerId','expectedVersion','idempotencyKey','note','stage','method','occurredAt','contactId','contactStatus','opportunityId'])||v.opportunityId!==undefined&&(typeof v.opportunityId!=='string'||!UUID.test(v.opportunityId))||!text(v.note,LEAD_LIMITS.note)||v.stage!==undefined&&!['cold',...CRM_STAGES].includes(v.stage as never)||v.method!==undefined&&!FOLLOWUP_METHODS.includes(v.method as never)||v.occurredAt!==undefined&&!validOccurrence(v.occurredAt)||v.contactId!==undefined&&(!Number.isSafeInteger(v.contactId)||Number(v.contactId)<1)||v.contactStatus!==undefined&&(!CONTACT_TOUCH_STATUSES.includes(v.contactStatus as never)||v.contactId===undefined||v.method==='note'))return Promise.resolve(failure('INVALID_INPUT','跟进参数无效'));return run(token,h=>repo.followup(h,v as unknown as FollowupRequest));},
+ resolveLeadIngress(token:string,v:unknown){const parsed=validateLeadIngressResolution(v);if(!parsed.ok)return Promise.resolve(parsed);return run(token,h=>repo.resolveLeadIngress?repo.resolveLeadIngress(h,parsed.data):Promise.resolve(failure('UNAVAILABLE','冲突处理暂不可用')));},
+ leadIngressDecision(token:string,v:unknown){if(!record(v)||!keys(v,['source','idempotencyKey']))return Promise.resolve(failure('INVALID_INPUT','冲突记录参数无效'));const parsed=validateLeadIngressDecisionQuery(v.source,v.idempotencyKey);if(!parsed.ok)return Promise.resolve(parsed);return run(token,h=>repo.leadIngressDecision?repo.leadIngressDecision(h,parsed.data):Promise.resolve(failure('UNAVAILABLE','冲突记录暂不可用')));},
  };
 }
 export type LeadService=ReturnType<typeof createLeadService>;

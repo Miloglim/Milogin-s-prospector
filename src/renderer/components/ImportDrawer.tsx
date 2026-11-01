@@ -6,6 +6,7 @@ import { InboxOutlined } from "@ant-design/icons";
 import { QueryClientContext } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
 import { ONLINE_LIMITS, type ImportFileContent } from "../../shared/online-crm";
+import { LeadIngressConflictDrawer, type LeadIngressConflictNotice } from "../pages/customers/LeadIngressConflictDrawer";
 
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -76,8 +77,10 @@ type Step = "input" | "preview";
 
 export interface ImportDrawerPort {
   preview(input:ImportFileContent):Promise<{success:boolean;data?:PreviewData;error?:string}>;
-  execute(input:ImportFileContent & {mapping:Record<string,string>}):Promise<{success:boolean;data?:{imported:number;skipped:number};error?:string}>;
+  execute(input:ImportFileContent & {mapping:Record<string,string>}):Promise<ImportExecutionResult>;
+  continueAfterConflict?(conflict:LeadIngressConflictNotice):Promise<ImportExecutionResult>;
 }
+export interface ImportExecutionResult { success:boolean;data?:{imported:number;skipped:number};error?:string;conflict?:LeadIngressConflictNotice; }
 export function ImportDrawer({ open, onClose, port, disabled = false }: { open: boolean; onClose: () => void; port?:ImportDrawerPort; disabled?: boolean }) {
   const qc = useContext(QueryClientContext);
   const [step, setStep] = useState<Step>("input");
@@ -87,6 +90,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [conflict, setConflict] = useState<LeadIngressConflictNotice | null>(null);
   // 缓存原始数据，execute 时重新送后端解析全部行
   const rawDataRef = useRef<ImportFileContent | null>(null);
 
@@ -97,6 +101,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
     setMapping({});
     setLoading(false);
     setImporting(false);
+    setConflict(null);
     rawDataRef.current = null;
   };
 
@@ -153,6 +158,19 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
   };
 
   // 确认导入 — 重新送原始数据 + 最终 mapping
+  const acceptExecution = (r: ImportExecutionResult) => {
+    if (r.success && r.data) {
+      message.success(`导入 ${r.data.imported} 条，跳过 ${r.data.skipped} 条（重复）`);
+      if (!port && qc) void invalidateDomain(qc, "contacts");
+      handleClose();
+      return;
+    }
+    if (r.conflict) {
+      setConflict(r.conflict);
+      return;
+    }
+    message.error(r.error || "导入失败");
+  };
   const executeImport = async () => {
     if (disabled) { message.error('导入需要连接服务器'); return; }
     if (!rawDataRef.current) return;
@@ -160,15 +178,25 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
     try {
       const r = await (port ? port.execute({...rawDataRef.current,mapping}) : window.api.invoke("contacts:import", {
         mode: "execute", ...rawDataRef.current, mapping,
-      })) as { success: boolean; data?: { imported: number; skipped: number }; error?: string };
-
-      if (r.success && r.data) {
-        message.success(`导入 ${r.data.imported} 条，跳过 ${r.data.skipped} 条（重复）`);
-        if (!port && qc) void invalidateDomain(qc, "contacts");
-        handleClose();
-      } else {
-        message.error(r.error || "导入失败");
-      }
+      })) as ImportExecutionResult;
+      acceptExecution(r);
+    } catch (err) {
+      message.error("导入失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setImporting(false);
+    }
+  };
+  const finishConflict = async () => {
+    const pending = conflict;
+    setConflict(null);
+    if (!pending || !port?.continueAfterConflict) {
+      message.success('冲突已处理');
+      handleClose();
+      return;
+    }
+    setImporting(true);
+    try {
+      acceptExecution(await port.continueAfterConflict(pending));
     } catch (err) {
       message.error("导入失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -330,6 +358,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
 
         </div>
       )}
+      {conflict && <LeadIngressConflictDrawer target={conflict} onClose={() => setConflict(null)} onResolved={finishConflict} />}
     </Drawer>
   );
 }

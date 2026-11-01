@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow } from "electron";
-import type { InboxListRequest } from "../../shared/inbox";
+import type { InboxHistoryRequest, InboxListRequest } from "../../shared/inbox";
 import { IPC } from "../contract";
 import * as InboxService from "../services/inbox.service";
 import { todayMailBrief } from "../services/mail-brief.service";
@@ -45,6 +45,8 @@ export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
   ipcMain.handle(IPC.INBOX.FETCH, async (_e, accountId?: number) => {
     return InboxService.refreshInbox(accountId);
   });
+  ipcMain.handle(IPC.INBOX.SYNC_STATE, () => InboxService.inboxSyncSnapshot());
+  ipcMain.handle(IPC.INBOX.SYNC_HISTORY, async (_e, input?: InboxHistoryRequest) => InboxService.refreshInboxHistory(input));
   ipcMain.handle(IPC.INBOX.CLASSIFY, async (_e, payload: { id: number; classification: string }) => {
     if (!payload?.id || !payload?.classification) return failResult("参数错误");
     return InboxService.classifyMessage(payload.id, payload.classification);

@@ -46,6 +46,7 @@ describe('sidebar account, search and messages footer', () => {
     await act(async () => { footer.querySelector<HTMLButtonElement>('button[aria-label="全局搜索"]')!.click(); }); expect(state.search).toHaveBeenCalledOnce();
     await act(async () => { footer.querySelector<HTMLButtonElement>('button[aria-label="消息中心"]')!.click(); await Promise.resolve(); });
     expect(state.navigate).not.toHaveBeenCalled(); expect(document.querySelector('.message-center-panel')).not.toBeNull(); expect(document.body.textContent).toContain('暂无消息');
+    expect(document.querySelector('.messages-body')?.classList.contains('is-empty')).toBe(true);
     await act(async () => { footer.querySelector<HTMLButtonElement>('button[aria-label="账号菜单"]')!.click(); });
     expect(Array.from(document.querySelectorAll('[role="menuitem"]')).map(item => item.textContent).join(' ')).not.toContain('消息中心');
     const logout = Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent === '退出登录') as HTMLElement;
@@ -109,6 +110,7 @@ describe('sidebar account, search and messages footer', () => {
     expect(host.textContent).not.toContain('运价库');
     expect(host.textContent).not.toContain('新对话');
     expect(host.textContent).not.toContain('还没有会话');
+    expect(host.textContent).toContain('团队');
     expect(host.textContent).toContain('发送中心');
     expect(host.textContent).toContain('素材库');
   });

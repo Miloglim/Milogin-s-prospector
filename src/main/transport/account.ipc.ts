@@ -3,6 +3,7 @@ import { IPC } from "../contract";
 import * as AccountService from "../services/account.service";
 import * as SenderBlock from "../services/sender-block.service";
 import * as SendService from "../services/send.service";
+import * as InboxService from "../services/inbox.service";
 import { Log } from "../logger";
 import { failResult } from "../errors";
 
@@ -18,7 +19,11 @@ export function registerAccountIPC() {
       return failResult("参数错误: email、smtpHost 必填");
     }
     // ponytail: 编辑时可不传密码，service 层做最终校验
-    return AccountService.upsertAccount(input);
+    const result = await AccountService.upsertAccount(input);
+    if (result.success && result.data?.imapHost) {
+      void InboxService.refreshInbox(result.data.id).catch(error => Log.error('inbox.account.immediate', '邮箱保存后的首拉失败', error instanceof Error ? error.stack : undefined));
+    }
+    return result;
   });
 
   ipcMain.handle(IPC.ACCOUNTS.DELETE, async (_e, id: number) => {

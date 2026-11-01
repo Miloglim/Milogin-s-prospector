@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prospector CRM Direction</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #6b7684;
+      --faint: #9aa4b2;
+      --line: #dce2e8;
+      --line-strong: #c9d1da;
+      --canvas: #eef2f6;
+      --surface: #ffffff;
+      --soft: #f6f8fa;
+      --soft-2: #ecf1f5;
+      --sidebar: #1c2126;
+      --sidebar-soft: #252b31;
+      --blue: #2563eb;
+      --blue-soft: #eaf1ff;
+      --teal: #0f766e;
+      --teal-soft: #e8f7f2;
+      --amber: #b45309;
+      --amber-soft: #fff4e5;
+      --red: #b42318;
+      --red-soft: #fff0ee;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 1480px;
+      background: #cfd6df;
+      color: var(--ink);
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 12px;
+      letter-spacing: 0;
+    }
+    .board {
+      width: 1480px;
+      margin: 0 auto;
+      padding: 26px 28px 34px;
+    }
+    .frame {
+      width: 1424px;
+      height: 792px;
+      display: grid;
+      grid-template-columns: 214px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid #babfca;
+      border-radius: 10px;
+      background: var(--canvas);
+      box-shadow: 0 18px 42px rgba(26, 35, 48, .18);
+    }
+    .frame + .frame { margin-top: 28px; }
+    .sidebar {
+      background: var(--sidebar);
+      color: #d7dee6;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 14px 14px;
+    }
+    .brand { padding: 0 10px 24px; }
+    .brand-mark {
+      font-size: 10px;
+      color: #8a949f;
+      margin-bottom: 3px;
+    }
+    .brand-name {
+      color: #fff;
+      font-size: 22px;
+      font-weight: 720;
+      letter-spacing: -.5px;
+    }
+    .brand-name span { color: #6ee7b7; }
+    .nav { display: grid; gap: 5px; }
+    .nav-item {
+      height: 40px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 0 12px;
+      color: #aeb8c3;
+      font-size: 13px;
+    }
+    .nav-item svg { width: 16px; height: 16px; stroke-width: 1.8; }
+    .nav-item.active { background: #fff; color: #16202a; }
+    .nav-item.active svg { color: #2563eb; }
+    .sidebar-bottom { margin-top: auto; border-top: 1px solid #333941; padding: 14px 10px 2px; display: flex; align-items: center; justify-content: space-between; color: #c9d1da; }
+    .sidebar-bottom .identity { display: flex; align-items: center; gap: 8px; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 3px rgba(52,211,153,.12); }
+    .workspace { min-width: 0; display: flex; flex-direction: column; background: var(--canvas); }
+    .topbar { height: 58px; padding: 0 22px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.72); }
+    .page-title { font-size: 16px; font-weight: 650; }
+    .page-subtitle { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .search {
+      width: 292px;
+      height: 32px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--faint);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+    .search svg { width: 14px; height: 14px; }
+    .button {
+      height: 32px;
+      padding: 0 11px;
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      background: #fff;
+      color: var(--ink);
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font: inherit;
+    }
+    .button.primary { color: #fff; background: var(--blue); border-color: var(--blue); }
+    .button.ghost { border-color: transparent; background: transparent; }
+    .button svg { width: 14px; height: 14px; }
+    .content { padding: 14px 18px 18px; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+    .viewbar { display: flex; align-items: center; gap: 8px; }
+    .segmented { display: flex; height: 32px; padding: 3px; border-radius: 5px; background: #e6ebf0; }
+    .segment { padding: 0 12px; display: flex; align-items: center; gap: 7px; border-radius: 4px; color: #5c6672; font-size: 12px; }
+    .segment.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(18,28,40,.08); }
+    .segment svg { width: 14px; height: 14px; }
+    .scope-note { margin-left: auto; color: var(--muted); font-size: 11px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--radius); background: #fff; overflow: hidden; }
+    .metric { min-height: 64px; padding: 11px 14px; border-right: 1px solid var(--line); position: relative; }
+    .metric:last-child { border-right: 0; }
+    .metric-label { color: var(--muted); font-size: 10px; display: flex; align-items: center; gap: 5px; }
+    .metric-label svg { width: 13px; height: 13px; }
+    .metric-value { margin-top: 4px; font-size: 22px; line-height: 1; font-weight: 680; font-variant-numeric: tabular-nums; }
+    .metric-note { margin-top: 4px; color: var(--faint); font-size: 10px; }
+    .metric::after { content: ""; position: absolute; right: 12px; bottom: 11px; width: 42px; height: 18px; background: linear-gradient(135deg, transparent 34%, #dbe6ff 35%, #dbe6ff 48%, transparent 49%, transparent 62%, #b9cdfb 63%, #b9cdfb 75%, transparent 76%); opacity: .9; }
+    .workspace-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 224px minmax(500px, 1fr) 326px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; overflow: hidden; }
+    .group-rail { border-right: 1px solid var(--line); background: #fafbfc; padding: 13px 12px; display: flex; flex-direction: column; min-height: 0; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
+    .panel-title { font-size: 12px; font-weight: 650; }
+    .panel-tools { display: flex; gap: 6px; }
+    .icon-button { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 5px; background: #fff; display: grid; place-items: center; color: #66717e; }
+    .icon-button svg { width: 13px; height: 13px; }
+    .filter-line { margin-top: 10px; display: flex; gap: 5px; }
+    .filter-chip { padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; color: #67717e; background: #fff; font-size: 10px; }
+    .filter-chip.active { border-color: #9db9fb; color: #1f4fbf; background: #eef4ff; }
+    .group-list { margin-top: 10px; display: grid; gap: 5px; overflow: hidden; }
+    .group-row { padding: 10px 9px; border: 1px solid transparent; border-radius: 5px; display: grid; gap: 5px; }
+    .group-row.active { border-color: #a8c1fb; background: #fff; }
+    .group-name { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 620; }
+    .group-name b { font-size: 12px; font-variant-numeric: tabular-nums; }
+    .group-meta { color: var(--muted); font-size: 10px; display: flex; justify-content: space-between; gap: 8px; }
+    .group-source { color: var(--teal); }
+    .contact-pane { min-width: 0; display: flex; flex-direction: column; }
+    .contact-toolbar { height: 49px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+    .tiny-tabs { display: flex; gap: 4px; margin-left: auto; }
+    .tiny-tab { padding: 5px 8px; border-radius: 4px; color: var(--muted); font-size: 10px; }
+    .tiny-tab.active { color: #1f4fbf; background: var(--blue-soft); }
+    .contact-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .contact-table th { height: 32px; padding: 0 9px; border-bottom: 1px solid var(--line); background: #f7f9fb; color: #77818d; font-size: 9px; font-weight: 600; text-align: left; }
+    .contact-table td { height: 57px; padding: 0 9px; border-bottom: 1px solid #edf0f3; font-size: 10px; vertical-align: middle; }
+    .contact-table tr.selected td { background: #f5f8ff; }
+    .checkbox { width: 13px; height: 13px; border: 1px solid #b8c2ce; border-radius: 3px; background: #fff; display: inline-grid; place-items: center; }
+    .checkbox.checked { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .checkbox svg { width: 10px; height: 10px; }
+    .person { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .avatar { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto; font-size: 9px; font-weight: 650; background: #e8edf3; color: #495563; }
+    .avatar.blue { background: #e3ecff; color: #2458c6; }
+    .avatar.teal { background: #e0f4ee; color: #0d6b62; }
+    .person-copy { min-width: 0; }
+    .person-name, .company-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .person-name { font-size: 11px; font-weight: 600; }
+    .person-email { color: var(--faint); font-size: 9px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
+    .status { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; color: #5f6975; font-size: 9px; }
+    .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #a3acb7; }
+    .status.new::before { background: #9aa4b0; }
+    .status.contacted::before { background: var(--blue); }
+    .status.replied::before { background: var(--teal); }
+    .status.overdue::before { background: var(--red); }
+    .owner { display: flex; align-items: center; gap: 6px; color: #4e5965; }
+    .owner-dot { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: #edf1f5; font-size: 8px; font-weight: 650; }
+    .last-touch { color: #56616e; }
+    .last-touch small { display: block; margin-top: 2px; color: var(--faint); font-size: 9px; }
+    .detail { border-left: 1px solid var(--line); background: #fbfcfd; display: flex; flex-direction: column; min-width: 0; }
+    .detail-head { padding: 16px 16px 13px; border-bottom: 1px solid var(--line); background: #fff; }
+    .detail-kicker { color: var(--muted); font-size: 9px; letter-spacing: .02em; }
+    .detail-title { margin-top: 5px; font-size: 17px; font-weight: 680; }
+    .detail-subtitle { margin-top: 3px; color: #77818d; font-size: 10px; }
+    .detail-actions { display: flex; gap: 6px; margin-top: 13px; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .field-label { color: var(--muted); font-size: 9px; }
+    .field-value { margin-top: 4px; color: #27313d; font-size: 10px; font-weight: 560; }
+    .field-value.warn { color: var(--red); }
+    .progress-block { padding: 13px 16px; border-bottom: 1px solid var(--line); }
+    .progress-label { display: flex; align-items: center; justify-content: space-between; font-size: 9px; color: var(--muted); }
+    .progress-track { margin-top: 8px; height: 5px; border-radius: 99px; background: #e6ebf0; overflow: hidden; }
+    .progress-fill { width: 68%; height: 100%; border-radius: inherit; background: var(--blue); }
+    .progress-steps { margin-top: 8px; display: flex; justify-content: space-between; color: #77818d; font-size: 8px; }
+    .timeline { padding: 13px 16px; overflow: hidden; }
+    .timeline-title { font-size: 10px; font-weight: 650; margin-bottom: 11px; }
+    .timeline-item { position: relative; padding: 0 0 14px 18px; }
+    .timeline-item::before { content: ""; position: absolute; left: 3px; top: 4px; width: 6px; height: 6px; border-radius: 50%; background: #b7c1cc; }
+    .timeline-item::after { content: ""; position: absolute; left: 5px; top: 12px; bottom: 0; width: 1px; background: #e0e5ea; }
+    .timeline-item:last-child::after { display: none; }
+    .timeline-item.highlight::before { background: var(--blue); }
+    .timeline-text { color: #3f4a56; font-size: 10px; line-height: 1.35; }
+    .timeline-time { margin-top: 3px; color: var(--faint); font-size: 8px; }
+    .list-footer { height: 42px; margin-top: auto; border-top: 1px solid var(--line); display: flex; align-items: center; padding: 0 12px; color: var(--muted); font-size: 10px; }
+    .pager { margin-left: auto; display: flex; gap: 5px; }
+    .pager span { min-width: 24px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+    .pager span.active { background: var(--blue-soft); color: var(--blue); border-color: #b7cafb; }
+    .monitor-content { padding: 14px 18px 18px; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+    .monitor-metrics { display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid var(--line); border-radius: var(--radius); background: #fff; overflow: hidden; }
+    .monitor-metric { padding: 11px 13px; border-right: 1px solid var(--line); }
+    .monitor-metric:last-child { border-right: 0; }
+    .monitor-metric .metric-value { font-size: 20px; }
+    .monitor-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(620px, 1fr) 322px; gap: 12px; }
+    .team-panel, .risk-panel { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; overflow: hidden; }
+    .section-head { height: 48px; padding: 0 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+    .section-head .panel-title { font-size: 13px; }
+    .section-head .panel-meta { color: var(--muted); font-size: 10px; }
+    .section-head .button { margin-left: auto; }
+    .team-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .team-table th { height: 34px; background: #f7f9fb; border-bottom: 1px solid var(--line); color: #77818d; text-align: left; font-size: 9px; font-weight: 650; padding: 0 12px; }
+    .team-table td { height: 74px; padding: 0 12px; border-bottom: 1px solid #edf0f3; font-size: 10px; vertical-align: middle; }
+    .team-table tr:last-child td { border-bottom: 0; }
+    .member { display: flex; align-items: center; gap: 9px; }
+    .member-name { font-size: 11px; font-weight: 630; }
+    .member-role { margin-top: 3px; color: var(--faint); font-size: 9px; }
+    .number-stack strong { display: block; font-size: 13px; line-height: 1.1; }
+    .number-stack span { color: var(--faint); font-size: 9px; }
+    .load { display: grid; gap: 5px; width: 90px; }
+    .load-bar { height: 5px; border-radius: 99px; background: #e8edf2; overflow: hidden; }
+    .load-bar span { display: block; height: 100%; border-radius: inherit; }
+    .load.good .load-bar span { background: var(--teal); }
+    .load.warn .load-bar span { background: var(--amber); }
+    .load.hot .load-bar span { background: var(--red); }
+    .load small { color: var(--muted); font-size: 9px; }
+    .sla { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+    .sla::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--teal); }
+    .sla.warn::before { background: var(--amber); }
+    .sla.bad::before { background: var(--red); }
+    .risk-list { padding: 7px 12px 0; }
+    .risk-item { padding: 11px 2px 12px; border-bottom: 1px solid #edf0f3; }
+    .risk-item:last-child { border-bottom: 0; }
+    .risk-top { display: flex; align-items: flex-start; gap: 8px; }
+    .risk-rank { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 4px; background: var(--red-soft); color: var(--red); font-size: 9px; font-weight: 700; }
+    .risk-title { font-size: 10px; font-weight: 630; }
+    .risk-desc { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.35; }
+    .risk-time { margin-left: auto; color: var(--faint); font-size: 8px; white-space: nowrap; }
+    .risk-foot { margin-top: 8px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 9px; }
+    .risk-owner { display: flex; align-items: center; gap: 5px; }
+    .inline-action { color: var(--blue); font-size: 9px; font-weight: 600; }
+    .risk-summary { padding: 12px; border-top: 1px solid var(--line); background: #fafbfc; }
+    .risk-summary-line { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); padding: 4px 0; }
+    .risk-summary-line b { color: var(--ink); }
+    .label { color: var(--muted); }
+    svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <section class="frame" aria-label="客户管理样板">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">Milogin's</div>
+          <div class="brand-name">Prospector<span>.</span></div>
+        </div>
+        <nav class="nav">
+          <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="m4 7 8 6 8-6"/></svg>收件箱</div>
+          <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>客户</div>
+          <div class="nav-item"><svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>发送中心</div>
+          <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 4v16M4 9h4"/></svg>素材库</div>
+        </nav>
+        <div class="sidebar-bottom"><div class="identity"><span class="status-dot"></span>你好，管理员</div><svg viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M13.7 21h-3.4"/></svg></div>
+      </aside>
+      <section class="workspace">
+        <header class="topbar">
+          <div><div class="page-title">客户</div><div class="page-subtitle">客户、线索与跟进统一工作区</div></div>
+          <div class="top-actions">
+            <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>搜索邮箱、姓名、公司...</div>
+            <button class="button ghost"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>更多</button>
+          </div>
+        </header>
+        <div class="content">
+          <div class="viewbar">
+            <div class="segmented">
+              <div class="segment"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>跟进看板</div>
+              <div class="segment active"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>联系人</div>
+              <div class="segment"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.6 10.5 6.8-3M8.6 13.5l6.8 3"/></svg>分配管理</div>
+              <div class="segment"><svg viewBox="0 0 24 24"><path d="m2 10 10-6 10 6-10 6Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg>公司</div>
+            </div>
+            <div class="scope-note">全部联系人 · 5,176</div>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="metric-label">未分配</div><div class="metric-value">126</div><div class="metric-note">等待进入负责人队列</div></div>
+            <div class="metric"><div class="metric-label">24h 未联系</div><div class="metric-value">48</div><div class="metric-note">首次触达 SLA 风险</div></div>
+            <div class="metric"><div class="metric-label">已回复未推进</div><div class="metric-value">31</div><div class="metric-note">需要明确下一步</div></div>
+            <div class="metric"><div class="metric-label">7 天无跟进</div><div class="metric-value">74</div><div class="metric-note">可能进入停滞状态</div></div>
+          </div>
+          <div class="workspace-grid">
+            <aside class="group-rail">
+              <div class="panel-head"><div class="panel-title">联系人分组</div><div class="panel-tools"><button class="icon-button"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><button class="icon-button"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
+              <div class="filter-line"><span class="filter-chip active">导入批次</span><span class="filter-chip">国家</span><span class="filter-chip">公司</span><span class="filter-chip">类型</span></div>
+              <div class="group-list">
+                <div class="group-row active"><div class="group-name"><span>导入.xlsx</span><b>5,176</b></div><div class="group-meta"><span>10/27 11:00</span><span class="group-source">阿里国际站</span></div></div>
+                <div class="group-row"><div class="group-name"><span>广交会名单</span><b>842</b></div><div class="group-meta"><span>10/26 16:24</span><span class="group-source">展会</span></div></div>
+                <div class="group-row"><div class="group-name"><span>拉美客户池</span><b>621</b></div><div class="group-meta"><span>10/25 09:12</span><span class="group-source">官网</span></div></div>
+                <div class="group-row"><div class="group-name"><span>老客户补充</span><b>308</b></div><div class="group-meta"><span>10/24 18:40</span><span class="group-source">转介绍</span></div></div>
+                <div class="group-row"><div class="group-name"><span>未命名批次</span><b>96</b></div><div class="group-meta"><span>10/23 14:02</span><span class="group-source">手动录入</span></div></div>
+              </div>
+            </aside>
+            <section class="contact-pane">
+              <div class="contact-toolbar"><div class="panel-title">组内联系人</div><div class="tiny-tabs"><span class="tiny-tab active">全部 5,176</span><span class="tiny-tab">未触达 4,802</span><span class="tiny-tab">已回复 319</span></div></div>
+              <table class="contact-table">
+                <thead><tr><th style="width:32px"><span class="checkbox checked"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span></th><th>联系人 / 公司</th><th style="width:88px">状态</th><th style="width:104px">负责人</th><th style="width:110px">最近联系</th><th style="width:70px">阶段</th></tr></thead>
+                <tbody>
+                  <tr class="selected"><td><span class="checkbox checked"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span></td><td><div class="person"><span class="avatar blue">AL</span><div class="person-copy"><div class="person-name">Ana Lima</div><div class="person-email">ana@atlantictrade.br</div><div class="person-email">Atlantic Trade</div></div></div></td><td><span class="status replied">已回复</span></td><td><div class="owner"><span class="owner-dot">LJ</span>Lin J.</div></td><td><div class="last-touch">今天 09:42<small>邮件 · 2 封往来</small></div></td><td>报价中</td></tr>
+                  <tr><td><span class="checkbox"></span></td><td><div class="person"><span class="avatar teal">MC</span><div class="person-copy"><div class="person-name">Miguel Costa</div><div class="person-email">miguel@portocargo.pt</div><div class="person-email">Porto Cargo</div></div></div></td><td><span class="status overdue">超时未联系</span></td><td><div class="owner"><span class="owner-dot">WY</span>Wang Y.</div></td><td><div class="last-touch">10/24 16:18<small>等待首次联系</small></div></td><td>待触达</td></tr>
+                  <tr><td><span class="checkbox"></span></td><td><div class="person"><span class="avatar">JL</span><div class="person-copy"><div class="person-name">Julia Lopez</div><div class="person-email">julia@cargolink.mx</div><div class="person-email">CargoLink</div></div></div></td><td><span class="status contacted">已触达</span></td><td><div class="owner"><span class="owner-dot">LJ</span>Lin J.</div></td><td><div class="last-touch">昨天 14:08<small>电话 · 未接通</small></div></td><td>跟进中</td></tr>
+                  <tr><td><span class="checkbox"></span></td><td><div class="person"><span class="avatar blue">RS</span><div class="person-copy"><div class="person-name">Rafael Souza</div><div class="person-email">rafael@brasilfreight.com</div><div class="person-email">Brasil Freight</div></div></div></td><td><span class="status new">未触达</span></td><td><div class="owner"><span class="owner-dot">—</span>未分配</div></td><td><div class="last-touch">尚未联系<small>入库 18 小时</small></div></td><td>新线索</td></tr>
+                  <tr><td><span class="checkbox"></span></td><td><div class="person"><span class="avatar teal">SK</span><div class="person-copy"><div class="person-name">Sofia Kim</div><div class="person-email">sofia@seaway.kr</div><div class="person-email">Seaway Logistics</div></div></div></td><td><span class="status replied">已回复</span></td><td><div class="owner"><span class="owner-dot">WY</span>Wang Y.</div></td><td><div class="last-touch">10/26 11:32<small>邮件 · 需报价</small></div></td><td>待跟进</td></tr>
+                </tbody>
+              </table>
+              <div class="list-footer"><span>已选 1 人</span><div class="pager"><span>‹</span><span class="active">1</span><span>2</span><span>3</span><span>…</span><span>104</span><span>›</span></div></div>
+            </section>
+            <aside class="detail">
+              <div class="detail-head"><div class="detail-kicker">ATLANTIC TRADE · 巴西</div><div class="detail-title">Ana Lima</div><div class="detail-subtitle">采购经理 · ana@atlantictrade.br</div><div class="detail-actions"><button class="button primary"><svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/></svg>发邮件</button><button class="button">记录跟进</button><button class="icon-button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></div></div>
+              <div class="detail-grid"><div><div class="field-label">负责人</div><div class="field-value">Lin J.</div></div><div><div class="field-label">一级来源</div><div class="field-value">阿里国际站</div></div><div><div class="field-label">客户类型</div><div class="field-value">代理</div></div><div><div class="field-label">下一动作</div><div class="field-value">发送报价</div></div><div><div class="field-label">最近联系</div><div class="field-value">今天 09:42</div></div><div><div class="field-label">风险</div><div class="field-value warn">24h 内需推进</div></div></div>
+              <div class="progress-block"><div class="progress-label"><span>客户推进</span><b>68%</b></div><div class="progress-track"><div class="progress-fill"></div></div><div class="progress-steps"><span>导入</span><span>已联系</span><span>已回复</span><span>报价</span><span>成交</span></div></div>
+              <div class="timeline"><div class="timeline-title">往来与跟进</div><div class="timeline-item highlight"><div class="timeline-text">Ana 回复报价邮件，询问 40HQ 的港口费用</div><div class="timeline-time">今天 09:42 · 邮件</div></div><div class="timeline-item"><div class="timeline-text">发送 Santos 40HQ 报价与船期</div><div class="timeline-time">昨天 16:20 · 邮件</div></div><div class="timeline-item"><div class="timeline-text">首次电话沟通，确认进口周期</div><div class="timeline-time">10/26 10:18 · 电话</div></div><div class="timeline-item"><div class="timeline-text">导入阿里巴巴供应商名单</div><div class="timeline-time">10/27 11:00 · 系统</div></div></div>
+            </aside>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="frame" aria-label="团队线索监控样板">
+      <aside class="sidebar">
+        <div class="brand"><div class="brand-mark">Milogin's</div><div class="brand-name">Prospector<span>.</span></div></div>
+        <nav class="nav">
+          <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="m4 7 8 6 8-6"/></svg>收件箱</div>
+          <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>客户</div>
+          <div class="nav-item"><svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>发送中心</div>
+          <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 4v16M4 9h4"/></svg>素材库</div>
+        </nav>
+        <div class="sidebar-bottom"><div class="identity"><span class="status-dot"></span>你好，管理员</div><svg viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M13.7 21h-3.4"/></svg></div>
+      </aside>
+      <section class="workspace">
+        <header class="topbar"><div><div class="page-title">团队线索监控</div><div class="page-subtitle">负责人负载、SLA 与线索停滞情况</div></div><div class="top-actions"><div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>搜索人员、客户、公司...</div><button class="button ghost"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>更多</button></div></header>
+        <div class="monitor-content">
+          <div class="viewbar"><div class="segmented"><div class="segment"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>总览</div><div class="segment active"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>人员</div><div class="segment"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>线索队列</div><div class="segment"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>风险</div></div><div class="scope-note">本周 · 4 位负责人 · 5,176 条线索</div></div>
+          <div class="monitor-metrics">
+            <div class="monitor-metric"><div class="metric-label">待分配</div><div class="metric-value">126</div><div class="metric-note">较昨日 +18</div></div>
+            <div class="monitor-metric"><div class="metric-label">首次联系 SLA</div><div class="metric-value">76%</div><div class="metric-note">目标 ≥ 85%</div></div>
+            <div class="monitor-metric"><div class="metric-label">已回复待推进</div><div class="metric-value">31</div><div class="metric-note">平均停留 2.4 天</div></div>
+            <div class="monitor-metric"><div class="metric-label">7 天无进展</div><div class="metric-value">74</div><div class="metric-note">需管理介入</div></div>
+            <div class="monitor-metric"><div class="metric-label">本周新增</div><div class="metric-value">1,248</div><div class="metric-note">环比 +12.6%</div></div>
+          </div>
+          <div class="monitor-grid">
+            <section class="team-panel">
+              <div class="section-head"><div class="panel-title">人员负载与跟进质量</div><div class="panel-meta">按未分配风险和 SLA 排序</div><button class="button"><svg viewBox="0 0 24 24"><path d="M3 6h18M7 12h10M10 18h4"/></svg>筛选</button></div>
+              <table class="team-table">
+                <thead><tr><th style="width:188px">负责人</th><th style="width:96px">线索负载</th><th style="width:84px">未触达</th><th style="width:82px">超时</th><th style="width:104px">首次联系</th><th style="width:80px">已回复</th><th>最近活动</th></tr></thead>
+                <tbody>
+                  <tr><td><div class="member"><span class="avatar blue">LJ</span><div><div class="member-name">Lin J.</div><div class="member-role">销售 · 华东</div></div></div></td><td><div class="load good"><div class="load-bar"><span style="width:72%"></span></div><small>186 / 260</small></div></td><td><div class="number-stack"><strong>24</strong><span>13%</span></div></td><td><div class="number-stack"><strong>8</strong><span>需处理</span></div></td><td><div class="sla">92%</div></td><td><div class="number-stack"><strong>42</strong><span>待推进</span></div></td><td>今天 09:42</td></tr>
+                  <tr><td><div class="member"><span class="avatar teal">WY</span><div><div class="member-name">Wang Y.</div><div class="member-role">销售 · 华南</div></div></div></td><td><div class="load warn"><div class="load-bar"><span style="width:88%"></span></div><small>229 / 260</small></div></td><td><div class="number-stack"><strong>39</strong><span>17%</span></div></td><td><div class="number-stack"><strong>17</strong><span>需处理</span></div></td><td><div class="sla warn">81%</div></td><td><div class="number-stack"><strong>28</strong><span>待推进</span></div></td><td>今天 08:56</td></tr>
+                  <tr><td><div class="member"><span class="avatar">ZQ</span><div><div class="member-name">Zhou Q.</div><div class="member-role">销售 · 华北</div></div></div></td><td><div class="load hot"><div class="load-bar"><span style="width:96%"></span></div><small>250 / 260</small></div></td><td><div class="number-stack"><strong>61</strong><span>24%</span></div></td><td><div class="number-stack"><strong>28</strong><span>需处理</span></div></td><td><div class="sla bad">63%</div></td><td><div class="number-stack"><strong>16</strong><span>待推进</span></div></td><td>昨天 17:12</td></tr>
+                  <tr><td><div class="member"><span class="avatar blue">CY</span><div><div class="member-name">Chen Y.</div><div class="member-role">销售 · 华南</div></div></div></td><td><div class="load good"><div class="load-bar"><span style="width:55%"></span></div><small>143 / 260</small></div></td><td><div class="number-stack"><strong>11</strong><span>8%</span></div></td><td><div class="number-stack"><strong>4</strong><span>需处理</span></div></td><td><div class="sla">96%</div></td><td><div class="number-stack"><strong>35</strong><span>待推进</span></div></td><td>今天 09:18</td></tr>
+                </tbody>
+              </table>
+            </section>
+            <aside class="risk-panel">
+              <div class="section-head"><div class="panel-title">需要处理的线索</div><div class="panel-meta">按风险优先</div></div>
+              <div class="risk-list">
+                <div class="risk-item"><div class="risk-top"><span class="risk-rank">01</span><div><div class="risk-title">Zhou Q. 的 28 条线索超过 SLA</div><div class="risk-desc">其中 11 条超过 72 小时未首次联系</div></div><span class="risk-time">刚刚</span></div><div class="risk-foot"><span class="risk-owner"><span class="owner-dot">ZQ</span>Zhou Q.</span><span class="inline-action">查看队列</span></div></div>
+                <div class="risk-item"><div class="risk-top"><span class="risk-rank">02</span><div><div class="risk-title">已回复 31 条线索没有下一步</div><div class="risk-desc">平均停留 2.4 天，主要分布在报价阶段</div></div><span class="risk-time">今天</span></div><div class="risk-foot"><span class="risk-owner">报价阶段 · 3 位负责人</span><span class="inline-action">筛出线索</span></div></div>
+                <div class="risk-item"><div class="risk-top"><span class="risk-rank">03</span><div><div class="risk-title">126 条运营线索待分配</div><div class="risk-desc">最早一条已等待 18 小时，建议优先分配</div></div><span class="risk-time">昨天</span></div><div class="risk-foot"><span class="risk-owner">未分配 · 全部管理员可见</span><span class="inline-action">立即分配</span></div></div>
+                <div class="risk-item"><div class="risk-top"><span class="risk-rank">04</span><div><div class="risk-title">74 条线索 7 天无进展</div><div class="risk-desc">连续两次未联系，建议进入停滞跟进池</div></div><span class="risk-time">本周</span></div><div class="risk-foot"><span class="risk-owner">全部负责人</span><span class="inline-action">查看明细</span></div></div>
+              </div>
+              <div class="risk-summary"><div class="risk-summary-line"><span>本周已处理风险</span><b>183</b></div><div class="risk-summary-line"><span>平均处理时长</span><b>6.8h</b></div><div class="risk-summary-line"><span>待管理确认</span><b>12</b></div></div>
+            </aside>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

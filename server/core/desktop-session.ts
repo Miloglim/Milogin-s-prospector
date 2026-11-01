@@ -8,12 +8,22 @@ export const DESKTOP_AUTH_ROUTES = {
 export const DESKTOP_SESSION_LIMITS = { idle_seconds: 15 * 24 * 60 * 60, absolute_seconds: 90 * 24 * 60 * 60 } as const;
 export const REGISTRATION_PRODUCTS = ["crm", "navigator"] as const;
 export type RegistrationProduct = typeof REGISTRATION_PRODUCTS[number];
-export type DesktopLoginRequest = LoginRequest;
+export const DESKTOP_DEVICE_PRODUCTS = ["crm"] as const;
+export type DesktopDeviceProduct = typeof DESKTOP_DEVICE_PRODUCTS[number];
+export interface DesktopDeviceContext {
+  product: DesktopDeviceProduct;
+  deviceId: string;
+  deviceName: string;
+  platform: string;
+  appVersion: string;
+  replaceActiveDevice?: boolean;
+}
+export type DesktopLoginRequest = LoginRequest & { desktop?: DesktopDeviceContext };
 export interface RegisteredAccount { email: string; }
 export interface DesktopRefreshRequest { refreshToken: string; }
 export interface DesktopPasswordRequest { currentPassword: string; newPassword: string; }
 export interface DesktopLoginResponse extends LoginResponse { refreshToken: string; offlineAccess?: import('./offline-access').OfflineAccessGrant; }
-export interface DesktopSessionDraft extends SessionDraft { refreshHash: string; idleExpiresAt: string; absoluteExpiresAt: string; }
+export interface DesktopSessionDraft extends SessionDraft { refreshHash: string; idleExpiresAt: string; absoluteExpiresAt: string; desktop?: DesktopDeviceContext; }
 export interface DesktopRotation { tokenHash: string; refreshHash: string; expiresAt: string; idleExpiresAt: string; }
 export interface DesktopSessionRepository {
   createSalesAccount?(input: { email: string; passwordHash: string; product: RegistrationProduct }): Promise<Result<RegisteredAccount>>;

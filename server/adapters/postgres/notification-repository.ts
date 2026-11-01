@@ -3,7 +3,8 @@ import {loadContactIn,canReadContact} from './contact-assignment-repository';
 import {createHash} from 'node:crypto';
 import {CONTACT_ASSIGNMENT_EVENTS} from '../../core/contact-assignments';
 const CONTACT_EVENTS:string[]=[...Object.values(CONTACT_ASSIGNMENT_EVENTS),...Object.values(CONTACT_SHARING_EVENTS)];
-const CONTACT_REQUEST_EVENTS:string[]=[CONTACT_ASSIGNMENT_EVENTS.requested,CONTACT_ASSIGNMENT_EVENTS.accepted,CONTACT_ASSIGNMENT_EVENTS.rejected,CONTACT_ASSIGNMENT_EVENTS.cancelled,...Object.values(CONTACT_SHARING_EVENTS)];
+const ASSIGNMENT_REQUEST_EVENTS:string[]=[CONTACT_ASSIGNMENT_EVENTS.requested,CONTACT_ASSIGNMENT_EVENTS.accepted,CONTACT_ASSIGNMENT_EVENTS.rejected,CONTACT_ASSIGNMENT_EVENTS.cancelled,CONTACT_ASSIGNMENT_EVENTS.expired,CONTACT_ASSIGNMENT_EVENTS.transferRequested,CONTACT_ASSIGNMENT_EVENTS.transferred,CONTACT_ASSIGNMENT_EVENTS.transferCancelled];
+const CONTACT_REQUEST_EVENTS:string[]=[...ASSIGNMENT_REQUEST_EVENTS,...Object.values(CONTACT_SHARING_EVENTS)];
 import type {Pool,PoolClient} from 'pg';
 import {failure,success,type Result,type LogSink} from '../../core/crm';
 import {canReadLead} from './lead-repository';
@@ -18,6 +19,8 @@ import {ADMIN_LOCK} from './admin-schema';
 import { TASK_DUE_EVENT } from '../../core/tasks';
 import { OPPORTUNITY_EVENTS } from '../../core/opportunities';
 const OPPORTUNITY_EVENT_TYPES:string[]=Object.values(OPPORTUNITY_EVENTS);
+import { TEAM_ATTENTION_EVENTS } from '../../core/team-attention';
+const TEAM_ATTENTION_EVENT_TYPES:string[]=Object.values(TEAM_ATTENTION_EVENTS);
 import { canProjectTaskDue } from './task-repository';
 const SUMMARY_NOTE_MAX=160;
 const SELF_CREATED_EVENT='crm.customer.created';
@@ -33,7 +36,7 @@ function visible(a:Actor,c:Customer,eventType:string){
 export class PostgresNotificationRepository implements NotificationRepository{
  constructor(private readonly pool:Pool,private readonly log:LogSink){assertCenterDatabasePool(pool);}
  private async tx<T>(fn:(db:PoolClient)=>Promise<Result<T>>):Promise<Result<T>>{
-  const db=await this.pool.connect();try{await db.query('BEGIN');await db.query('SELECT pg_advisory_xact_lock($1)',[ADMIN_LOCK]);const r=await fn(db);await db.query(r.ok?'COMMIT':'ROLLBACK');return r;}catch(e){try{await db.query('ROLLBACK');}catch{this.log.write('ERROR','notifications.rollback','通知回滚失败');}this.log.write('ERROR','notifications.pg','通知数据库操作失败');return failure('DATABASE_ERROR','通知服务暂不可用');}finally{db.release();}
+  const db=await this.pool.connect();try{await db.query('BEGIN');await db.query('SELECT pg_advisory_xact_lock($1)',[ADMIN_LOCK]);const r=await fn(db);await db.query(r.ok?'COMMIT':'ROLLBACK');return r;}catch(error){try{await db.query('ROLLBACK');}catch{this.log.write('ERROR','notifications.rollback','通知回滚失败');}const code=error&&typeof error==='object'&&'code'in error?String(error.code):'UNKNOWN',message=error instanceof Error?error.message:'unknown';this.log.write('ERROR','notifications.pg',`通知数据库操作失败 code=${code} message=${message}`);return failure('DATABASE_ERROR','通知服务暂不可用');}finally{db.release();}
  }
  async migrate(){return this.tx(async db=>{await db.query('SELECT pg_advisory_xact_lock($1)',[NOTIFICATION_LOCK]);const sum=createHash('sha256').update(NOTIFICATION_SQL).digest('hex');const old=await db.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1',[NOTIFICATION_VERSION]);if(old.rows.length&&old.rows[0].checksum!==sum)return failure('CONFLICT','通知迁移校验不一致');if(!old.rows.length){await db.query(NOTIFICATION_SQL);await db.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)',[NOTIFICATION_VERSION,sum]);}const nextSum=createHash('sha256').update(ASSIGNMENT_SQL).digest('hex');const next=await db.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1',[ASSIGNMENT_VERSION]);if(next.rows.length&&next.rows[0].checksum!==nextSum)return failure('CONFLICT','分配迁移校验不一致');if(!next.rows.length){await db.query(ASSIGNMENT_SQL);await db.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)',[ASSIGNMENT_VERSION,nextSum]);}return success(undefined);});}
  private async actor(db:PoolClient,hash:string):Promise<Result<Actor>>{
@@ -55,6 +58,19 @@ export class PostgresNotificationRepository implements NotificationRepository{
   if(!Number.isSafeInteger(contactId))return false;
   const row=await loadContactIn(db,{contactId:Number(contactId),customerId});return !!row&&canReadContact(a,row);
  }
+ private async teamAttentionAccess(db:PoolClient,a:Actor,itemId:unknown):Promise<{canOpen:boolean;version:number;contactId:number|null;contactName:string|null}>{
+  if(typeof itemId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(itemId))return {canOpen:false,version:0,contactId:null,contactName:null};
+  const oversight=a.roles.includes('admin')||a.roles.includes('operations');
+  const row=await db.query(`SELECT i.version,i.contact_id AS "contactId",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),NULLIF(ct.email,''),'联系人') AS "contactName",
+    ($2::boolean OR i.target_member_user_id=$1 OR EXISTS(
+      SELECT 1 FROM crm_org_assignments target
+      JOIN crm_org_units team ON team.unit_id=target.unit_id AND team.kind='sales_team'
+      JOIN crm_org_assignments leader ON leader.unit_id=target.unit_id AND leader.role='leader'
+      WHERE target.user_id=i.target_member_user_id AND target.role='member' AND leader.user_id=$1
+    )) AS "canOpen"
+    FROM crm_team_attention_items i JOIN contacts ct ON ct.id=i.contact_id WHERE i.item_id=$3`,[a.userId,oversight,itemId]);
+  const value=row.rows[0];return {canOpen:value?.canOpen===true,version:Number(value?.version??0),contactId:Number.isSafeInteger(value?.contactId)?Number(value.contactId):null,contactName:typeof value?.contactName==='string'?value.contactName:null};
+ }
  async watermark(hash:string):Promise<Result<string>>{return this.tx(async db=>{const a=await this.actor(db,hash);if(!a.ok)return a;const rows=await db.query('SELECT delivery_seq::text FROM crm_feed_heads WHERE user_id=$1',[a.data.userId]);return success(rows.rows[0]?.delivery_seq??'0');});}
  async feed(hash:string,q:FeedQuery):Promise<Result<FeedPage>>{return this.tx<FeedPage>(async db=>{
   const actor=await this.actor(db,hash);if(!actor.ok)return actor;const a=actor.data;
@@ -64,15 +80,30 @@ export class PostgresNotificationRepository implements NotificationRepository{
   const rows=await db.query(`SELECT d.*,c.created_by,c.owner_user_id,c.origin,c.state,co.name AS company_name,o.recipient_user_ids,o.payload,u.display_name AS actor_name,act.note AS activity_note,act.opportunity_id AS activity_opportunity_id,op.opportunity_id AS projected_opportunity_id,op.title AS opportunity_title,EXISTS(SELECT 1 FROM crm_notification_reads r WHERE r.user_id=$1 AND r.delivery_id=d.delivery_id) AS read FROM crm_event_deliveries d JOIN crm_customers c USING(customer_id) JOIN public.identity_outbox o ON o.event_id=d.event_id JOIN companies co ON co.id=c.company_id LEFT JOIN public.identity_users u ON u.user_id=o.user_id LEFT JOIN crm_shared_activities act ON act.customer_id=c.customer_id AND act.actor_id=o.user_id AND act.id::text=o.payload->>'activityId' AND o.event_type='crm.lead.followup' LEFT JOIN crm_opportunities op ON op.customer_id=c.customer_id AND op.opportunity_id::text=COALESCE(act.opportunity_id::text,o.payload->>'opportunityId') WHERE d.recipient_user_id=$1 AND d.delivery_seq>$2 AND d.delivery_seq<=$3 AND NOT(d.event_type=$5 AND o.user_id=$1) ORDER BY d.delivery_seq LIMIT $4 FOR SHARE OF c`,[a.userId,after,high,NOTIFICATION_LIMITS.scanMax,SELF_CREATED_EVENT]);
   const items:Notification[]=[];let cursor=q.after;
   for(const r of rows.rows){cursor=String(r.delivery_seq);
+   if(TEAM_ATTENTION_EVENT_TYPES.includes(r.event_type)){
+    if(!r.recipient_user_ids?.includes(a.userId))continue;
+    const itemId=typeof r.payload?.attentionItemId==='string'?r.payload.attentionItemId:'';
+    const access=await this.teamAttentionAccess(db,a,itemId);
+    items.push({
+      id:r.delivery_id,eventType:r.event_type as Notification['eventType'],customerId:access.canOpen?r.customer_id:'',version:access.canOpen?access.version:0,
+      canOpen:access.canOpen,cursor,createdAt:new Date(r.created_at).toISOString(),read:r.read,taskId:itemId||undefined,attentionItemId:itemId||undefined,
+      ...(access.canOpen&&access.contactId?{contactId:access.contactId}:{}),
+      ...(access.canOpen?{summary:{companyName:r.company_name,contactName:access.contactName,actorName:r.actor_name}}:{}),
+    });
+    if(items.length===q.limit)break;
+    continue;
+   }
    if(CONTACT_EVENTS.includes(r.event_type)){
     if(!r.recipient_user_ids?.includes(a.userId))continue;
     const contactAccess=await this.contactAccess(db,a,r.payload?.contactId,r.customer_id);
     const requestEvent=CONTACT_REQUEST_EVENTS.includes(r.event_type);
     if(!requestEvent&&!contactAccess)continue;
     const shareEvent=Object.values(CONTACT_SHARING_EVENTS).includes(r.event_type);
-    const requestRow=requestEvent?(await db.query(shareEvent?'SELECT grantor_user_id AS actor_id,target_user_id,status FROM crm_contact_shares WHERE share_id=$1':'SELECT actor_id,target_user_id,status FROM crm_contact_assignment_requests WHERE request_id=$1',[shareEvent?r.payload.shareId:r.payload.requestId])).rows[0]:undefined;
-    const canOpen=requestEvent?!!requestRow&&([requestRow.actor_id,requestRow.target_user_id].includes(a.userId)||shareEvent&&contactAccess):contactAccess;
-    items.push({id:r.delivery_id,eventType:r.event_type,customerId:contactAccess?r.customer_id:'',version:contactAccess?r.version:0,canOpen,cursor,createdAt:new Date(r.created_at).toISOString(),read:r.read,...(requestEvent?shareEvent?{shareId:r.payload.shareId,shareStatus:requestRow?.status,shareTargetUserId:requestRow?.target_user_id}:{requestId:r.payload.requestId,assignmentStatus:requestRow?.status,...(typeof r.payload.groupId==='string'?{assignmentGroupId:r.payload.groupId}:{}),...(Number.isSafeInteger(r.payload.groupCount)?{assignmentGroupCount:r.payload.groupCount}:{})}:{}),...(contactAccess?{contactId:r.payload.contactId}:{}),summary:{companyName:r.company_name,actorName:r.actor_name,...(requestEvent?{contactName:r.payload.contactName}:{})}});
+    const requestRow=requestEvent?(await db.query(shareEvent?'SELECT grantor_user_id AS actor_id,target_user_id,status FROM crm_contact_shares WHERE share_id=$1':'SELECT actor_id,target_user_id,supervisor_user_ids,status FROM crm_contact_assignment_requests WHERE request_id=$1',[shareEvent?r.payload.shareId:r.payload.requestId])).rows[0]:undefined;
+    const monitorRecipient=!!requestRow&&!shareEvent&&requestRow.supervisor_user_ids?.includes(a.userId);
+    const canOpen=requestEvent?shareEvent?!!requestRow&&([requestRow.actor_id,requestRow.target_user_id].includes(a.userId)||contactAccess):!!requestRow&&r.recipient_user_ids?.includes(a.userId):contactAccess;
+    const customerId=canOpen?r.customer_id:'',version=canOpen?r.version:0;
+    items.push({id:r.delivery_id,eventType:r.event_type,customerId,version,canOpen,cursor,createdAt:new Date(r.created_at).toISOString(),read:r.read,...(canOpen?{contactOpenMode:requestEvent?(shareEvent?'contact':monitorRecipient?'monitor':'assignment'):'contact'}:{}),...(requestEvent?shareEvent?{shareId:r.payload.shareId,shareStatus:requestRow?.status,shareTargetUserId:requestRow?.target_user_id}:{requestId:r.payload.requestId,assignmentStatus:requestRow?.status,...(typeof r.payload.groupId==='string'?{assignmentGroupId:r.payload.groupId}:{}),...(Number.isSafeInteger(r.payload.groupCount)?{assignmentGroupCount:r.payload.groupCount}:{})}:{}),...(contactAccess||requestEvent&&!shareEvent?{contactId:r.payload.contactId}:{}),summary:{companyName:r.company_name,actorName:r.actor_name,...(requestEvent?{contactName:r.payload.contactName}:{})}});
     if(items.length===q.limit)break;continue;
    }
    const assigned=r.event_type==='crm.lead.assigned'&&r.recipient_user_ids?.includes(a.userId);const taskDue=r.event_type===TASK_DUE_EVENT;if(taskDue&&!await canProjectTaskDue(db,r,a))continue;if(taskDue||assigned||visible(a,r,r.event_type)){const canOpen=assigned?canReadLead(a,r):true;items.push({id:r.delivery_id,eventType:r.event_type,customerId:canOpen?r.customer_id:'',version:canOpen?r.version:0,canOpen,cursor,createdAt:new Date(r.created_at).toISOString(),read:r.read,...(taskDue?{taskId:r.payload.taskId}:{}),...(r.projected_opportunity_id&&canOpen?{opportunityId:r.projected_opportunity_id}:{}),...(canReadLead(a,r)?{summary:{companyName:r.company_name,actorName:r.actor_name,...(typeof r.activity_note==='string'?{note:r.activity_note.slice(0,SUMMARY_NOTE_MAX)}:OPPORTUNITY_EVENT_TYPES.includes(r.event_type)&&r.opportunity_title?{note:r.opportunity_title.slice(0,SUMMARY_NOTE_MAX)}:{})}}:{})});if(items.length===q.limit)break;}}
@@ -80,7 +111,20 @@ export class PostgresNotificationRepository implements NotificationRepository{
   await db.query(`INSERT INTO crm_device_cursors(user_id,device_id,cursor) VALUES($1,$2,$3) ON CONFLICT(user_id,device_id) DO UPDATE SET cursor=GREATEST(crm_device_cursors.cursor,excluded.cursor),updated_at=now()`,[a.userId,q.deviceId,cursor]);
   return success({items,nextCursor:cursor,hasMore:BigInt(cursor)<BigInt(high)});
  });}
- async read(hash:string,id:string):Promise<Result<void>>{return this.tx(async db=>{const actor=await this.actor(db,hash);if(!actor.ok)return actor;const rows=await db.query('SELECT c.*,d.event_type,o.recipient_user_ids,o.payload FROM crm_event_deliveries d JOIN crm_customers c USING(customer_id) JOIN public.identity_outbox o ON o.event_id=d.event_id WHERE d.delivery_id=$1 AND d.recipient_user_id=$2 FOR SHARE OF c',[id,actor.data.userId]);if(rows.rows[0]?.event_type===TASK_DUE_EVENT&&!await canProjectTaskDue(db,rows.rows[0],actor.data))return failure('NOT_FOUND','提醒已失效');if(!rows.rows.length||!(CONTACT_REQUEST_EVENTS.includes(rows.rows[0].event_type)&&rows.rows[0].recipient_user_ids?.includes(actor.data.userId))&&!(CONTACT_EVENTS.includes(rows.rows[0].event_type)&&await this.contactAccess(db,actor.data,rows.rows[0].payload?.contactId,rows.rows[0].customer_id))&&!(rows.rows[0].event_type==='crm.lead.assigned'&&rows.rows[0].recipient_user_ids?.includes(actor.data.userId))&&!visible(actor.data,rows.rows[0],rows.rows[0].event_type))return failure('NOT_FOUND','通知不存在');await db.query('INSERT INTO crm_notification_reads(user_id,delivery_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[actor.data.userId,id]);return success(undefined);});}
+ async read(hash:string,id:string):Promise<Result<void>>{return this.tx(async db=>{
+  const actor=await this.actor(db,hash);if(!actor.ok)return actor;
+  const rows=await db.query('SELECT c.*,d.event_type,o.recipient_user_ids,o.payload FROM crm_event_deliveries d JOIN crm_customers c USING(customer_id) JOIN public.identity_outbox o ON o.event_id=d.event_id WHERE d.delivery_id=$1 AND d.recipient_user_id=$2 FOR SHARE OF c',[id,actor.data.userId]);
+  const row=rows.rows[0];if(!row)return failure('NOT_FOUND','通知不存在');
+  if(row.event_type===TASK_DUE_EVENT&&!await canProjectTaskDue(db,row,actor.data))return failure('NOT_FOUND','提醒已失效');
+  let allowed=false;
+  if(TEAM_ATTENTION_EVENT_TYPES.includes(row.event_type))allowed=!!row.recipient_user_ids?.includes(actor.data.userId)&&(await this.teamAttentionAccess(db,actor.data,row.payload?.attentionItemId)).canOpen;
+  else if(CONTACT_REQUEST_EVENTS.includes(row.event_type))allowed=!!row.recipient_user_ids?.includes(actor.data.userId);
+  else if(CONTACT_EVENTS.includes(row.event_type))allowed=await this.contactAccess(db,actor.data,row.payload?.contactId,row.customer_id);
+  else if(row.event_type==='crm.lead.assigned')allowed=!!row.recipient_user_ids?.includes(actor.data.userId);
+  else allowed=visible(actor.data,row,row.event_type);
+  if(!allowed)return failure('NOT_FOUND','通知不存在');
+  await db.query('INSERT INTO crm_notification_reads(user_id,delivery_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[actor.data.userId,id]);return success(undefined);
+ });}
  async readAll(hash:string):Promise<Result<NotificationReadAllReceipt>>{return this.tx(async db=>{const actor=await this.actor(db,hash);if(!actor.ok)return actor;const result=await db.query(`INSERT INTO crm_notification_reads(user_id,delivery_id) SELECT $1,delivery_id FROM (SELECT delivery_id FROM crm_event_deliveries WHERE recipient_user_id=$1 ORDER BY delivery_seq DESC LIMIT $2) latest ON CONFLICT DO NOTHING`,[actor.data.userId,NOTIFICATION_LIMITS.history]);return success({marked:result.rowCount??0});});}
  async dispatch():Promise<Result<number>>{return this.tx(async db=>{
   // Serialize bounded consumers: recipient heads are always locked in stable user order.
@@ -88,9 +132,9 @@ export class PostgresNotificationRepository implements NotificationRepository{
   const events=await db.query(`SELECT o.* FROM public.identity_outbox o WHERE NOT EXISTS(SELECT 1 FROM crm_notification_consumed x WHERE x.event_id=o.event_id) ORDER BY o.created_at,o.event_id LIMIT $1 FOR UPDATE OF o SKIP LOCKED`,[NOTIFICATION_LIMITS.dispatchBatch]);
   const recipients=await db.query('SELECT user_id FROM public.identity_users WHERE active AND NOT must_change_password ORDER BY user_id FOR SHARE');let count=0;
   for(const event of events.rows){
-   if(event.product_id==='crm'&&['crm.customer.created','crm.lead.published','crm.lead.claimed','crm.lead.followup','crm.lead.assigned',TASK_DUE_EVENT,...OPPORTUNITY_EVENT_TYPES,...CONTACT_EVENTS].includes(event.event_type)&&event.customer_id){
+   if(event.product_id==='crm'&&['crm.customer.created','crm.lead.published','crm.lead.claimed','crm.lead.followup','crm.lead.assigned',TASK_DUE_EVENT,...OPPORTUNITY_EVENT_TYPES,...CONTACT_EVENTS,...TEAM_ATTENTION_EVENT_TYPES].includes(event.event_type)&&event.customer_id){
     const customer=await db.query('SELECT * FROM crm_customers WHERE customer_id=$1 FOR SHARE',[event.customer_id]);
-    if(customer.rows.length)for(const user of recipients.rows){if(event.event_type===SELF_CREATED_EVENT&&event.user_id===user.user_id)continue;if([TASK_DUE_EVENT,'crm.lead.assigned',...CONTACT_EVENTS].includes(event.event_type)&&!event.recipient_user_ids?.includes(user.user_id))continue;const a=await this.access(db,user.user_id);if(!a)continue;if(event.event_type===TASK_DUE_EVENT){if(!await canProjectTaskDue(db,event,a))continue;}else if(CONTACT_EVENTS.includes(event.event_type)){if(!CONTACT_REQUEST_EVENTS.includes(event.event_type)&&!await this.contactAccess(db,a,event.payload?.contactId,event.customer_id))continue;}else if(event.event_type!=='crm.lead.assigned'&&!visible(a,customer.rows[0],event.event_type))continue;
+    if(customer.rows.length)for(const user of recipients.rows){if(event.event_type===SELF_CREATED_EVENT&&event.user_id===user.user_id)continue;if([TASK_DUE_EVENT,'crm.lead.assigned',...CONTACT_EVENTS,...TEAM_ATTENTION_EVENT_TYPES].includes(event.event_type)&&!event.recipient_user_ids?.includes(user.user_id))continue;const a=await this.access(db,user.user_id);if(!a)continue;if(event.event_type===TASK_DUE_EVENT){if(!await canProjectTaskDue(db,event,a))continue;}else if(CONTACT_EVENTS.includes(event.event_type)){if(!CONTACT_REQUEST_EVENTS.includes(event.event_type)&&!await this.contactAccess(db,a,event.payload?.contactId,event.customer_id))continue;}else if(TEAM_ATTENTION_EVENT_TYPES.includes(event.event_type)){if(!(await this.teamAttentionAccess(db,a,event.payload?.attentionItemId)).canOpen)continue;}else if(event.event_type!=='crm.lead.assigned'&&!visible(a,customer.rows[0],event.event_type))continue;
      const old=await db.query("SELECT 1 FROM crm_event_deliveries WHERE event_id=$1 AND recipient_user_id=$2 AND projection_type='lead'",[event.event_id,a.userId]);if(old.rows.length)continue;
      await db.query('INSERT INTO crm_feed_heads(user_id) VALUES($1) ON CONFLICT DO NOTHING',[a.userId]);
      const head=await db.query('UPDATE crm_feed_heads SET delivery_seq=delivery_seq+1 WHERE user_id=$1 RETURNING delivery_seq',[a.userId]);

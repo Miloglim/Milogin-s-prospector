@@ -6,17 +6,19 @@ import { parseImportTable, parseWorkbookImport } from './import-table.adapter';
 import { failure, success } from '../../../server/core/crm';
 import { DESKTOP_AUTH_ROUTES } from '../../../server/core/desktop-session';
 import { API_ROUTES } from '../../../server/core/auth';
-import type { DesktopLoginResponse } from '../../../server/core/desktop-session';
+import type { DesktopDeviceContext, DesktopLoginResponse } from '../../../server/core/desktop-session';
 import { loginAccountId, type OnlineSessionStore, type SavedOnlineSession } from './online-session-store.adapter';
-import type { LoginAccountQuery, SavedAccountLogin, OnlineLogout } from '../../shared/online-crm';
+import { TEAM_MONITORING_ROUTES, type LoginAccountQuery, type SavedAccountLogin, type OnlineLogout, type TeamMonitoringContactSummary, type TeamMonitoringMailDetail, type TeamMonitoringMemberDetail, type TeamMonitoringOverview, type TeamMonitoringQuery } from '../../shared/online-crm';
+import { SALES_PERFORMANCE_ROUTES, type CustomerGradeOverrideClear, type CustomerGradeOverrideReceipt, type CustomerGradeOverrideSet, type CustomerGradePage, type CustomerGradeQuery, type SalesPerformanceOverview, type SalesPerformanceQuery } from '../../shared/online-crm';
 import { isCenterUnavailable, OFFLINE_ACCESS_LIMITS } from '../../../server/core/offline-access';
 import type { OfflineAccessGrant } from '../../../server/core/offline-access';
 import { verifyOfflineAccess } from './offline-access-verifier.adapter';
-import type { AccountProfile, Result, Identity, OnlineLogin, OnlinePasswordChange, OnlineSessionSnapshot, ImportPreview, OnlineFeed, OnlineFeedRequest, OnlineRegistration, RegisteredAccount } from '../../shared/online-crm';
+import { LEAD_INGRESS_ROUTES, TEAM_ROUTES, type AccountProfile, type Result, type Identity, type OnlineLogin, type OnlinePasswordChange, type OnlineSessionSnapshot, type ImportPreview, type OnlineFeed, type OnlineFeedRequest, type OnlineRegistration, type RegisteredAccount, type TeamContext, type TeamDissolveInput, type TeamLeaderInput, type TeamMemberAdjustmentInput, type TeamMemberGroupDeleteInput, type TeamMemberGroupInput, type TeamMoveInput, type LeadIngressDecisionDTO, type LeadIngressDecisionQuery, type LeadIngressResolutionCommand, type LeadIngressResolutionReceipt } from '../../shared/online-crm';
 import { ONLINE_LIMITS } from '../../shared/online-crm';
 import type { OnlineCrmPort } from '../services/online-crm.service';
 import { Log } from '../logger';
 import { TASK_ROUTES, type FollowupTask, type TaskQuery, type TaskPage, type TaskCreate, type TaskReschedule, type TaskComplete } from '../../../server/core/tasks';
+import { TEAM_ATTENTION_ROUTES, type TeamAttentionCreate, type TeamAttentionItem, type TeamAttentionPage, type TeamAttentionQuery, type TeamAttentionTransition, type TeamAttentionTransitionAction } from '../../../server/core/team-attention';
 import type { OfflineCrmService } from '../services/offline-crm.service';
 import type { OfflineCrmContext } from '../core/offline-crm';
 import type { CrmSyncResolve, CrmSyncStatus } from '../../shared/online-crm';
@@ -24,6 +26,8 @@ import { CONTACT_COMMAND_PREFIX } from '../core/contact-commands';
 import { validateCenterBase } from '../core/center-endpoint';
 import { CENTER_CONTACT_GROUP_ROUTE, centerContactPath, type CenterContactGroupPage, type CenterContactGroupQuery, type CenterContactPage, type CenterContactQuery } from '../../../server/core/center-contacts';
 import { CONTACT_ASSIGNMENT_ROUTES, type CenterContactDetail, type CenterContactRef } from '../../../server/core/contact-assignments';
+import type { ContactMailAnalysisCorrection, ContactMailAnalysisQuery, ContactMailAnalysisRecord, ContactMailAnalysisSubmission, ContactMailAnalysisView } from '../../../server/core/mail-analysis';
+import { CONTACT_MAIL_ANALYSIS_ROUTES } from '../../../server/core/mail-analysis';
 
 const FALLBACK_ACCESS_MS = 3600000;
 const RENEW_BEFORE_MS = 30000;
@@ -42,6 +46,8 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   setContactWriter(writer: typeof this.contactWriter): void { this.contactWriter = writer; }
   contactUpdate(input: import('../../../server/core/contact-assignments').CenterContactUpdate) { return this.contactWriter?.update(input) ?? Promise.resolve(failure('UNAVAILABLE', '联系人保存尚未就绪')); }
   contactFollowup(input: import('../../../server/core/contact-assignments').CenterContactFollowup) { return this.contactWriter?.followup(input) ?? Promise.resolve(failure('UNAVAILABLE', '跟进保存尚未就绪')); }
+  leadIngressDecision(input:LeadIngressDecisionQuery){return this.requestLive<LeadIngressDecisionDTO>('GET',`${LEAD_INGRESS_ROUTES.decision}?source=${encodeURIComponent(input.source)}&idempotencyKey=${encodeURIComponent(input.idempotencyKey)}`);}
+  resolveLeadIngress(input:LeadIngressResolutionCommand){return this.requestLive<LeadIngressResolutionReceipt>('POST',LEAD_INGRESS_ROUTES.resolve,input);}
   private detailReader: ((reference: import('../../../server/core/contact-assignments').CenterContactRef) => Promise<Result<import('../../../server/core/contact-assignments').CenterContactDetail>>) | undefined;
   setDetailReader(reader: typeof this.detailReader): void { this.detailReader = reader; }
   async contactDetail(reference: CenterContactRef): Promise<Result<CenterContactDetail>> {
@@ -78,7 +84,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   private token='';
   private generation=0;
   private credentialRevision=0;
-  private deviceId=randomUUID();
+  private readonly deviceId:string;
   private cursor='0';
   private feedRevision=0;
   private identity:Identity|null=null;
@@ -98,8 +104,9 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   private localExpired=false;
   private persistedClockFloor=0;
   private lastIdentityState='';
-  constructor(private readonly fetcher:typeof fetch=fetch, private readonly store?:OnlineSessionStore, private readonly changed:()=>void=()=>{}, private readonly localCrm?:OfflineCrmService, initialBaseUrl:string=ONLINE_LIMITS.defaultUrl) {
+  constructor(private readonly fetcher:typeof fetch=fetch, private readonly store?:OnlineSessionStore, private readonly changed:()=>void=()=>{}, private readonly localCrm?:OfflineCrmService, initialBaseUrl:string=ONLINE_LIMITS.defaultUrl, private readonly desktopDevice?:DesktopDeviceContext) {
     this.baseUrl=validateCenterBase(initialBaseUrl) ?? ONLINE_LIMITS.defaultUrl;
+    this.deviceId=desktopDevice?.deviceId??randomUUID();
   }
   private crmContext():OfflineCrmContext|null {
     const current=this.currentIdentity();if(!current||!this.identity)return null;
@@ -170,9 +177,49 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   }
   private invalidate(notify=true) {
     this.generation++; this.token=''; this.refreshToken='';this.identity=null;this.remembered=false;this.autoLogin=false;this.expiresAt=0;
-    this.renewal=null;this.cursor='0';this.feedRevision++;this.deviceId=randomUUID();
+    this.renewal=null;this.cursor='0';this.feedRevision++;
     this.connection='online';this.offlineAccess=undefined;this.trustedPublicKey='';this.lastSeenAt=0;this.persistedClockFloor=0;this.localExpiresAt=0;this.localExpired=false;
     if(notify)this.changed();
+  }
+  teamMove(teamId:string,input:TeamMoveInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/move`,input); }
+  teamDissolve(teamId:string,input:TeamDissolveInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/dissolve`,input); }
+  teamAssignLeader(teamId:string,input:TeamLeaderInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/leader`,input); }
+  teamAdjustMember(teamId:string,input:TeamMemberAdjustmentInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/members`,input); }
+  teamSaveMemberGroup(teamId:string,input:TeamMemberGroupInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/groups`,input); }
+  teamDeleteMemberGroup(teamId:string,groupId:string,input:TeamMemberGroupDeleteInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/groups/${encodeURIComponent(groupId)}/delete`,input); }
+  teamMonitoring(query:TeamMonitoringQuery):Promise<Result<TeamMonitoringOverview>> {
+    const params=new URLSearchParams({limit:String(query.limit),offset:String(query.offset),unitLimit:String(query.unitLimit),unitOffset:String(query.unitOffset)});
+    if(query.teamId)params.set('teamId',query.teamId);if(query.memberUserId)params.set('memberUserId',query.memberUserId);
+    return this.requestLive<TeamMonitoringOverview>('GET',`${TEAM_MONITORING_ROUTES.overview}?${params}`);
+  }
+  teamMonitoringMember(userId:string,limit:number,offset:number):Promise<Result<TeamMonitoringMemberDetail>> {
+    return this.requestLive<TeamMonitoringMemberDetail>('GET',`${TEAM_MONITORING_ROUTES.members}/${encodeURIComponent(userId)}?${new URLSearchParams({limit:String(limit),offset:String(offset)})}`);
+  }
+  teamMonitoringContact(contactId:number,customerId:string,limit:number,offset:number):Promise<Result<TeamMonitoringContactSummary>> {
+    return this.requestLive<TeamMonitoringContactSummary>('GET',`${TEAM_MONITORING_ROUTES.contacts}/${contactId}?${new URLSearchParams({customerId,limit:String(limit),offset:String(offset)})}`);
+  }
+  teamMonitoringMail(eventId:string,contactId:number,customerId:string):Promise<Result<TeamMonitoringMailDetail>> {
+    return this.requestLive<TeamMonitoringMailDetail>('GET',`${TEAM_MONITORING_ROUTES.mail}/${encodeURIComponent(eventId)}?${new URLSearchParams({contactId:String(contactId),customerId})}`);
+  }
+  salesPerformance(query:SalesPerformanceQuery):Promise<Result<SalesPerformanceOverview>> {
+    const params=new URLSearchParams({from:query.from,to:query.to,groupBy:query.groupBy,limit:String(query.limit),offset:String(query.offset)});
+    for(const key of ['teamId','memberUserId','source','batchId','country'] as const)if(query[key])params.set(key,query[key]!);
+    return this.requestLive<SalesPerformanceOverview>('GET',`${SALES_PERFORMANCE_ROUTES.performance}?${params}`);
+  }
+  salesPerformanceGrades(query:CustomerGradeQuery):Promise<Result<CustomerGradePage>> {
+    const params=new URLSearchParams({from:query.from,to:query.to,limit:String(query.limit),offset:String(query.offset)});
+    for(const key of ['customerId','teamId','memberUserId'] as const)if(query[key])params.set(key,query[key]!);
+    return this.requestLive<CustomerGradePage>('GET',`${SALES_PERFORMANCE_ROUTES.customerGrades}?${params}`);
+  }
+  setSalesPerformanceGrade(input:CustomerGradeOverrideSet):Promise<Result<CustomerGradeOverrideReceipt>> {
+    return this.requestLive<CustomerGradeOverrideReceipt>('POST',`${SALES_PERFORMANCE_ROUTES.customerGrades}/${encodeURIComponent(input.customerId)}/override`,{
+      expectedVersion:input.expectedVersion,grade:input.grade,reason:input.reason,idempotencyKey:input.idempotencyKey,
+    });
+  }
+  clearSalesPerformanceGrade(input:CustomerGradeOverrideClear):Promise<Result<CustomerGradeOverrideReceipt>> {
+    return this.requestLive<CustomerGradeOverrideReceipt>('DELETE',`${SALES_PERFORMANCE_ROUTES.customerGrades}/${encodeURIComponent(input.customerId)}/override`,{
+      expectedVersion:input.expectedVersion,reason:input.reason,idempotencyKey:input.idempotencyKey,
+    });
   }
   private async forget():Promise<void> {
     this.invalidate(false);
@@ -220,7 +267,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     const pending=(async()=>{
       const result=await this.raw<DesktopLoginResponse>('POST',DESKTOP_AUTH_ROUTES.refresh,{refreshToken:refresh});
       if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换');
-      if(!result.ok){Log.warn?.('online.renew',`登录续期失败 ${result.error.code}: ${result.error.message}`);if(result.error.code==='UNAUTHORIZED')await this.forget();else if(isCenterUnavailable(result.error.code))await this.offline();return result;}
+      if(!result.ok){Log.warn?.('online.renew',`登录续期失败 ${result.error.code}: ${result.error.message}`);if(['UNAUTHORIZED','DEVICE_REPLACED'].includes(result.error.code))await this.forget();else if(isCenterUnavailable(result.error.code))await this.offline();return result;}
       if((this.identity||expectedUserId) && result.data.identity?.userId!==(this.identity?.userId??expectedUserId)){await this.forget();return failure('UNAUTHORIZED','恢复身份不一致');}
       try{return await this.accept(result.data,generation);}catch{
         if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换，旧存储失败已丢弃');
@@ -258,7 +305,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换，旧响应已丢弃');
     if(!result.ok && result.error.code==='UNAUTHORIZED' && this.refreshToken){const fresh=await this.renew();if(!fresh.ok)return fresh;if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换');result=await this.raw<T>(method,path,body,this.token);}
     if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换，旧响应已丢弃');
-    if(!result.ok && result.error.code==='UNAUTHORIZED'){Log.warn?.('online.request',`${method} ${path} 鉴权失败，清理当前登录状态`);await this.forget();}
+    if(!result.ok && ['UNAUTHORIZED','DEVICE_REPLACED'].includes(result.error.code)){Log.warn?.('online.request',`${method} ${path} 鉴权失败，清理当前登录状态`);await this.forget();}
     else if(!result.ok && isCenterUnavailable(result.error.code)){Log.warn?.('online.request',`${method} ${path} 中心不可用，切换离线状态`);await this.offline();}
     return result;
   }
@@ -275,7 +322,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   }
   async login(input:OnlineLogin):Promise<Result<Identity>> {
     if(!input || typeof input.baseUrl!=='string' || typeof input.email!=='string' || typeof input.password!=='string') return failure('INVALID_INPUT','登录参数错误');
-    if(input.autoLogin!==undefined&&typeof input.autoLogin!=='boolean'||input.remember!==undefined&&typeof input.remember!=='boolean'||input.autoLogin===true&&input.remember!==true)return failure('INVALID_INPUT','自动登录需要记住登录凭据');
+    if(input.autoLogin!==undefined&&typeof input.autoLogin!=='boolean'||input.remember!==undefined&&typeof input.remember!=='boolean'||input.replaceActiveDevice!==undefined&&typeof input.replaceActiveDevice!=='boolean'||input.autoLogin===true&&input.remember!==true)return failure('INVALID_INPUT','自动登录需要记住登录凭据');
     const base=validateCenterBase(input.baseUrl);
     if(!base) return failure('INVALID_INPUT','中心地址必须使用 HTTPS；本机测试仅允许回环 HTTP');
     this.invalidate(false);
@@ -286,7 +333,8 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     try {
       if(generation!==this.generation)return failure('UNAUTHORIZED','登录已取消');
       this.changed();
-      const result=await this.raw<DesktopLoginResponse>('POST',DESKTOP_AUTH_ROUTES.login,{email:input.email,password:input.password});
+      const desktop=this.desktopDevice?{...this.desktopDevice,...(input.replaceActiveDevice?{replaceActiveDevice:true}:{})}:undefined;
+      const result=await this.raw<DesktopLoginResponse>('POST',DESKTOP_AUTH_ROUTES.login,{email:input.email,password:input.password,...(desktop?{desktop}:{})});
       if(generation!==this.generation) return failure('UNAUTHORIZED','登录已取消');
       if(!result.ok) return result;
       const accepted=await this.accept(result.data,generation);if(!accepted.ok)return accepted;
@@ -415,6 +463,14 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   createTask(input:TaskCreate):Promise<Result<FollowupTask>> { return this.request('POST',TASK_ROUTES.tasks,input); }
   rescheduleTask(input:TaskReschedule):Promise<Result<FollowupTask>> { return input && typeof input.taskId==='string' ? this.request('POST',`${TASK_ROUTES.tasks}/${encodeURIComponent(input.taskId)}/${TASK_ROUTES.rescheduleAction}`,input) : Promise.resolve(failure('INVALID_INPUT','任务参数无效')); }
   completeTask(input:TaskComplete):Promise<Result<FollowupTask>> { return input && typeof input.taskId==='string' ? this.request('POST',`${TASK_ROUTES.tasks}/${encodeURIComponent(input.taskId)}/${TASK_ROUTES.completeAction}`,input) : Promise.resolve(failure('INVALID_INPUT','任务参数无效')); }
+  teamAttention(query:TeamAttentionQuery):Promise<Result<TeamAttentionPage>> { return this.request('GET',`${TEAM_ATTENTION_ROUTES.items}?${new URLSearchParams({limit:String(query.limit),offset:String(query.offset),...(query.status?{status:query.status}:{}),...(query.reason?{reason:query.reason}:{}),...(query.targetMemberUserId?{targetMemberUserId:query.targetMemberUserId}:{})})}`); }
+  createTeamAttention(input:TeamAttentionCreate):Promise<Result<TeamAttentionItem>> { return this.request('POST',TEAM_ATTENTION_ROUTES.items,input,true); }
+  transitionTeamAttention(itemId:string,action:TeamAttentionTransitionAction,input:Omit<TeamAttentionTransition,'itemId'|'action'>):Promise<Result<TeamAttentionItem>> { return this.request('POST',`${TEAM_ATTENTION_ROUTES.items}/${encodeURIComponent(itemId)}/${action}`,input,true); }
+  contactMailAnalysis(query:ContactMailAnalysisQuery):Promise<Result<ContactMailAnalysisView>> {
+    return this.request('GET',`${CONTACT_MAIL_ANALYSIS_ROUTES.analyses}?${new URLSearchParams({contactId:String(query.contactId),customerId:query.customerId,mailboxKey:query.mailboxKey,messageKey:query.messageKey,contentHash:query.contentHash,history:String(query.includeHistory),limit:String(query.historyLimit)})}`);
+  }
+  submitContactMailAnalysis(input:ContactMailAnalysisSubmission):Promise<Result<ContactMailAnalysisRecord>> { return this.request('POST',CONTACT_MAIL_ANALYSIS_ROUTES.ai,input,true); }
+  correctContactMailAnalysis(input:ContactMailAnalysisCorrection):Promise<Result<ContactMailAnalysisRecord>> { return this.request('POST',CONTACT_MAIL_ANALYSIS_ROUTES.correct,input,true); }
   workbookPreview():Promise<Result<ImportPreview>> { return this.readPreview(true); }
   private async readPreview(workbook:boolean):Promise<Result<ImportPreview>> {
     if(!this.currentIdentity()) return failure('UNAUTHORIZED','请登录中心账号');

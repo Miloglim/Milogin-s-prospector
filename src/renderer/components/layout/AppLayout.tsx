@@ -6,10 +6,10 @@ import { KEEPALIVE_ROUTE_COMPONENTS } from "../../router";
 import { useOptionalIdentity } from '../../IdentityContext';
 import { OnboardingWizard } from "../OnboardingWizard";
 import { globalStatusNotices, GLOBAL_STATUS_TOAST_DURATION_SECONDS, type GlobalStatusNotice } from './app-layout-status';
-import { shouldPresentOnboarding, type OnboardingActivity } from './onboarding-gate';
+import { onboardingModeFor, type OnboardingActivity, type OnboardingMode } from './onboarding-gate';
 
 const { Content } = Layout;
-const EDGE_TO_EDGE_PATHS = new Set(['/inbox']);
+const EDGE_TO_EDGE_PATHS = new Set(['/inbox', '/team']);
 
 /** 路由级 keep-alive：登记过的页面切走只隐藏不卸载，切回来零重挂、零 loading 闪变。
  *  · 缓存键 = pathname；从别的页面带着新 query 深链进来时换新实例（页面挂载时读 query 的语义不变）；
@@ -126,6 +126,7 @@ export function AppLayout() {
     pathname,
   });
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [onboardingMode, setOnboardingMode] = useState<OnboardingMode>('full');
   const [onboardingEmail, setOnboardingEmail] = useState("");
   const [onboardingSignal, setOnboardingSignal] = useState(0);
   const onboardingAccount = useRef<string | null>(null);
@@ -184,7 +185,9 @@ export function AppLayout() {
         mailboxCount: accounts?.success && Array.isArray(accounts.data) ? accounts.data.length : null,
         activity: stats?.success && stats.data ? stats.data : null,
       };
-      if (!shouldPresentOnboarding(signals)) return;
+      const mode = onboardingModeFor(signals);
+      if (!mode) return;
+      setOnboardingMode(mode);
       setOnboardingEmail(email);
       setWelcomeOpen(true);
     }).catch(() => { /* 初始化检查失败时不打断业务页，也不猜测弹向导。 */ });
@@ -234,14 +237,14 @@ export function AppLayout() {
         <Layout className="app-workspace">
           <Content className="app-content" style={{ minHeight: 0, overflow: "hidden" }}>
             <ScrollArea pathname={pathname} fullScreen={EDGE_TO_EDGE_PATHS.has(pathname)}>
-              <div className="app-route-host" hidden={centerUnavailable}>{!localAvailable && pathname === '/settings' ? <Spin /> : !localAvailable && !['/customers', '/customers-online', '/account', '/messages'].includes(pathname) ? null : <KeepAliveOutlet />}</div>
+              <div className="app-route-host" hidden={centerUnavailable}>{!localAvailable && pathname === '/settings' ? <Spin /> : !localAvailable && !['/customers', '/customers-online', '/account', '/messages', '/team'].includes(pathname) ? null : <KeepAliveOutlet />}</div>
             </ScrollArea>
           </Content>
         </Layout>
       </Layout>
-      <Modal open={welcomeOpen} title="欢迎使用 Prospector" centered okText="配置账号" cancelText="稍后配置"
+      <Modal open={welcomeOpen} title={onboardingMode === 'connect' ? '连接已有邮箱' : '欢迎使用 Prospector'} centered okText={onboardingMode === 'connect' ? '连接邮箱' : '配置账号'} cancelText="稍后"
         onOk={openOnboarding} onCancel={skipOnboarding}>
-        <p style={{ margin: 0, color: "#666" }}>是否现在配置邮箱账号？</p>
+        <p style={{ margin: 0, color: "#666" }}>{onboardingMode === 'connect' ? '同步当前账号已有的客户和邮件往来。' : '是否现在配置邮箱账号？'}</p>
       </Modal>
       <OnboardingWizard prefillEmail={onboardingEmail} openSignal={onboardingSignal} />
     </div>

@@ -1,5 +1,6 @@
 import { htmlToText } from "../core/html-text";
-import { INBOX_FETCH_PHASES, type InboxFetchPhase, type InboxListRequest } from "../../shared/inbox";
+import { INBOX_FETCH_PHASES, INBOX_SYNC_PHASES, type InboxFetchPhase, type InboxHistoryRequest, type InboxListRequest, type InboxSyncAccountState, type InboxSyncSnapshot } from "../../shared/inbox";
+import { INBOX_FOLDER, INBOX_HISTORY_MONTHS_DEFAULT, INBOX_HISTORY_MONTHS_MAX, INBOX_HISTORY_MONTHS_MIN, INBOX_INITIAL_HISTORY_DAYS } from "../core/inbox-fetch";
 import { getDb } from "../db";
 import { inboxMessages, inboxBounceMatches, type InboxMessageRow, type InsertInboxMessageRow } from "../db/schema/inbox";
 import { emailAccounts } from "../db/schema/accounts";
@@ -440,7 +441,7 @@ export function setInboxPushFn(fn: (channel: string, data: unknown) => void) {
 function pushFetchProgress(
   account: { id: number; email: string },
   phase: InboxFetchPhase,
-  values: { scanned?: number; total?: number; newCount?: number; remaining?: number; message?: string } = {},
+  values: { scanned?: number; total?: number; newCount?: number; remaining?: number; processedCount?: number; requiredCount?: number; currentSubject?: string | null; message?: string } = {},
 ): void {
   try {
     pushFn?.(EVENTS.INBOX_FETCH_PROGRESS, {
@@ -451,6 +452,9 @@ function pushFetchProgress(
       total: values.total ?? 0,
       newCount: values.newCount ?? 0,
       remaining: values.remaining ?? 0,
+      processedCount: values.processedCount,
+      requiredCount: values.requiredCount,
+      currentSubject: values.currentSubject,
       message: values.message,
     });
   } catch { /* 进度推送失败不影响抓取 */ }
@@ -467,6 +471,206 @@ let postFetchAdapters: PostFetchAdapters | null = null;
 /** 由 transport 注入协议层操作，避免收件箱服务反向依赖 IMAP/POP3 实现。 */
 export function setPostFetchAdapters(adapters: PostFetchAdapters): void {
   postFetchAdapters = adapters;
+}
+
+interface SyncStateRow {
+  accountId: number;
+  folder: string;
+  phase: string;
+  windowFromAt: string | null;
+  windowToAt: string | null;
+  cursorUid: number | null;
+  targetCount: number;
+  scannedCount: number;
+  newCount: number;
+  matchedCount: number;
+  remainingCount: number;
+  firstCompletedAt: string | null;
+  lastIncrementalAt: string | null;
+  lastError: string | null;
+  updatedAt: string;
+}
+
+export interface InboxSyncWindow {
+  phase: 'initial' | 'history' | 'incremental';
+  windowFromAt: string | null;
+  windowToAt: string | null;
+  cursorUid: number | null;
+  scannedBefore: number;
+  newBefore: number;
+  targetCount: number;
+}
+
+function monthsBefore(value: Date, months: number): Date {
+  const next = new Date(value);
+  next.setUTCMonth(next.getUTCMonth() - months);
+  return next;
+}
+
+function syncState(accountId: number, folder: string = INBOX_FOLDER.inbox): SyncStateRow | undefined {
+  return getRawDb().prepare(`SELECT account_id AS accountId,folder,phase,window_from_at AS windowFromAt,
+    window_to_at AS windowToAt,cursor_uid AS cursorUid,target_count AS targetCount,scanned_count AS scannedCount,
+    new_count AS newCount,matched_count AS matchedCount,remaining_count AS remainingCount,
+    first_completed_at AS firstCompletedAt,last_incremental_at AS lastIncrementalAt,last_error AS lastError,
+    updated_at AS updatedAt FROM email_sync_state WHERE account_id=? AND folder=?`).get(accountId, folder) as SyncStateRow | undefined;
+}
+
+function writeSyncState(accountId: number, folder: string, values: Partial<SyncStateRow>): void {
+  const current = syncState(accountId, folder);
+  const next = {
+    phase: values.phase ?? current?.phase ?? INBOX_SYNC_PHASES.IDLE,
+    windowFromAt: values.windowFromAt === undefined ? current?.windowFromAt ?? null : values.windowFromAt,
+    windowToAt: values.windowToAt === undefined ? current?.windowToAt ?? null : values.windowToAt,
+    cursorUid: values.cursorUid === undefined ? current?.cursorUid ?? null : values.cursorUid,
+    targetCount: values.targetCount ?? current?.targetCount ?? 0,
+    scannedCount: values.scannedCount ?? current?.scannedCount ?? 0,
+    newCount: values.newCount ?? current?.newCount ?? 0,
+    matchedCount: values.matchedCount ?? current?.matchedCount ?? 0,
+    remainingCount: values.remainingCount ?? current?.remainingCount ?? 0,
+    firstCompletedAt: values.firstCompletedAt === undefined ? current?.firstCompletedAt ?? null : values.firstCompletedAt,
+    lastIncrementalAt: values.lastIncrementalAt === undefined ? current?.lastIncrementalAt ?? null : values.lastIncrementalAt,
+    lastError: values.lastError === undefined ? current?.lastError ?? null : values.lastError,
+  };
+  getRawDb().prepare(`INSERT INTO email_sync_state(account_id,folder,phase,window_from_at,window_to_at,cursor_uid,
+    target_count,scanned_count,new_count,matched_count,remaining_count,first_completed_at,last_incremental_at,last_error,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(account_id,folder) DO UPDATE SET phase=excluded.phase,
+    window_from_at=excluded.window_from_at,window_to_at=excluded.window_to_at,cursor_uid=excluded.cursor_uid,
+    target_count=excluded.target_count,scanned_count=excluded.scanned_count,new_count=excluded.new_count,
+    matched_count=excluded.matched_count,remaining_count=excluded.remaining_count,first_completed_at=excluded.first_completed_at,
+    last_incremental_at=excluded.last_incremental_at,last_error=excluded.last_error,updated_at=excluded.updated_at`).run(
+    accountId, folder, next.phase, next.windowFromAt, next.windowToAt, next.cursorUid, next.targetCount, next.scannedCount,
+    next.newCount, next.matchedCount, next.remainingCount, next.firstCompletedAt, next.lastIncrementalAt, next.lastError, new Date().toISOString(),
+  );
+  saveDatabase();
+}
+
+export function inboxSyncWindow(accountId: number): InboxSyncWindow {
+  const account = getDb().select().from(emailAccounts).where(eq(emailAccounts.id, accountId)).get();
+  if (!account?.imapHost) return { phase: 'incremental', windowFromAt: null, windowToAt: null, cursorUid: null, scannedBefore: 0, newBefore: 0, targetCount: 0 };
+  let row = syncState(accountId);
+  if (!row) {
+    const now = new Date();
+    const from = new Date(now.getTime() - INBOX_INITIAL_HISTORY_DAYS * 86400_000);
+    writeSyncState(accountId, INBOX_FOLDER.inbox, { phase: INBOX_SYNC_PHASES.INITIAL, windowFromAt: from.toISOString(), windowToAt: now.toISOString(), cursorUid: null, targetCount: 0, scannedCount: 0, newCount: 0, matchedCount: 0, remainingCount: 0, lastError: null });
+    row = syncState(accountId);
+  }
+  if (!row) return { phase: 'incremental', windowFromAt: null, windowToAt: null, cursorUid: null, scannedBefore: 0, newBefore: 0, targetCount: 0 };
+  const phase = row.phase === INBOX_SYNC_PHASES.INITIAL ? 'initial' : row.phase === INBOX_SYNC_PHASES.HISTORY ? 'history' : 'incremental';
+  return { phase, windowFromAt: row.windowFromAt, windowToAt: row.windowToAt, cursorUid: row.cursorUid, scannedBefore: row.scannedCount, newBefore: row.newCount, targetCount: row.targetCount };
+}
+
+export function beginInboxSyncBatch(accountId: number, targetCount: number, remainingCount: number): void {
+  const row = syncState(accountId);
+  if (!row || (row.phase !== INBOX_SYNC_PHASES.INITIAL && row.phase !== INBOX_SYNC_PHASES.HISTORY)) return;
+  writeSyncState(accountId, INBOX_FOLDER.inbox, { targetCount: Math.max(row.targetCount, targetCount), remainingCount, lastError: null });
+}
+
+export function finishInboxSyncBatch(accountId: number, input: { cursorUid: number | null; scanned: number; newCount: number; remaining: number }): void {
+  const row = syncState(accountId);
+  if (!row) return;
+  const now = new Date().toISOString();
+  const done = input.remaining === 0;
+  writeSyncState(accountId, INBOX_FOLDER.inbox, {
+    cursorUid: input.cursorUid,
+    scannedCount: row.scannedCount + input.scanned,
+    newCount: row.newCount + input.newCount,
+    remainingCount: input.remaining,
+    phase: done ? INBOX_SYNC_PHASES.READY : row.phase,
+    firstCompletedAt: done && !row.firstCompletedAt ? now : row.firstCompletedAt,
+    lastIncrementalAt: row.phase === INBOX_SYNC_PHASES.READY ? now : row.lastIncrementalAt,
+    lastError: null,
+  });
+}
+
+export function addInboxSyncMatches(accountId: number, count: number): void {
+  if (count <= 0) return;
+  const row = syncState(accountId);
+  if (!row) return;
+  writeSyncState(accountId, INBOX_FOLDER.inbox, { matchedCount: row.matchedCount + count });
+}
+
+export function failInboxSync(accountId: number, message: string): void {
+  const row = syncState(accountId);
+  if (!row) return;
+  writeSyncState(accountId, INBOX_FOLDER.inbox, { lastError: message.slice(0, 500) });
+}
+
+export function completeIncrementalSync(accountId: number): void {
+  const row = syncState(accountId);
+  if (!row || row.phase !== INBOX_SYNC_PHASES.READY) return;
+  writeSyncState(accountId, INBOX_FOLDER.inbox, { lastIncrementalAt: new Date().toISOString(), lastError: null });
+}
+
+export function inboxSyncSnapshot(): InboxSyncSnapshot {
+  const accounts = getDb().select().from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all();
+  const rows: InboxSyncAccountState[] = accounts.map(account => {
+    const row = syncState(account.id);
+    const hasImap = !!account.imapHost;
+    const phase = !hasImap ? INBOX_SYNC_PHASES.UNCONFIGURED : row?.lastError ? INBOX_SYNC_PHASES.FAILED : (row?.phase as InboxSyncAccountState['phase'] | undefined) ?? INBOX_SYNC_PHASES.IDLE;
+    return {
+      accountId: account.id, email: account.email, hasImap, phase,
+      windowFromAt: row?.windowFromAt ?? null, windowToAt: row?.windowToAt ?? null,
+      targetCount: row?.targetCount ?? 0, scannedCount: row?.scannedCount ?? 0,
+      newCount: row?.newCount ?? 0, matchedCount: row?.matchedCount ?? 0,
+      remainingCount: row?.remainingCount ?? 0, firstCompletedAt: row?.firstCompletedAt ?? null,
+      lastIncrementalAt: row?.lastIncrementalAt ?? null, lastError: row?.lastError ?? null,
+      updatedAt: row?.updatedAt ?? null,
+    };
+  });
+  return {
+    accounts: rows,
+    initializing: rows.some(row => row.phase === INBOX_SYNC_PHASES.INITIAL || row.phase === INBOX_SYNC_PHASES.HISTORY),
+    failed: rows.some(row => row.phase === INBOX_SYNC_PHASES.FAILED),
+  };
+}
+
+export async function refreshInboxHistory(input: InboxHistoryRequest = {}): Promise<Result<InboxMessageRow[]>> {
+  if (input == null || typeof input !== 'object' || Array.isArray(input)) return failResult('历史同步请求无效');
+  const months = input.months ?? INBOX_HISTORY_MONTHS_DEFAULT;
+  if (!Number.isSafeInteger(months) || months < INBOX_HISTORY_MONTHS_MIN || months > INBOX_HISTORY_MONTHS_MAX) return failResult('历史同步月份无效');
+  if (input.accountId !== undefined && (!Number.isSafeInteger(input.accountId) || input.accountId < 1)) return failResult('邮箱账号无效');
+  const accounts = getDb().select().from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all()
+    .filter(account => !!account.imapHost && (input.accountId === undefined || account.id === input.accountId));
+  if (!accounts.length) return failResult('没有可同步历史邮件的收信账号');
+  let requested = false;
+  for (const account of accounts) {
+    if (!syncState(account.id)) inboxSyncWindow(account.id);
+    const row = syncState(account.id);
+    if (!row?.firstCompletedAt) continue;
+    const to = new Date(row.windowFromAt ?? row.windowToAt ?? new Date().toISOString());
+    const from = monthsBefore(to, months);
+    writeSyncState(account.id, INBOX_FOLDER.inbox, {
+      phase: INBOX_SYNC_PHASES.HISTORY, windowFromAt: from.toISOString(), windowToAt: to.toISOString(),
+      cursorUid: null, targetCount: 0, scannedCount: 0, newCount: 0, matchedCount: 0,
+      remainingCount: 0, lastError: null,
+    });
+    requested = true;
+  }
+  if (!requested) return failResult('请先完成最近邮件首次同步');
+  return refreshInbox(input.accountId);
+}
+
+async function continuePendingInboxSync(accountId?: number): Promise<void> {
+  while (inboxNetworkAllowed()) {
+    const pending = inboxSyncSnapshot().accounts.filter(account =>
+      account.hasImap
+      && !account.lastError
+      && account.remainingCount > 0
+      && (account.phase === INBOX_SYNC_PHASES.INITIAL || account.phase === INBOX_SYNC_PHASES.HISTORY)
+      && (accountId === undefined || account.accountId === accountId),
+    );
+    if (pending.length === 0) return;
+
+    let progressed = false;
+    for (const account of pending) {
+      if (!inboxNetworkAllowed()) return;
+      await fetchInbox(account.accountId);
+      const next = inboxSyncSnapshot().accounts.find(item => item.accountId === account.accountId);
+      if (!next || next.lastError) continue;
+      if (next.scannedCount > account.scannedCount || next.remainingCount !== account.remainingCount) progressed = true;
+    }
+    if (!progressed) return;
+  }
 }
 
 // ── 抓取 ──
@@ -516,6 +720,7 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
     const { account, result } = r.value;
     if (!result.success) {
       pushFetchProgress(account, INBOX_FETCH_PHASES.FAILED, { message: result.error || "抓取失败" });
+      failInboxSync(account.id, result.error || '抓取失败');
       db.update(emailAccounts)
         .set({ fetchFailCount: sql`${emailAccounts.fetchFailCount} + 1`, lastFetchError: (result.error || "抓取失败").slice(0, 300), lastFetchAt: now })
         .where(eq(emailAccounts.id, account.id)).run();
@@ -536,9 +741,13 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
         : undefined;
       if (stored) {
         const linked = await syncInboxCenterMessage(stored.id, { classify });
-        if (linked.success) mail.classification = linked.data.classification;
+        if (linked.success) {
+          mail.classification = linked.data.classification;
+          addInboxSyncMatches(account.id, linked.data.matched);
+        }
       }
     }
+    completeIncrementalSync(account.id);
 
     // 去重 UID
     const newItems = result.data.filter(m => !SEEN_UIDS.has(m.messageId || ""));
@@ -646,6 +855,7 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
 export async function refreshInbox(accountId?: number): Promise<Result<InboxMessageRow[]>> {
   if (!inboxNetworkAllowed()) return failResult('当前离线，无法刷新邮件。');
   await fetchInbox(accountId);
+  await continuePendingInboxSync(accountId);
   if (!inboxNetworkAllowed()) return failResult('当前离线，无法刷新邮件。');
   cleanupInbox();
 
@@ -1297,7 +1507,7 @@ export function startAutoFetch(intervalMs = 5 * 60 * 1000) {
   let autoRunning = false;
   // 失败退避：被限流的账号越撞限得越狠 —— 连败 ≥3 降频到每 4 轮、≥12 降频到每 12 轮；成功一轮自动恢复
   let autoTick = 0;
-  fetchInterval = setInterval(() => {
+  const run = () => {
     if (!inboxNetworkAllowed()) return;
     if (autoRunning) {
       Log.warn("inbox.auto", "上一轮抓取未结束，本轮跳过");
@@ -1315,11 +1525,14 @@ export function startAutoFetch(intervalMs = 5 * 60 * 1000) {
       if (exclude.length) Log.info("inbox.auto", `失败退避：跳过 ${exclude.length} 个连败账号（本第 ${autoTick} 轮）`);
     } catch { /* 查不到就照常全量 */ }
     fetchInbox(undefined, exclude)
+      .then(() => continuePendingInboxSync())
       .catch(err => {
         Log.error("inbox.auto", "自动抓取失败", err instanceof Error ? err.stack : undefined);
       })
       .finally(() => { autoRunning = false; });
-  }, intervalMs);
+  };
+  fetchInterval = setInterval(run, intervalMs);
+  run();
 }
 
 export function stopAutoFetch() {

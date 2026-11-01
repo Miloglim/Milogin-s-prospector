@@ -12,7 +12,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('CRM lifecycle Postg
   const pool=new Pool(readTestDatabaseConfig()),c=await pool.connect();await c.query('BEGIN');
   try{
    const facade={options:pool.options,connect:async()=>({query:(sql:string,args?:unknown[])=>c.query(sql==='BEGIN'?'SAVEPOINT lifecycle_test':sql==='COMMIT'?'RELEASE SAVEPOINT lifecycle_test':sql==='ROLLBACK'?'ROLLBACK TO SAVEPOINT lifecycle_test':sql,args),release:()=>{}})} as unknown as Pool;
-   const repo=new PostgresLeadRepository(facade,{write:()=>{}});unwrap(await repo.migrate());
+   const repo=new PostgresLeadRepository(facade,{write:()=>{}});unwrap(await repo.migrate());unwrap(await repo.migrateLeadMatch());unwrap(await repo.migrateLeadMatch());
+   expect((await c.query("SELECT count(*)::int AS n FROM crm_schema_migrations WHERE version='058-lead-ingress-conflict'")).rows[0].n).toBe(1);
    const actors=[];for(const role of ['operations','sales','sales','admin'] as const){const id=randomUUID(),hash=tokenAdapter.hash(randomBytes(32).toString('base64url'));await c.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)',[id,'lifecycle-test']);await c.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);await c.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='sales'?'own':'shared',JSON.stringify(capabilitiesFor([role]))]);await c.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[hash,id]);actors.push({id,hash});}
    const [ops,user,other,admin]=actors;
    const query={search:'Lifecycle-',scope:'all' as const,limit:100,offset:0};
@@ -30,7 +31,9 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('CRM lifecycle Postg
    expect((await c.query('SELECT crm_deleted_by FROM companies WHERE id=$1',[empty.companyId])).rows[0].crm_deleted_by).toBe(user!.id);
    const attachCompany=unwrap(await repo.createCompany(user!.hash,{...create,name:create.name+' Attach',idempotencyKey:randomUUID()})).company;
    const email=randomUUID()+'@example.invalid';const receipt=unwrap(await repo.importRows(user!.hash,{source:'manual',sourceDetail:'',idempotencyKey:randomUUID(),rows:[{companyName:attachCompany.name,email,customerKey:email,name:'Self'}]}));
-   expect(receipt.rows[0]!.status).toBe('created');
+   expect(receipt.rows[0]).toMatchObject({status:'restricted_conflict',conflict:{level:'exact_company'}});
+   const resolved=unwrap(await repo.resolveLeadIngress(user!.hash,{decisionId:receipt.rows[0]!.conflict!.decisionId,action:'attach_company',expectedVersion:1,idempotencyKey:randomUUID()}));
+   expect(resolved.companyId).toBe(attachCompany.companyId);
    const contact=unwrap(await repo.listContacts(user!.hash,{search:email,limit:50,offset:0})).items[0]!;expect(contact.companyId).toBe(attachCompany.companyId);
    expect(await repo.deleteCompany(user!.hash,{companyId:attachCompany.companyId,expectedRevision:attachCompany.revision,idempotencyKey:randomUUID()})).toMatchObject({ok:false,error:{code:'CONFLICT'}});
    const ref={contactId:contact.contactId,customerId:contact.customerId};
@@ -51,7 +54,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('CRM lifecycle Postg
    expect(unwrap(await repo.updateCustomer(user!.hash,{customerId:contact.customerId,companyName:attachCompany.name,expectedVersion:customerVersion,idempotencyKey:randomUUID(),contacts:[]})).contacts).toHaveLength(0);
    const unauthorizedCompany='Lifecycle-restore-'+randomUUID();
    const unauthorized=unwrap(await repo.importRows(other!.hash,{source:'manual',sourceDetail:'',companyMatching:true,idempotencyKey:randomUUID(),rows:[{companyName:unauthorizedCompany,email,customerKey:randomUUID(),name:'Unauthorized Restore'}]}));
-   expect(unauthorized.rows[0]).toMatchObject({status:'restricted_conflict',message:'该邮箱属于已删除联系人，请使用原公司资料恢复'});
+   expect(unauthorized.rows[0]).toMatchObject({status:'restricted_conflict',message:'邮箱与受限记录冲突，请核实来源或归属'});
    expect((await c.query('SELECT count(*)::int AS n FROM companies WHERE name=$1',[unauthorizedCompany])).rows[0].n).toBe(0);
    const guessedCompany='Guessed-'+randomUUID();
    const restoredReceipt=unwrap(await repo.importRows(user!.hash,{source:'manual-restore',sourceDetail:'restored after delete',companyMatching:true,idempotencyKey:randomUUID(),rows:[{companyName:guessedCompany,email,customerKey:randomUUID(),name:'Self Restored'}]}));
@@ -65,7 +68,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('CRM lifecycle Postg
    expect((await c.query("SELECT event_type,payload FROM public.identity_outbox WHERE customer_id=$1 AND event_type='crm.contact.updated' ORDER BY created_at DESC LIMIT 1",[contact.customerId])).rows[0]).toMatchObject({event_type:'crm.contact.updated',payload:{contactId:contact.contactId,customerId:contact.customerId,version:restored.contactVersion}});
    const opEmail=randomUUID()+'@example.invalid';unwrap(await repo.importRows(ops!.hash,{source:'lifecycle',sourceDetail:'',idempotencyKey:randomUUID(),rows:[{companyName:'Lifecycle-assigned',email:opEmail,customerKey:opEmail,name:'Assigned'}]}));
    const op=unwrap(await repo.listContacts(ops!.hash,{search:opEmail,limit:50,offset:0})).items[0]!,opRef={contactId:op.contactId,customerId:op.customerId};
-   const request=unwrap(await repo.createContactAssignments(ops!.hash,{contacts:[{...opRef,expectedVersion:op.contactVersion!}],targetUserId:user!.id,notifyUserIds:[],idempotencyKey:randomUUID()})).items[0]!;
+   const request=unwrap(await repo.createContactAssignments(ops!.hash,{contacts:[{...opRef,expectedVersion:op.contactVersion!}],targetUserId:user!.id,idempotencyKey:randomUUID()})).items[0]!;
    expect(await repo.deleteContacts(ops!.hash,{contacts:[{...opRef,expectedVersion:op.contactVersion!}],idempotencyKey:randomUUID()})).toMatchObject({ok:false,error:{code:'FORBIDDEN'}});
    unwrap(await repo.decideContactAssignment(user!.hash,'accept',{requestId:request.requestId,expectedVersion:request.version,idempotencyKey:randomUUID()}));
    const assigned=unwrap(await repo.contactDetail(user!.hash,opRef));expect(assigned.canDelete).toBe(false);
@@ -78,8 +81,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('CRM lifecycle Postg
    expect(administratorFollowup.activities.some(x=>x.note==='Administrator followup')).toBe(true);
    expect(administratorFollowup.contact.ownerUserId).toBe(user!.id);
    expect(await repo.contactUpdate(other!.hash,{...opRef,expectedVersion:administratorFollowup.contact.contactVersion!,idempotencyKey:randomUUID(),fields:{title:'Unauthorized'}})).toMatchObject({ok:false});
-   unwrap(await repo.deleteContacts(admin!.hash,{contacts:[{...opRef,expectedVersion:administratorFollowup.contact.contactVersion!}],idempotencyKey:randomUUID()}));
-   expect(unwrap(await repo.contactAssignments(user!.hash,{view:'incoming',status:'accepted',search:'',limit:50,offset:0})).total).toBe(0);
+   expect(await repo.deleteContacts(admin!.hash,{contacts:[{...opRef,expectedVersion:administratorFollowup.contact.contactVersion!}],idempotencyKey:randomUUID()})).toMatchObject({ok:false,error:{code:'FORBIDDEN'}});
+   expect(unwrap(await repo.contactAssignments(user!.hash,{view:'incoming',status:'accepted',search:'',limit:50,offset:0})).total).toBe(1);
    expect((await c.query('SELECT status FROM crm_contact_assignment_requests WHERE request_id=$1',[request.requestId])).rows[0].status).toBe('accepted');
   }finally{await c.query('ROLLBACK');c.release();await pool.end();}
  },30000);

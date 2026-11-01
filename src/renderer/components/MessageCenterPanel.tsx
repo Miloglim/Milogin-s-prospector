@@ -7,7 +7,7 @@ import {
 import { useNavigate } from '@tanstack/react-router';
 import { useOptionalIdentity } from '../IdentityContext';
 import { useOptionalNotifications } from '../NotificationContext';
-import type { OnlineNotification } from '../../shared/online-crm';
+import type { ContactAssignmentLifecycleStatus, OnlineNotification } from '../../shared/online-crm';
 import '../pages/messages/MessagesPage.css';
 
 const TITLE_SIZE = 15;
@@ -36,8 +36,16 @@ const LABELS: Record<string, string> = {
   'crm.contact.assignment.accepted': '线索已接受',
   'crm.contact.assignment.rejected': '线索已拒绝',
   'crm.contact.assignment.cancelled': '线索已撤回',
+  'crm.contact.assignment.expired': '线索分配已过期',
+  'crm.contact.assignment.transfer_requested': '线索待转交确认',
+  'crm.contact.assignment.transferred': '线索已转交',
+  'crm.contact.assignment.transfer_cancelled': '线索转交已撤回',
   'crm.contact.updated': '联系人更新',
   'crm.contact.followup': '跟进更新',
+  'crm.team.attention.opened': '团队关注项',
+  'crm.team.attention.acknowledged': '关注项已确认',
+  'crm.team.attention.resolved': '关注项已完成',
+  'crm.team.attention.dismissed': '关注项已驳回',
   'crm.customer.created': '新增客户',
   'crm.customer.updated': '客户资料更新',
   'crm.contact.deleted': '联系人已删除',
@@ -58,6 +66,7 @@ function dateGroup(value: string): string {
 
 function messageIcon(eventType: string) {
   if (eventType.includes('task.due')) return <ClockCircleOutlined />;
+  if (eventType.startsWith('crm.team.attention.')) return <BellOutlined />;
   if (eventType.startsWith('crm.contact.share.')) return <ShareAltOutlined />;
   if (eventType.startsWith('crm.contact.assignment.') || eventType === 'crm.lead.assigned') return <UserSwitchOutlined />;
   if (eventType === 'crm.customer.created' || eventType === 'crm.lead.published') return <UserAddOutlined />;
@@ -67,12 +76,46 @@ function messageIcon(eventType: string) {
 }
 
 function destinationLabel(item: OnlineNotification): string {
+  if (item.attentionItemId) return '查看关注';
+  if (item.eventType.startsWith('crm.team.attention.')) return '查看关注项';
   if (item.eventType.startsWith('crm.contact.share.')) return '查看共享';
+  if (item.contactOpenMode === 'monitor') return '监督查看';
   if (item.requestId || item.eventType.startsWith('crm.contact.assignment.')) return '处理分配';
   if (item.opportunityId || item.eventType.includes('opportunity')) return '查看商机';
   if (item.taskId || item.eventType === 'crm.task.due') return '查看任务';
   if (item.contactId || item.eventType.startsWith('crm.contact.')) return '查看联系人';
   return '查看客户';
+}
+
+function assignmentStatusFor(item: OnlineNotification): ContactAssignmentLifecycleStatus {
+  if (['pending', 'accepted', 'rejected', 'cancelled', 'expired', 'pending_transfer'].includes(item.assignmentStatus ?? '')) return item.assignmentStatus as ContactAssignmentLifecycleStatus;
+  const event = item.eventType.split('.').pop();
+  if (event === 'requested') return 'pending';
+  if (event === 'transfer_requested') return 'pending_transfer';
+  if (event === 'expired') return 'expired';
+  if (event === 'rejected') return 'rejected';
+  if (event === 'cancelled') return 'cancelled';
+  return 'accepted';
+}
+
+/** The notification only supplies a resource reference; the customer page owns every detail drawer. */
+export function notificationResourceHash(item: OnlineNotification, id: string, userId?: string): string | null {
+  if (item.eventType.startsWith('crm.team.attention.')) return `#/team?attention=${encodeURIComponent(id)}`;
+  if (item.eventType.startsWith('crm.contact.share.')) {
+    const view = item.shareTargetUserId && item.shareTargetUserId !== userId ? 'outgoing' : 'incoming';
+    return `#/customers?view=assignments&sharing=true&shareView=${view}`;
+  }
+  if (item.contactOpenMode === 'monitor' && item.contactId) {
+    return `#/customers?monitorContact=${item.contactId}&centerCustomer=${encodeURIComponent(id)}`;
+  }
+  if (item.assignmentGroupId) {
+    return `#/customers?view=assignments&groupId=${encodeURIComponent(item.assignmentGroupId)}&assignmentStatus=${assignmentStatusFor(item)}`;
+  }
+  if (item.requestId) {
+    return `#/customers?view=assignments&requestId=${encodeURIComponent(item.requestId)}&assignmentStatus=${assignmentStatusFor(item)}`;
+  }
+  if (item.contactId) return `#/customers?centerContact=${item.contactId}&centerCustomer=${encodeURIComponent(id)}`;
+  return null;
 }
 
 function resizePanel(startWidth: number, startHeight: number, deltaX: number, deltaY: number): PanelSize {
@@ -110,23 +153,13 @@ export function MessageCenterPanel() {
   const open = async (item: OnlineNotification) => {
     const id = await notifications?.open(item);
     if (!id) return;
-    if (item.eventType.startsWith('crm.contact.share.')) {
-      const view = item.shareTargetUserId && item.shareTargetUserId !== identity?.userId ? 'outgoing' : 'incoming';
-      window.location.hash = `#/customers?view=assignments&sharing=true&shareView=${view}`;
+    if (item.attentionItemId) {
+      window.location.hash = `#/team?attention=${encodeURIComponent(item.attentionItemId)}`;
       return;
     }
-    if (item.assignmentGroupId) {
-      const assignmentStatus = item.assignmentStatus ?? (item.eventType.split('.').pop() === 'requested' ? 'pending' : item.eventType.split('.').pop());
-      window.location.hash = `#/customers?view=assignments&groupId=${encodeURIComponent(item.assignmentGroupId)}&assignmentStatus=${assignmentStatus}`;
-      return;
-    }
-    if (item.requestId) {
-      const assignmentStatus = item.assignmentStatus ?? (item.eventType.split('.').pop() === 'requested' ? 'pending' : item.eventType.split('.').pop());
-      window.location.hash = `#/customers?view=assignments&requestId=${encodeURIComponent(item.requestId)}&assignmentStatus=${assignmentStatus}`;
-      return;
-    }
-    if (item.contactId) {
-      window.location.hash = `#/customers?centerContact=${item.contactId}&centerCustomer=${encodeURIComponent(id)}`;
+    const destination = notificationResourceHash(item, id, identity?.userId);
+    if (destination) {
+      window.location.hash = destination;
       return;
     }
     void navigate({
@@ -221,13 +254,13 @@ export function MessageCenterPanel() {
       </div>
     </header>
     {notifications?.error && <Alert className="messages-alert" type="warning" showIcon message={notifications.error} />}
-    <div className="messages-body">
+    <div className={`messages-body${items.length ? '' : ' is-empty'}`}>
       <div className="messages-list">
         {!items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={filter === '未读' ? '暂无未读消息' : '暂无消息'} />}
         {Array.from(groups, ([name, group]) => <section key={name} aria-label={name}>
           <h2 className="message-date-group">{name}</h2>
           {group.map(item => {
-            const canOpen = item.canOpen !== false && (!!item.customerId || !!item.requestId || !!item.shareId);
+            const canOpen = item.canOpen !== false && (!!item.customerId || !!item.requestId || !!item.shareId || (item.eventType.startsWith('crm.team.attention.') && !!item.taskId));
             const summary = canOpen ? item.summary : undefined;
             const detail = [summary?.actorName, item.assignmentGroupCount ? `${item.assignmentGroupCount} 个联系人` : summary?.note].filter(Boolean).join(' · ');
             const action = canOpen ? destinationLabel(item) : '';

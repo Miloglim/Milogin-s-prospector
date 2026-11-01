@@ -1,4 +1,4 @@
-import { ONLINE_CHANNELS as ONLINE, centerContactDisplayStatus, type CenterContactRef, type CenterContactPage } from "../../../shared/online-crm";
+import { ONLINE_CHANNELS as ONLINE, centerContactDisplayStatus, type CenterContact, type CenterContactRef, type CenterContactPage } from "../../../shared/online-crm";
 import { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Table, Tag, Input, Button, Select, Space, Empty, Tooltip, message } from "antd";
 import { SearchOutlined, RightOutlined } from "@ant-design/icons";
@@ -21,6 +21,8 @@ interface PickRow {
   companyId: number | null; companyName: string | null;
   country: string | null; language: string | null; clientType: string | null;
   status: string | null; stage: string | null; assignee: string | null;
+  canFollowup?: CenterContact["canFollowup"]; canSendMail?: CenterContact["canSendMail"];
+  isShared?: CenterContact["isShared"]; permissions?: CenterContact["permissions"];
 }
 
 interface PickerStats {
@@ -42,6 +44,13 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 };
 
 const nameOf = (r: PickRow) => [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email;
+
+/** Keep the picker aligned with the main-process send gate: followup and send are separate grants. */
+type SendCandidate = Pick<CenterContact, "email" | "canFollowup" | "canSendMail" | "isShared" | "permissions">;
+export function canPickForSending(row: SendCandidate): boolean {
+  if (!row.email) return false;
+  return row.canSendMail ?? row.permissions?.canSendMail ?? (row.isShared !== true && row.canFollowup === true);
+}
 
 export function ContactPicker({ value, onChange: notifyChange, onNext, resolvePreset = true }: {
   value: number[];
@@ -70,7 +79,7 @@ export function ContactPicker({ value, onChange: notifyChange, onNext, resolvePr
         if (total !== undefined && result.data.total !== total) throw new Error("联系人名单已变化，请重试");
         total = result.data.total;
         if (offset < total && !result.data.items.length) throw new Error("联系人名单未读取完整");
-        items.push(...result.data.items.filter(row => row.canFollowup === true).map(row => ({ ...row, id: row.contactId, email: row.email ?? "", status: centerContactDisplayStatus(row), centerReference: {contactId:row.contactId,customerId:row.customerId} })));
+        items.push(...result.data.items.filter(canPickForSending).map(row => ({ ...row, id: row.contactId, email: row.email ?? "", status: centerContactDisplayStatus(row), centerReference: {contactId:row.contactId,customerId:row.customerId} })));
       }
       return {success:true, data:{items,total:items.length}};
     },

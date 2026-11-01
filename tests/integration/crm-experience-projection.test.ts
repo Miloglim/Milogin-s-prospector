@@ -63,7 +63,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('CRM experience auth
   expect(unwrap(await service.detail(ops.token,pausedId)).canAssign).toBe(false);
   const assignedId=imported.rows[0]!.customerId!,poolId=imported.rows[1]!.customerId!;
   const detail=unwrap(await service.detail(ops.token,assignedId)),ref={customerId:assignedId,contactId:detail.contacts[0]!.contactId};
-  const pending=unwrap(await actions.createAssignments(ops.token,{contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,notifyUserIds:[],idempotencyKey:randomUUID()})).items[0]!;
+  const pending=unwrap(await actions.createAssignments(ops.token,{contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,idempotencyKey:randomUUID()})).items[0]!;
   unwrap(await actions.decide(sales.token,'accept',{requestId:pending.requestId,expectedVersion:1,idempotencyKey:randomUUID()}));
   unwrap(await actions.contactFollowup(sales.token,{...ref,expectedVersion:2,idempotencyKey:randomUUID(),note:'A real synthetic activity',stage:'quoting',method:'email',contactStatus:'contacted'}));
   const contactQuery=`/api/crm/contacts?search=${source}&limit=${PAGE_SIZE}`;
@@ -80,7 +80,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('CRM experience auth
  it('returns current authorized summaries and exact timeline notes without notify-only contact access',async()=>{
   const imported=unwrap(await service.importRows(ops.token,{source,sourceDetail:'Synthetic UX',idempotencyKey:randomUUID(),rows:[{customerKey:randomUUID(),companyName:'UX confidential company',email:`${randomUUID()}@example.invalid`}]}));
   const id=imported.rows[0]!.customerId!,d=unwrap(await service.detail(ops.token,id)),ref={customerId:id,contactId:d.contacts[0]!.contactId};
-  const pending=unwrap(await actions.createAssignments(ops.token,{contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,notifyUserIds:[extra.id],idempotencyKey:randomUUID()})).items[0]!;
+  const pending=unwrap(await actions.createAssignments(ops.token,{contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,idempotencyKey:randomUUID()})).items[0]!;
   unwrap(await actions.decide(sales.token,'accept',{requestId:pending.requestId,expectedVersion:1,idempotencyKey:randomUUID()}));
   unwrap(await actions.contactFollowup(sales.token,{...ref,expectedVersion:2,idempotencyKey:randomUUID(),note:'First exact activity'}));
   unwrap(await actions.contactFollowup(sales.token,{...ref,expectedVersion:3,idempotencyKey:randomUUID(),note:'Second exact activity'}));

@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import initSqlJs, { type Database as SqlJsDatabase } from "sql.js";
 import { drizzle } from "drizzle-orm/sql-js";
 import * as path from "path";
@@ -6,6 +6,7 @@ import * as os from "os";
 import * as schema from "../../src/main/db/schema";
 import { contacts } from "../../src/main/db/schema/contacts";
 import { emailAccounts } from "../../src/main/db/schema/accounts";
+import { setCenterSendPort } from "../../src/main/services/center-send.service";
 
 // ═══════════════════════════════════════════════════════════════════
 // 首页「自动开发信」推荐群组（docs/home-cards-spec.md §2）：
@@ -121,7 +122,47 @@ beforeEach(() => {
   quotaState.sentToday = 0;
 });
 
+afterEach(() => setCenterSendPort(null));
+
 describe("推荐群组：确定性规则（从未触达 → 每公司 1 位 → 齐全度排序 → 限额截断）", () => {
+  it("中心账号以授权联系人镜像和中心发送台账为准，并把联系人引用带给发送向导", () => {
+    const reference = { contactId: 33, customerId: "customer-33" };
+    setCenterSendPort({
+      contacts: () => ({ success: true, data: [{
+        id: 33, email: "center@acme.com", firstName: "Center", lastName: "Lead",
+        companyId: 9, companyName: "ACME", country: "Brazil", language: "EN",
+        title: "Buyer", createdAt: "2026-01-01T00:00:00.000Z", stage: "cold",
+        clientType: "direct", status: "", centerReference: reference,
+      } as never] }),
+      stats: () => ({ success: true, data: {
+        neverIds: [33], lastSent: [], inCampaign: [{ id: 44, campaignName: "进行中" }],
+      } }),
+      authorize: async () => ({ success: true, data: undefined }),
+      record: async () => ({ success: true, data: undefined }),
+      lastAccounts: () => new Map(),
+    });
+
+    const r = recommendDevLetterGroup();
+    expect(r.success && r.data.contacts).toEqual([{
+      id: 33, email: "center@acme.com", name: "Center Lead", company: "ACME",
+      country: "Brazil", language: "EN", centerReference: reference,
+    }]);
+    expect(r.success && r.data.excludedInCampaign).toBe(1);
+  });
+
+  it("中心联系人读取失败时不静默回退旧本地联系人", () => {
+    addContact({ id: 1, email: "legacy@acme.com", name: "Legacy" });
+    setCenterSendPort({
+      contacts: () => ({ success: false, error: "联系人正在同步" }),
+      stats: () => ({ success: true, data: { neverIds: [], lastSent: [], inCampaign: [] } }),
+      authorize: async () => ({ success: true, data: undefined }),
+      record: async () => ({ success: true, data: undefined }),
+      lastAccounts: () => new Map(),
+    });
+
+    expect(recommendDevLetterGroup()).toEqual({ success: false, error: "联系人正在同步" });
+  });
+
   it("只收从未触达的冷客户；已回复/退信/自动回复/已触达都不进", () => {
     addContact({ id: 1, email: "a@acme.com", name: "A One", status: "" });
     addContact({ id: 2, email: "b@acme.com", name: "B Two", status: "reached" });

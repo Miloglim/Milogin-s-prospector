@@ -63,7 +63,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('M2 real PostgreSQL 
   unwrap(await service.publish(ops,result.batchId,{rowIds:result.rows.slice(0,2).map(r=>r.rowId),expectedVersion:1,idempotencyKey:randomUUID()}));
   const id=result.rows[0]!.customerId!;const preview=unwrap(await service.detail(salesA,id));expect(preview.contacts).toEqual([]);expect(preview.activities).toEqual([]);expect(preview.customerKey).toBe('');const contacts=createContactAssignmentService(repo,tokenAdapter),detail=unwrap(await service.detail(ops,id));
   const selected={customerId:id,contactId:detail.contacts[0]!.contactId};
-  const pending=unwrap(await contacts.createAssignments(ops,{contacts:[{...selected,expectedVersion:1}],targetUserId:aId,notifyUserIds:[],idempotencyKey:randomUUID()})).items[0]!;
+  const pending=unwrap(await contacts.createAssignments(ops,{contacts:[{...selected,expectedVersion:1}],targetUserId:aId,idempotencyKey:randomUUID()})).items[0]!;
   expect(await contacts.contactDetail(salesA,selected)).toMatchObject({error:{code:'NOT_FOUND'}});
   const decision={requestId:pending.requestId,expectedVersion:1,idempotencyKey:randomUUID()};
   const accepted=await Promise.all([contacts.decide(salesA,'accept',decision),contacts.decide(salesA,'accept',decision)]);

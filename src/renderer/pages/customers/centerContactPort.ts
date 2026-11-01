@@ -2,13 +2,15 @@ import {LEAD_IMPORT_FIELDS, leadImportMapping} from '../../../../server/core/lea
 import { importRowIssue } from '../../../../server/core/leads';
 import { ONLINE_CHANNELS, CENTER_CONTACT_LIMITS, centerContactDisplayStatus, centerContactRemark, type CenterContact, type CenterContactQuery, type CenterContactPage, type CenterContactDetail, type ContactDelete, type ContactDeleteReceipt, type Result, type ImportPreview, type ImportReceipt, type ImportRequest } from '../../../shared/online-crm';
 import type { Contact, ContactDataPort, ContactFilters } from '../../hooks/useContacts';
-import type { ImportDrawerPort } from '../../components/ImportDrawer';
+import type { ImportDrawerPort, ImportExecutionResult } from '../../components/ImportDrawer';
 import { importFingerprint, prepareImportRequests } from './customerImport';
+import type { LeadIngressConflictNotice } from './LeadIngressConflictDrawer';
 
 export type CenterInvoke = <T>(channel: string, input?: unknown) => Promise<Result<T>>;
 const IMPORT_ROW_OFFSET = 2;
 const HEX_RADIX = 16;
 const HEX_WIDTH = 2;
+const SERVER_IMPORT_KEY_LENGTH = 120;
 export const centerInvoke: CenterInvoke = (channel, input) => window.api.invoke(channel, input) as never;
 async function companyImportKey(companyName: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(companyName.trim().toLowerCase()));
@@ -101,8 +103,14 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
       if (!result.ok) return { success: false, error: result.error.message };
       const receipt = result.data.rows[0];
       if (receipt?.status !== 'created') {
+        const attemptedKey = creation.payload.idempotencyKey;
         creation = null;
-        return { success: false, error: receipt?.status === 'duplicate' ? '联系人已存在' : receipt?.message ?? '联系人未创建' };
+        const message = receipt?.status === 'duplicate' ? '联系人已存在，不能重复新建' : receipt?.message ?? '联系人未创建';
+        return {
+          success: false,
+          error: message,
+          ...(receipt?.conflict ? { conflict: { source: 'flat_import' as const, idempotencyKey: `${attemptedKey.slice(0, SERVER_IMPORT_KEY_LENGTH)}:${receipt.index}`, message } } : {}),
+        };
       }
       creation = null; return { success: true };
     },
@@ -129,6 +137,42 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
 export function createCenterImportPort(invoke: CenterInvoke, operations: boolean, refresh: () => void, isCurrent = () => true): ImportDrawerPort {
   let preview: ImportPreview | null = null;
   let prepared: { fingerprint: string; batches: Array<{ offset: number; payload: ImportRequest }>; imported: number; skipped: number } | null = null;
+  let blocked: { conflicts: LeadIngressConflictNotice[]; receipt: ImportReceipt; resolved: number; failure?: string } | null = null;
+  const attemptKey = (key: string, index: number) => `${key.slice(0, SERVER_IMPORT_KEY_LENGTH)}:${index}`;
+  const completeReceipt = (receipt: ImportReceipt) => {
+    if (!prepared) return;
+    prepared.imported += receipt.rows.filter(row => row.status === 'created').length;
+    prepared.skipped += receipt.rows.filter(row => row.status === 'duplicate').length;
+    prepared.batches.shift();
+  };
+  const run = async (): Promise<ImportExecutionResult> => {
+    if (!prepared) return { success: false, error: '请重新预览文件' };
+    while (prepared.batches.length) {
+      const request = prepared.batches[0]!.payload;
+      const result = await invoke<ImportReceipt>(ONLINE_CHANNELS.IMPORT, request);
+      if (!isCurrent()) return { success: false, error: '账号已切换，请重新导入' };
+      if (!result.ok) { refresh(); return { success: false, error: result.error.message }; }
+      const conflictRows = result.data.rows.filter(row => row.status === 'restricted_conflict' && row.conflict);
+      if (conflictRows.length) {
+        const conflicts = conflictRows.map(conflictRow => ({
+          source: 'flat_import',
+          idempotencyKey: attemptKey(request.idempotencyKey, conflictRow.index),
+          rowLabel: `第 ${conflictRow.index + IMPORT_ROW_OFFSET} 行`,
+          message: conflictRow.message ?? '存在冲突，需要确认后才能继续',
+        } satisfies LeadIngressConflictNotice));
+        const failure = result.data.rows.find(row => !['created', 'duplicate'].includes(row.status) && !row.conflict)?.message;
+        blocked = { conflicts, receipt: result.data, resolved: 0, ...(failure ? { failure } : {}) };
+        refresh();
+        return { success: false, error: conflicts[0]!.message, conflict: conflicts[0] };
+      }
+      if (result.data.rows.some(row => !['created', 'duplicate'].includes(row.status))) {
+        refresh();
+        return { success: false, error: result.data.rows.find(row => !['created', 'duplicate'].includes(row.status))?.message ?? '部分行未导入，请核对文件内容' };
+      }
+      completeReceipt(result.data);
+    }
+    const data = { imported: prepared.imported, skipped: prepared.skipped }; prepared = null; refresh(); return { success: true, data };
+  };
   return {
     async preview(input) {
       const result = await invoke<ImportPreview>(ONLINE_CHANNELS.PREVIEW, input);
@@ -168,16 +212,26 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
         if (!result.ok) return { success: false, error: result.error.message };
         prepared = { fingerprint, batches: result.data, imported: 0, skipped: 0 };
       }
-      while (prepared.batches.length) {
-        const result = await invoke<ImportReceipt>(ONLINE_CHANNELS.IMPORT, prepared.batches[0]!.payload);
-        if (!isCurrent()) return { success: false, error: '账号已切换，请重新导入' };
-        if (!result.ok) { refresh(); return { success: false, error: result.error.message }; }
-        if (result.data.rows.some(row => !['created', 'duplicate'].includes(row.status))) { refresh(); return { success: false, error: result.data.rows.find(row=>!['created','duplicate'].includes(row.status))?.message??'部分行未导入，请核对文件内容' }; }
-        prepared.imported += result.data.rows.filter(row => row.status === 'created').length;
-        prepared.skipped += result.data.rows.filter(row => row.status === 'duplicate').length;
-        prepared.batches.shift();
+      return run();
+    },
+    async continueAfterConflict(conflict) {
+      const index = blocked?.conflicts.findIndex(item => item.source === conflict.source && item.idempotencyKey === conflict.idempotencyKey) ?? -1;
+      if (!blocked || index < 0) {
+        return { success: false, error: '冲突上下文已变化，请重新预览文件' };
       }
-      const data = { imported: prepared.imported, skipped: prepared.skipped }; prepared = null; refresh(); return { success: true, data };
+      blocked.conflicts.splice(index, 1);
+      blocked.resolved += 1;
+      if (blocked.conflicts.length) return { success: false, error: blocked.conflicts[0]!.message, conflict: blocked.conflicts[0] };
+      if (blocked.failure) {
+        const message = blocked.failure;
+        blocked = null;
+        prepared = null;
+        return { success: false, error: `部分行未导入：${message}` };
+      }
+      completeReceipt(blocked.receipt);
+      if (prepared) prepared.imported += blocked.resolved;
+      blocked = null;
+      return run();
     },
   };
 }

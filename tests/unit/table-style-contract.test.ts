@@ -8,7 +8,7 @@ describe('shared table visual contract', () => {
   it('defines the compact customer-contact table metrics for every Ant Design table', () => {
     expect(globalCss).toMatch(/\.ant-table-tbody\s*>\s*tr\s*>\s*td\s*\{[^}]*height:\s*42px/s);
     expect(globalCss).toMatch(/\.ant-table-tbody\s*>\s*tr\s*>\s*td\s*\{[^}]*padding:\s*4px\s+10px/s);
-    expect(globalCss).toMatch(/\.ant-table-thead\s*>\s*tr\s*>\s*th\s*\{[^}]*font-size:\s*11px/s);
+    expect(globalCss).toMatch(/\.ant-table-thead\s*>\s*tr\s*>\s*th\s*\{[^}]*font-size:\s*var\(--ui-font-size-small\)/s);
   });
 
   it('keeps an adaptive border and a stable empty-state area when there are no rows', () => {

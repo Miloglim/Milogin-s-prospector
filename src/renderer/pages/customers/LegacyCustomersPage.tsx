@@ -7,6 +7,7 @@ import { useIdentity } from '../../IdentityContext';
 import { CONTACT_ASSIGNMENT_LIMITS, type CenterContact, type CenterContactGroup, type CenterContactGroupDimension, type CenterContactQuery, type CenterContactRef } from '../../../shared/online-crm';
 import { createCenterContactPort, createCenterImportPort, centerInvoke } from './centerContactPort';
 import { CenterContactDetail } from './CenterContactDetail';
+import * as ContactDetailViews from './CenterContactDetail';
 import { CenterContactViews } from './CenterContactViews';
 import { ContactAssignments, AssignmentModal } from './ContactAssignments';
 import { ContactGroups, type ContactGroupSelection } from './ContactGroups';
@@ -15,6 +16,11 @@ import './customers.css';
 type LegacyView = 'groups' | 'table' | 'board' | 'company' | 'assignments';
 const CUSTOMER_TABLE_DEFER_MS = 180;
 const CUSTOMER_TABLE_SKELETON_ROWS = 8;
+
+function MonitorDetailSlot({ reference, onClose }: { reference: CenterContactRef; onClose: () => void }) {
+  const MonitorDetail = ContactDetailViews.ContactMonitorDetail;
+  return MonitorDetail ? <MonitorDetail reference={reference} onClose={onClose} /> : null;
+}
 
 function ContactTableSkeleton() {
   return <div className="prospector-page-table customer-table-deferred" aria-busy="true" aria-label="联系人列表加载中">
@@ -55,6 +61,12 @@ function readContactGroup():ContactGroupSelection|null {
   const dimension=params.get('groupDimension'),key=params.get('groupKey'),label=params.get('groupLabel');
   return dimension&&['batch','country','company','clientType'].includes(dimension)&&key&&label?{dimension:dimension as CenterContactGroupDimension,key,label}:null;
 }
+function readMonitorReference(): CenterContactRef | null {
+  const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+  const contactId = Number(params.get('monitorContact'));
+  const customerId = params.get('centerCustomer');
+  return Number.isSafeInteger(contactId) && contactId > 0 && customerId ? { contactId, customerId } : null;
+}
 
 /** Original customer shell/presentation, explicitly backed by center contacts. */
 export function LegacyCustomersPage() {
@@ -68,6 +80,7 @@ export function LegacyCustomersPage() {
   const [scope, setScope] = useState<NonNullable<CenterContactQuery['scope']>>('all');
   const [assigning, setAssigning] = useState<CenterContact[]>([]);
   const [deepReference, setDeepReference] = useState<CenterContactRef | null>(null);
+  const [monitorReference, setMonitorReference] = useState<CenterContactRef | null>(readMonitorReference);
   const [headerActionsTarget, setHeaderActionsTarget] = useState<HTMLDivElement | null>(null);
   const identityKey = JSON.stringify([baseUrl,identity?.userId,identity?.crmRoles?.slice().sort(),identity?.crmCapabilities?.slice().sort(),identity?.identityAdmin,identity?.mustChangePassword]);
   const activeScope: NonNullable<CenterContactQuery['scope']> = view === 'table' || view === 'groups' ? 'all' : scope;
@@ -94,14 +107,18 @@ export function LegacyCustomersPage() {
       const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
       const contactId = Number(params.get('centerContact'));
       const customerId = params.get('centerCustomer');
-      if (Number.isSafeInteger(contactId) && contactId > 0 && customerId) setDeepReference({ contactId, customerId });
+      const monitor = readMonitorReference();
+      setMonitorReference(monitor);
+      if (monitor) setDeepReference(null);
+      else if (Number.isSafeInteger(contactId) && contactId > 0 && customerId) setDeepReference({ contactId, customerId });
+      else setDeepReference(null);
     };
     window.addEventListener('hashchange', onHashChange);
     onHashChange();
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
   const priorSession = useRef(`${baseUrl}:${identity?.userId}`);
-  useEffect(() => { const session = `${baseUrl}:${identity?.userId}`; if (priorSession.current !== session) { priorSession.current = session; setAssigning([]); setDeepReference(null); setScope('all'); } }, [identity?.userId, baseUrl]);
+  useEffect(() => { const session = `${baseUrl}:${identity?.userId}`; if (priorSession.current !== session) { priorSession.current = session; setAssigning([]); setDeepReference(null); setMonitorReference(null); setScope('all'); } }, [identity?.userId, baseUrl]);
   const sourceFilter = !operations ? <Select size="small" style={{ width: 120 }} aria-label="线索来源" value={scope} onChange={setScope} options={[{ value: 'all', label: '全部' }, { value: 'personal', label: '自有线索' }, { value: 'assigned', label: '分配线索' }]} /> : null;
   const assign = (ids: number[]) => {
     if (status === 'offline') { message.error('分配需要连接服务器'); return; }
@@ -145,7 +162,7 @@ export function LegacyCustomersPage() {
   ];
   return <div className="prospector-table-page customer-legacy-page">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <Segmented<LegacyView> value={view==='table'&&contactGroup?'groups':view} onChange={changeView} options={[
+      <Segmented<LegacyView> className="customer-legacy-viewbar" value={view==='table'?'groups':view} onChange={changeView} options={[
         { value: 'board', label: '跟进看板', icon: <BarChartOutlined /> },
         { value: 'groups', label: '联系人', icon: <UnorderedListOutlined /> },
         { value: 'assignments', label: operations ? '分配管理' : '分配线索', icon: <ShareAltOutlined /> },
@@ -168,5 +185,6 @@ export function LegacyCustomersPage() {
     {view === 'assignments' && <ContactAssignments key={`${baseUrl}:${identity?.userId}`} operations={operations} />}
     {assigning.length > 0 && <AssignmentModal key={assigning.map(row => row.contactId).join(',')} contacts={assigning} close={() => setAssigning([])} />}
     <CenterContactDetail reference={deepReference} onClose={() => setDeepReference(null)} />
+    {monitorReference && <MonitorDetailSlot reference={monitorReference} onClose={() => setMonitorReference(null)} />}
   </div>;
 }

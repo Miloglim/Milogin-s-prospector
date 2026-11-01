@@ -13,12 +13,16 @@ import { sendCampaigns, sendCampaignTargets } from "../db/schema";
 import { sql as dsql } from "drizzle-orm";
 import { loadConfig } from "../config";
 import { okResult, type Result } from "../errors";
+import { getCenterSendPort } from "./center-send.service";
 import { countryMatchWords } from "./country-alias";
 import { describeCriteria, type DevLetterCriteria } from "./dev-letter-intent";
+import type { CenterContactRef } from "../../shared/online-crm";
 
 export interface DevLetterContact {
   id: number; email: string; name: string;
   company: string | null; country: string | null; language: string | null;
+  /** Present for center contacts. Legacy local recommendations intentionally omit it. */
+  centerReference?: CenterContactRef;
 }
 
 export interface DevLetterRecommendation {
@@ -73,31 +77,60 @@ export function recommendDevLetterGroup(
   //    status 一直是空，于是同一批人被反复推荐、用户重复建任务（规范 §2 根因）。
   //    已归属未完结任务（draft/running/paused 且触点 pending/queued）的人一并剔除；
   //    done/stopped 任务里的人照常可再开发。
-  const rows = db.select({
-    id: contacts.id, email: contacts.email, firstName: contacts.firstName, lastName: contacts.lastName,
-    companyId: contacts.companyId, country: contacts.country, language: contacts.language,
-    title: contacts.title, createdAt: contacts.createdAt,
-    stage: contacts.stage, clientType: contacts.clientType,
-    companyName: dsql<string | null>`(select name from companies where companies.id = ${contacts.companyId})`,
-  }).from(contacts)
-    .where(dsql`coalesce(${contacts.status}, '') = ''
-      AND coalesce(${contacts.stage}, 'cold') = 'cold'
-      AND NOT EXISTS (SELECT 1 FROM interactions i WHERE i.contact_id = contacts.id AND i.type = 'sent')
-      AND NOT EXISTS (
-        SELECT 1 FROM send_campaign_targets t JOIN send_campaigns c ON c.id = t.campaign_id
-        WHERE t.contact_id = contacts.id AND t.status IN ('pending','queued')
-          AND c.status IN ('draft','running','paused'))`)
-    .all();
-
-  // 被"已在任务里"剔掉的人数（不默默少人：界面要能回答"我库里还有人在跑"）
-  const excludedInCampaign = db.select({ n: dsql<number>`count(distinct ${sendCampaignTargets.contactId})` })
-    .from(sendCampaignTargets)
-    .innerJoin(sendCampaigns, dsql`${sendCampaigns.id} = ${sendCampaignTargets.campaignId}`)
-    .where(dsql`${sendCampaignTargets.status} IN ('pending','queued')
-      AND ${sendCampaigns.status} IN ('draft','running','paused')`)
-    .get()?.n ?? 0;
-
   const candidates: CandidateRow[] = [];
+  let excludedInCampaign = 0;
+  const centerPort = getCenterSendPort();
+  const rows: Array<{
+    id: number; email: string; firstName: string | null; lastName: string | null;
+    companyId: number | null; country: string | null; language: string | null;
+    title: string | null; createdAt: string; stage: string | null; clientType: string | null;
+    companyName: string | null; centerReference?: CenterContactRef;
+  }> = [];
+
+  if (centerPort) {
+    // Center identity is authoritative: recommendation uses the same authorized
+    // contact snapshot and send receipts as the picker and SMTP gate.
+    const contactResult = centerPort.contacts();
+    if (!contactResult.success) return contactResult;
+    const statsResult = centerPort.stats();
+    if (!statsResult.success) return statsResult;
+    const never = new Set(statsResult.data.neverIds);
+    excludedInCampaign = statsResult.data.inCampaign.length;
+    for (const row of contactResult.data) {
+      if (!never.has(row.id)) continue;
+      rows.push({
+        id: row.id, email: row.email, firstName: row.firstName, lastName: row.lastName,
+        companyId: row.companyId || null, country: row.country, language: row.language,
+        title: row.title, createdAt: row.createdAt, stage: row.stage || "cold",
+        clientType: row.clientType, companyName: row.companyName || null,
+        centerReference: row.centerReference,
+      });
+    }
+  } else {
+    rows.push(...db.select({
+      id: contacts.id, email: contacts.email, firstName: contacts.firstName, lastName: contacts.lastName,
+      companyId: contacts.companyId, country: contacts.country, language: contacts.language,
+      title: contacts.title, createdAt: contacts.createdAt,
+      stage: contacts.stage, clientType: contacts.clientType,
+      companyName: dsql<string | null>`(select name from companies where companies.id = ${contacts.companyId})`,
+    }).from(contacts)
+      .where(dsql`coalesce(${contacts.status}, '') = ''
+        AND coalesce(${contacts.stage}, 'cold') = 'cold'
+        AND NOT EXISTS (SELECT 1 FROM interactions i WHERE i.contact_id = contacts.id AND i.type = 'sent')
+        AND NOT EXISTS (
+          SELECT 1 FROM send_campaign_targets t JOIN send_campaigns c ON c.id = t.campaign_id
+          WHERE t.contact_id = contacts.id AND t.status IN ('pending','queued')
+            AND c.status IN ('draft','running','paused'))`)
+      .all());
+    // 被"已在任务里"剔掉的人数（不默默少人：界面要能回答"我库里还有人在跑"）
+    excludedInCampaign = db.select({ n: dsql<number>`count(distinct ${sendCampaignTargets.contactId})` })
+      .from(sendCampaignTargets)
+      .innerJoin(sendCampaigns, dsql`${sendCampaigns.id} = ${sendCampaignTargets.campaignId}`)
+      .where(dsql`${sendCampaignTargets.status} IN ('pending','queued')
+        AND ${sendCampaigns.status} IN ('draft','running','paused')`)
+      .get()?.n ?? 0;
+  }
+
   for (const r of rows) {
     const email = (r.email || "").trim();
     if (!EMAIL_RE.test(email) || PLACEHOLDER_EMAIL.test(email)) continue;
@@ -110,6 +143,7 @@ export function recommendDevLetterGroup(
       companyKey: r.companyId ? `c${r.companyId}` : `d${email.split("@")[1]?.toLowerCase() ?? email}`,   // 没公司归到邮箱域
       title: r.title ?? null, createdAt: r.createdAt ?? "",
       stage: r.stage || "cold", clientType: r.clientType || "general", score,
+      ...(r.centerReference ? { centerReference: r.centerReference } : {}),
     });
   }
   const applied: DevLetterCriteria = criteria ?? { parsedBy: "none" };
@@ -193,7 +227,9 @@ export function recommendDevLetterGroup(
   ];
 
   return okResult({
-    contacts: picked.map(({ id, email, name, company, country, language }) => ({ id, email, name, company, country, language })),
+    contacts: picked.map(({ id, email, name, company, country, language, centerReference }) => ({
+      id, email, name, company, country, language, ...(centerReference ? { centerReference } : {}),
+    })),
     groupSize: picked.length,
     totalCandidates: pool.length,
     companyCount: byCompany.size,

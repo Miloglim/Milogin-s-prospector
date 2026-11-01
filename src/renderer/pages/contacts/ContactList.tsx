@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useContacts, useUpsertContact, useDeleteContact, type Contact, type ContactDataPort } from "../../hooks/useContacts";
 import { ContactDetailDrawer, ContactDetailLayout, SectionTitle, CLIENT_TYPE, STATUS_META, STAGE_META, CRM_STAGES, COUNTRIES } from "../../components/ContactDetail";
 import { ImportDrawer, type ImportDrawerPort } from "../../components/ImportDrawer";
+import { LeadIngressConflictDrawer, type LeadIngressConflictTarget } from "../customers/LeadIngressConflictDrawer";
 
 /* ---------- 可配置列定义 ---------- */
 const COLS_KEY = "contacts-cols";
@@ -126,6 +127,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   const page = pageState.key === portKey ? pageState.page : 1;
   const setPage = (next: number) => setPageState({ key: portKey, page: next });
   const [addOpen, setAddOpen] = useState(false);
+  const [addConflict, setAddConflict] = useState<LeadIngressConflictTarget | null>(null);
   const [returnInboxId, setReturnInboxId] = useState<number | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -565,12 +567,14 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
         </div>
         <Form form={form} layout="vertical" size="small" className="contact-add-form"
           onFinish={async (v) => {
-            const r = await upsertContact.mutateAsync(v);
+            const r = await upsertContact.mutateAsync(v) as { success: boolean; error?: string; conflict?: LeadIngressConflictTarget };
             if (r?.success) {
               setAddOpen(false);
               message.success("已保存");
               if (returnInboxId) window.location.hash = `#/inbox?detail=${returnInboxId}`;
               setReturnInboxId(null);
+            } else if (r?.conflict) {
+              setAddConflict(r.conflict);
             } else message.error(r?.error || "失败");
           }}
         >
@@ -629,6 +633,22 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
           </div>
         </Form>
       </ContactDetailLayout>
+
+      {addConflict && <LeadIngressConflictDrawer
+        target={addConflict}
+        onClose={() => setAddConflict(null)}
+        onResolved={async () => {
+          setAddConflict(null);
+          setAddOpen(false);
+          form.resetFields();
+          message.success('已处理并保存');
+          await invalidateDomain(qc, 'contacts', 'companies');
+          void qc.invalidateQueries({ queryKey: ['center-contact-groups'] });
+          void qc.invalidateQueries({ queryKey: ['center-import-batches'] });
+          if (returnInboxId) window.location.hash = `#/inbox?detail=${returnInboxId}`;
+          setReturnInboxId(null);
+        }}
+      />}
 
       {/* 导入抽屉 */}
       <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} port={importPort} disabled={!!dataPort && !online} />

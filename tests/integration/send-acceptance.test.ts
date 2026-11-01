@@ -33,7 +33,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('send acceptance rol
    const contacts:number[]=[];
    for(const name of ['Selected','Sibling']){const ct=(await client.query('INSERT INTO contacts(email,first_name,company_id) VALUES($1,$2,$3) RETURNING id',[`${randomUUID()}@example.invalid`,name,co])).rows[0].id;contacts.push(ct);await client.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[id,ct]);}
    const ref={contactId:contacts[0]!,customerId:id},k=()=>randomUUID();
-   const request=unwrap(await repo.createContactAssignments(ops.hash,{contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,notifyUserIds:[],idempotencyKey:k()})).items[0]!;
+   const request=unwrap(await repo.createContactAssignments(ops.hash,{contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,idempotencyKey:k()})).items[0]!;
    unwrap(await repo.decideContactAssignment(sales.hash,'accept',{requestId:request.requestId,expectedVersion:1,idempotencyKey:k()}));
    const owned=unwrap(await repo.contactDetail(sales.hash,ref));const primary=owned.contact.email!;
    const share=unwrap(await repo.createShare(sales.hash,{...ref,expectedVersion:owned.contact.contactVersion!,targetUserId:other.id,editableFields:[],canFollowup:false,canChangeStage:false,idempotencyKey:k()}));

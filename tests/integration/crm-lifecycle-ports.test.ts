@@ -17,7 +17,7 @@ describe('original CRM lifecycle adapters',()=>{
   const invoke=vi.fn(async(channel,input)=>{if(channel!==ONLINE_CHANNELS.IMPORT)throw Error(channel);calls.push(input as Record<string,unknown>);const status=++attempt===1?'duplicate':'created';return {ok:true,data:{batchId:'batch',version:1,rows:[{status,customerId:row.customerId}]}};});
   const port=createCenterContactPort({key:'k',invoke:invoke as never});
   const input={companyName:'Example',email:'restore@example.invalid',firstName:'Restore'};
-  expect(await port.upsert(input)).toMatchObject({success:false,error:'联系人已存在'});
+  expect(await port.upsert(input)).toMatchObject({success:false,error:'联系人已存在，不能重复新建'});
   expect(await port.upsert(input)).toMatchObject({success:true});
   expect(calls[0]!.idempotencyKey).not.toBe(calls[1]!.idempotencyKey);
  });

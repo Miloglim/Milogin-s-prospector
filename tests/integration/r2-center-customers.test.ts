@@ -50,7 +50,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('R2 center authorita
  expect((await request(`/api/crm/imports/${receipt.batchId}/publish`,{rowIds:[receipt.rows[0].rowId],expectedVersion:1,idempotencyKey:randomUUID()},ops.token)).status).toBe(200);const preview=(await request('/api/crm/leads?view=pool&search=Updated%20source',undefined,sales.token)).body.data.items.find((x:any)=>x.customerId===id);expect(preview.source).toBeUndefined();expect(preview.ownerUserId).toBeUndefined();expect(preview.primaryContactEmail).toBeUndefined();const ref={contactId:detail.contacts[0].contactId,customerId:id};
  expect((await request(`/api/crm/leads/${id}/claim`,{expectedVersion:4,idempotencyKey:randomUUID()},sales.token)).status).toBe(409);
  const current=(await request(`/api/crm/contacts/${ref.contactId}?customerId=${id}`,undefined,ops.token)).body.data.contact;
- const pending=(await request('/api/crm/contact-assignments',{contacts:[{...ref,expectedVersion:current.contactVersion}],targetUserId:sales.id,notifyUserIds:[],idempotencyKey:randomUUID()},ops.token)).body.data.items[0];
+ const pending=(await request('/api/crm/contact-assignments',{contacts:[{...ref,expectedVersion:current.contactVersion}],targetUserId:sales.id,idempotencyKey:randomUUID()},ops.token)).body.data.items[0];
  expect((await request(`/api/crm/contacts/${ref.contactId}?customerId=${id}`,undefined,sales.token)).status).toBe(404);
  const groupPage=(await request('/api/crm/contact-assignments/groups?view=incoming&status=pending&search=&limit=50&offset=0',undefined,sales.token)).body.data;
  expect(groupPage.items.find((row:any)=>row.groupId===pending.groupId)).toMatchObject({total:1,pending:1,canAcceptAll:true});

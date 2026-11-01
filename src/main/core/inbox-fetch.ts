@@ -1,5 +1,10 @@
 export const INBOX_IMAP_BATCH_LIMIT = 500;
 export const INBOX_RECENT_BACKFILL_COUNT = 200;
+export const INBOX_INITIAL_HISTORY_DAYS = 90;
+export const INBOX_HISTORY_MONTHS_DEFAULT = 3;
+export const INBOX_HISTORY_MONTHS_MIN = 1;
+export const INBOX_HISTORY_MONTHS_MAX = 12;
+export const INBOX_FOLDER = { inbox: 'inbox', sent: 'sent' } as const;
 
 export interface InboxUidBatch {
   batch: number[];

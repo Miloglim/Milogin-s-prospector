@@ -33,7 +33,7 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact sharing rol
    const contacts:number[]=[];
    for(const name of ['Selected','Sibling']){const ct=(await client.query('INSERT INTO contacts(email,first_name,company_id) VALUES($1,$2,$3) RETURNING id',[`${randomUUID()}@example.invalid`,name,co])).rows[0].id;contacts.push(ct);await client.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[id,ct]);}
    const ref={customerId:id,contactId:contacts[0]!},k=()=>randomUUID();
-   const req=unwrap(await repo.createContactAssignments(ops.hash,{contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,notifyUserIds:[],idempotencyKey:k()})).items[0]!;
+   const req=unwrap(await repo.createContactAssignments(ops.hash,{contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,idempotencyKey:k()})).items[0]!;
    unwrap(await repo.decideContactAssignment(sales.hash,'accept',{requestId:req.requestId,expectedVersion:1,idempotencyKey:k()}));
    expect(unwrap(await repo.contactDetail(ops.hash,ref)).permissions?.editableFields).toContain('email');
    const base=unwrap(await repo.contactDetail(sales.hash,ref));

@@ -12,14 +12,19 @@ import { createLeadService } from '../../server/services/leads';
 import { createContactAssignmentService } from '../../server/services/contact-assignments';
 import type { CrmRole } from '../../server/core/auth';
 import type { Result } from '../../server/core/crm';
-import type { WorkbookImportRequest, WorkbookImportRow } from '../../server/core/customer-import';
+import type { WorkbookImportRequest, WorkbookImportRow, WorkbookReceiptRow } from '../../server/core/customer-import';
 const TIMEOUT = 30000, SESSION_SECONDS = 3600;
 const log = { write: () => {} };
 function unwrap<T>(result: Result<T>): T { if (!result.ok) throw Error(`${result.error.code}: ${result.error.message}`); return result.data; }
+const conflictOf = (row: WorkbookReceiptRow) => (row as WorkbookReceiptRow & { conflict?: { decisionId:string; level:string; candidates:unknown[] } }).conflict;
 let pool: Pool, service: ReturnType<typeof createLeadService>, ops: { id: string; token: string }, sales: { id: string; token: string }, otherOps: { id: string; token: string };
 let contactActions: ReturnType<typeof createContactAssignmentService>;
 const source = `b1-synthetic-${randomUUID()}`;
-const row = (ref: string, fields: Partial<WorkbookImportRow> = {}): WorkbookImportRow => ({ entity: 'customer', sourceRef: ref, companyName: `Synthetic ${ref}`, sheetName: 'customers', rowNumber: 2, rawRow: { original: 'synthetic evidence' }, ...fields });
+const syntheticCompanyNames = new Map<string, string>();
+const row = (ref: string, fields: Partial<WorkbookImportRow> = {}): WorkbookImportRow => {
+  if (!syntheticCompanyNames.has(ref)) syntheticCompanyNames.set(ref, `${ref}-${randomUUID()}`);
+  return { entity: 'customer', sourceRef: ref, companyName: syntheticCompanyNames.get(ref)!, sheetName: 'customers', rowNumber: 2, rawRow: { original: 'synthetic evidence' }, ...fields };
+};
 const input = (rows: WorkbookImportRow[], fields: Partial<WorkbookImportRequest> = {}): WorkbookImportRequest => ({ source, sourceDetail: 'synthetic workbook only', kind: 'operations', idempotencyKey: randomUUID(), rows, ...fields });
 async function actor(role: CrmRole) {
  const id = randomUUID(), token = randomBytes(32).toString('base64url');
@@ -54,10 +59,10 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('B1 synthetic Post
   expect(unwrap(await service.detail(ops.token, id)).version).toBe(detail.version);
   const empty = unwrap(await service.detail(ops.token, emptyId)); expect(empty.contacts).toEqual([]);
   // Empty companies are retained, but assignment requires an actual selected contact.
-  expect(await contactActions.createAssignments(ops.token, { contacts: [], targetUserId: sales.id, notifyUserIds: [], idempotencyKey: randomUUID() })).toMatchObject({ error: { code: 'INVALID_INPUT' } });
+  expect(await contactActions.createAssignments(ops.token, { contacts: [], targetUserId: sales.id, idempotencyKey: randomUUID() })).toMatchObject({ error: { code: 'INVALID_INPUT' } });
   expect(await service.detail(sales.token, emptyId)).toMatchObject({ error: { code: 'NOT_FOUND' } });
   const ref = { customerId: id, contactId: detail.contacts[0]!.contactId };
-  const pending = unwrap(await contactActions.createAssignments(ops.token, { contacts: [{ ...ref, expectedVersion: 1 }], targetUserId: sales.id, notifyUserIds: [], idempotencyKey: randomUUID() })).items[0]!;
+  const pending = unwrap(await contactActions.createAssignments(ops.token, { contacts: [{ ...ref, expectedVersion: 1 }], targetUserId: sales.id, idempotencyKey: randomUUID() })).items[0]!;
   expect(await contactActions.contactDetail(sales.token, ref)).toMatchObject({ error: { code: 'NOT_FOUND' } });
   unwrap(await contactActions.decide(sales.token, 'accept', { requestId: pending.requestId, expectedVersion: pending.version, idempotencyKey: randomUUID() }));
   expect(unwrap(await contactActions.contactDetail(sales.token, ref)).contact.ownerUserId).toBe(sales.id);
@@ -77,14 +82,21 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('B1 synthetic Post
   expect(repeat.rows[0]).toMatchObject({status:'duplicate',customerId:first.rows[0]!.customerId});
   expect(unwrap(await service.detail(ops.token, first.rows[0]!.customerId!)).sourceCreatedAt).toBe('2026-01-02T00:00:00.000Z');
  });
- it('does not use company names as identity and isolates same source aliases across creators', async () => {
-  const request = input([row('alias-a', { companyName: 'Same exact company label' }), row('alias-b', { companyName: 'Same exact company label' })]);
-  const own = unwrap(await service.importWorkbook(ops.token, request)); expect(own.rows[0]!.customerId).not.toBe(own.rows[1]!.customerId);
-  const other = unwrap(await service.importWorkbook(otherOps.token, { ...request, rows: [request.rows[0]!] })); expect(other.rows[0]!.customerId).not.toBe(own.rows[0]!.customerId);
+ it('requires an audited decision before reusing an exact company and isolates source aliases', async () => {
+  const label=`${randomUUID()} exact company ${source}`;
+  const request = input([row('alias-a', { companyName: label }), row('alias-b', { companyName: label })]);
+  const own = unwrap(await service.importWorkbook(ops.token, request)); expect(own.rows.map(row=>row.status)).toEqual(['created','restricted_conflict']); expect(conflictOf(own.rows[1]!)).toMatchObject({level:'exact_company'});
+  const command={decisionId:conflictOf(own.rows[1]!)!.decisionId,action:'create_new' as const,expectedVersion:1,idempotencyKey:randomUUID()};
+  const resolved=unwrap(await service.resolveLeadIngress(ops.token,command));expect(resolved.decision).toMatchObject({status:'resolved',action:'create_new',version:2});expect(unwrap(await service.resolveLeadIngress(ops.token,command)).customerId).toBe(resolved.customerId);
+  const other = unwrap(await service.importWorkbook(otherOps.token, { ...request, rows: [request.rows[0]!] })); expect(other.rows[0]!.status).toBe('restricted_conflict');
+  const otherResolved=unwrap(await service.resolveLeadIngress(otherOps.token,{decisionId:conflictOf(other.rows[0]!)!.decisionId,action:'create_new',expectedVersion:1,idempotencyKey:randomUUID()}));expect(otherResolved.customerId).not.toBe(own.rows[0]!.customerId);
   const key = await pool.query('SELECT customer_id::text,customer_key FROM crm_customers WHERE customer_id=$1', [own.rows[0]!.customerId]); expect(key.rows[0].customer_key).toBe(key.rows[0].customer_id);
  });
  it('blocks global email conflicts, preserves unassigned siblings and rechecks capability replay', async () => {
-  const receipt = unwrap(await service.importWorkbook(otherOps.token, input([row('private-contact', { entity: 'contact', customerRef: 'alias-a', email: `b1-${source}@example.invalid` })]))); expect(receipt.rows[0]).toMatchObject({ status: 'restricted_conflict' }); expect(receipt.rows[0]!.customerId).toBeUndefined();
+  const privateEmail=`private-${randomUUID()}@example.invalid`;
+  unwrap(await service.importWorkbook(sales.token,input([row('private-peer'),row('private-peer-contact',{entity:'contact',customerRef:'private-peer',email:privateEmail,name:'Private Peer'})],{kind:'personal'})));
+  unwrap(await service.importWorkbook(otherOps.token,input([row('restricted-parent')])));
+  const receipt = unwrap(await service.importWorkbook(otherOps.token, input([row('private-contact', { entity: 'contact', customerRef: 'restricted-parent', email: privateEmail })]))); expect(receipt.rows[0]).toMatchObject({ status: 'restricted_conflict' }); expect(receipt.rows[0]!.customerId).toBeUndefined();
   const appended = unwrap(await service.importWorkbook(ops.token, input([row('assigned-append', { entity: 'contact', customerRef: 'multi', name: 'New unassigned sibling' })]))); expect(appended.rows[0]!.status).toBe('appended');
   const sibling = (await pool.query('SELECT contact_id FROM crm_customer_contacts WHERE customer_id=$1 ORDER BY contact_id DESC LIMIT 1', [appended.rows[0]!.customerId])).rows[0];
   expect(await contactActions.contactDetail(sales.token, { customerId: appended.rows[0]!.customerId, contactId: sibling.contact_id })).toMatchObject({ error: { code: 'NOT_FOUND' } });
@@ -92,7 +104,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('B1 synthetic Post
   await pool.query("UPDATE public.identity_product_access SET capabilities=$2 WHERE user_id=$1 AND product_id='crm'", [ops.id, JSON.stringify(['leads.publish'])]);
   try { expect(await service.importWorkbook(ops.token, request)).toMatchObject({ error: { code: 'FORBIDDEN' } }); } finally { await pool.query("UPDATE public.identity_product_access SET capabilities=$2 WHERE user_id=$1 AND product_id='crm'", [ops.id, JSON.stringify(capabilitiesFor(['operations']))]); }
   const own = unwrap(await service.importWorkbook(sales.token, request));
-  expect(unwrap(await service.detail(sales.token, own.rows[0]!.customerId!))).toMatchObject({ origin: 'personal', ownerUserId: sales.id });
+  expect(own.rows[0]).toMatchObject({ status:'restricted_conflict' });
+  expect(own.rows[0]!.customerId).toBeUndefined();
  });
  it('serializes concurrent mappings and catches idempotency key reuse for changed payloads', async () => {
   const request = input([row('concurrent')]); const results = await Promise.all([service.importWorkbook(ops.token, request), service.importWorkbook(ops.token, { ...request, idempotencyKey: randomUUID() })]);
@@ -148,6 +161,52 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('B1 synthetic Post
    const request = input([row('rollback-personal')], { kind: 'personal' }); expect(await service.importWorkbook(sales.token, request)).toMatchObject({ error: { code: 'DATABASE_ERROR' } });
    const count = await pool.query('SELECT count(*)::int AS count FROM crm_workbook_source_mappings WHERE actor_id=$1 AND source_ref=$2', [sales.id, 'rollback-personal']); expect(count.rows[0].count).toBe(0);
    const company = await pool.query('SELECT count(*)::int AS count FROM companies WHERE name=$1', ['Synthetic rollback-personal']); expect(company.rows[0].count).toBe(0);
+  } finally { await pool.query(`DROP TRIGGER ${trigger} ON public.identity_outbox`); }
+ });
+ it('uses the same gateway for flat imports, manual creation and contact email updates', async () => {
+  const suffix=randomUUID(),sharedDomain=`domain-${suffix}.example`,companyName=`Domain ${suffix} Co`;
+  const first=unwrap(await service.importRows(ops.token,{source:`cp3-flat-${suffix}`,sourceDetail:'synthetic domain',idempotencyKey:randomUUID(),rows:[{customerKey:'domain-a',companyName,website:sharedDomain,country:'CN',email:`a-${suffix}@example.invalid`,name:'Domain A'}]}));
+  expect(first.rows[0]!.status).toBe('created');
+  const second=unwrap(await service.importRows(ops.token,{source:`cp3-flat-${suffix}`,sourceDetail:'synthetic domain',idempotencyKey:randomUUID(),rows:[{customerKey:'domain-b',companyName:`${companyName} Branch`,website:`https://www.${sharedDomain}/`,country:'CN',email:`b-${suffix}@example.invalid`,name:'Domain B'}]}));
+  expect(second.rows[0]).toMatchObject({status:'restricted_conflict',conflict:{level:'exact_domain'}});
+  const attached=unwrap(await service.resolveLeadIngress(ops.token,{decisionId:conflictOf(second.rows[0]!)!.decisionId,action:'attach_company',expectedVersion:1,idempotencyKey:randomUUID()}));
+  expect(attached.contactIds).toHaveLength(1);
+  const sameCompany=await pool.query('SELECT count(DISTINCT co.id)::int AS companies,count(*)::int AS contacts FROM contacts ct JOIN companies co ON co.id=ct.company_id WHERE ct.email IN ($1,$2)',[`a-${suffix}@example.invalid`,`b-${suffix}@example.invalid`]);
+  expect(sameCompany.rows[0]).toMatchObject({companies:1,contacts:2});
+
+  const manualEmail=`manual-${suffix}@example.invalid`;
+  const manual=unwrap(await service.createCustomer(sales.token,{companyName:`${randomUUID()} Private ${suffix}`,source:'manual-cp3',sourceDetail:'',idempotencyKey:randomUUID(),contacts:[{email:manualEmail,name:'Private Owner'}]}));
+  expect(manual.contacts[0]!.email).toBe(manualEmail);
+  expect(await service.createCustomer(otherOps.token,{companyName:`${randomUUID()} Peer ${suffix}`,source:'manual-cp3',sourceDetail:'',idempotencyKey:randomUUID(),contacts:[{email:manualEmail,name:'Peer Attempt'}]})).toMatchObject({error:{code:'CONFLICT'}});
+
+  const emailA=`update-a-${suffix}@example.invalid`,emailB=`update-b-${suffix}@example.invalid`;
+  const updateA=unwrap(await service.createCustomer(sales.token,{companyName:`${randomUUID()} Update A ${suffix}`,source:'manual-cp3',sourceDetail:'',idempotencyKey:randomUUID(),contacts:[{email:emailA,name:'Update A'}]}));
+  unwrap(await service.createCustomer(sales.token,{companyName:`${randomUUID()} Update B ${suffix}`,source:'manual-cp3',sourceDetail:'',idempotencyKey:randomUUID(),contacts:[{email:emailB,name:'Update B'}]}));
+  const before=updateA.contacts[0]!.contactId,version=(await pool.query('SELECT crm_contact_version FROM contacts WHERE id=$1',[before])).rows[0].crm_contact_version;
+  expect(await contactActions.contactUpdate(sales.token,{contactId:before,customerId:updateA.customerId,expectedVersion:version,idempotencyKey:randomUUID(),fields:{email:emailB}})).toMatchObject({error:{code:'CONFLICT'}});
+  expect((await pool.query('SELECT email FROM contacts WHERE id=$1',[before])).rows[0].email).toBe(emailA);
+ });
+ it('returns strong fuzzy candidates for human review and keeps concurrent exact emails unique', async () => {
+  const suffix=randomUUID(),sourceName=`cp3-fuzzy-${suffix}`,email=`candidate-${suffix}@example.invalid`;
+  const original=unwrap(await service.importRows(ops.token,{source:sourceName,sourceDetail:'',idempotencyKey:randomUUID(),rows:[{customerKey:'fuzzy-a',companyName:`Fuzzy ${suffix} Logistics`,website:`fuzzy-a-${suffix}.example`,country:'DE',email,name:'Fuzzy A'}]}));
+  expect(original.rows[0]!.status).toBe('created');
+  const similar=unwrap(await service.importRows(ops.token,{source:sourceName,sourceDetail:'',idempotencyKey:randomUUID(),rows:[{customerKey:'fuzzy-b',companyName:`Fuzzy ${suffix} Logistic`,website:`fuzzy-b-${suffix}.example`,country:'DE',email:`fuzzy-b-${suffix}@example.invalid`,name:'Fuzzy B'}]}));
+  expect(similar.rows[0]).toMatchObject({status:'restricted_conflict',conflict:{level:'strong_company'}});
+
+  const duplicateEmail=`concurrent-${suffix}@example.invalid`,requests=[randomUUID(),randomUUID()].map(key=>service.importRows(ops.token,{source:`cp3-concurrent-${key}`,sourceDetail:'',idempotencyKey:key,rows:[{customerKey:key,companyName:`Concurrent ${key}`,email:duplicateEmail,name:'Concurrent'}]}));
+  const outcomes=(await Promise.all(requests)).map(result=>unwrap(result).rows[0]!.status).sort();
+  expect(outcomes).toEqual(['created','duplicate']);
+  expect((await pool.query('SELECT count(*)::int AS n FROM contacts WHERE email=$1',[duplicateEmail])).rows[0].n).toBe(1);
+ });
+ it('rolls back conflict side effects when terminal resolution cannot publish its event', async () => {
+  const label=`${randomUUID()} rollback conflict`,request=input([row('rollback-conflict-a',{companyName:label}),row('rollback-conflict-b',{companyName:label})]);
+  const receipt=unwrap(await service.importWorkbook(ops.token,request)),decisionId=conflictOf(receipt.rows[1]!)!.decisionId,trigger=`cp3_${randomUUID().replace(/-/g,'')}`;
+  await pool.query("CREATE OR REPLACE FUNCTION crm_cp3_resolution_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic'; RETURN NEW; END $$");
+  await pool.query(`CREATE TRIGGER ${trigger} BEFORE INSERT ON public.identity_outbox FOR EACH ROW WHEN (NEW.user_id='${ops.id}'::uuid) EXECUTE FUNCTION crm_cp3_resolution_failure()`);
+  try {
+   expect(await service.resolveLeadIngress(ops.token,{decisionId,action:'create_new',expectedVersion:1,idempotencyKey:randomUUID()})).toMatchObject({error:{code:'DATABASE_ERROR'}});
+   expect((await pool.query('SELECT count(*)::int AS n FROM companies WHERE name=$1',[label])).rows[0].n).toBe(1);
+   expect((await pool.query('SELECT status FROM crm_lead_match_decisions WHERE decision_id=$1',[decisionId])).rows[0].status).toBe('needs_resolution');
   } finally { await pool.query(`DROP TRIGGER ${trigger} ON public.identity_outbox`); }
  });
 });

@@ -27,6 +27,24 @@ CREATE TABLE IF NOT EXISTS email_accounts (
   is_active integer DEFAULT 1 NOT NULL,
   created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+CREATE TABLE IF NOT EXISTS email_sync_state (
+  account_id integer NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+  folder text NOT NULL,
+  phase text NOT NULL DEFAULT 'idle',
+  window_from_at text,
+  window_to_at text,
+  cursor_uid integer,
+  target_count integer NOT NULL DEFAULT 0,
+  scanned_count integer NOT NULL DEFAULT 0,
+  new_count integer NOT NULL DEFAULT 0,
+  matched_count integer NOT NULL DEFAULT 0,
+  remaining_count integer NOT NULL DEFAULT 0,
+  first_completed_at text,
+  last_incremental_at text,
+  last_error text,
+  updated_at text NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(account_id, folder)
+);
 -- 发信受阻事件（规范 docs/sender-block-circuit-spec.md）：服务商反垃圾/限流拦截通知记在发信账号头上，
 -- 不记成收件人退信。message_id 唯一 = 幂等键（同一封通知被反复点开只记一次）。
 CREATE TABLE IF NOT EXISTS send_block_events (

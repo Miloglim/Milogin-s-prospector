@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Alert, Button, Checkbox, Pagination, Segmented, Spin, Tag } from 'antd';
 import { CheckSquareOutlined } from '@ant-design/icons';
 import { CENTER_CONTACT_GROUP_DIMENSIONS, CENTER_CONTACT_GROUP_LIMITS, CONTACT_ASSIGNMENT_LIMITS, ONLINE_CHANNELS, type CenterContactGroup, type CenterContactGroupDimension, type CenterContactGroupPage, type CenterContactGroupQuery } from '../../../shared/online-crm';
@@ -51,24 +51,27 @@ export function ContactGroups({ scope = 'all', canAssign = false, selectedGroup,
  const query=useQuery({
   queryKey:['center-contact-groups',baseUrl,identity?.userId,scope,dimension,'',page],
   queryFn:()=>centerInvoke<CenterContactGroupPage>(ONLINE_CHANNELS.CONTACT_GROUPS,{dimension,scope,search:'',limit:CENTER_CONTACT_GROUP_LIMITS.page,offset:(page-1)*CENTER_CONTACT_GROUP_LIMITS.page}),
+  placeholderData:keepPreviousData,
  });
  const data=query.data?.ok?query.data.data:undefined;
  const groups=data?.items??[];
  const groupSignature=groups.map(group=>`${group.key}:${group.count}`).join('|');
+ const selectableGroups=query.isPlaceholderData?[]:groups;
+ const selectableSignature=query.isPlaceholderData?'':groupSignature;
  const selectedGroups=groups.filter(group=>selected.has(group.key));
  const selectedContacts=selectedGroups.reduce((total,group)=>total+group.count,0);
  const tooMany=selectedContacts>CONTACT_ASSIGNMENT_LIMITS.batch;
  useEffect(()=>{
-  if(!groups.length)return;
-  const current=selectedGroup?.dimension===dimension?groups.find(group=>group.key===selectedGroup.key):undefined;
+  if(!selectableGroups.length)return;
+  const current=selectedGroup?.dimension===dimension?selectableGroups.find(group=>group.key===selectedGroup.key):undefined;
   if(current&&selectedGroup?.count!==undefined)return;
-  onSelect(selection(dimension,current??groups[0]!));
- },[dimension,groupSignature,selectedGroup?.dimension,selectedGroup?.key,selectedGroup?.count,onSelect]);
+  onSelect(selection(dimension,current??selectableGroups[0]!));
+ },[dimension,selectableSignature,selectedGroup?.dimension,selectedGroup?.key,selectedGroup?.count,onSelect]);
  const error=query.data&&!query.data.ok?query.data.error.message:query.error?.message;
  const toggle=(key:string,checked:boolean)=>setSelected(previous=>{const next=new Set(previous);if(checked)next.add(key);else next.delete(key);return next;});
  const selectPage=()=>setSelected(new Set(groups.map(group=>group.key)));
  const toggleSelecting=()=>setSelecting(value=>{if(value)setSelected(new Set());return !value;});
- const changeDimension=(value:CenterContactGroupDimension)=>{setDimension(value);onSelect(null);};
+ const changeDimension=(value:CenterContactGroupDimension)=>{setPage(1);setDimension(value);onSelect(null);};
  async function assign(){if(!onAssign||!selectedGroups.length||tooMany||assigning)return;setAssigning(true);try{if(await onAssign({dimension,groups:selectedGroups})){setSelected(new Set());setSelecting(false);}}finally{setAssigning(false);}}
  return <aside className="contact-group-panel" aria-busy={query.isFetching}>
   <div className="contact-group-panel-head">
@@ -83,7 +86,7 @@ export function ContactGroups({ scope = 'all', canAssign = false, selectedGroup,
    <Button aria-label="分配所选分组" size="small" type="primary" loading={assigning} disabled={tooMany} onClick={()=>void assign()}>分配</Button>
   </div>}
   {error&&<Alert type="error" message={error}/>}
-  <div className="contact-group-panel-list">
+  <div className={`contact-group-panel-list${query.isFetching&&groups.length?' is-fetching':''}`}>
    {groups.map(group=>{
     const active=selectedGroup?.dimension===dimension&&selectedGroup.key===group.key;
     return <div className={`contact-group-panel-row${active?' is-active':''}${selected.has(group.key)?' is-checked':''}`} key={group.key}>
@@ -97,6 +100,8 @@ export function ContactGroups({ scope = 'all', canAssign = false, selectedGroup,
    {query.isLoading&&<div className="contact-group-panel-empty"><Spin size="small"/></div>}
    {!query.isLoading&&!error&&groups.length===0&&<div className="contact-group-panel-empty">没有分组</div>}
   </div>
-  {(data?.total??0)>CENTER_CONTACT_GROUP_LIMITS.page&&<Pagination size="small" simple current={page} pageSize={CENTER_CONTACT_GROUP_LIMITS.page} total={data?.total??0} onChange={setPage}/>}
+  <div className="contact-group-panel-footer">
+   {(data?.total??0)>CENTER_CONTACT_GROUP_LIMITS.page&&<Pagination size="small" simple current={page} pageSize={CENTER_CONTACT_GROUP_LIMITS.page} total={data?.total??0} onChange={setPage}/>}
+  </div>
  </aside>;
 }

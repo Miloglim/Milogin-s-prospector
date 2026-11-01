@@ -27,6 +27,7 @@ describe('R3 global notification ownership', () => {
     await mount(); await mount(); expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.FEED)).toHaveLength(1);
     expect(notifications.items).toHaveLength(1); expect(notifications.unread).toBe(1);
     expect(host.querySelector('button[aria-label="调整消息中心大小"]')).not.toBeNull();
+    expect(host.querySelector('.messages-body')?.classList.contains('is-empty')).toBe(false);
     await act(async () => { for (const timer of timers) timer(); });
     expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.FEED)).toHaveLength(2); expect(notifications.unread).toBe(1);
     expect(invoke).not.toHaveBeenCalledWith(CHANNEL.READ, item.id);

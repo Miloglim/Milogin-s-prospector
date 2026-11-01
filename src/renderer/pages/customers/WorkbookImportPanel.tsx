@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AutoComplete, Button, Checkbox, Input, Select, Space, Table } from 'antd';
 import { ONLINE_CHANNELS, WORKBOOK_LIMITS, autoWorkbookMapping, buildWorkbookPlan, prepareWorkbookRequests, workbookRowIssue } from '../../../shared/online-crm';
 import type { ImportPreview, Result, WorkbookMapping, WorkbookPlanRow, WorkbookImportRequest, WorkbookImportReceipt, WorkbookImportRow } from '../../../shared/online-crm';
+import { conflictTargetForAttempt, LeadIngressConflictDrawer, type LeadIngressConflictTarget } from './LeadIngressConflictDrawer';
 
 const PAGE_ROWS = 5;
 const FIELDS: Record<string, string> = { sourceRef: '来源引用', companyName: '公司名称', customerRef: '所属客户引用', name: '姓名', email: '邮箱', phone: '电话', title: '职位', country: '国家', businessType: '业务类型', developmentRestriction: '开发限制', sourceCreatedAt: '来源创建日期' };
@@ -25,8 +26,10 @@ export function WorkbookImportPanel({ source, sourceDetail, kind, onImported, on
   const [editing, setEditing] = useState<WorkbookPlanRow | null>(null);
   const [reviewed, setReviewed] = useState<Set<string>>(new Set()); const [reviewCategory, setReviewCategory] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [conflict, setConflict] = useState<{ target: LeadIngressConflictTarget; rowKey: string } | null>(null);
   const queue = useRef<WorkbookImportRequest[]>([]); const generation = useRef(0); const lock = useRef(false);
   const completedRef = useRef(new Set<string>());
+  const conflictRows = useRef(new Map<string, { target: LeadIngressConflictTarget; rowKey: string }>());
   const keyOf = (row: WorkbookImportRow) => JSON.stringify([row.entity, row.sheetName, row.rowNumber]);
   const sheets = preview?.sheets ?? [];
   const plan = useMemo(() => buildWorkbookPlan(sheets.find(sheet => sheet.sheetName === customerSheet), sheets.find(sheet => sheet.sheetName === contactSheet), mapping), [preview, customerSheet, contactSheet, mapping]);
@@ -115,12 +118,22 @@ export function WorkbookImportPanel({ source, sourceDetail, kind, onImported, on
         }
         setReceipts(previous => [...previous, result.data]);
         const newIssues: Record<string, string> = {};
+        let firstConflict: { target: LeadIngressConflictTarget; rowKey: string } | null = null;
         for (const receipt of result.data.rows) {
           const input = request.rows[receipt.index]!; const key = keyOf(input);
           if (SUCCESS.has(receipt.status)) { completedRef.current.add(key); if (input.entity === 'customer') finishedCustomers.add(normalizedRef(input.sourceRef)); }
-          else newIssues[key] = receipt.message || STATUS[receipt.status] || receipt.status;
+          else {
+            newIssues[key] = receipt.message || STATUS[receipt.status] || receipt.status;
+            if (receipt.conflict) {
+              const target = conflictTargetForAttempt('workbook_import', request.idempotencyKey, receipt.index, `${receipt.sheetName} · ${receipt.rowNumber}`);
+              const item = { target, rowKey: key };
+              conflictRows.current.set(`${result.data.batchId}:${receipt.rowId}`, item);
+              firstConflict ??= item;
+            }
+          }
         }
         setCompleted(new Set(completedRef.current)); setIssues(previous => ({ ...previous, ...newIssues })); queue.current.shift(); setPendingCount(queue.current.length); onImported();
+        if (firstConflict) setConflict(firstConflict);
       }
     }
     lock.current = false; setBusy(false);
@@ -145,7 +158,16 @@ export function WorkbookImportPanel({ source, sourceDetail, kind, onImported, on
       {editing && <section className="customer-detail-section"><h2>修正 {editing.input.sheetName} · {editing.input.rowNumber}</h2><div className="import-mapping">{(editing.input.entity === 'customer' ? ['sourceRef', 'companyName', 'businessType', 'developmentRestriction', 'sourceCreatedAt'] : ['sourceRef', 'customerRef', 'name', 'email', 'phone', 'title']).map(field => <label key={field}>{FIELDS[field]}{field === 'customerRef' ? <AutoComplete aria-label="修正所属客户引用" value={editing.input.customerRef || undefined} options={all.filter(row => row.input.entity === 'customer').map(row => ({ value: row.input.sourceRef, label: `${row.input.companyName || '—'} · ${row.input.sourceRef} · ${row.input.rowNumber}` }))} onChange={value => setEditing(previous => previous ? { ...previous, input: { ...previous.input, customerRef: value } } : null)} /> : <Input aria-label={`工作簿修正${FIELDS[field]}`} value={String(editing.input[field as keyof WorkbookImportRow] ?? '')} onChange={event => setEditing(previous => previous ? { ...previous, input: { ...previous.input, [field]: event.target.value } } : null)} />}</label>)}</div><details><summary>来源原文</summary>{Object.entries(editing.input.rawRow).map(([field, value]) => <div key={field}>{field}：{String(value ?? '—')}</div>)}</details>{editing.issue?.includes('关系状态待确认') && <Checkbox checked={reviewCategory} onChange={event => setReviewCategory(event.target.checked)}>保留来源原文，暂不设置客户关系阶段</Checkbox>}<Space><Button disabled={locked || (!!editing.issue?.includes('关系状态待确认') && !reviewCategory)} type="primary" onClick={() => { const key = editing.key; if (reviewCategory) setReviewed(previous => new Set([...previous, key])); setEdits(previous => ({ ...previous, [key]: editing.input })); setIssues(previous => { const next = { ...previous }; delete next[key]; return next; }); setEditing(null); setConfirmed(false); }}>保存修正</Button><Button onClick={() => setEditing(null)}>取消</Button></Space></section>}
       <Checkbox disabled={locked} checked={confirmed} onChange={event => setConfirmed(event.target.checked)}>确认所选表及客户引用关联</Checkbox>
     </>}
-      {receiptRows.length > 0 && <section className="customer-detail-section"><h2>导入回执</h2><p className="import-receipt-counts">{Object.entries(STATUS).map(([status, label]) => { const count = receiptRows.filter(row => row.status === status).length; return count ? `${label} ${count}` : ''; }).filter(Boolean).join(' · ')}</p><Table size="small" rowKey={row => `${row.batchId}:${row.rowId}`} dataSource={receiptRows} pagination={{ pageSize: PAGE_ROWS, showSizeChanger: false }} columns={[{ title: '原行', render: (_, row) => <div>{row.sheetName} · {row.rowNumber}<details><summary>批次</summary>{row.batchId}</details></div> }, { title: '结果', dataIndex: 'status', render: status => STATUS[status] }, { title: '说明', dataIndex: 'message' }, { title: '', width: 70, render: (_, receiptRow) => { const row = all.find(item => item.input.entity === receiptRow.entity && item.input.sheetName === receiptRow.sheetName && item.input.rowNumber === receiptRow.rowNumber); return !SUCCESS.has(receiptRow.status) && row ? completed.has(row.key) ? '已修正' : <Button size="small" disabled={locked} onClick={() => { setReviewCategory(false); setEditing({ ...row, input: { ...row.input } }); }}>修正</Button> : null; } }]} /></section>}
+      {receiptRows.length > 0 && <section className="customer-detail-section"><h2>导入回执</h2><p className="import-receipt-counts">{Object.entries(STATUS).map(([status, label]) => { const count = receiptRows.filter(row => row.status === status).length; return count ? `${label} ${count}` : ''; }).filter(Boolean).join(' · ')}</p><Table size="small" rowKey={row => `${row.batchId}:${row.rowId}`} dataSource={receiptRows} pagination={{ pageSize: PAGE_ROWS, showSizeChanger: false }} columns={[{ title: '原行', render: (_, row) => <div>{row.sheetName} · {row.rowNumber}<details><summary>批次</summary>{row.batchId}</details></div> }, { title: '结果', dataIndex: 'status', render: status => STATUS[status] }, { title: '说明', dataIndex: 'message' }, { title: '', width: 70, render: (_, receiptRow) => { const row = all.find(item => item.input.entity === receiptRow.entity && item.input.sheetName === receiptRow.sheetName && item.input.rowNumber === receiptRow.rowNumber); const pendingConflict = conflictRows.current.get(`${receiptRow.batchId}:${receiptRow.rowId}`); return !SUCCESS.has(receiptRow.status) && row ? completed.has(row.key) ? '已修正' : pendingConflict ? <Button size="small" disabled={locked} onClick={() => setConflict(pendingConflict)}>处理</Button> : <Button size="small" disabled={locked} onClick={() => { setReviewCategory(false); setEditing({ ...row, input: { ...row.input } }); }}>修正</Button> : null; } }]} /></section>}
     <div className="workbook-import-footer"><Space><Button type="primary" loading={busy} disabled={!confirmed || (!pendingCount && !waiting.some(row => !row.issue)) || !source.trim()} onClick={() => void submit()}>{pendingCount ? '重试未完成批次' : '导入已确认行'}</Button>{receipts.length > 0 && waiting.length === 0 && <Button disabled={locked} onClick={onDone}>返回客户</Button>}</Space></div>
+    {conflict && <LeadIngressConflictDrawer target={conflict.target} onClose={() => setConflict(null)} onResolved={() => {
+      const resolved = conflict;
+      if (!resolved) return;
+      completedRef.current.add(resolved.rowKey);
+      setCompleted(new Set(completedRef.current));
+      setIssues(previous => { const next = { ...previous }; delete next[resolved.rowKey]; return next; });
+      setConflict(null);
+      onImported();
+    }} />}
   </div>;
 }

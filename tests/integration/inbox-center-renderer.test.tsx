@@ -142,12 +142,16 @@ describe('center contact mailbox renderer boundary', () => {
         total: 500,
         newCount: 5,
         remaining: 20,
+        processedCount: 125,
+        requiredCount: 500,
+        currentSubject: 'Fixture mail',
         message: undefined,
       });
       await flush();
     });
-    expect(document.body.textContent).toContain('已扫描 125 封 · 新增 5 封');
-    expect(document.body.textContent).toContain('另有 20 封待后续处理');
+    expect(document.body.textContent).toContain('已拉取 125 / 共需拉取 500');
+    expect(document.body.textContent).toContain('扫描中 · 新增 5 封');
+    expect(document.body.textContent).not.toContain('另有 20 封待后续处理');
     const background = Array.from(document.querySelectorAll('button')).find(button => button.textContent === '转入后台');
     await act(async () => { background!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await new Promise(resolve => setTimeout(resolve, 350)); });
     expect(host.textContent).toContain('后台拉取中');
@@ -155,7 +159,7 @@ describe('center contact mailbox renderer boundary', () => {
     const reopen = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('后台拉取中'))!;
     await act(async () => { reopen.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     expect(reopen.textContent).toBe('刷新');
-    expect(document.body.textContent).toContain('已扫描 125 封 · 新增 5 封');
+    expect(document.body.textContent).toContain('已拉取 125 / 共需拉取 500');
     await act(async () => { finishFetch(); await flush(); });
   });
   it('renders actual mail and independent notes once in contact history', async () => {

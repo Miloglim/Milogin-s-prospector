@@ -143,6 +143,19 @@ export function runMigrations(): void {
     if (!columns.includes("imap_fetch_last_uid")) raw.exec("ALTER TABLE email_accounts ADD COLUMN imap_fetch_last_uid integer;");
   });
 
+  // First-login/history sync is separate from the regular UID watermark.
+  step("v0.69-email-sync-state", () => {
+    raw.exec(`CREATE TABLE IF NOT EXISTS email_sync_state (
+      account_id integer NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+      folder text NOT NULL, phase text NOT NULL DEFAULT 'idle', window_from_at text, window_to_at text,
+      cursor_uid integer, target_count integer NOT NULL DEFAULT 0, scanned_count integer NOT NULL DEFAULT 0,
+      new_count integer NOT NULL DEFAULT 0, matched_count integer NOT NULL DEFAULT 0,
+      remaining_count integer NOT NULL DEFAULT 0, first_completed_at text, last_incremental_at text,
+      last_error text, updated_at text NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(account_id, folder)
+    );`);
+  });
+
   // v4.2/v4.4: send_queue 补列
   step("v4.2-send-queue-cols", () => {
     const qcols = tableCols("send_queue");

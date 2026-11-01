@@ -85,6 +85,8 @@ export const IPC = {
   INBOX: {
     LIST:          chan(PREFIX.INBOX, "list"),
     FETCH:         chan(PREFIX.INBOX, "fetch"),
+    SYNC_STATE:    chan(PREFIX.INBOX, "syncState"),
+    SYNC_HISTORY:  chan(PREFIX.INBOX, "syncHistory"),
     CLASSIFY:      chan(PREFIX.INBOX, "classify"),
     MARK_READ:     chan(PREFIX.INBOX, "markRead"),
     DELETE:        chan(PREFIX.INBOX, "delete"),

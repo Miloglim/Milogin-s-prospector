@@ -10,7 +10,22 @@ type Driz = ReturnType<typeof drizzle<typeof schema>>;
 const h = { db: null as unknown as Driz, raw: null as unknown as SqlJsDatabase };
 
 vi.mock("../../src/main/db", () => ({
-  getDb: () => h.db, getRawDb: () => ({ prepare: (sql: string) => ({ run: () => { h.raw.run(sql); return { changes: h.raw.getRowsModified() }; } }) }), saveDatabase: () => {},
+  getDb: () => h.db,
+  getRawDb: () => ({
+    prepare: (sql: string) => {
+      const statement = h.raw.prepare(sql);
+      return {
+        run: (...args: unknown[]) => { statement.run(args as never); return { changes: h.raw.getRowsModified() }; },
+        get: (...args: unknown[]) => {
+          statement.bind(args as never);
+          const row = statement.step() ? statement.getAsObject() : undefined;
+          statement.reset();
+          return row;
+        },
+      };
+    },
+  }),
+  saveDatabase: () => {},
 }));
 vi.mock("../../src/main/logger", () => ({
   Log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },

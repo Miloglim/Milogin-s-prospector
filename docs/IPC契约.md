@@ -1,5 +1,109 @@
 # IPC 契约
 
+## 2026-10-30 团队解散
+
+`online:team-dissolve` 接收 `teamId + { expectedVersion, idempotencyKey }`，对应 `POST /api/crm/teams/:teamId/dissolve`。服务端只允许公司根之外的 primary leader、运营管理员或超级管理员执行；有活动下级时返回冲突，要求先移动或解散下级。未知传输结果必须复用同一个幂等键，成功后返回新的 `TeamContext`。
+
+`TeamSnapshot.canDissolve` 由服务端派生。负责人入口只在 `canDissolve=true` 时显示危险确认；普通成员或非 primary leader 不显示操作。解散不会删除联系人、当前归属或来源组织快照，只结束组织关系并保留审计。
+
+## 2026-10-30 邮件首次同步状态（0.69.0 工作区）
+
+| IPC | 输入 | 返回 | 边界 |
+|---|---|---|---|
+| `inbox:syncState` | 无 | `InboxSyncSnapshot` | 只读当前活跃收信账号的本地同步窗口、累计扫描/新增/匹配、剩余数、首次完成时间和错误；允许离线读取本机状态 |
+| `inbox:syncHistory` | `InboxHistoryRequest { accountId?, months? }` | `Result<InboxMessageRow[]>` | 仅在对应账号完成首次同步后开放；`months` 限 1-12，默认 3，按当前最早窗口继续向更早时间推进；仍需联网 |
+
+`inbox:fetchProgress` 增加可选 `processedCount`、`requiredCount`、`currentSubject`。新字段表示整个首次同步目标中的累计已处理量和总量；原 `scanned/total` 继续表示当前 500 封单批进度，不能拿它冒充整个同步任务。关闭进度弹窗不取消后台同步。
+
+## 2026-10-30 CRM 核心 CP1-CP7 通道（工作区实现，未部署验收）
+
+本节以 `src/shared/online-crm.ts`、`server/core/*` 和 `server/transport/*-http.ts` 的当前代码为准。所有通道仍只返回 `Result<T>`；主进程只转发公开 DTO，Bearer token 不出 renderer。写操作必须在未知传输结果后复用同一个 `idempotencyKey`，服务端以操作者、动作和幂等键重放首次回执。
+
+### 组织与团队
+
+| IPC | 主要输入 | HTTP | 事实边界 |
+|---|---|---|---|
+| `online:team-context` | 无 | `GET /api/crm/team-context` | canonical 公司树、当前团队摘要、可管理团队、邀请 |
+| `online:team-detail` | `teamId` | `GET /api/crm/teams/:teamId` | 按服务端可见范围裁剪成员；普通销售只拿本人成员行 |
+| `online:team-candidates` | `search,limit,offset,role?,unitType?` | `GET /api/crm/team-invite-candidates` | 负责人/成员候选按数据库角色和现有关系过滤 |
+| `online:team-create` | `{name,parentTeamId,unitType?,leaderUserId?,inviteeUserIds,idempotencyKey}` | `POST /api/crm/teams` | `company/operations_group/sales_team`；管理角色必须显式给有效负责人 |
+| `online:team-invite` | `teamId,{userIds,idempotencyKey}` | `POST /api/crm/teams/:teamId/invitations` | 邀请有 7 天到期；撤回保留历史 |
+| `online:team-invitation-accept` / `decline` / `cancel` | `invitationId,{expectedVersion,idempotencyKey}` | `POST /api/crm/team-invitations/:id/{accept,decline,cancel}` | 迟到操作被拒绝；按钮只信服务端 `canAccept/canDecline/canCancel` |
+| `online:team-move` | `teamId,{parentTeamId,expectedVersion,idempotencyKey}` | `POST /api/crm/teams/:teamId/move` | 运营组在公司根下、销售团队为叶子；循环和跨类型父节点拒绝 |
+| `online:team-leader` | `teamId,{leaderUserId,expectedVersion,idempotencyKey}` | `POST /api/crm/teams/:teamId/leader` | 每个单元最多一个 primary leader；同一负责人可管理多个团队 |
+| `online:team-member` | `teamId,{userId,action:add/remove,expectedVersion,idempotencyKey}` | `POST /api/crm/teams/:teamId/members` | 普通成员全公司最多一个团队；成员不能同时是其他团队负责人 |
+| `online:team-group-save` / `team-group-delete` | 组名、成员、版本、幂等键 | `POST /api/crm/teams/:teamId/groups[/:groupId/delete]` | 仅展示分组，不改变归属、监督或数据权限 |
+
+普通销售看不到同组成员名单；负责人只看到所管理团队；运营管理员共享运营组织治理；超级管理员看公司全树但不成为组织成员。`TeamSnapshot.memberCount` 是完整人数，服务端裁剪后的 `members` 不代表团队规模。
+
+### 分配与监督
+
+| IPC | HTTP | 说明 |
+|---|---|---|
+| `online:assignment-list` / `assignment-groups` | `GET /api/crm/contact-assignments[/groups]` | 六状态 `pending/accepted/rejected/cancelled/expired/pending_transfer`，支持请求或组定位 |
+| `online:assignment-create` | `POST /api/crm/contact-assignments` | `ContactAssignmentCreate` 不含任意通知人；服务端从 canonical 直属关系派生接收人和主管 |
+| `online:assignment-accept` / `reject` / `cancel` | `POST /api/crm/contact-assignments/:requestId/{action}` | `expectedVersion + idempotencyKey`；接受后写 ownership 历史 |
+| `online:assignment-transfer` | `POST /api/crm/contact-assignments/:requestId/transfer` | 原负责人立即失去写权，新接收人接受前保持 `pending_transfer` |
+| `online:assignment-expire` | `POST /api/crm/contact-assignments/expire` | 运营管理员专用有界批量扫描；后台也有 30 秒不可重入调度器 |
+| `online:assignment-group-accept` / `reject` / `cancel` | `POST /api/crm/contact-assignments/groups/:groupId/{action}` | 组级决定只处理 pending 成员并保持事务原子性 |
+| `online:contact-monitor-detail` | `GET /api/crm/contact-monitor/:contactId?customerId=...` | 直属主管专用只读监督 DTO；每次读取写审计，不能编辑、跟进、发信或导出 |
+
+### 统一入口、邮件与关注项
+
+| IPC | HTTP | 说明 |
+|---|---|---|
+| `online:lead-ingress-decision` | `GET /api/crm/lead-ingress/decision?source=...&idempotencyKey=...` | 读取同一次导入/创建的冲突裁决和最小候选 |
+| `online:lead-ingress-resolve` | `POST /api/crm/lead-ingress/resolve` | 只允许 `create_new/attach_company/restore`；邮箱精确冲突先阻断，域名/公司名候选人工决定 |
+| `online:contact-mail-analysis` | `GET /api/crm/contact-mail-analyses` | 读取当前分析和可选历史；输入邮件定位键，不接受正文 |
+| `online:contact-mail-analysis-ai` / `correct` | `POST /api/crm/contact-mail-analyses/{ai,correct}` | AI 与人工共用追加式分析；人工永久优先，迟到 AI 只进历史 |
+| `online:contact-mail-analysis-queue` | 主进程内部队列 | 可选 AI 提供方、超时、重试和稳定幂等键；未配置时默认关闭且不影响规则分析 |
+| `online:team-attention-list` / `create` | `GET/POST /api/crm/team-attention` | 成员看本人，负责人看直属成员，运营/超管只读监督；原因、优先级和状态由服务端校验 |
+| `online:team-attention-acknowledge` / `dismiss` / `resolve` | `POST /api/crm/team-attention/:itemId/{action}` | 成员完成必须给结果；负责人可确认/驳回；服务端返回 `can*` |
+
+内部、供应商、通知、垃圾邮件和无关邮件不改联系状态、不建客户待办、不进绩效。行动建议与业务标签分离；硬规则或人工确认才进入待办，同一负责人、联系人、线程、动作只保留一个未完成任务。
+
+### 监控与绩效
+
+| IPC | HTTP | 说明 |
+|---|---|---|
+| `online:team-monitoring` | `GET /api/crm/team-monitoring?teamId&memberUserId&limit&offset&unitLimit&unitOffset` | 负责人看所管子树；运营看全部运营池；超管看全局；普通销售拒绝 |
+| `online:team-monitoring-member` | `GET /api/crm/team-monitoring/members/:memberUserId` | 分页读取成员近期动作、关注项和邮件摘要 |
+| `online:team-monitoring-contact` | `GET /api/crm/team-monitoring/contacts/:contactId?customerId=...` | 先写监控审计再返回联系人摘要 |
+| `online:team-monitoring-mail` | `GET /api/crm/team-monitoring/mail/:eventId?contactId=...&customerId=...` | 只返回结构化邮件摘要和信号，不返回正文/附件 |
+| `online:sales-performance` | `GET /api/crm/sales-performance` | 实时查询首动作、有效回复、成交耗时、复购等分位指标；初期仅管理员、超管可读，销售本人和销售负责人返回无权限 |
+| `online:sales-performance-grades` | `GET /api/crm/sales-performance/customer-grades` | A/B/C 为查询派生；销售只看本人，负责人看团队子树，运营看运营来源，超管看全局 |
+| `online:sales-performance-grade-set` / `clear` | `POST/DELETE /api/crm/sales-performance/customer-grades/:customerId/override` | 人工覆盖单独存原因、版本和追加审计；销售不能覆盖等级 |
+
+当前监控概览没有文本搜索参数，不能在 renderer 只过滤当前页冒充服务端搜索。绩效视图嵌入团队页，初期只对管理员及以上显示；客户分级继续嵌在联系人详情，销售只读本人范围。
+
+## 2026-10-29 Prospector 单活跃设备（0.67.0）
+
+`online:login` 的 renderer 输入 `OnlineLogin` 新增可选 `replaceActiveDevice:boolean`。设备产品、持久设备 ID、设备名、平台和应用版本由主进程补入中心登录请求，不进入 renderer，也不写日志。首次换机返回统一错误 `DEVICE_REPLACEMENT_REQUIRED`；用户点击“退出原电脑并登录”后，同一 `online:login` 再携带 `replaceActiveDevice:true`。成功数据仍是 `Identity`，不新增 IPC 通道。
+
+`online:status`/`online:restore` 遇到已替换会话返回 `DEVICE_REPLACED`，IdentityContext 清空公开身份、查询缓存和本地工作区。批量发送在 SMTP 前复用主进程内部设备检查；本节点未新增 renderer 可调用的设备或会话管理通道。完整流程见 [单活跃设备交付](desktop-single-device-delivery-20261029.md)。
+
+## 2026-10-29 团队关系与邀请
+
+`ONLINE_CHANNELS` 新增 13 项，均返回统一 `Result<T>`，桌面 preload 白名单与 `IPC.ONLINE` 自动同源：
+
+| IPC | 输入 | 输出 | HTTP |
+|---|---|---|---|
+| `online:team-context` | 无 | `TeamContext` | `GET /api/crm/team-context` |
+| `online:team-detail` | `teamId` | `TeamDetail` | `GET /api/crm/teams/:teamId` |
+| `online:team-candidates` | `TeamMemberCandidateQuery` | `TeamMemberCandidatePage` | `GET /api/crm/team-invite-candidates` |
+| `online:team-create` | `TeamCreateInput {name,parentTeamId,unitType?,leaderUserId?,inviteeUserIds,idempotencyKey}` | `TeamCreateReceipt {teamId,context}` | `POST /api/crm/teams` |
+| `online:team-invite` | `teamId`, `TeamInviteInput` | `TeamContext` | `POST /api/crm/teams/:teamId/invitations` |
+| `online:team-invitation-accept` | `invitationId`, `TeamInvitationDecision` | `TeamContext` | `POST /api/crm/team-invitations/:id/accept` |
+| `online:team-invitation-decline` | `invitationId`, `TeamInvitationDecision` | `TeamContext` | `POST /api/crm/team-invitations/:id/decline` |
+| `online:team-invitation-cancel` | `invitationId`, `TeamInvitationDecision` | `TeamContext` | `POST /api/crm/team-invitations/:id/cancel` |
+| `online:team-move` | `teamId`, `TeamMoveInput {parentTeamId,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/move` |
+| `online:team-leader` | `teamId`, `TeamLeaderInput {leaderUserId,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/leader` |
+| `online:team-member` | `teamId`, `TeamMemberAdjustmentInput {userId,action,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/members` |
+| `online:team-group-save` | `teamId`, `TeamMemberGroupInput {groupId,name,memberIds,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/groups` |
+| `online:team-group-delete` | `teamId`, `groupId`, `TeamMemberGroupDeleteInput {groupId,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/groups/:groupId/delete` |
+
+`TeamSnapshot.memberCount` 是服务端派生的完整人数，普通成员仍只返回本人成员行；`TeamMemberGroup.version` 可用于后续更新和删除。负责人可管理多个销售团队，普通成员只能属于一个叶子团队；邀请的 `canCancel` 只对当前主负责人、组织管理员或超级管理员为真，取消保留历史状态。未知结果重试必须复用同一 `idempotencyKey`，相同请求会重放首次缓存结果。完整字段、权限和数据库表见 [团队中心交付](team-foundation-delivery-20261029.md)。
+
 ## 2026-10-27 消息留档、联系人分组与分配组
 
 `online:contact-groups`：`CenterContactGroupQuery {dimension,scope,search,limit,offset}` → `Result<CenterContactGroupPage>`，对应 `GET /api/crm/contact-groups`。`online:contact-list` 的 `CenterContactQuery` 增加可选且成对的 `groupDimension/groupKey`，用于一级卡片进入原联系人表。

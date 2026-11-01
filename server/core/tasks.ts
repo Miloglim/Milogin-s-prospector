@@ -3,12 +3,13 @@ export const TASK_ROUTES={tasks:'/api/crm/tasks',rescheduleAction:'reschedule',c
 export const TASK_LIMITS={title:500,feedback:20000,key:128,page:25,pageMax:100,dueBatch:50,dueBatchMax:100,poll_seconds:5} as const;
 export const TASK_DUE_EVENT='crm.task.due' as const;
 export type TaskStatus='open'|'completed';
-export interface TaskCreate {opportunityId?:string;customerId:string;title:string;dueAt:string;expectedCustomerVersion:number;idempotencyKey:string;}
+export type TaskSourceKind='mail_analysis';
+export interface TaskCreate {opportunityId?:string;customerId:string;title:string;dueAt:string;expectedCustomerVersion:number;idempotencyKey:string;mailSuggestionId?:string;}
 export interface TaskCommand {taskId:string;expectedVersion:number;idempotencyKey:string;}
 export interface TaskReschedule extends TaskCommand {dueAt:string;}
 export interface TaskComplete extends TaskCommand {feedback:string;}
 export interface TaskQuery {customerId?:string;status?:TaskStatus;limit:number;offset:number;}
-export interface FollowupTask {opportunityId?:string|null;opportunityTitle?:string|null;taskId:string;customerId:string;title:string;dueAt:string;status:TaskStatus;version:number;responsibleUserId:string;responsibleName:string|null;createdBy:string;createdAt:string;updatedAt:string;completedAt:string|null;completedBy:string|null;feedback:string|null;canManage:boolean;}
+export interface FollowupTask {opportunityId?:string|null;opportunityTitle?:string|null;taskId:string;customerId:string;title:string;dueAt:string;status:TaskStatus;version:number;responsibleUserId:string;responsibleName:string|null;createdBy:string;createdAt:string;updatedAt:string;completedAt:string|null;completedBy:string|null;feedback:string|null;canManage:boolean;sourceKind?:TaskSourceKind|null;sourceSuggestionId?:string|null;sourceAnalysisId?:string|null;sourceContactId?:number|null;sourceThreadKey?:string|null;sourceActionCode?:string|null;}
 export interface TaskPage {items:FollowupTask[];total:number;}
 export interface TaskRepository {
  create(hash:string,input:TaskCreate):Promise<Result<FollowupTask>>;

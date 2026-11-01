@@ -9,7 +9,7 @@ const css = readFileSync(resolve(root, 'src/renderer/global.css'), 'utf8');
 
 describe('inbox full-screen layout', () => {
   it('keeps the inbox edge-to-edge while giving its panes internal scrolling', () => {
-    expect(appLayout).toContain("const EDGE_TO_EDGE_PATHS = new Set(['/inbox'])") ;
+    expect(appLayout).toContain("const EDGE_TO_EDGE_PATHS = new Set(['/inbox', '/team'])") ;
     expect(appLayout).toContain('app-scroll-area--edge-to-edge');
     expect(appLayout).toContain('app-route-content--edge-to-edge');
     expect(appLayout).toContain("padding: fullScreen ? 0 : '16px 20px'");
@@ -44,7 +44,7 @@ describe('inbox full-screen layout', () => {
     expect(css).toMatch(/\.inbox-detail-header\s*\{[^}]*padding:\s*12px 16px 8px;/s);
     expect(css).toMatch(/\.inbox-detail-sender-row\s*\{[^}]*min-height:\s*32px;[^}]*margin-top:\s*6px;[^}]*padding-top:\s*6px;/s);
     expect(css).toMatch(/\.inbox-detail-row\s*\{[^}]*min-height:\s*28px;[^}]*padding:\s*4px 10px 4px 0;/s);
-    expect(css).toMatch(/\.inbox-detail-value\s*\{[^}]*line-height:\s*16px;/s);
+    expect(css).toMatch(/\.inbox-detail-value\s*\{[^}]*line-height:\s*17px;/s);
   });
 
   it('uses the shared small control size and themed segmented options in the inbox toolbar', () => {
@@ -54,7 +54,9 @@ describe('inbox full-screen layout', () => {
     expect(inbox).toContain('<Segmented');
     expect(inbox).toContain('block');
     expect(inbox).toContain('className={`inbox-filter-tab${filter === f.key ? " is-active" : ""}`}');
-    expect(inbox).toContain('onClick={fetching ? () => setFetchProgressOpen(true) : doFetch}');
+    expect(inbox).toContain('onClick={syncRunning ? () => setFetchProgressOpen(true) : doFetch}');
+    expect(inbox).toContain('已拉取 ${row.current} / 共需拉取 ${row.required}');
+    expect(inbox).toContain('<Button onClick={() => setFetchProgressOpen(false)}>转入后台</Button>');
     expect(inbox).toContain('<Button size="small" onClick={batchRead}');
     expect(inbox).toContain('<Button size="small" danger onClick={batchDel}');
     expect(css).toMatch(/\.inbox-action-bar\s*\{[^}]*gap:\s*8px;[^}]*padding:\s*10px 12px 8px;/s);

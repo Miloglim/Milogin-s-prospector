@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LegacyCustomersPage } from '../../src/renderer/pages/customers/LegacyCustomersPage';
@@ -73,5 +75,44 @@ describe('contact group card assignment', () => {
     await act(async () => { assign.click(); await flush(); });
     expect(invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.CONTACT_LIST)).toHaveLength(readsBefore);
     expect(document.body.textContent).toContain('最多 200 人');
+  });
+
+  it('keeps the panel header and previous rows fixed while switching dimensions', async () => {
+    let resolveCompany!: (value: unknown) => void;
+    const companyResult = new Promise(resolve => { resolveCompany = resolve; });
+    invoke = vi.fn(async (channel, input) => {
+      if (channel === ONLINE_CHANNELS.CONTACT_GROUPS) {
+        if ((input as { dimension?: string }).dimension === 'company') return companyResult;
+        return { ok: true, data: { items: groups, total: groups.length } };
+      }
+      if (channel === ONLINE_CHANNELS.CONTACT_LIST) return { ok: true, data: { items: contacts.slice(0, 2), total: 2 } };
+      return { ok: false, error: { code: 'NOT_FOUND', message: 'Unexpected fixture request' } };
+    });
+    Object.defineProperty(window, 'api', { configurable: true, value: { invoke } });
+    await act(async () => { root.render(<QueryClientProvider client={queryClient}><LegacyCustomersPage /></QueryClientProvider>); });
+    await vi.waitFor(() => expect(host.querySelectorAll('.contact-group-panel-row')).toHaveLength(2), { timeout: 2000 });
+
+    const header = host.querySelector('.contact-group-panel-head');
+    const firstRow = host.querySelector('.contact-group-panel-row');
+    expect(host.querySelector('.contact-group-panel-footer')).not.toBeNull();
+    const companyTab = Array.from(host.querySelectorAll<HTMLElement>('.contact-group-panel .ant-segmented-item')).find(item => item.textContent === '公司')!;
+    await act(async () => { companyTab.click(); await flush(); });
+
+    expect(host.querySelector('.contact-group-panel-head')).toBe(header);
+    expect(host.querySelector('.contact-group-panel-row')).toBe(firstRow);
+    expect(host.querySelectorAll('.contact-group-panel-row')).toHaveLength(2);
+    expect(host.querySelector('.contact-group-panel-footer')).not.toBeNull();
+    expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.CONTACT_GROUPS, expect.objectContaining({ dimension: 'company', offset: 0 }));
+    expect(invoke.mock.calls.some(([channel, input]) => channel === ONLINE_CHANNELS.CONTACT_LIST
+      && (input as { groupDimension?: string }).groupDimension === 'company')).toBe(false);
+
+    await act(async () => { resolveCompany({ ok: true, data: { items: groups, total: groups.length } }); await flush(); });
+    await vi.waitFor(() => expect(host.querySelectorAll('.contact-group-panel-row')).toHaveLength(2));
+
+    const css = readFileSync(resolve('src/renderer/pages/customers/customers.css'), 'utf8');
+    expect(css).toMatch(/\.contact-group-panel\{[^}]*overflow:hidden/s);
+    expect(css).toMatch(/\.contact-group-panel-head\{[^}]*flex:0 0 34px/s);
+    expect(css).toMatch(/\.contact-group-panel-list\{[^}]*flex:1 1 auto/s);
+    expect(css).toMatch(/\.contact-group-panel-footer\{[^}]*flex:0 0 28px/s);
   });
 });

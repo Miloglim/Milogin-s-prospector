@@ -7,9 +7,10 @@ import { CONTACT_ASSIGNMENT_EVENTS, type CenterContactRef } from '../../core/con
 import { loadContactIn, canReadContact, contactPermissionsFor, contactDetailIn, recordContactEventIn } from './contact-assignment-repository';
 import type { LeadActor } from './lead-repository';
 import { FOLLOWUP_TIME_LIMITS } from '../../core/leads';
+import { recordMechanicalMailAnalysisIn } from './contact-mail-analysis-repository';
 const MILLISECONDS_PER_SECOND = 1000;
 const SELECT = `event_id AS "eventId",actor_id AS "actorId",contact_id AS "contactId",customer_id AS "customerId",event_key AS "eventKey",mailbox_key AS "mailboxKey",message_key AS "messageKey",kind,direction,occurred_at AS "occurredAt",subject,preview,from_email AS "fromEmail",to_emails AS "toEmails",cc_emails AS "ccEmails",recorded_at AS "recordedAt",activity_id::text AS "activityId",classification_correction AS correction,classification_revision AS "correctionRevision"`;
-function mapped(row: ContactMailEvent): ContactMailEvent { const {correction,correctionRevision,...event}=row;return { ...event,...(correction?{correction}:{}),...(correctionRevision?{correctionRevision}:{}), occurredAt: new Date(row.occurredAt).toISOString(), recordedAt: new Date(row.recordedAt).toISOString() }; }
+function mapped(row: ContactMailEvent): ContactMailEvent { const {correction,correctionRevision,...event}=row;return { ...event,...(correction?{correction}:{}),...(correctionRevision?{correctionRevision}:{}), contentHash:contactMailContentHash(row), occurredAt: new Date(row.occurredAt).toISOString(), recordedAt: new Date(row.recordedAt).toISOString() }; }
 /** Called only after the caller has passed contact-specific center authorization. */
 export async function contactMailEventsIn(client: PoolClient, input: CenterContactRef): Promise<ContactMailEvent[]> {
   const rows = await client.query(`SELECT ${SELECT} FROM crm_contact_mail_events WHERE contact_id=$1 AND customer_id=$2 ORDER BY occurred_at DESC,recorded_at DESC,event_id DESC LIMIT $3`, [input.contactId, input.customerId, CONTACT_MAIL_LIMITS.history]);
@@ -20,6 +21,9 @@ export function contactMailFingerprint(input: ContactMailEventInput): string {
   const fields:unknown[] = [input.contactId,input.customerId,input.eventKey,input.mailboxKey,input.messageKey,input.kind,input.direction,input.occurredAt,input.subject,input.preview,input.fromEmail,input.toEmails,input.ccEmails];
   if(input.correction)fields.push([input.correction.previousEventKey,input.correction.classification]);
   return createHash('sha256').update(JSON.stringify(fields)).digest('hex');
+}
+export function contactMailContentHash(input: Pick<ContactMailEventInput,'contactId'|'customerId'|'mailboxKey'|'messageKey'|'subject'|'preview'|'fromEmail'|'toEmails'|'ccEmails'>): string {
+  return createHash('sha256').update(JSON.stringify([input.contactId,input.customerId,input.mailboxKey,input.messageKey,input.subject,input.preview,input.fromEmail,input.toEmails,input.ccEmails])).digest('hex');
 }
 export async function recordContactMailEventIn(client: PoolClient, actor: LeadActor, input: ContactMailEventInput): Promise<Result<ContactMailEventReceipt>> {
   if (input.advanceSendStage !== undefined && (typeof input.advanceSendStage !== 'boolean' || input.kind !== 'sent' || input.direction !== 'outbound')) return failure('INVALID_INPUT', '发送轮次仅允许已确认的发出事件推进');
@@ -33,6 +37,7 @@ export async function recordContactMailEventIn(client: PoolClient, actor: LeadAc
     await client.query("UPDATE contacts SET stage=CASE stage WHEN 'cold' THEN 'f1' WHEN 'f1' THEN 'f2' WHEN 'f2' THEN 'f3' WHEN 'f3' THEN 'f4' ELSE stage END WHERE id=$1", [input.contactId]);
   };
   const fingerprint = contactMailFingerprint(input), old = (await client.query(`SELECT ${SELECT},digest,send_stage_advanced,archive_only FROM crm_contact_mail_events WHERE actor_id=$1 AND event_key=$2 FOR UPDATE`, [actor.userId, input.eventKey])).rows[0];
+  const contentHash = contactMailContentHash(input);
   if (old) {
     if (old.digest !== fingerprint) return failure('CONFLICT', '邮件事件键已用于不同事实');
     // IMAP can win the race. A later confirmed receipt upgrades the same fact exactly once.
@@ -42,9 +47,11 @@ export async function recordContactMailEventIn(client: PoolClient, actor: LeadAc
       await client.query('UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1', [input.contactId]);
       await recordContactEventIn(client, actor, contact, CONTACT_ASSIGNMENT_EVENTS.followup, (contact.contactVersion ?? 1) + 1, undefined, old.eventId);
     }
+    const analysis=await recordMechanicalMailAnalysisIn(client,actor,input,old.eventId,contentHash,primary??null,new Date(input.occurredAt).getTime()+(Number(old.classification_revision??0)));
+    if(!analysis.ok)return analysis;
     const detail = await contactDetailIn(client, actor, input); if (!detail.ok) return detail;
     const { digest: _digest, send_stage_advanced: _advanced, archive_only: _archived, ...event } = old;
-    return success({ eventId: old.eventId, duplicate: true, event: mapped(event as ContactMailEvent), contact: detail.data.contact });
+    return success({ eventId: old.eventId, duplicate: true, event: mapped(event as ContactMailEvent), contact: detail.data.contact, analysis:analysis.data });
   }
   const recorded = (await client.query('SELECT clock_timestamp() AS stamp')).rows[0].stamp as Date, occurred = new Date(input.occurredAt);
   if (!Number.isFinite(occurred.getTime()) || occurred.getTime() > recorded.getTime() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND) return failure('INVALID_INPUT', '邮件发生时间无效');
@@ -82,6 +89,8 @@ export async function recordContactMailEventIn(client: PoolClient, actor: LeadAc
   await refreshMailProjectionIn(client,input,contact.email);
   await client.query('UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1', [input.contactId]);
   await recordContactEventIn(client,actor,contact,CONTACT_ASSIGNMENT_EVENTS.followup,(contact.contactVersion ?? 1)+1,activityId ?? undefined,eventId);
+  const analysis=await recordMechanicalMailAnalysisIn(client,actor,input,eventId,contentHash,primary??null,occurred.getTime()+(revision.data??0));
+  if(!analysis.ok)return analysis;
   const detail = await contactDetailIn(client, actor, input); if (!detail.ok) return detail;
-  return success({ eventId, duplicate: false, contact: detail.data.contact, event: { ...input, eventId, actorId: actor.userId, recordedAt: recorded.toISOString(), occurredAt: occurred.toISOString(), activityId,...(revision.data?{correctionRevision:revision.data}:{}) } });
+  return success({ eventId, duplicate: false, contact: detail.data.contact, analysis:analysis.data, event: { ...input,contentHash, eventId, actorId: actor.userId, recordedAt: recorded.toISOString(), occurredAt: occurred.toISOString(), activityId,...(revision.data?{correctionRevision:revision.data}:{}) } });
 }

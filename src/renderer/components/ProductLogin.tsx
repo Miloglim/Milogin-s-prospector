@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { DownOutlined, CloseOutlined } from '@ant-design/icons';
-import type { LoginAccount } from '../../shared/online-crm';
+import type { LoginAccount, OnlineLogin, Result } from '../../shared/online-crm';
 import { AUTH_LIMITS } from '../../shared/online-crm';
 import { useIdentity } from '../IdentityContext';
 import { DotPattern } from './ui/dot-pattern';
@@ -25,15 +25,17 @@ export function ProductLogin() {
   const [autoLogin, setAutoLogin] = useState(false);
   const [accountId, setAccountId] = useState<string>();
   const [accountsOpen, setAccountsOpen] = useState(false);
+  const [pendingReplacement, setPendingReplacement] = useState<OnlineLogin>();
   const initialAccountChosen = useRef(false);
   const accountField = useRef<HTMLDivElement>(null);
   const accounts = (session.accounts ?? []).filter(account => !!account.email);
   const selected = accounts.find(account => account.accountId === accountId && account.email === email);
   const savedCredential = Boolean(!creating && selected?.remembered && remember && !password);
+  const loginMessage = pendingReplacement ? '该账号正在另一台电脑使用。继续登录会退出原电脑。' : session.error || notice;
   useEffect(() => subscribeWorkspaceDark(setWorkspaceDark), []);
   function chooseAccount(account: LoginAccount) {
     initialAccountChosen.current = true;setEmail(account.email);setPassword('');setAccountId(account.accountId);
-    setRemember(account.remembered);setAutoLogin(account.autoLogin);setAccountsOpen(false);setNotice('');
+    setRemember(account.remembered);setAutoLogin(account.autoLogin);setAccountsOpen(false);setNotice('');setPendingReplacement(undefined);
   }
   useEffect(() => {
     if(initialAccountChosen.current || !accounts.length)return;
@@ -48,6 +50,12 @@ export function ProductLogin() {
     return () => {document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',escape);};
   }, [accountsOpen]);
   const restricted = Boolean(session.identity?.mustChangePassword);
+  async function replaceActiveDevice() {
+    const pending=pendingReplacement;if(!pending||session.busy)return;
+    setPendingReplacement(undefined);setNotice('');
+    const result=await session.login({...pending,replaceActiveDevice:true});
+    if(!result.ok&&result.error.code==='DEVICE_REPLACEMENT_REQUIRED')setPendingReplacement(pending);
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (session.busy) return;
@@ -68,12 +76,16 @@ export function ProductLogin() {
     } else {
       setNotice('');
       setAccountsOpen(false);
+      setPendingReplacement(undefined);
       if(savedCredential && selected) void session.loginAccount({accountId:selected.accountId,autoLogin});
       else {
         const accountEmail = String(form.get('email') ?? '').trim();
         const accountPassword = String(form.get('password') ?? '');
-        const loggedIn = await session.login({ baseUrl: session.baseUrl, email: accountEmail, password: accountPassword, remember, autoLogin:remember&&autoLogin });
-        if (loggedIn) setNotice('登录成功。发信邮箱请在设置中单独配置。');
+        const result = await session.login({ baseUrl: session.baseUrl, email: accountEmail, password: accountPassword, remember, autoLogin:remember&&autoLogin }) as Result<void>|boolean|undefined;
+        const failureCode = result && typeof result === 'object' && 'ok' in result && !result.ok ? result.error.code : undefined;
+        if (failureCode === 'DEVICE_REPLACEMENT_REQUIRED') {
+          setPendingReplacement({baseUrl:session.baseUrl,email:accountEmail,password:accountPassword,remember,autoLogin:remember&&autoLogin});
+        } else if (result === true || result && typeof result === 'object' && result.ok) setNotice('登录成功。发信邮箱请在设置中单独配置。');
       }
     }
   }
@@ -98,7 +110,7 @@ export function ProductLogin() {
                   <LoginField name="confirmation" label="确认新密码" type="password" autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} />
                 </> : <>
                   <div ref={accountField} className="product-login-account-field">
-                    <LoginField name="email" label="邮箱" type="email" autoComplete="username" placeholder="your@email.com" value={email} onChange={value=>{initialAccountChosen.current=true;setEmail(value);setAccountId(undefined);setPassword('');setAutoLogin(false);}}>
+                    <LoginField name="email" label="邮箱" type="email" autoComplete="username" placeholder="your@email.com" value={email} onChange={value=>{initialAccountChosen.current=true;setEmail(value);setAccountId(undefined);setPassword('');setAutoLogin(false);setPendingReplacement(undefined);}}>
                       {!creating && accounts.length>0 && <button type="button" className="product-login-account-toggle" aria-label="选择账号" aria-expanded={accountsOpen} aria-controls="login-account-presets" onClick={()=>setAccountsOpen(value=>!value)}><DownOutlined/></button>}
                     </LoginField>
                     {!creating && accounts.length>0 && <div id="login-account-presets" className={`product-login-presets${accountsOpen?' is-open':''}`} role="group" aria-label="已保存账号" aria-hidden={!accountsOpen}>
@@ -110,17 +122,17 @@ export function ProductLogin() {
                       </div>
                     </div>}
                   </div>
-                  <LoginField name="password" label="密码" type="password" autoComplete={creating ? 'new-password' : 'current-password'} minLength={creating ? PASSWORD_MIN_LENGTH : undefined} placeholder={creating ? `至少${PASSWORD_MIN_LENGTH}个字符` : savedCredential ? '••••••••' : '请输入密码'} value={password} onChange={setPassword} required={!savedCredential} />
+                  <LoginField name="password" label="密码" type="password" autoComplete={creating ? 'new-password' : 'current-password'} minLength={creating ? PASSWORD_MIN_LENGTH : undefined} placeholder={creating ? `至少${PASSWORD_MIN_LENGTH}个字符` : savedCredential ? '••••••••' : '请输入密码'} value={password} onChange={value=>{setPassword(value);setPendingReplacement(undefined);}} required={!savedCredential} />
                   {creating && <LoginField name="confirmation" label="确认密码" type="password" autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} />}
                 </>}
               </div>
-              {(session.error || notice) && <div className="ob-error product-login-error" role="alert">{session.error || notice}</div>}
+              {loginMessage && <div className="ob-error product-login-error" role="alert"><span>{loginMessage}</span>{pendingReplacement&&<button className="product-login-replace" type="button" disabled={session.busy} onClick={()=>void replaceActiveDevice()}>{session.busy?'正在切换…':'退出原电脑并登录'}</button>}</div>}
               <div className="ob-actions"><button className="ob-btn" type="submit" aria-busy={session.busy}>{session.busy ? busyLabel : restricted ? '修改密码并重新登录' : creating ? '创建账号' : '登录'}</button></div>
               {restricted ? <button className="ob-skip" type="button" onClick={() => void session.logout()}>返回登录</button> : <>
                 <div className="product-login-links">
                   {!creating && <div className="product-login-options">
-                    <label className="product-login-remember"><input name="remember" type="checkbox" checked={remember} onChange={event=>{setRemember(event.target.checked);if(!event.target.checked)setAutoLogin(false);}} />记住密码</label>
-                    <label className="product-login-remember"><input name="autoLogin" type="checkbox" checked={autoLogin} onChange={event=>{setAutoLogin(event.target.checked);if(event.target.checked)setRemember(true);}} />自动登录</label>
+                    <label className="product-login-remember"><input name="remember" type="checkbox" checked={remember} onChange={event=>{setRemember(event.target.checked);if(!event.target.checked)setAutoLogin(false);setPendingReplacement(undefined);}} />记住密码</label>
+                    <label className="product-login-remember"><input name="autoLogin" type="checkbox" checked={autoLogin} onChange={event=>{setAutoLogin(event.target.checked);if(event.target.checked)setRemember(true);setPendingReplacement(undefined);}} />自动登录</label>
                   </div>}
                   <div className="product-login-secondary-links">
                     <button className="ob-skip" type="button" onClick={() => { setNotice(''); setPassword('');setAccountsOpen(false);setCreating(value => !value); }}>{creating ? '返回登录' : '创建账号'}</button>

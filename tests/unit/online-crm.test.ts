@@ -23,6 +23,20 @@ describe('desktop center isolation',()=>{
     expect(validateCenterBase('https://crm.company.internal')).toBe('https://crm.company.internal');
     for(const url of ['http://localhost:55844','http://example.invalid','http://user@127.0.0.1','https://crm.company.internal/api','https://crm.company.internal?x=1'])expect(validateCenterBase(url)).toBeNull();
   });
+  it('binds desktop login to a stable device and clears the workspace when another device replaces it',async()=>{
+    let meCalls=0;const clear=vi.fn(async()=>{});
+    const fetcher=vi.fn(async(url:string,init:RequestInit)=>{
+      if(url.endsWith('/login'))return new Response(JSON.stringify(success({token:'access-token',refreshToken:'refresh-token',expiresAt:new Date(Date.now()+3600000).toISOString(),identity})));
+      if(url.endsWith('/me'))return new Response(JSON.stringify(++meCalls===1?success(identity):failure('DEVICE_REPLACED','该账号已在另一台电脑登录')));
+      return new Response(JSON.stringify(success(undefined)));
+    });
+    const desktop={product:'crm' as const,deviceId:'stable-device-a',deviceName:'Office PC',platform:'win32',appVersion:'0.67.0'};
+    const client=new OnlineCrmAdapter(fetcher as unknown as typeof fetch,{load:async()=>null,save:async()=>{},clear} as never,undefined,undefined,'http://127.0.0.1:55844',desktop);
+    expect((await client.login({baseUrl:'http://127.0.0.1:55844',email:identity.email,password:'synthetic-password',replaceActiveDevice:true})).ok).toBe(true);
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body as string)).toMatchObject({desktop:{...desktop,replaceActiveDevice:true}});
+    expect(await client.status()).toMatchObject({ok:false,error:{code:'DEVICE_REPLACED'}});
+    expect(client.currentIdentity()).toBeNull();expect(clear).toHaveBeenCalledOnce();
+  });
   it('keeps bearer out of renderer login result and invalidates in-flight old identity reads',async()=>{
     const token=randomBytes(32).toString('base64url');let finish:((value:Response)=>void)|undefined;
     const calls:RequestInit[]=[];

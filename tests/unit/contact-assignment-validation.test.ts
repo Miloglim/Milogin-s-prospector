@@ -6,7 +6,8 @@ describe('contact assignment validation',()=>{
  const id='12345678-1234-1234-1234-123456789abc';
  it('rejects duplicate contacts, authority injection and unlinked fake engagement',()=>{
   const ref={contactId:1,customerId:id,expectedVersion:1};
-  expect(validators.contactAssignmentCreate({...{targetUserId:id,notifyUserIds:[],idempotencyKey:'key'},contacts:[ref,ref]})).toMatchObject({ok:false});
+  expect(validators.contactAssignmentCreate({...{targetUserId:id,idempotencyKey:'key'},contacts:[ref,ref]})).toMatchObject({ok:false});
+  expect(validators.contactAssignmentCreate({targetUserId:id,idempotencyKey:'key',contacts:[ref],notifyUserIds:[id]})).toMatchObject({ok:false});
   expect(validators.contactUpdate({...ref,idempotencyKey:'key',fields:{ownerUserId:id}})).toMatchObject({ok:false});
   expect(validators.contactUpdate({...ref,idempotencyKey:'key',fields:{tags:['quoting']}})).toMatchObject({ok:true});
   expect(validators.contactUpdate({...ref,idempotencyKey:'key',fields:{preferences:['Santos']}})).toMatchObject({ok:true});
@@ -30,6 +31,15 @@ describe('contact assignment validation',()=>{
   expect(validators.contactAssignmentQuery({view:'incoming',requestId:'invalid'})).toMatchObject({ok:false,error:{code:'INVALID_INPUT'}});
   expect(validators.contactAssignmentGroupQuery({view:'incoming',status:'pending',search:'',limit:50,offset:0})).toMatchObject({ok:true});
   expect(validators.contactAssignmentGroupDecision({groupId:id,idempotencyKey:'group-key'})).toMatchObject({ok:true,data:{groupId:id}});
+  expect(validators.contactAssignmentQuery({view:'incoming',status:'pending_transfer'})).toMatchObject({ok:true,data:{status:'pending_transfer'}});
+  expect(validators.contactAssignmentQuery({view:'outgoing',status:'expired'})).toMatchObject({ok:true,data:{status:'expired'}});
+ });
+ it('validates transfer and bounded expiry commands without accepting recipient injection',()=>{
+  expect(validators.contactAssignmentTransfer({requestId:id,targetUserId:id,expectedVersion:1,idempotencyKey:'transfer-key'})).toMatchObject({ok:true});
+  expect(validators.contactAssignmentTransfer({requestId:id,targetUserId:id,expectedVersion:1,idempotencyKey:'transfer-key',notifyUserIds:[id]})).toMatchObject({ok:false});
+  expect(validators.contactAssignmentExpiry({limit:200})).toMatchObject({ok:true});
+  expect(validators.contactAssignmentExpiry({limit:201})).toMatchObject({ok:false});
+  expect(validators.contactAssignmentExpiry({limit:1,notifyUserIds:[id]})).toMatchObject({ok:false});
  });
 });
 

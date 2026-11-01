@@ -39,6 +39,9 @@
 .product-login-card .ob-btn:hover:not(:disabled) { opacity: 1; background: linear-gradient(180deg, #383838, #242424); box-shadow: 0 4px 12px rgba(0,0,0,.12); transform: translateY(-1px); }
 .product-login-card .ob-btn:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
 .product-login-card .ob-btn:disabled { cursor: default; opacity: .82; }
+.product-login-error { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.product-login-replace { flex:0 0 auto; padding:0; border:0; color:inherit; background:transparent; font:inherit; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+.product-login-replace:disabled { cursor:default; opacity:.65; }
 .product-login-card .ob-btn:disabled::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -2px; border: 1.5px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: product-login-spin .7s linear infinite; }
 @keyframes product-login-spin { to { transform: rotate(360deg); } }
 .product-login-links { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; }

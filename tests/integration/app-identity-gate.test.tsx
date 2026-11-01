@@ -82,6 +82,36 @@ describe('application login boundary', () => {
     expect(invoke).toHaveBeenCalledWith(CHANNEL.PASSWORD, { currentPassword: 'synthetic-original', newPassword: 'synthetic-replacement' });
     expect(host.textContent).toContain('密码已修改，请使用新密码登录');
   });
+  it('requires an explicit second request before replacing another Prospector device', async () => {
+    const loginInputs: Array<Record<string, unknown>> = [];
+    const invoke = vi.fn(async (channel: string, input?: Record<string, unknown>) => {
+      if (channel === CHANNEL.RESTORE) return { ok: true, data: { identity: null, remembered: false, baseUrl: 'http://127.0.0.1:55844' } };
+      if (channel === CHANNEL.ACCOUNT_LIST) return { ok: true, data: { accounts: [] } };
+      if (channel === CHANNEL.LOGIN) {
+        loginInputs.push(input ?? {});
+        return input?.replaceActiveDevice
+          ? { ok: true, data: identity }
+          : { ok: false, error: { code: 'DEVICE_REPLACEMENT_REQUIRED', message: '该账号正在另一台电脑使用。继续登录会退出原电脑。' } };
+      }
+      return { ok: true, data: { identity, remembered: false, baseUrl: 'http://127.0.0.1:55844' } };
+    });
+    await mount(invoke);
+    for (const [id, value] of [['email', identity.email], ['password', 'synthetic-password']]) {
+      await act(async () => {
+        const input = host.querySelector<HTMLInputElement>(`#${id}`)!;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+    await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await new Promise(resolve => setTimeout(resolve, 20)); });
+    expect(host.textContent).toContain('该账号正在另一台电脑使用');
+    const replace = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '退出原电脑并登录')!;
+    expect(replace).toBeTruthy();
+    expect(loginInputs[0]).not.toHaveProperty('replaceActiveDevice');
+    await act(async () => { replace.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
+    expect(loginInputs[1]).toMatchObject({ email: identity.email, password: 'synthetic-password', replaceActiveDevice: true });
+    expect(host.querySelector('[data-testid="business-router"]')).not.toBeNull();
+  });
   it('mounts business routes only after main restores an unrestricted identity', async () => {
     await mount(vi.fn(async () => ({ ok: true, data: { identity, baseUrl: 'http://127.0.0.1:55844', remembered: true, localAvailable: false } })));
     expect(host.querySelector('[data-testid="business-router"]')).not.toBeNull();

@@ -4,6 +4,10 @@ import { Pool,type PoolClient } from 'pg';
 import { readTestDatabaseConfig } from '../../server/adapters/postgres/config';
 import { PostgresTaskRepository,canProjectTaskDue } from '../../server/adapters/postgres/task-repository';
 import { PostgresNotificationRepository } from '../../server/adapters/postgres/notification-repository';
+import { PostgresLeadRepository } from '../../server/adapters/postgres/lead-repository';
+import { PostgresTeamRepository } from '../../server/adapters/postgres/team-repository';
+import { PostgresContactMailAnalysisRepository } from '../../server/adapters/postgres/contact-mail-analysis-repository';
+import { PostgresTeamAttentionRepository } from '../../server/adapters/postgres/team-attention-repository';
 import { createTaskService } from '../../server/services/tasks';
 import { capabilitiesFor } from '../../server/core/admin';
 import type { CrmRole } from '../../server/core/auth';
@@ -42,6 +46,32 @@ describe.skipIf(!enabled)('followup tasks PostgreSQL rollback-only',()=>{
  function command(t:FollowupTask){return {taskId:t.taskId,expectedVersion:t.version,idempotencyKey:randomUUID()};}
  async function event(t:FollowupTask){return (await c.query("SELECT * FROM public.identity_outbox WHERE customer_id=$1 AND event_type='crm.task.due' ORDER BY (payload->>'taskVersion')::int,event_id",[t.customerId])).rows.at(-1);}
  async function notificationRepo(){const n=new PostgresNotificationRepository(wrapped,log);await c.query('INSERT INTO crm_notification_consumed(event_id) SELECT event_id FROM public.identity_outbox WHERE NOT EXISTS(SELECT 1 FROM crm_notification_consumed x WHERE x.event_id=public.identity_outbox.event_id)');return n;}
+ async function contactFor(customerId:string,owner:User){
+  const customerRow=(await c.query('SELECT company_id,version FROM crm_customers WHERE customer_id=$1',[customerId])).rows[0];
+  const contact=(await c.query('INSERT INTO contacts(email,first_name,company_id) VALUES($1,$2,$3) RETURNING id',[`${randomUUID()}@example.invalid`,'CP5 member',customerRow.company_id])).rows[0];
+  await c.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[customerId,contact.id]);
+  await c.query('INSERT INTO crm_contact_ownership(contact_id,customer_id,owner_user_id,created_by) VALUES($1,$2,$3,$3)',[contact.id,customerId,owner.id]);
+  return Number(contact.id);
+ }
+ async function cp5Repos(){
+  const leadRepo=new PostgresLeadRepository(wrapped,log);unwrap(await leadRepo.migrate());
+  const teamRepo=new PostgresTeamRepository(wrapped,log);unwrap(await teamRepo.migrate());
+  unwrap(await leadRepo.migrateAssignmentState());unwrap(await leadRepo.migrateLeadMatch());
+  const analysisRepo=new PostgresContactMailAnalysisRepository(wrapped,log);unwrap(await analysisRepo.migrate());
+  const attentionRepo=new PostgresTeamAttentionRepository(wrapped,log);unwrap(await attentionRepo.migrate());
+  return {leadRepo,teamRepo,analysisRepo,attentionRepo};
+ }
+ async function directTeam(leader:User,member:User){
+  let root=(await c.query("SELECT unit_id FROM crm_org_units WHERE kind='company' ORDER BY created_at,unit_id LIMIT 1")).rows[0]?.unit_id;
+  if(!root)root=(await c.query("INSERT INTO crm_org_units(kind,name,created_by) VALUES('company',$1,$2) RETURNING unit_id",[`CP5 ${randomUUID()}`,leader.id])).rows[0].unit_id;
+  const team=(await c.query("INSERT INTO crm_org_units(kind,parent_unit_id,name,created_by) VALUES('sales_team',$1,$2,$3) RETURNING unit_id",[root,`CP5 team ${randomUUID()}`,leader.id])).rows[0].unit_id;
+  await c.query("INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'leader',true),($3,$2,'member',false)",[leader.id,team,member.id]);
+  return team as string;
+ }
+ async function mailEvent(input:{actor:User;customerId:string;contactId:number;messageKey:string;subject:string;preview:string;fromEmail:string;kind?:string;direction?:string}){
+  const inserted=await c.query(`INSERT INTO crm_contact_mail_events(actor_id,contact_id,customer_id,event_key,mailbox_key,message_key,kind,direction,occurred_at,subject,preview,from_email,to_emails,cc_emails,digest) VALUES($1,$2,$3,$4,'cp5-mailbox',$5,$6,$7,now(),$8,$9,$10,'[]'::jsonb,'[]'::jsonb,$11) RETURNING event_id`,[input.actor.id,input.contactId,input.customerId,randomUUID(),input.messageKey,input.kind??'replied',input.direction??'inbound',input.subject,input.preview,input.fromEmail,createHash('sha256').update(randomUUID()).digest('hex')]);
+  return {eventId:String(inserted.rows[0].event_id),mailboxKey:'cp5-mailbox',messageKey:input.messageKey,contentHash:createHash('sha256').update(randomUUID()).digest('hex')};
+ }
  it('creates once, retries after customer version advances, and rejects conflicting reuse',async()=>{
   const id=await customer(),input={customerId:id,title:'Call synthetic customer',dueAt:'2020-01-01T00:00:00Z',expectedCustomerVersion:1,idempotencyKey:randomUUID()};
   const first=unwrap(await service.create(sales.token,input));await c.query('UPDATE crm_customers SET version=version+1 WHERE customer_id=$1',[id]);
@@ -123,5 +153,62 @@ describe.skipIf(!enabled)('followup tasks PostgreSQL rollback-only',()=>{
   unwrap(await service.reschedule(sales.token,{...command(t),dueAt:'2099-01-01T00:00:00Z'}));
   expect(unwrap(await n.feed(sales.hash,{deviceId:'rollback-b3',after:'0',limit:100})).items.some(x=>x.customerId===t.customerId)).toBe(false);
   expect(await n.read(sales.hash,notice!.id)).toMatchObject({error:{code:'NOT_FOUND'}});
+ });
+ it('keeps team attention inside direct-report scope and records one outbox event per state change',async()=>{
+  const {attentionRepo}=await cp5Repos(),leader=await user('sales'),outsider=await user('sales');
+  await directTeam(leader,sales);
+  const customerId=await customer(),contactId=await contactFor(customerId,sales);
+  const input={targetMemberUserId:sales.id,customerId,contactId,reason:'important_reply' as const,priority:'important' as const,note:'客户要求今天回复',idempotencyKey:randomUUID()};
+  const created=unwrap(await attentionRepo.create(leader.hash,input));
+  expect(created).toMatchObject({targetMemberUserId:sales.id,sourceSupervisorUserId:leader.id,status:'open',canAcknowledge:true});
+  expect(await attentionRepo.create(ops.hash,{...input,idempotencyKey:randomUUID()})).toMatchObject({error:{code:'FORBIDDEN'}});
+  expect(await attentionRepo.create(outsider.hash,{...input,idempotencyKey:randomUUID()})).toMatchObject({error:{code:'FORBIDDEN'}});
+  expect(unwrap(await attentionRepo.create(leader.hash,input)).itemId).toBe(created.itemId);
+  expect(await attentionRepo.create(leader.hash,{...input,reason:'quote_overdue'})).toMatchObject({error:{code:'CONFLICT'}});
+
+  const acknowledged=unwrap(await attentionRepo.transition(leader.hash,{itemId:created.itemId,action:'acknowledge',expectedVersion:1,idempotencyKey:randomUUID()}));
+  expect(acknowledged).toMatchObject({status:'acknowledged',version:2});
+  expect(await attentionRepo.transition(leader.hash,{itemId:created.itemId,action:'dismiss',expectedVersion:1,idempotencyKey:randomUUID()})).toMatchObject({error:{code:'CONFLICT'}});
+  expect(await attentionRepo.transition(sales.hash,{itemId:created.itemId,action:'acknowledge',expectedVersion:2,idempotencyKey:randomUUID()})).toMatchObject({error:{code:'FORBIDDEN'}});
+  const memberView=unwrap(await attentionRepo.list(sales.hash,{limit:25,offset:0}));
+  expect(memberView).toMatchObject({scope:'member',total:1,items:[{itemId:created.itemId,status:'acknowledged',canAcknowledge:false,canDismiss:false,canResolve:true}]});
+  const resolved=unwrap(await attentionRepo.transition(sales.hash,{itemId:created.itemId,action:'resolve',expectedVersion:2,idempotencyKey:randomUUID(),result:'已回复客户并补发报价'}));
+  expect(resolved).toMatchObject({status:'resolved',version:3,result:'已回复客户并补发报价',canResolve:false});
+  const supervisorView=unwrap(await attentionRepo.list(leader.hash,{status:'resolved',limit:25,offset:0}));
+  expect(supervisorView).toMatchObject({scope:'supervisor',total:1,items:[{itemId:created.itemId,result:'已回复客户并补发报价'}]});
+  expect(unwrap(await attentionRepo.list(ops.hash,{limit:25,offset:0}))).toMatchObject({scope:'oversight',total:1});
+  expect(await attentionRepo.transition(ops.hash,{itemId:created.itemId,action:'dismiss',expectedVersion:3,idempotencyKey:randomUUID()})).toMatchObject({error:{code:'FORBIDDEN'}});
+  expect((await c.query("SELECT count(*)::int AS n FROM public.identity_outbox WHERE event_type LIKE 'crm.team.attention.%' AND customer_id=$1",[customerId])).rows[0].n).toBe(3);
+  expect((await c.query('SELECT count(*)::int AS n FROM crm_team_attention_notifications WHERE item_id=$1',[created.itemId])).rows[0].n).toBe(3);
+  expect((await c.query('SELECT version FROM crm_customers WHERE customer_id=$1',[customerId])).rows[0].version).toBe(1);
+ });
+
+ it('gates mail tasks by strong actions, deduplicates thread actions, and keeps weak suggestions for confirmation',async()=>{
+  const {analysisRepo}=await cp5Repos(),customerId=await customer(),contactId=await contactFor(customerId,sales);
+  const strongMail=await mailEvent({actor:sales,customerId,contactId,messageKey:'quote-1',subject:'Quotation request',preview:'Please quote two 40HQ containers',fromEmail:'buyer@example.invalid'});
+  const strongKey={contactId,customerId,mailboxKey:strongMail.mailboxKey,messageKey:strongMail.messageKey,contentHash:strongMail.contentHash};
+  const strongResult={classification:'replied' as const,relevance:'customer_business' as const,summary:'客户要求两个40HQ报价',signals:[{code:'quote_request' as const,label:'报价请求',confidence:.94,evidence:'quote'}],actionability:{requiresAction:true,nextAction:'回复客户询价',priority:'important' as const,dueHint:'24 小时内'},confidence:.94,evidence:['quote'],analyzerVersion:'ai-test-v1'};
+  unwrap(await analysisRepo.submitAI(sales.hash,{...strongKey,inputSequence:1,idempotencyKey:'strong-1',result:strongResult}));
+  unwrap(await analysisRepo.submitAI(sales.hash,{...strongKey,inputSequence:1,idempotencyKey:'strong-1',result:strongResult}));
+  unwrap(await analysisRepo.submitAI(sales.hash,{...strongKey,inputSequence:2,idempotencyKey:'strong-2',result:{...strongResult,summary:'客户再次确认询价'}}));
+  let tasks=(await c.query('SELECT task_id,source_kind,source_action_code,status FROM crm_followup_tasks WHERE customer_id=$1',[customerId])).rows;
+  expect(tasks).toHaveLength(1);expect(tasks[0]).toMatchObject({source_kind:'mail_analysis',source_action_code:'quote_request',status:'open'});
+  expect((await c.query("SELECT status FROM crm_contact_mail_task_suggestions WHERE actor_id=$1 AND contact_id=$2 AND thread_key='quotation request'",[sales.id,contactId])).rows[0].status).toBe('suggested');
+
+  const weakMail=await mailEvent({actor:sales,customerId,contactId,messageKey:'schedule-1',subject:'Schedule confirmation',preview:'Please confirm the vessel schedule',fromEmail:'buyer@example.invalid'});
+  unwrap(await analysisRepo.submitAI(sales.hash,{contactId,customerId,mailboxKey:weakMail.mailboxKey,messageKey:weakMail.messageKey,contentHash:weakMail.contentHash,inputSequence:3,idempotencyKey:'weak-1',result:{classification:'replied',relevance:'customer_business',summary:'客户要求确认船期',signals:[{code:'schedule_request',label:'船期确认',confidence:.9,evidence:'schedule'}],actionability:{requiresAction:true,nextAction:'确认船期',priority:'important',dueHint:'24 小时内'},confidence:.9,evidence:['schedule'],analyzerVersion:'ai-test-v1'}}));
+  expect((await c.query('SELECT count(*)::int AS n FROM crm_followup_tasks WHERE customer_id=$1',[customerId])).rows[0].n).toBe(1);
+  const suggestion=(await c.query("SELECT suggestion_id FROM crm_contact_mail_task_suggestions WHERE actor_id=$1 AND contact_id=$2 AND thread_key='schedule confirmation' AND status='suggested'",[sales.id,contactId])).rows[0];
+  expect(suggestion).toBeTruthy();
+  const confirmed=unwrap(await service.create(sales.token,{customerId,title:'placeholder',dueAt:'2030-01-02T00:00:00Z',expectedCustomerVersion:1,idempotencyKey:'confirm-weak',mailSuggestionId:suggestion.suggestion_id}));
+  expect(confirmed).toMatchObject({sourceKind:'mail_analysis',sourceActionCode:'schedule_request',title:'确认船期'});
+  expect(unwrap(await service.create(sales.token,{customerId,title:'placeholder',dueAt:'2030-01-02T00:00:00Z',expectedCustomerVersion:1,idempotencyKey:'confirm-weak',mailSuggestionId:suggestion.suggestion_id})).taskId).toBe(confirmed.taskId);
+
+  const noActionMail=await mailEvent({actor:sales,customerId,contactId,messageKey:'auto-1',subject:'Automatic reply',preview:'I am out of office',fromEmail:'buyer@example.invalid',kind:'autoreply'});
+  unwrap(await analysisRepo.submitAI(sales.hash,{contactId,customerId,mailboxKey:noActionMail.mailboxKey,messageKey:noActionMail.messageKey,contentHash:noActionMail.contentHash,inputSequence:4,idempotencyKey:'auto-1',result:{classification:'autoreply',relevance:'customer_business',summary:'自动回复',signals:[],actionability:{requiresAction:false,nextAction:null,priority:'normal',dueHint:null},confidence:.99,evidence:[],analyzerVersion:'ai-test-v1'}}));
+  const unrelatedMail=await mailEvent({actor:sales,customerId,contactId,messageKey:'vendor-1',subject:'Supplier invoice',preview:'Monthly service invoice',fromEmail:'billing@vendor.invalid',kind:'received'});
+  unwrap(await analysisRepo.submitAI(sales.hash,{contactId,customerId,mailboxKey:unrelatedMail.mailboxKey,messageKey:unrelatedMail.messageKey,contentHash:unrelatedMail.contentHash,inputSequence:5,idempotencyKey:'vendor-1',result:{classification:'other',relevance:'vendor',summary:'供应商账单',signals:[],actionability:{requiresAction:false,nextAction:null,priority:'normal',dueHint:null},confidence:.98,evidence:[],analyzerVersion:'ai-test-v1'}}));
+  tasks=(await c.query('SELECT task_id FROM crm_followup_tasks WHERE customer_id=$1',[customerId])).rows;
+  expect(tasks).toHaveLength(2);
  });
 });

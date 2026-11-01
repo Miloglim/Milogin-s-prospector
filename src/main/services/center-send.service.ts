@@ -27,6 +27,7 @@ export interface CenterSendStats {
 /** Only explicit center references may enter this port. No numeric-ID fallback. */
 export interface CenterSendPort {
   contacts(): Result<CenterSendContact[]>;
+  assertActiveDevice?(): Promise<Result<void>>;
   authorize(item: CenterSendItem): Promise<Result<void>>;
   record(receipt: CenterSendReceipt): Promise<Result<void>>;
   stats(): Result<CenterSendStats>;

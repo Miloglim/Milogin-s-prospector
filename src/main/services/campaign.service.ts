@@ -345,7 +345,11 @@ export function onContactSignal(contactId: number, kind: "replied" | "bounce" | 
     const to = kind === "replied" ? "replied" : "bounced";
     db.update(sendCampaignTargets)
       .set({ status: to, nextTouchAt: null, updatedAt: nowIso() })
-      .where(and(eq(sendCampaignTargets.contactId, contactId), signalIdentity(centerReference, centerScope), inArray(sendCampaignTargets.status, ["pending", "queued"]))).run();
+      .where(and(
+        eq(sendCampaignTargets.contactId, contactId),
+        signalIdentity(centerReference, centerScope),
+        inArray(sendCampaignTargets.status, ["pending", "queued", "sent"]),
+      )).run();
     refreshCampaignDone(contactId, centerReference, undefined, centerScope);
     if (kind === "replied") Log.info("campaign.stoploss", `联系人 ${contactId} 已回复 → 名单内待发跟进全部止损`);
   } catch (error) {

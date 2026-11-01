@@ -7,6 +7,7 @@ import { Modal, Input, Select, Button, Table, Spin, Alert, Tag } from "antd";
 import { SearchOutlined, MailOutlined, InboxOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { buildQuotePrompt, buildMailBriefPrompt, stashDevLetterPreset, type QuoteCardInput } from "../../lib/homeCards";
+import type { CenterContactRef } from "../../../shared/online-crm";
 
 const CONTAINERS = ["40HQ", "40GP", "20GP", "40NOR"];
 
@@ -118,6 +119,7 @@ function QuoteModal({ open, onClose, onSend }: {
 interface DevLetterContact {
   id: number; email: string; name: string;
   company: string | null; country: string | null; language: string | null;
+  centerReference?: CenterContactRef;
 }
 /** 这次实际生效的筛选条件与解析来源（主进程算好带回，界面只负责照实说） */
 interface DevLetterApplied {
@@ -155,8 +157,11 @@ function DevLetterModal({ open, onClose }: { open: boolean; onClose: () => void 
   const confirm = () => {
     if (!rec?.contacts.length) return;
     const how = submitted ? `按要求「${submitted}」` : "按默认规则";
-    stashDevLetterPreset(rec.contacts.map(c => c.id),
-      `首页「自动开发信」${how}推荐 ${rec.groupSize} 位冷客户（每公司 1 位，限额内）`);
+    stashDevLetterPreset(
+      rec.contacts.map(c => c.id),
+      `首页「自动开发信」${how}推荐 ${rec.groupSize} 位冷客户（每公司 1 位，限额内）`,
+      rec.contacts.flatMap(c => c.centerReference ? [c.centerReference] : []),
+    );
     window.location.hash = "#/campaigns?create=1";
     onClose();
   };

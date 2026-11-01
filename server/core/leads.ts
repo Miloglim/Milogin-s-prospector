@@ -3,6 +3,8 @@ import type { DataScope } from './admin';
 import type { WorkbookImportRequest, WorkbookImportReceipt } from './customer-import';
 import type { CenterContactQuery, CenterContactPage, CenterContactGroupQuery, CenterContactGroupPage } from './center-contacts';
 import { IMPORT_REMARK_MAX } from './lead-import-fields';
+import type { LeadIngressCandidateDTO, LeadIngressRepository } from './lead-ingress';
+import type { LeadConflictLevel } from './lead-conflict';
 export const LEAD_LIMITS={batchRows:200,bodyBytes:1048576,text:500,note:IMPORT_REMARK_MAX,page:25,pageMax:100,key:128,notifyMax:20} as const;
 export const LEAD_ROUTES={bootstrap:'/api/crm/bootstrap',imports:'/api/crm/imports',leads:'/api/crm/leads',members:'/api/crm/members',assignAction:'assign'} as const;
 export type LeadState='draft'|'published'|'owned'|'paused';
@@ -50,7 +52,8 @@ export const CONTACT_TOUCH_LABELS: Record<ContactTouchStatus,string> = {uncontac
 export type CustomerStage = CrmStage | 'cold';
 export const FOLLOWUP_TIME_LIMITS = {future_skew_seconds:60} as const;
 export interface FollowupRequest extends LeadCommand {opportunityId?:string;note:string;stage?:CustomerStage;method?:FollowupMethod;occurredAt?:string;contactId?:number;contactStatus?:ContactTouchStatus;}
-export interface ImportReceiptRow {rowId:string;index:number;status:'created'|'duplicate'|'invalid'|'restricted_conflict';customerId?:string;message?:string;}
+export interface ImportConflictSummary {decisionId:string;level:LeadConflictLevel;candidates:LeadIngressCandidateDTO[];}
+export interface ImportReceiptRow {rowId:string;index:number;status:'created'|'duplicate'|'invalid'|'restricted_conflict';customerId?:string;message?:string;conflict?:ImportConflictSummary;}
 export interface ImportReceipt {batchId:string;version:number;rows:ImportReceiptRow[];}
 export interface LeadPreview {customerId:string;companyName:string;country:string|null;state:LeadState;version:number;contactCount:number;origin?:'personal'|'operations';stage?:CrmStage|'cold';ownerUserId?:string|null;source?:string;primaryContactName?:string|null;primaryContactEmail?:string|null;ownerName?:string|null;recentActivityAt?:string|null;hasContacted?:boolean;}
 export interface LeadContact {contactId:number;email:string;name:string|null;country:string|null;phone?:string|null;whatsapp?:string|null;title?:string|null;touchStatus?:ContactTouchStatus;}
@@ -60,7 +63,7 @@ export interface LeadQuery {view:'pool'|'mine'|'operations'|'personal'|'assigned
 export interface LeadPage {items:LeadPreview[];total:number;}
 export interface LeadBootstrap {userId:string;capabilities:string[];scope:DataScope;summary:{pool:number;mine:number};feedCursor:string;}
 export interface PublishReceipt {batchId:string;version:number;publishedCustomerIds:string[];}
-export interface LeadRepository {
+export interface LeadRepository extends LeadIngressRepository {
  listContacts?(hash:string,query:CenterContactQuery):Promise<Result<CenterContactPage>>;
  listContactGroups?(hash:string,query:CenterContactGroupQuery):Promise<Result<CenterContactGroupPage>>;
  bootstrap(hash:string):Promise<Result<LeadBootstrap>>;importRows(hash:string,input:ImportRequest):Promise<Result<ImportReceipt>>;

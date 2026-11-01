@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ONLINE_CHANNELS as CHANNEL, ONLINE_LIMITS, TASK_DUE_EVENT, OPPORTUNITY_EVENTS } from '../shared/online-crm';
-import type { LeadBootstrap, LeadDetail, CenterContactDetail, OnlineFeed, OnlineNotification, NotificationReadAllReceipt, Result } from '../shared/online-crm';
+import type { LeadBootstrap, LeadDetail, CenterContactDetail, ContactMonitorDetail, OnlineFeed, OnlineNotification, NotificationReadAllReceipt, Result } from '../shared/online-crm';
 import { useIdentity } from './IdentityContext';
 import { useVisiblePolling } from './hooks/useVisiblePolling';
 
@@ -18,7 +18,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<Result<T>
   try { return await window.api.invoke(channel, ...args) as Result<T>; }
   catch { /* A transport rejection is an explicit failure, never a read receipt. */ return { ok: false, error: { code: 'UNAVAILABLE', message: '消息中心连接中断，请重试' } }; }
 }
-const isActionableNotification = (item: OnlineNotification) => item.eventType.startsWith('crm.contact.') || item.eventType === TASK_DUE_EVENT || item.eventType === 'crm.lead.followup' || Object.values(OPPORTUNITY_EVENTS).includes(item.eventType as typeof OPPORTUNITY_EVENTS.created);
+const isActionableNotification = (item: OnlineNotification) => item.eventType.startsWith('crm.contact.') || item.eventType.startsWith('crm.team.attention.') || item.eventType === TASK_DUE_EVENT || item.eventType === 'crm.lead.followup' || Object.values(OPPORTUNITY_EVENTS).includes(item.eventType as typeof OPPORTUNITY_EVENTS.created);
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const session = useIdentity();
   const scope = JSON.stringify([session.identity?.userId, session.identity?.crmRoles, session.identity?.crmCapabilities, session.identity?.mustChangePassword]);
@@ -124,13 +124,28 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     return true;
   }, [enabled, scope, reject, items]);
   const open = useCallback(async (item: OnlineNotification) => {
-    if (!enabled || scope !== currentScope.current || item.canOpen === false || (!item.customerId && !item.requestId && !item.shareId)) return null;
+    const teamAttention = item.eventType.startsWith('crm.team.attention.');
+    if (!enabled || scope !== currentScope.current || item.canOpen === false || (teamAttention ? !(item.attentionItemId ?? item.taskId) : !item.customerId && !item.requestId && !item.shareId)) return null;
     const generation = epoch.current; const startedScope = scope;
+    if (teamAttention) {
+      const attentionItemId = item.attentionItemId ?? item.taskId;
+      if (!attentionItemId || !await read(item.id)) return null;
+      return generation === epoch.current && startedScope === currentScope.current ? attentionItemId : null;
+    }
     // Request visibility comes from the authorized feed. Reading the notification
     // opens the decision page only; it must never accept or open the whole company.
     if (item.eventType.startsWith('crm.contact.share.')) {
       if (!await read(item.id)) return null;
       return generation === epoch.current && startedScope === currentScope.current ? item.shareId ?? item.customerId : null;
+    }
+    if (item.contactOpenMode === 'monitor') {
+      if (!item.contactId || !item.customerId) return null;
+      const result = await invoke<ContactMonitorDetail>(CHANNEL.CONTACT_MONITOR_DETAIL, { contactId: item.contactId, customerId: item.customerId });
+      if (generation !== epoch.current || startedScope !== currentScope.current) return null;
+      if (!result.ok) { reject(result); return null; }
+      if (result.data.contact.contactId !== item.contactId || result.data.contact.customerId !== item.customerId) { setError('监督详情不匹配，请刷新消息'); return null; }
+      if (!await read(item.id)) return null;
+      return generation === epoch.current && startedScope === currentScope.current ? item.customerId : null;
     }
     if (item.requestId) {
       if (!await read(item.id)) return null;

@@ -48,6 +48,10 @@ async function login(key: keyof typeof users = 'a', suppliedPassword = password)
   return result.body.data as { token: string; refreshToken: string; expiresAt: string; identity: any };
 }
 const refresh = (refreshToken: string) => request(ROUTES.refresh, { refreshToken });
+const desktopLogin = (deviceId: string, replaceActiveDevice = false) => request(ROUTES.login, {
+  email: email('a'), password,
+  desktop: { product: 'crm', deviceId, deviceName: `desktop-${deviceId}`, platform: 'win32', appVersion: '0.67.0', replaceActiveDevice },
+});
 
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions real HTTP + isolated PostgreSQL', () => {
   beforeAll(async () => {
@@ -109,6 +113,22 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
     expect((await request(ROUTES.me, undefined, rotated.token)).status).toBe(401);
     expect((await request(ROUTES.me, undefined, second.token)).status).toBe(200);
     expect((await request(ROUTES.me, undefined, other.token)).body.data.userId).toBe(users.b);
+  });
+  it('keeps one active Prospector device and replaces it only after explicit confirmation', async () => {
+    const first = await desktopLogin('desktop-device-a');
+    expect(first.status).toBe(200);
+    const conflict = await desktopLogin('desktop-device-b');
+    expect(conflict).toMatchObject({ status: 409, body: { ok: false, error: { code: 'DEVICE_REPLACEMENT_REQUIRED' } } });
+    expect((await request(ROUTES.me, undefined, first.body.data.token)).status).toBe(200);
+
+    const replacement = await desktopLogin('desktop-device-b', true);
+    expect(replacement.status).toBe(200);
+    expect(await request(ROUTES.me, undefined, first.body.data.token)).toMatchObject({ status: 401, body: { error: { code: 'DEVICE_REPLACED' } } });
+    expect((await refresh(first.body.data.refreshToken)).body.error.code).toBe('DEVICE_REPLACED');
+
+    const active = await pool.query(`SELECT desktop_device_id FROM public.identity_sessions
+      WHERE user_id=$1 AND desktop_product='crm' AND revoked_at IS NULL`, [users.a]);
+    expect(active.rows).toEqual([{ desktop_device_id: 'desktop-device-b' }]);
   });
   it('allows renewal after bearer expires but enforces idle and absolute expiry', async () => {
     const expiredBearer = await login();

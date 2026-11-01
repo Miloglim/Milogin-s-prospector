@@ -508,6 +508,19 @@ describe("推进与止损（onCampaignSendSent / onContactSignal）", () => {
     expect(t.nextTouchAt).toBeNull();
   });
 
+  it("计划走完后收到回复/退信，仍把任务结果从 sent 改为 replied/bounced", async () => {
+    const cid = seedCampaign([1, 2], true);
+    h.db.update(schema.sendCampaignTargets).set({ status: "sent", nextTouchAt: null })
+      .where(eq(schema.sendCampaignTargets.campaignId, cid)).run();
+    h.db.update(schema.sendCampaigns).set({ status: "done" }).where(eq(schema.sendCampaigns.id, cid)).run();
+
+    campaign.onContactSignal(1, "replied");
+    campaign.onContactSignal(2, "bounce");
+    const rows = h.db.select().from(schema.sendCampaignTargets).where(eq(schema.sendCampaignTargets.campaignId, cid)).all();
+    expect(rows.find(row => row.contactId === 1)?.status).toBe("replied");
+    expect(rows.find(row => row.contactId === 2)?.status).toBe("bounced");
+  });
+
   it("OOO 自动回复：不止损，待发触点顺延 3 天", async () => {
     const cid = seedCampaign([1], true);
     campaign.onContactSignal(1, "autoreply");                   // 尚未入队，pending

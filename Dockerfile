@@ -37,6 +37,6 @@ USER node
 EXPOSE ${APP_PORT}
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD node --single-threaded --v8-pool-size=0 -e "fetch('http://127.0.0.1:55847/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node --single-threaded --v8-pool-size=0 -e "fetch('http://127.0.0.1:'+process.env.APP_PORT+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "--single-threaded", "--v8-pool-size=0", "dist-server/adapters/online.cjs"]

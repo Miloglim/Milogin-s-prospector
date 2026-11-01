@@ -24,11 +24,14 @@ import {createLeadService} from './services/leads';
 import {createContactAssignmentService} from './services/contact-assignments';
 import {createContactAssignmentHandler} from './transport/contact-assignments-http';
 import {CONTACT_ASSIGNMENT_ROUTES} from './core/contact-assignments';
+import {startAssignmentExpiryScheduler} from './adapters/postgres/contact-assignment-repository';
 import {migrateContactAssignmentGroups} from './adapters/postgres/contact-assignment-group-schema';
 import {createContactMailService} from './services/contact-mail';
 import {createContactMailHandler} from './transport/contact-mail-http';
 import {CONTACT_MAIL_ROUTE} from './core/contact-mail';
 import {createCrmHandler} from './transport/crm-http';
+import {createLeadIngressHandler} from './transport/lead-http';
+import {LEAD_INGRESS_ROUTES} from './core/lead-ingress';
 import {PostgresNotificationRepository} from './adapters/postgres/notification-repository';
 import {createNotificationService} from './services/notifications';
 import {createEventsHandler} from './transport/events-http';
@@ -56,6 +59,26 @@ import { PostgresCampaignRepository } from './adapters/postgres/campaign-reposit
 import { createCampaignService } from './services/campaigns';
 import { createCampaignHandler } from './transport/campaigns-http';
 import { CAMPAIGN_ROUTES } from './core/campaigns';
+import { PostgresTeamRepository } from './adapters/postgres/team-repository';
+import { createTeamService } from './services/teams';
+import { createTeamHandler } from './transport/team-http';
+import { TEAM_ROUTES } from './core/teams';
+import { PostgresContactMailAnalysisRepository } from './adapters/postgres/contact-mail-analysis-repository';
+import { createContactMailAnalysisService } from './services/contact-mail-analysis';
+import { createContactMailAnalysisHandler } from './transport/contact-mail-analysis-http';
+import { CONTACT_MAIL_ANALYSIS_ROUTES } from './core/mail-analysis';
+import { PostgresTeamAttentionRepository } from './adapters/postgres/team-attention-repository';
+import { createTeamAttentionService } from './services/team-attention';
+import { createTeamAttentionHandler } from './transport/team-attention-http';
+import { TEAM_ATTENTION_ROUTES } from './core/team-attention';
+import { PostgresTeamMonitoringRepository } from './adapters/postgres/team-monitoring-repository';
+import { createTeamMonitoringService } from './services/team-monitoring';
+import { createTeamMonitoringHandler } from './transport/team-monitoring-http';
+import { TEAM_MONITORING_ROUTES } from './core/team-monitoring';
+import { PostgresSalesPerformanceRepository } from './adapters/postgres/sales-performance-repository';
+import { createSalesPerformanceService } from './services/sales-performance';
+import { createSalesPerformanceHandler } from './transport/sales-performance-http';
+import { SALES_PERFORMANCE_ROUTES } from './core/sales-performance';
 
 const EXIT_FAILED = 1;
 const SHUTDOWN_TIMEOUT_MS = 5000;
@@ -81,8 +104,20 @@ async function main() {
     const assignmentGroupClient=await pool.connect();try{if(!(await migrateContactAssignmentGroups(assignmentGroupClient)).ok)throw new Error('分配组迁移被拒绝');}finally{assignmentGroupClient.release();}
     const taskRepo=new PostgresTaskRepository(pool,serverLog);
     if(!(await taskRepo.migrate()).ok)throw new Error('任务迁移被拒绝');
+    const teamRepo=new PostgresTeamRepository(pool,serverLog);
+    if(!(await teamRepo.migrate()).ok)throw new Error('团队迁移被拒绝');
+    if(!(await leadRepo.migrateAssignmentState()).ok)throw new Error('分配状态迁移被拒绝');
+    if(!(await leadRepo.migrateLeadMatch()).ok)throw new Error('线索冲突迁移被拒绝');
+    const contactMailAnalysisRepo=new PostgresContactMailAnalysisRepository(pool,serverLog);
+    if(!(await contactMailAnalysisRepo.migrate()).ok)throw new Error('邮件分析迁移被拒绝');
+    const teamAttentionRepo=new PostgresTeamAttentionRepository(pool,serverLog);
+    if(!(await teamAttentionRepo.migrate()).ok)throw new Error('团队关注迁移被拒绝');
+    const teamMonitoringRepo=new PostgresTeamMonitoringRepository(pool,serverLog);
+    if(!(await teamMonitoringRepo.migrate()).ok)throw new Error('团队监控迁移被拒绝');
     const opportunityRepo=new PostgresOpportunityRepository(pool,serverLog);
     if(!(await opportunityRepo.migrate()).ok)throw new Error('商机迁移被拒绝');
+    const salesPerformanceRepo=new PostgresSalesPerformanceRepository(pool,serverLog);
+    if(!(await salesPerformanceRepo.migrate()).ok)throw new Error('销售绩效迁移被拒绝');
     const contactChangeRepo=new PostgresContactChangeRepository(pool,serverLog);
     if(!(await contactChangeRepo.migrate()).ok)throw new Error('联系人变化迁移被拒绝');
     const campaignRepo=new PostgresCampaignRepository(pool,serverLog);
@@ -90,20 +125,31 @@ async function main() {
     const opportunities=createOpportunityHandler(createOpportunityService(opportunityRepo,tokenAdapter));
     const taskService=createTaskService(taskRepo,tokenAdapter);
     const tasks=createTaskHandler(taskService);
+    const teams=createTeamHandler(createTeamService(teamRepo,tokenAdapter));
     const contactShares=createContactSharingHandler(createContactSharingService(leadRepo,tokenAdapter));
     const contactAssignments=createContactAssignmentHandler(createContactAssignmentService(leadRepo,tokenAdapter));
     const sendAcceptance=createSendAcceptanceHandler(createSendAcceptanceService(leadRepo,tokenAdapter));
     const contactMail=createContactMailHandler(createContactMailService(leadRepo,tokenAdapter));
-    const leads=createCrmHandler(createLeadService(leadRepo,tokenAdapter));
+    const contactMailAnalysis=createContactMailAnalysisHandler(createContactMailAnalysisService(contactMailAnalysisRepo,tokenAdapter));
+    const teamAttention=createTeamAttentionHandler(createTeamAttentionService(teamAttentionRepo,tokenAdapter));
+    const teamMonitoring=createTeamMonitoringHandler(createTeamMonitoringService(teamMonitoringRepo,tokenAdapter));
+    const salesPerformance=createSalesPerformanceHandler(createSalesPerformanceService(salesPerformanceRepo,tokenAdapter,clock));
+    const leadService=createLeadService(leadRepo,tokenAdapter),leads=createCrmHandler(leadService),leadIngress=createLeadIngressHandler(leadService);
     const notifications=createEventsHandler(createNotificationService(notificationRepo,tokenAdapter));
     const contactChanges=createContactChangeHandler(createContactChangeService(contactChangeRepo,tokenAdapter));
     const campaigns=createCampaignHandler(createCampaignService(campaignRepo,tokenAdapter));
     const collaboration:import('./transport/http').BrowserHandler=async(request,response)=>{
       const route=new URL(request.url??'/','http://localhost').pathname;
+      if(route===LEAD_INGRESS_ROUTES.decision||route===LEAD_INGRESS_ROUTES.resolve){await leadIngress(request,response);return;}
+      if(route===TEAM_ROUTES.context||route===TEAM_ROUTES.candidates||route===TEAM_ROUTES.teams||route.startsWith(`${TEAM_ROUTES.teams}/`)||route.startsWith(`${TEAM_ROUTES.invitations}/`)){await teams(request,response);return;}
       if(Object.values(SEND_ACCEPTANCE_ROUTES).some(path=>path===route)){await sendAcceptance(request,response);return;}
       if(route===CONTACT_MAIL_ROUTE){await contactMail(request,response);return;}
+      if(route===CONTACT_MAIL_ANALYSIS_ROUTES.analyses||route===CONTACT_MAIL_ANALYSIS_ROUTES.ai||route===CONTACT_MAIL_ANALYSIS_ROUTES.correct){await contactMailAnalysis(request,response);return;}
+      if(route===TEAM_ATTENTION_ROUTES.items||route.startsWith(`${TEAM_ATTENTION_ROUTES.items}/`)){await teamAttention(request,response);return;}
+      if(route===TEAM_MONITORING_ROUTES.overview||route.startsWith(`${TEAM_MONITORING_ROUTES.members}/`)||route.startsWith(`${TEAM_MONITORING_ROUTES.contacts}/`)||route.startsWith(`${TEAM_MONITORING_ROUTES.mail}/`)){await teamMonitoring(request,response);return;}
+      if(route===SALES_PERFORMANCE_ROUTES.performance||route===SALES_PERFORMANCE_ROUTES.customerGrades||route.startsWith(`${SALES_PERFORMANCE_ROUTES.customerGrades}/`)){await salesPerformance(request,response);return;}
       if(route==='/api/crm/contact-shares'||route.startsWith('/api/crm/contact-shares/')){await contactShares(request,response);return;}
-      if(route==='/api/crm/companies'||route.startsWith('/api/crm/companies/')||route==='/api/crm/contacts/delete'||route===CONTACT_ASSIGNMENT_ROUTES.assignments||route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.assignments}/`)||route===CONTACT_ASSIGNMENT_ROUTES.groups||route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.groups}/`)||route.startsWith('/api/crm/contacts/')){await contactAssignments(request,response);return;}
+      if(/^\/api\/crm\/leads\/[^/]+\/assign$/.test(route)||route==='/api/crm/companies'||route.startsWith('/api/crm/companies/')||route==='/api/crm/contacts/delete'||route===CONTACT_ASSIGNMENT_ROUTES.assignments||route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.assignments}/`)||route===CONTACT_ASSIGNMENT_ROUTES.groups||route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.groups}/`)||route===CONTACT_ASSIGNMENT_ROUTES.expire||route===CONTACT_ASSIGNMENT_ROUTES.monitor||route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.monitor}/`)||route.startsWith('/api/crm/contacts/')){await contactAssignments(request,response);return;}
       if(route===TASK_ROUTES.tasks || route.startsWith(`${TASK_ROUTES.tasks}/`)){await tasks(request,response);return;}
       if(route===OPPORTUNITY_ROUTES.opportunities || route.startsWith(`${OPPORTUNITY_ROUTES.opportunities}/`)){await opportunities(request,response);return;}
       if(route===CONTACT_CHANGE_ROUTE){await contactChanges(request,response);return;}
@@ -117,15 +163,16 @@ async function main() {
     started=true;
     const dispatcher=startNotificationDispatcher(notificationRepo,serverLog);
     const taskDispatcher=startTaskDispatcher(taskService,serverLog);
+    const assignmentExpiryScheduler=startAssignmentExpiryScheduler(pool,serverLog);
     serverLog.write("INFO","identity.runtime",`中心服务就绪 ${config.host}:${config.port}`);
     let closing=false;
     const stop=() => {
       if(closing) return; closing=true;
       const timer=setTimeout(()=>{ server.closeAllConnections(); },SHUTDOWN_TIMEOUT_MS);
-      server.close(()=>{ clearTimeout(timer); void Promise.all([taskDispatcher.stop(),dispatcher.stop()]).then(()=>pool.end()).catch(()=>{ serverLog.write("ERROR","identity.runtime","连接池关闭失败"); process.exitCode=EXIT_FAILED; }); });
+      server.close(()=>{ clearTimeout(timer); void Promise.all([taskDispatcher.stop(),dispatcher.stop(),assignmentExpiryScheduler.stop()]).then(()=>pool.end()).catch(()=>{ serverLog.write("ERROR","identity.runtime","连接池关闭失败"); process.exitCode=EXIT_FAILED; }); });
     };
     process.on("SIGTERM",stop); process.on("SIGINT",stop);
     server.on("error",()=>{ serverLog.write("ERROR","identity.runtime","服务运行错误"); process.exitCode=EXIT_FAILED; stop(); });
   } finally { if(!started) await pool.end(); }
 }
-void main().catch(()=>{ serverLog.write("ERROR","identity.runtime","中心启动失败；检查隔离配置与本机日志"); process.exitCode=EXIT_FAILED; });
+void main().catch((error)=>{ const message=error instanceof Error ? error.message : "未知错误"; serverLog.write("ERROR","identity.runtime",`中心启动失败：${message}`); process.exitCode=EXIT_FAILED; });

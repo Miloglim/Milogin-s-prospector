@@ -1,5 +1,5 @@
 import { AUTH_LIMITS, BOOTSTRAP_LOGIN_MIN, isAccountEmail, isNewAccountPassword, type ClockPort, type PasswordPort, type TokenPort } from '../core/auth';
-import { DESKTOP_SESSION_LIMITS, REGISTRATION_PRODUCTS, type DesktopSessionRepository, type DesktopLoginResponse, type RegistrationProduct } from '../core/desktop-session';
+import { DESKTOP_DEVICE_PRODUCTS, DESKTOP_SESSION_LIMITS, REGISTRATION_PRODUCTS, type DesktopDeviceContext, type DesktopSessionRepository, type DesktopLoginResponse, type RegistrationProduct } from '../core/desktop-session';
 import { failure, success, type Result } from '../core/crm';
 import type { Identity } from '../core/auth';
 import type { OfflineAccessIssuer } from '../core/offline-access';
@@ -7,10 +7,31 @@ import type { OfflineAccessIssuer } from '../core/offline-access';
 const MILLISECONDS_PER_SECOND = 1000;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]+$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+const DEVICE_SAFE_TEXT_PATTERN = /^[^\u0000-\u001f\u007f]+$/;
+const DEVICE_CODE_PATTERN = /^[A-Za-z0-9._-]+$/;
+const DEVICE_TEXT_MAX = 120;
+const APP_VERSION_MAX = 64;
 const unauthorized = () => failure('UNAUTHORIZED', '登录信息无效或会话已失效');
 const validToken = (token: unknown): token is string => typeof token === 'string' && token.length === AUTH_LIMITS.tokenCharacters && TOKEN_PATTERN.test(token);
 function object(input: unknown, keys: string[]): Record<string, unknown> | null {
   return input && typeof input === 'object' && !Array.isArray(input) && !Object.keys(input).some(key => !keys.includes(key)) ? input as Record<string, unknown> : null;
+}
+function desktopContext(input: unknown): DesktopDeviceContext | undefined | null {
+  if (input === undefined) return undefined;
+  const value = object(input, ['product', 'deviceId', 'deviceName', 'platform', 'appVersion', 'replaceActiveDevice']);
+  const deviceName = typeof value?.deviceName === 'string' ? value.deviceName.trim() : '';
+  if (!value || !DESKTOP_DEVICE_PRODUCTS.includes(value.product as never)
+    || typeof value.deviceId !== 'string' || !DEVICE_ID_PATTERN.test(value.deviceId)
+    || !deviceName || deviceName.length > DEVICE_TEXT_MAX || !DEVICE_SAFE_TEXT_PATTERN.test(deviceName)
+    || typeof value.platform !== 'string' || !DEVICE_CODE_PATTERN.test(value.platform) || value.platform.length > APP_VERSION_MAX
+    || typeof value.appVersion !== 'string' || !DEVICE_CODE_PATTERN.test(value.appVersion) || value.appVersion.length > APP_VERSION_MAX
+    || value.replaceActiveDevice !== undefined && typeof value.replaceActiveDevice !== 'boolean') return null;
+  return {
+    product: value.product as DesktopDeviceContext['product'], deviceId: value.deviceId, deviceName,
+    platform: value.platform, appVersion: value.appVersion,
+    ...(value.replaceActiveDevice === undefined ? {} : { replaceActiveDevice: value.replaceActiveDevice }),
+  };
 }
 export function createDesktopSessionService(repo: DesktopSessionRepository, passwords: PasswordPort & { hash(password: string): Promise<string> }, tokens: TokenPort, clock: ClockPort, ttlSeconds: number, offlineIssuer?: OfflineAccessIssuer) {
   const date = (seconds: number) => new Date(clock.now() + seconds * MILLISECONDS_PER_SECOND).toISOString();
@@ -37,8 +58,10 @@ export function createDesktopSessionService(repo: DesktopSessionRepository, pass
       catch { return failure('UNAVAILABLE', '注册暂不可用，请稍后重试'); } // Do not include credentials or crypto diagnostics in responses.
     },
     async login(input: unknown): Promise<Result<DesktopLoginResponse>> {
-      const value = object(input, ['email', 'password']);
+      const value = object(input, ['email', 'password', 'desktop']);
       if (!value || typeof value.email !== 'string' || value.email!==value.email.trim() || !EMAIL_PATTERN.test(value.email.trim()) || value.email.length > AUTH_LIMITS.emailMax || typeof value.password !== 'string' || value.password.length < BOOTSTRAP_LOGIN_MIN || value.password.length > AUTH_LIMITS.passwordMax) return failure('INVALID_INPUT', '登录参数无效');
+      const desktop = desktopContext(value.desktop);
+      if (desktop === null) return failure('INVALID_INPUT', '设备信息无效');
       const credential = await repo.credential(value.email.trim().toLowerCase());
       if (!credential.ok) return credential;
       try {
@@ -47,7 +70,7 @@ export function createDesktopSessionService(repo: DesktopSessionRepository, pass
       } catch { return failure('UNAVAILABLE', '登录校验暂不可用'); } // Fail closed; crypto errors may contain secrets.
       const token = tokens.create(), refreshToken = tokens.create(), expiresAt = date(ttlSeconds);
       const absoluteExpiresAt = date(DESKTOP_SESSION_LIMITS.absolute_seconds);
-      const session = await repo.createDesktopSession({ tokenHash: tokens.hash(token), refreshHash: tokens.hash(refreshToken), userId: credential.data.userId, securityRevision: credential.data.securityRevision, expiresAt, idleExpiresAt: date(DESKTOP_SESSION_LIMITS.idle_seconds), absoluteExpiresAt });
+      const session = await repo.createDesktopSession({ tokenHash: tokens.hash(token), refreshHash: tokens.hash(refreshToken), userId: credential.data.userId, securityRevision: credential.data.securityRevision, expiresAt, idleExpiresAt: date(DESKTOP_SESSION_LIMITS.idle_seconds), absoluteExpiresAt, ...(desktop ? { desktop } : {}) });
       return !session.ok ? session : session.data ? loginResponse(token, refreshToken, expiresAt, session.data, absoluteExpiresAt) : unauthorized();
     },
     async refresh(input: unknown): Promise<Result<DesktopLoginResponse>> {

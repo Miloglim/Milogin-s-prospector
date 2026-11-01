@@ -143,7 +143,11 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
   useEffect(() => {
     if (!open || draftId) return;
     const p = takeDevLetterPreset();
-    if (p?.ids.length) { setSelectedIds(p.ids); setPresetNote(p.note); }
+    if (p?.ids.length) {
+      setSelectedIds(p.ids);
+      if (p.centerRefs.length === p.ids.length) setCenterRefs(p.centerRefs);
+      setPresetNote(p.note);
+    }
   }, [open, draftId]);
 
   const setRound = (i: number, patch: Partial<RoundDraft>) =>

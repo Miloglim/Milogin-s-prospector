@@ -4,7 +4,9 @@ import { failure, success, type LogSink, type Result } from '../../core/crm';
 import { effectiveCapabilitiesFor, type DataScope } from '../../core/admin';
 import type { CrmRole } from '../../core/auth';
 import type { FollowupTask, TaskComplete, TaskCreate, TaskPage, TaskQuery, TaskRepository, TaskReschedule } from '../../core/tasks';
-import { TASK_DUE_EVENT } from '../../core/tasks';
+import { TASK_DUE_EVENT, TASK_LIMITS } from '../../core/tasks';
+import type { MailPriority } from '../../core/mail-analysis';
+import { mailTaskAdmissionFor, type MailTaskAdmissionInput } from '../../core/team-attention';
 import { ADMIN_LOCK } from './admin-schema';
 import { assertCenterDatabasePool } from './config';
 import { TASK_LOCK, TASK_SQL, TASK_VERSION } from './task-schema';
@@ -12,6 +14,7 @@ import { TASK_LOCK, TASK_SQL, TASK_VERSION } from './task-schema';
 interface Actor { userId:string; roles:CrmRole[]; capabilities:string[]; scope:DataScope; }
 type Customer={customer_id:string;created_by:string;owner_user_id:string|null;origin:string;state:string;version:number};
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const MAIL_TASK_DUE_HOURS: Record<MailPriority, number> = { normal:48, important:24, urgent:24 };
 function administrator(a:Actor){return a.roles.includes('admin')&&['shared','summary'].includes(a.scope)&&a.capabilities.includes('leads.read.all');}
 function operations(a:Actor){return a.roles.includes('operations')&&['shared','summary'].includes(a.scope)&&a.capabilities.includes('followups.read');}
 function canSee(a:Actor,c:Customer){return administrator(a)||operations(a)&&c.origin==='operations'||c.owner_user_id===a.userId&&a.capabilities.includes('leads.develop');}
@@ -22,6 +25,34 @@ async function access(db:PoolClient,userId:string):Promise<Actor|null>{
  const row=r.rows[0],roles=row.roles as CrmRole[];if(!roles.length)return null;
  return {userId:row.user_id,roles,scope:row.scope,capabilities:effectiveCapabilitiesFor(roles,row.capabilities)};
 }
+
+export interface MailAnalysisTaskCandidate extends MailTaskAdmissionInput {
+  actorId:string;
+  suggestionId:string;
+  analysisId:string;
+  customerId:string;
+  contactId:number;
+  threadKey:string;
+  actionCode:string;
+  title:string;
+  priority:MailPriority;
+  confirmed?:boolean;
+}
+
+/** Creates at most one open task for the same responsible user/contact/thread/action. */
+export async function createMailAnalysisTaskIn(db:PoolClient,input:MailAnalysisTaskCandidate):Promise<Result<string|null>>{
+  if(!input.confirmed&&mailTaskAdmissionFor(input)!=='create')return success(null);
+  const c=await db.query('SELECT customer_id,created_by,owner_user_id,origin,state,version FROM crm_customers WHERE customer_id=$1 FOR SHARE',[input.customerId]);
+  const customer=c.rows[0] as Customer|undefined;if(!customer)return failure('NOT_FOUND','客户不存在');
+  const responsible=customer.owner_user_id??customer.created_by,member=await access(db,responsible);
+  if(!member||!canManage(member,customer))return failure('CONFLICT','任务负责人已停用或无开发权限');
+  await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[[responsible,input.contactId,input.threadKey,input.actionCode].join('|')]);
+  const existing=await db.query(`SELECT task_id FROM crm_followup_tasks WHERE source_suggestion_id=$1 OR (source_kind='mail_analysis' AND source_responsible_user_id=$2 AND source_contact_id=$3 AND source_thread_key=$4 AND source_action_code=$5 AND status='open') ORDER BY created_at,task_id LIMIT 1`,[input.suggestionId,responsible,input.contactId,input.threadKey,input.actionCode]);
+  if(existing.rows.length)return success(String(existing.rows[0].task_id));
+  const dueHours=MAIL_TASK_DUE_HOURS[input.priority];
+  const inserted=await db.query(`INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,source_kind,source_suggestion_id,source_analysis_id,source_contact_id,source_thread_key,source_action_code,source_responsible_user_id) VALUES($1,$2,clock_timestamp()+($3::int*interval '1 hour'),$4,'mail_analysis',$5,$6,$7,$8,$9,$10) RETURNING task_id`,[input.customerId,input.title.trim().slice(0,TASK_LIMITS.title),dueHours,input.actorId,input.suggestionId,input.analysisId,input.contactId,input.threadKey,input.actionCode,responsible]);
+  return success(String(inserted.rows[0].task_id));
+}
 /** Validate current scope and revision for dispatch, unread feed and read acknowledgments. */
 export async function canProjectTaskDue(db:PoolClient,event:{customer_id?:string;payload?:Record<string,unknown>;recipient_user_ids?:string[]|null},a:Actor):Promise<boolean>{
  const p=event.payload;
@@ -30,7 +61,7 @@ export async function canProjectTaskDue(db:PoolClient,event:{customer_id?:string
  const row=r.rows[0];if(!row||row.status!=='open'||row.task_version!==p.taskVersion||new Date(row.due_at).toISOString()!==p.dueAt||row.responsible_user_id!==p.responsibleUserId||row.responsible_user_id!==a.userId)return false;
  const current=await access(db,a.userId);return !!current&&canManage(current,row);
 }
-const COLUMNS=`t.opportunity_id AS "opportunityId",(SELECT op.title FROM crm_opportunities op WHERE op.opportunity_id=t.opportunity_id AND op.customer_id=t.customer_id) AS "opportunityTitle",t.task_id AS "taskId",t.customer_id AS "customerId",t.title,t.due_at AS "dueAt",t.status,t.version,t.created_by AS "createdBy",t.created_at AS "createdAt",t.updated_at AS "updatedAt",t.completed_at AS "completedAt",t.completed_by AS "completedBy",t.feedback,COALESCE(c.owner_user_id,c.created_by) AS "responsibleUserId",u.display_name AS "responsibleName"`;
+const COLUMNS=`t.opportunity_id AS "opportunityId",(SELECT op.title FROM crm_opportunities op WHERE op.opportunity_id=t.opportunity_id AND op.customer_id=t.customer_id) AS "opportunityTitle",t.task_id AS "taskId",t.customer_id AS "customerId",t.title,t.due_at AS "dueAt",t.status,t.version,t.created_by AS "createdBy",t.created_at AS "createdAt",t.updated_at AS "updatedAt",t.completed_at AS "completedAt",t.completed_by AS "completedBy",t.feedback,to_jsonb(t)->>'source_kind' AS "sourceKind",to_jsonb(t)->>'source_suggestion_id' AS "sourceSuggestionId",to_jsonb(t)->>'source_analysis_id' AS "sourceAnalysisId",(to_jsonb(t)->>'source_contact_id')::int AS "sourceContactId",to_jsonb(t)->>'source_thread_key' AS "sourceThreadKey",to_jsonb(t)->>'source_action_code' AS "sourceActionCode",COALESCE(c.owner_user_id,c.created_by) AS "responsibleUserId",u.display_name AS "responsibleName"`;
 function taskRow(r:Record<string,unknown>,manage:boolean):FollowupTask {
  return {...r,dueAt:(r.dueAt as Date).toISOString(),createdAt:(r.createdAt as Date).toISOString(),updatedAt:(r.updatedAt as Date).toISOString(),completedAt:r.completedAt instanceof Date?r.completedAt.toISOString():null,canManage:manage} as FollowupTask;
 }
@@ -63,6 +94,12 @@ export class PostgresTaskRepository implements TaskRepository {
   const c=await this.customer(db,input.customerId);if(!c||!canSee(a,c))return failure('NOT_FOUND','客户不存在');if(!canManage(a,c))return failure('FORBIDDEN','只能处理自身任务');
   return this.cached(db,a,`task:create:${input.customerId}`,input,async()=>{
    if(c.version!==input.expectedCustomerVersion)return failure('CONFLICT','客户版本已变化');
+   if(input.mailSuggestionId){
+    const suggestion=(await db.query(`SELECT s.suggestion_id,s.actor_id,s.contact_id,s.customer_id,s.thread_key,s.action_code,s.next_action,s.priority,s.source_analysis_id,a.classification,a.relevance,a.source,a.confidence,a.requires_action,a.signals FROM crm_contact_mail_task_suggestions s JOIN crm_contact_mail_analyses a ON a.analysis_id=s.source_analysis_id WHERE s.suggestion_id=$1 AND s.status='suggested' FOR UPDATE OF s`,[input.mailSuggestionId])).rows[0];
+    if(!suggestion||String(suggestion.actor_id)!==a.userId||String(suggestion.customer_id)!==input.customerId)return failure('NOT_FOUND','邮件行动建议不存在');
+    const created=await createMailAnalysisTaskIn(db,{actorId:a.userId,suggestionId:String(suggestion.suggestion_id),analysisId:String(suggestion.source_analysis_id),customerId:String(suggestion.customer_id),contactId:Number(suggestion.contact_id),threadKey:String(suggestion.thread_key),actionCode:String(suggestion.action_code),title:String(suggestion.next_action),priority:suggestion.priority,relevance:suggestion.relevance,classification:suggestion.classification,source:suggestion.source,confidence:Number(suggestion.confidence),requiresAction:!!suggestion.requires_action,nextAction:String(suggestion.next_action),signals:(suggestion.signals??[]) as MailTaskAdmissionInput['signals'],confirmed:true});
+    return created.ok?this.one(db,created.data!,a):created;
+   }
    if(input.opportunityId){const opportunity=await db.query('SELECT opportunity_id FROM crm_opportunities WHERE opportunity_id=$1 AND customer_id=$2',[input.opportunityId,input.customerId]);if(!opportunity.rows.length)return failure('INVALID_INPUT','商机不属于当前客户');}
    const responsible=c.owner_user_id??c.created_by,member=await access(db,responsible);if(!member||!canManage(member,c))return failure('CONFLICT','任务负责人已停用或无开发权限');
    const r=await db.query(`INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,opportunity_id) VALUES($1,$2,$3,$4,$5) RETURNING task_id`,[input.customerId,input.title.trim(),input.dueAt,a.userId,input.opportunityId??null]);return this.one(db,r.rows[0].task_id,a);

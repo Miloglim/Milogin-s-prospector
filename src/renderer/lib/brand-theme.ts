@@ -15,7 +15,12 @@ export function brandTheme(dark = false): ThemeConfig {
       controlItemBgActive: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)",
       controlItemBgActiveHover: dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)",
       borderRadius: 8,
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontFamily: '"Noto Sans SC", "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif',
+      fontSize: 14,
+      fontSizeSM: 12,
+      fontSizeLG: 16,
+      lineHeight: 1.5,
+      fontWeightStrong: 600,
     },
     components: { Table: { rowHoverBg: dark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.015)" } },
   };

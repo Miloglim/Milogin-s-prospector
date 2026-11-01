@@ -32,6 +32,7 @@
 - 按环节推进；最新用户修订覆盖冲突旧方案，先对齐受影响契约和后续节点，不新增已取消功能。每节点留checkpoint，交付说明变更、验收、接口一致性与未完成边界。
 
 - 登录页采用固定视口，在程序支持的最小窗口内完整展示字段、按钮及错误状态；不得沿用向导滚动容器，也不得只隐藏滚动条裁掉内容。交付前核查实际窗口尺寸、全内容边界与滚轮行为。
+- 用户体验以可感知等待为先，但不能用全局高频轮询换实时感：跨账号协作数据优先在对应页面可见时使用短轮询，进入页面、窗口重新聚焦和网络恢复时立即刷新；不得因此统一缩短通知、联系人、邮件等全局刷新周期。新增刷新策略须限定页面、避免重入，并验证空闲窗口不明显增加请求或 CPU。
 
 
 ## 身份显示规范（2026-10-12，用户已批准）
@@ -65,6 +66,11 @@
 
 - Electron 返回退出码 0 既可能是正常退出，也可能是 `app.relaunch()`。`dev-single.mjs` 必须短暂等待同一项目的替代 Electron：出现才保留 Vite；没有出现就关闭 Vite 和 esbuild。禁止为了支持账号切换而永久保留无窗口页面服务，否则每次启动都会叠加一套约 200 MB 的 Node 进程树。
 
+## 单活跃设备陷阱（2026-10-29）
+
+- `deviceId` 必须来自本机持久安装身份，不能在每次进程启动或退出时重新随机生成。Prospector 单设备约束只作用于 `desktop_product='crm'`；新设备首次登录只能返回 `DEVICE_REPLACEMENT_REQUIRED`，不能在确认前撤销旧会话。
+- 换机事务必须先验证密码、锁住中心用户，再撤销旧 refresh family 并创建新 session；旧 access/refresh 返回 `DEVICE_REPLACED`。批量发送前的设备复核不能替代离线边界：旧设备断网时仍无法即时获知替换结果。
+
 ## 正式安装包端点陷阱（2026-10-22）
 
 - 正式 Windows 包禁止直接运行普通 `npm run pack` 后发布，因为会把开发用 `assets/center.json` 和 `127.0.0.1` 带进安装包。必须使用 `scripts/package-formal-download.ps1`，显式传入不同的中心与 Navigator HTTPS Origin，并核对 `dist-release/win-unpacked/resources/assets/center.json` 后发布。
@@ -95,6 +101,12 @@
 - 身份、通知、客户列表、跟进任务和商机页的常驻刷新必须使用 `useVisiblePolling`：隐藏窗口暂停、恢复可见立即刷新，且上一轮未完成时不得重入。不能恢复为无可见性检查的裸 `setInterval`。
 - 收件箱虚拟滚动只减少 DOM 行数；筛选、发件人聚合和退信排序必须按邮件数据与筛选条件缓存，不能随 `scrollTop` 更新重复扫描整份邮件。已发送邮件的全量读取仍是待解决容量边界。
 
+## 主界面排版陷阱（2026-10-30）
+
+- 主界面优先使用 `Noto Sans SC` 可变字体，`Segoe UI`、`Microsoft YaHei UI` 仅作兜底；正文基准 14px，小字 12px，表格和紧凑控件 13px。不能在正文区域重新引入 9–11px 的基础文本。
+- Windows 中文字体不保证 550/620/650 等中间字重存在；界面字重只用 500/600/700，并保持 `font-synthesis:none`，避免 Chromium 合成加粗导致发虚。
+- 调整全局字号时必须同时核对 Ant Design token、表格规范、收件箱详情和联系人分组，不能只改 `body` 后留下局部小字回退。
+
 ## 联系人镜像增量写入陷阱（2026-10-26）
 
 - 联系人变化页必须批量写入本地镜像：同一页 upsert 使用一个 SQLite 事务和一次批量查询，禁止逐联系人再次读取整张镜像。大批量导入会放大逐条写入成本，5000 条时旧路径会出现近似平方级 JSON 解码和磁盘提交。
@@ -120,10 +132,13 @@
 
 - 生产中心不得继续假定 Windows `ProgramData` 或回环 PostgreSQL。容器只允许显式绑定 `127.0.0.1`/`0.0.0.0`，数据库主机和用户由受保护环境指定，数据库名必须保持 `milogin_center`。
 - Docker 构建不得执行 Electron 原生模块安装脚本；镜像只复制中心服务、管理前端和一次性管理员初始化脚本。超级管理员密码不得写入 Compose、镜像或日志。
+- 公司 QA4 的 Dockerfile 必须对齐 `ai-support-engine` 标准：使用内网 `harbor.sa.iyunquna.com/yqn-library` 基础镜像、声明 `APP_PORT/PACKAGE_PATH/ENV/IMAGE_TAG/GIT_COMMIT` 构建参数，并在 `/opt/web/ws-${APP_PORT}` 下构建运行。不能改用公网 Docker Hub 或第三方加速镜像充当公司标准；Jenkins 的 Docker Build 未通过时，也不能把后续“编排编译失败”当成 K8S YAML 根因。
+- QA4 的 Node 构建容器会限制线程创建；不能只靠 `NODE_OPTIONS=--v8-pool-size=0`。npm、TypeScript 和 Vite 必须通过 `node --single-threaded --v8-pool-size=0 ...` 直接启动，并设置 `UV_THREADPOOL_SIZE=1`、`npm ci --maxsockets=1`，否则 Node 会在 `WorkerThreadsTaskRunner` 的 `uv_thread_create` 断言处退出 134。
 
-## 公司共用 public 数据库陷阱（2026-10-28）
+## 公司三 schema 数据库陷阱（2026-10-29）
 
-- 公司只提供一个 `milogin_center` 数据库和一个应用账号，两个产品不得再创建 `navigator`、`prospector`、`identity` schema。中心表统一使用 `public.identity_*`；业务表共处 `public` 后，新增表必须带产品前缀并在全新隔离库验证重名、外键、索引和触发器。
+- 公司提供一个 `milogin_center` 数据库和一个应用账号，现按 `public` 共享身份与公共对象、`prospector` CRM、`navigator` 运价业务分区。Prospector 生产连接必须使用 `search_path=prospector,public`，Navigator 使用 `search_path=navigator,public`；共享数据库账号仍不是安全边界，产品授权只能在服务端校验。
+- `deployment-templates/company-postgres-schemas.sql` 负责首次创建两个业务 schema，`company-postgres-schema-split.sql` 只用于把旧 `public` 对象迁入新 schema，`company-postgres-schema-rollback.sql` 回退；有业务数据后不得直接重跑拆分脚本。
 - `deployment-templates/company-postgres-bootstrap.sql` 只用于全新空库。它必须同时包含结构、`crm_schema_migrations` checksum 和 `identity_products` 种子；如果只建表不写迁移版本，容器启动会再次执行迁移并失败。DMS 禁止建 schema、顶层 SELECT，并把函数/触发器/视图归为可编程对象，因此工单必须按 `company-postgres-tables.sql` → `company-postgres-programmable.sql` 顺序执行；不要直接上传完整 bootstrap，也不要用 `跳过` 绕过预检查。
 - DMS 会把 `ALTER TABLE ONLY ... ADD CONSTRAINT` 误判为 `UNKNOW`；工单文件使用等价的 `ALTER TABLE ... ADD CONSTRAINT`。`crm_device_cursors` 的名称也会触发解析歧义，工单文件必须使用带双引号的 `public."crm_device_cursors"`。这些只是 DMS 兼容写法，本地 PostgreSQL 仍按同一结构验证。
 - DMS 的“可编程对象”表单不能可靠解析 PostgreSQL 初始化脚本：`DO` 块报 SQL 拆分失败，`CREATE PROCEDURE`/`CREATE FUNCTION` 包装 482 条动态 DDL 时报 `TODO CREATE`，即使内部 DDL 已整体 Base64 编码仍被阻断。不要再通过拆分、编码或编译器绕过 DMS；单库初始化应由 DBA/数据库迁移平台直接运行完整脚本或调整平台执行规则。
@@ -164,6 +179,24 @@
 - 中心短暂不可用或开发客户端连接的本机中心停止时，侧栏仍要允许打开消息中心查看当前会话已有缓存；不能因为离线把整个入口禁用。只有已读写入、打开需要联网重新鉴权的对象等动作可以禁用或返回明确错误。开发启动器固定连接 `127.0.0.1:55847`，该入口不可用时先检查本机中心数据库与服务，不要误判成消息中心按钮故障。
 - 一键已读新增批量路由时必须兼容旧中心：批量接口返回 `NOT_FOUND` 时，客户端应复用原有单条已读路由并限制并发，不能把“旧服务尚未部署”直接显示成“接口不存在”。批量接口成功时仍保持一次请求。
 
+## 个人工作台与团队视图陷阱（2026-10-29）
+
+- 团队关系已使用 `crm_teams`、`crm_team_members` 和 `crm_team_invitations` 持久化；一个账号只能加入一个团队，负责人是团队关系角色，不修改全局 `crmRoles`。创建、邀请和处理邀请必须保留幂等键与版本校验。
+- 团队树只使用 `crm_teams.parent_team_id` 自引用形成上下游，不得用前端缩进或成员上下级猜树。普通账号只能创建根团队；超级管理员可创建任意下级团队，并对全部团队拥有隐式可见范围，但不得写入 `crm_team_members` 或出现在成员列表。
+- `/api/crm/team-context` 是团队页状态真源；工作台只有在返回真实团队成员关系时才渲染。`online:members` 仍只是线索分配账号目录，不得用它推导团队层级或负责人。
+- 本机 `55847` 历史正式库仍可能使用 `identity.*`，不能直接重启当前 `dist-server` 后把旧库当作已升级。必须先停止服务、执行 `scripts/upgrade-local-center-public.mjs --apply --confirm-upgrade`，确认账号/权限/会话迁移、外键重指向、团队表和迁移记录都成功后，再启动新中心。
+- 客户页是联系人、分配、公司、跟进、商机、邮件详情和客户写操作的唯一入口。团队工作台只能做行动概览，不得复制联系人表、搜索、分页、详情抽屉或账号分配目录；线索行动必须深链回客户页。
+- 团队页当前只能由中心角色映射：`sales` 为个人工作台，`operations`/`admin` 使用同一概览但能力不同。工作台用 `scope=personal` 与 `scope=assigned` 读取总数和少量摘要，不能把摘要变成第二套客户管理界面。
+- `online:task-list` 对运营角色返回授权范围内的运营任务，现有契约没有“仅本人任务”过滤；管理员个人工作台不得把该结果冒充本人待办。正式团队成员门禁与负责人视图要等中心提供团队关系后替换角色映射。
+- 退信和自动回复是正常业务状态，不得使用“异常”或“风险”标签，也不得默认归入异常筛选；只有待回复或明确业务动作使用提醒色。
+- 绩效页面上线初期只对管理员、超管开放；普通销售和销售负责人既不能看到团队页入口，也不能直接调用聚合绩效接口。客户详情中的客户分级读取是独立权限，不能因为收紧绩效页面而未经确认一并撤销。
+
+## 组织画布虚拟超级管理员陷阱（2026-10-30）
+
+- 中心 canonical 组织根是 `company`，超级管理员不写入 `crm_org_assignments`。画布可以增加仅存在于 renderer 的“超级管理员”虚拟根，但不得把包含运营/销售混合成员的 `YQN Admin` 等真实团队当作超管端点；真实团队必须保持为公司的下游。
+- 现有契约没有返回全部超级管理员名单的能力，虚拟根成员只能使用当前已认证且具备 `identityAdmin`/`admin` 的身份，不能猜测或把普通管理员、运营、销售混入超管成员列表。
+- 团队卡片展开成员必须复用 `online:team-detail`；成员近况与邮件必须复用现有 `online:team-monitoring-member` / `online:team-monitoring-mail`。卡片高度变化需要同时重排树节点与连线，不能只放大卡片而让下游节点重叠。
+
 ## 联系人本地镜像损坏陷阱（2026-10-22）
 
 - 联系人列表和搜索优先读取 `crm-offline.db`；镜像返回 `SQLITE_CORRUPT`/`SQLITE_NOTADB` 时，不能把“本地读取失败”显示成联系人不存在或空结果。启动时必须先做 `quick_check`，把损坏的 db/wal/shm 以 `.corrupt-*` 备份后重建；联网读取失败还要回退中心实时联系人列表和详情。
@@ -185,6 +218,7 @@
 - 分组筛选必须同时实现于中心 HTTP 和本地 SQLite 联系人镜像；镜像 `page()` 不能忽略 `groupDimension/groupKey`。批次键依次取 `sourceDetail/sourceLevel1/sourceLevel2`，公司键使用 `companyId`，国家与客户类型缺失时统一 `unset`，并为四类分组建立索引。旧二级页的 `height:auto/overflow-y:visible` 规则只能作用于 `.customer-legacy-page > .customer-contacts-page`，不能命中分栏内表格。
 - 一次分配必须共享稳定 `group_id`，历史请求无组映射时只能把 `request_id` 当单人组。组请求只发一条通知；组内明细保留逐条决定，组级决定只处理 pending 成员并保持事务原子性。
 - 组通知只能定位 `groupId`，不能任选组内某个 `requestId` 冒充整组。迁移 `crm_contact_assignment_group_members` 必须幂等，不能改写历史归属。
+- 联系人分组切换维度必须使用上一帧占位数据并禁止占位组参与新维度默认选择；标题、分类、列表和分页槽使用固定 flex 轨道。不能在新查询开始时清空列表或临时卸载分页器，否则界面会上下跳动。
 
 ## 收件箱联系人匹配陷阱（2026-10-22）
 
@@ -209,7 +243,37 @@
 - 邮箱账号通常已有历史存量，不能只靠 6 天窗口判断首次同步是否完整。本地入站邮件不足 200 封时必须检查服务器最新 200 个 UID 并补拉缺量；补拉与常规 UID 水位共用 500 封单轮上限，不能绕过水位或无限全库扫描。
 - 中心登录和发信账号是两条边界：登录邮箱不证明 SMTP/IMAP 服务商，中心登录密码不是邮箱密码或授权码。登录成功禁止自动写入 `email_accounts`，发信账号必须由用户在设置页明确配置。
 
+## 邮件首次同步状态陷阱（2026-10-30）
+
+- 0.69.0 起首次 IMAP 同步目标固定为最近 90 天入站邮件与最新 200 封的并集；单批 500 封，但同一后台任务必须继续推进到窗口完成，不能把 500 当总量，也不能首批结束后等五分钟周期。
+- `email_sync_state` 是本机可恢复同步窗口，不是中心业务事实；它必须随账号删除、支持首次完成和历史窗口推进，且只有首次完成后才开放更早历史补拉。
+- 进度弹窗必须显示整个窗口的累计 `processedCount/requiredCount` 和当前主题；原 `scanned/total` 只表示当前批次。关闭弹窗只转后台，不得取消任务；“另有 N 封待后续处理”这类暴露 500 上限的文案禁止恢复。
+
 ## 新手向导触发陷阱（2026-10-27）
 
 - 向导是否自动出现必须按当前中心账号判断，不能使用整台机器共用的邮箱或只看 `email_accounts` 是否为空。当前账号已有联系人/邮件活动、已有发信账号，或已记录 `onboarding=skipped/done` 时不得自动打扰；配置或资料状态无法确认时也不猜测弹出。
 - 文件导入生成的联系人批次标题以 `source_detail` 为首选，即原文件名；仅缺失时才回退一级、二级来源。分组的“导入时间”使用联系人 `created_at` 的最新值，不能拿业务修改时间 `updated_at` 冒充。
+
+## 开发端 Mock 层级脚本陷阱（2026-10-29）
+
+- `better-sqlite3` 按 Electron ABI 构建，系统 Node 直接运行 Mock 脚本会报 `NODE_MODULE_VERSION` 不匹配。`scripts/mock-dev-hierarchy.mjs` 必须自动使用项目 Electron 的 `ELECTRON_RUN_AS_NODE=1` 重新执行，不能为测试脚本重编译并破坏桌面运行时模块。
+- Mock 脚本只允许连接带 `milogin-center-postgres-v1` 标记、端口 `55846`、数据库 `milogin_center` 的本机开发库；固定账号前缀 `mock.hierarchy.`、业务来源 `mock-dev-hierarchy-20261029` 是清理边界，禁止在正式中心执行。
+- 用户所说的“本地线索”在当前中心架构中实现为 `origin=personal` 的自有线索，中心保存并镜像本地，不另建一套脱离中心的重复 CRM 表。Mock 本地收件箱写入各中心账号隔离目录，清理时必须同时删除对应账号资料目录。
+
+## CRM 核心组织与分配陷阱（2026-10-30）
+
+- 055 后运行时组织真源是 `crm_org_units` / `crm_org_assignments` / `crm_org_invitations`；旧的 `crm_team*` 只做一次性迁移兼容，冻结后不得恢复为组织读写真源。普通成员最多归属一个叶子销售团队，负责人可负责多个团队，每单元最多一个 primary leader。
+- 052 旧树可能在 055 前包含运营/销售混合或嵌套运营组；迁移必须先走 `054a-legacy-organization-repair`，把有子节点的历史团队归为运营组、把嵌套运营组提升到公司根，再由 055 做 canonical 导入。禁止用无序插入或静默压平掩盖旧树冲突。
+- 旧本机中心可能残留 `crm_contact_changes`、`crm_event_deliveries`、`crm_notification_consumed`、`crm_task_due_receipts` 对 `identity.outbox` 的外键；063 必须把这些外键改指 `public.identity_outbox`。否则写 outbox 时表面查询正常，内部变化投影会因外键失败而断链。
+- 分配/转交期间 ownership 与 `pending_transfer` 是两件事：转交未接受时旧负责人保留所有权但不能继续写、发信、跟进、共享或删除；新接收人接受后才切换 ownership。拒绝/撤回/超时必须恢复原 accepted 负责人。主管只走独立监督 DTO 和审计，不得借用普通联系人读权限。
+- 线索写入必须在同一事务先过 `LeadIngress`：邮箱精确重复、域名/公司强关联、模糊候选和软删除恢复各有固定裁决；不能让平表、工作簿、手工、Agent/API、邮箱修改各自再实现一套。
+- 邮件 AI/规则写入 059 追加历史，人工锁定永久优先；060 关注项是主管行动提示，不是客户字段或正式任务本身。061 监控与 062 绩效只能查询派生与审计，不得保存销售评分结论或改变负责人/阶段。
+- `scripts/mock-dev-hierarchy.mjs` 必须按 `PROSPECTOR_MOCK_CRM_SCHEMA` 选择 `public`/`prospector`，并检查 051-064 与 canonical 表；累计 mock 的清理和重建只能触碰固定 `mock.hierarchy.` / `mock-dev-hierarchy-20261029` 数据。
+- 团队解散使用软生命周期：`crm_org_units.dissolved_at/dissolved_by` 隐藏组织，`crm_org_assignments.ended_at` 结束关系，解散审计只追加。公司根不能解散，有活动下级的运营组必须先处理下级；联系人、ownership、分配和来源组织快照不得随团队解散删除或改写。
+
+## 自动开发客户中心身份陷阱（2026-10-31）
+
+- 中心账号下，首页「自动开发信」必须从中心发送端口的授权联系人镜像与发送台账推荐，不能查询旧本地 `contacts`；名单交接必须同时保存 `centerReference`，中心同步未完成时明确失败，不能静默回退旧库。
+- 开发任务最后一轮已经发出后，客户回复或退信仍必须把 `sent` 收口为 `replied/bounced`；自动回复只顺延未发触点，不算任务回复。
+- 全部发信账号熔断或停用时，中心任务剩余触点必须携带原 `centerReference`、作用域和 `campaignId` 回退待发；不能走无任务编号的旧本地回调，也不能等待 24 小时对账。
+- 自动开发只在桌面进程运行期间执行；应用完全退出没有后台 Worker，中心断线会暂停未来自动发送，重连后需用户明确恢复任务。

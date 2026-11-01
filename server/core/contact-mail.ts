@@ -1,5 +1,6 @@
 import type { CenterContact } from './center-contacts';
 import type { Result } from './crm';
+import type { ContactMailAnalysisRecord } from './mail-analysis';
 
 export const CONTACT_MAIL_ROUTE = '/api/crm/contact-mail-events';
 export const CONTACT_MAIL_LIMITS = { key: 256, mailboxKey: 128, subject: 998, preview: 2000, email: 254, recipients: 100, history: 200, bodyBytes: 65536 } as const;
@@ -20,10 +21,11 @@ export interface ContactMailEventInput {
 /** Metadata only. Body, attachments, provider credentials and ownership assertions are never accepted. */
 export interface ContactMailEvent extends ContactMailEventInput {
   correctionRevision?: number;
-  eventId: string; actorId: string; recordedAt: string; activityId: string | null;
+  eventId: string; actorId: string; recordedAt: string; activityId: string | null; contentHash: string;
 }
 export interface ContactMailEventReceipt {
   eventId: string; duplicate: boolean; contact: CenterContact; event: ContactMailEvent;
+  analysis: ContactMailAnalysisRecord;
 }
 export interface ContactMailRepository {
   recordContactMailEvent(hash: string, input: ContactMailEventInput): Promise<Result<ContactMailEventReceipt>>;

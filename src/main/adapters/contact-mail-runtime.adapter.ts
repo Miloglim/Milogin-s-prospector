@@ -35,6 +35,8 @@ import { setAgentContactPort } from '../services/agent-contact.service';
 import { LEAD_ROUTES } from '../../../server/core/leads';
 import { TASK_ROUTES } from '../../../server/core/tasks';
 import type { ContactIncrementalPage } from '../core/contact-incremental-sync';
+import { createMailAnalysisQueueService, type MailAnalysisAnalyzerPort } from '../services/mail-analysis-queue.service';
+import type { ContactMailEventReceipt } from '../../../server/core/contact-mail';
 
 const REFRESH_INTERVAL_MS=60000;
 const MAIL_FLUSH_DELAY_MS=500;
@@ -42,12 +44,14 @@ const RECONCILE_PAGE_SIZE=500;
 const MILLISECONDS_PER_SECOND=1000;
 const MATCH_CONTACTS_CACHE_TTL_MS=2000;
 /** Loaded only after the user's local DB/profile is selected; never captures an anonymous DB. */
-export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,changed:()=>void) {
+export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,changed:()=>void,mailAnalysisAnalyzer?:MailAnalysisAnalyzerPort) {
   const mirror=createContactMirrorStore(parent);
   const legacyContactMap=createLegacyContactMapStore(getRawDb());
   const legacyContactSync=createLegacyContactSyncStore(getRawDb());
   const legacyMailSync=createLegacyMailSyncStore(getRawDb());
   let legacySyncBusy=false;
+  const mailAnalysisQueue=createMailAnalysisQueueService({analyzer:mailAnalysisAnalyzer});
+  const enqueueMailAnalysis=(receipt:ContactMailEventReceipt)=>mailAnalysisQueue.enqueue({event:receipt.event,analysis:receipt.analysis,contactState:receipt.analysis.contactState},analysis=>adapter.submitContactMailAnalysis(analysis));
   const flushLegacyContacts=async():Promise<void>=>{
     if (legacySyncBusy || !adapter.isOnline() || !adapter.legacyPersonalImportAllowed()) return;
     legacySyncBusy=true;
@@ -73,7 +77,7 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
     legacyMailSync.enqueueMapped();
     for (const item of legacyMailSync.pending()) {
       const result=await adapter.requestLive('POST',CONTACT_MAIL_ROUTE,item.payload);
-      if (result.ok) legacyMailSync.mark(item.eventKey,'synced');
+      if (result.ok){legacyMailSync.mark(item.eventKey,'synced');enqueueMailAnalysis(result.data as ContactMailEventReceipt);}
       else if (result.error.code==='UNAVAILABLE') legacyMailSync.defer(item.eventKey,result.error.message);
       else legacyMailSync.mark(item.eventKey,'failed',result.error.message);
     }
@@ -120,11 +124,13 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
       if(!result.ok&&['FORBIDDEN','UNAUTHORIZED'].includes(result.error.code)&&captured?.active()){for(const row of mirror.store.contacts(captured))invalidateContact(captured,row);mirror.store.invalidateContacts(captured);}
       return result;
     },
-    post:input=>{
+    post:async input=>{
       const {sendAuthorizationId,smtpAcceptance,...event}=input;
-      return sendAuthorizationId
+      const result=await (sendAuthorizationId
         ?adapter.request('POST',SEND_ACCEPTANCE_ROUTES.accept,{authorizationId:sendAuthorizationId,event:smtpAcceptance??event,...(smtpAcceptance?{observedEvent:event}:{})},true)
-        :adapter.request('POST',CONTACT_MAIL_ROUTE,event,true);
+        :adapter.request('POST',CONTACT_MAIL_ROUTE,event,true)) as import('../../../server/core/crm').Result<ContactMailEventReceipt>;
+      if(result.ok&&result.data.analysis)enqueueMailAnalysis(result.data);
+      return result;
     },
     replace:(ctx,rows)=>{
       clearMatchContactsCache();
@@ -319,5 +325,5 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
   const timer=setInterval(()=>{void centerSender.replay();void replayInboxCenterClassificationChanges();if(adapter.isOnline())void sync.sync().then(report);},REFRESH_INTERVAL_MS);
   const commandTimer=setInterval(()=>{if(adapter.isOnline())void commands.sync().then(report);},OFFLINE_CRM_LIMITS.sync_interval_seconds*MILLISECONDS_PER_SECOND);
   void sync.sync().then(report);
-  return {refresh:()=>sync.sync(),close(){stopped=true;centerSender.close();clearInterval(timer);clearInterval(commandTimer);if(flushTimer)clearTimeout(flushTimer);observe();adapter.setContactReader(undefined);adapter.setDetailReader(undefined);adapter.setContactWriter(undefined);adapter.setContactSync(undefined);setAgentContactPort(null);setInboxCenterContactPort(null);mirror.close();}};
+  return {refresh:()=>sync.sync(),mailAnalysisQueueStatus:()=>mailAnalysisQueue.status(),close(){stopped=true;mailAnalysisQueue.stop();centerSender.close();clearInterval(timer);clearInterval(commandTimer);if(flushTimer)clearTimeout(flushTimer);observe();adapter.setContactReader(undefined);adapter.setDetailReader(undefined);adapter.setContactWriter(undefined);adapter.setContactSync(undefined);setAgentContactPort(null);setInboxCenterContactPort(null);mirror.close();}};
 }

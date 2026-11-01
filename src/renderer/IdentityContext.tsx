@@ -20,7 +20,7 @@ export interface IdentityContextValue {
   removeAccount: (accountId: string) => Promise<boolean>;
   localAvailable: boolean;
   busy: boolean;
-  login: (input: OnlineLogin) => Promise<boolean>;
+  login: (input: OnlineLogin) => Promise<Result<void>>;
   register: (input: OnlineRegistration) => Promise<boolean>;
   logout: (input?: OnlineLogout) => Promise<void>;
   refresh: () => Promise<void>;
@@ -120,20 +120,20 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if (!result.ok) { setError(result.error.message); return false; }
     return true;
   }, []);
-  const login = useCallback(async (input: OnlineLogin) => {
-    if (actionPending.current) return false;
+  const login = useCallback(async (input: OnlineLogin): Promise<Result<void>> => {
+    if (actionPending.current) return { ok: false, error: { code: 'CONFLICT', message: '正在处理登录请求' } };
     actionPending.current = true;
     const version = ++epoch.current;
     apply(null); setLocalAvailable(false); setBusy(true); setError('');
     const result = await invoke<Identity>(ONLINE_CHANNELS.LOGIN, input);
     actionPending.current = false;
-    if (version !== epoch.current) return false;
-    if (!result.ok) { setBusy(false); setError(result.error.message); return false; }
+    if (version !== epoch.current) return { ok: false, error: { code: 'UNAUTHORIZED', message: '登录已取消' } };
+    if (!result.ok) { setBusy(false); setError(result.error.message); return result; }
     setBaseUrl(input.baseUrl); setRemembered(Boolean(input.remember)); apply(result.data);
     setBusy(false);
     void refreshAccounts();
     void refresh();
-    return true;
+    return { ok: true, data: undefined };
   }, [apply, refresh, refreshAccounts]);
   const loginAccount = useCallback(async (input: SavedAccountLogin) => {
     if(actionPending.current)return false;
@@ -206,5 +206,5 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     void refreshAccounts();
     return true;
   }, [apply,refreshAccounts]);
-  return <IdentityContext.Provider value={{ identity, status, ready: status !== 'restoring', error, baseUrl, remembered, accounts, selectedAccountId, loginAccount, removeAccount, localAvailable, busy, register, login, logout, refresh, reconnect, changePassword }}>{children}</IdentityContext.Provider>;
+  return <IdentityContext.Provider value={{ identity, status, ready: status !== 'restoring', error, baseUrl, remembered, accounts, selectedAccountId, loginAccount, removeAccount, localAvailable, busy, register, login: login as IdentityContextValue['login'], logout, refresh, reconnect, changePassword }}>{children}</IdentityContext.Provider>;
 }

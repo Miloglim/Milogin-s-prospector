@@ -56,7 +56,7 @@ export type OnlineConfig = { [K in keyof typeof ONLINE_DEFAULTS]: typeof ONLINE_
 export const HTTP_STATUS = {
   OK: 200, INVALID_INPUT: 400, UNAUTHORIZED: 401, FORBIDDEN: 403, NOT_FOUND: 404,
   CONFLICT: 409, PAYLOAD_TOO_LARGE: 413, RATE_LIMITED: 429, DATABASE_ERROR: 503, UNAVAILABLE: 503,
-  PASSWORD_CHANGE_REQUIRED: 403,
+  PASSWORD_CHANGE_REQUIRED: 403, DEVICE_REPLACEMENT_REQUIRED: 409, DEVICE_REPLACED: 401,
 } as const;
 export interface Identity {
   userId: string; displayName: string; email: string; emailVerified: boolean;

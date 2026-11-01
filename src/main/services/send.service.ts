@@ -1500,7 +1500,11 @@ async function runBatchLoop(): Promise<void> {
         if (it.status !== "pending") continue;
         it.status = "failed"; it.errorKind = "blocked";
         it.error = "无可用发信账号（全部熔断/停用），本组未发送";
-        for (const rc of it.recipients) touched.add(rc.contactId);
+        for (const rc of it.recipients) {
+          if (isCenterItem(it)) {
+            if (it.campaignId) notifyCampaign('failed', rc.contactId, rc.centerReference, it.campaignId);
+          } else touched.add(rc.contactId);
+        }
         try { getDb().update(sendQueue).set({ status: "failed", error: it.error, errorKind: "blocked" }).where(eq(sendQueue.id, it.id)).run(); } catch { /* */ }
       }
     }
@@ -1558,6 +1562,15 @@ async function runBatchLoop(): Promise<void> {
         const center = isCenterItem(item);
         const sendingDb = getDb();
         const port = getCenterSendPort();
+        if (item.campaignId && sendNetworkAllowed() && port?.assertActiveDevice) {
+          const device = await port.assertActiveDevice();
+          if (!device.success || port !== getCenterSendPort() || loopGen !== myGen) {
+            item.status = 'failed'; item.errorKind = 'blocked'; item.error = device.success ? '账号或设备已变化，批量发送已暂停' : device.error;
+            sendingDb.update(sendQueue).set({ status: 'failed', errorKind: 'blocked', error: item.error }).where(eq(sendQueue.id, item.id)).run();
+            if (loopGen === myGen) { saveDatabase(); pauseSend(); }
+            continue;
+          }
+        }
         if (center) {
           let authority: Result<void>;
           try { authority = port ? await port.authorize(item) : failResult('中心联系人发送尚未就绪'); }

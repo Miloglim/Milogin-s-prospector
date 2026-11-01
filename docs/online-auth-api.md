@@ -1,5 +1,11 @@
 # 本机中心账号与 API
 
+## 2026-10-29 Prospector 单活跃设备
+
+`POST /api/auth/desktop/login` 的请求在原有 `email/password` 外可增加 `desktop:{product,deviceId,deviceName,platform,appVersion,replaceActiveDevice?}`。`product` 当前只接受 `crm`；只有密码验证通过后才判断设备冲突。已有其他活跃设备且未确认时返回 `409 DEVICE_REPLACEMENT_REQUIRED`，不创建 session 或 refresh token；确认后在同一事务撤销旧 session family，再建立新会话。旧 access token 或 refresh token 返回 `401 DEVICE_REPLACED`。
+
+设备约束只覆盖 Prospector CRM 桌面会话，不修改 `/api/auth/*` 浏览器会话、管理中心会话或 Navigator API 会话。迁移 `008-desktop-active-device-public` 增加会话设备元数据与 `(user_id,desktop_product)` 活跃部分唯一索引；完整边界见 [单活跃设备交付](desktop-single-device-delivery-20261029.md)。
+
 ## 2026-10-22 管理账号创建与密码重置
 
 ### 2026-10-23 管理账号删除

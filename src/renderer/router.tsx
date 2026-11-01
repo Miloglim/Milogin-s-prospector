@@ -9,6 +9,7 @@ import { SendCenter } from "./pages/campaigns/SendCenter";
 import { TemplateList } from "./pages/templates/TemplateList";
 import { SettingsPage } from "./pages/settings/SettingsPage";
 import { AccountProfilePage } from './pages/settings/AccountProfilePage';
+import { TeamWorkspace } from './pages/team/TeamWorkspace';
 
 import { MessagesPage } from './pages/messages/MessagesPage';
 
@@ -33,6 +34,12 @@ const customersRoute = createRoute({
   path: "/customers",
   component: LegacyCustomersPage,
   validateSearch: (search: Record<string, unknown>) => ({ customerId: typeof search.customerId === 'string' ? search.customerId : undefined, taskId: typeof search.taskId === 'string' ? search.taskId : undefined, opportunityId: typeof search.opportunityId === 'string' ? search.opportunityId : undefined }),
+});
+
+const teamRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/team",
+  component: TeamWorkspace,
 });
 
 const onlineCustomersRoute = createRoute({
@@ -79,6 +86,7 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   assistantRoute,
   customersRoute,
+  teamRoute,
   onlineCustomersRoute,
   inboxRoute,
   ratesRoute,

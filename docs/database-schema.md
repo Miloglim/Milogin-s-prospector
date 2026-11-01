@@ -1,23 +1,64 @@
 # Prospector Database Schema
 
+## 2026-10-30 团队解散与软删除（064-organization-dissolution）
+
+`064` 为中心组织树增加软解散生命周期：`crm_org_units` 增加 `dissolved_at/dissolved_by`，`crm_org_assignments` 增加 `ended_at`，新增追加式 `crm_org_dissolution_audits`。解散事务只结束当前组织关系、取消 pending 邀请、删除展示分组并递增单元版本；组织行、联系人、联系人归属、当前分配、导入批次和来源组织快照全部保留。
+
+运行时的团队上下文、详情、管理列表、候选、分配主管、监督、监控和绩效查询只使用 `dissolved_at IS NULL` 的组织和 `ended_at IS NULL` 的关系。公司根不能解散；有活动下级的运营组必须先移动或解散下级；只有 primary leader、运营管理员和超级管理员可以执行。`TeamSnapshot.canDissolve` 由服务端结合身份和活动下级计算，不在前端猜权限。
+
+迁移 checksum 为 `ebfe752781fb2df4be1bd8169804883cf69e968150d2e9742697665a24ad522d`。完整 bootstrap 和 DMS 表/可编程对象均包含该版本；隔离空库实测为 `115` 表、`2` 视图、`1119` 字段、`1306` 约束、`321` 索引、`46` 条迁移，组织解散审计触发器存在。
+
+## 2026-10-30 本地邮件首次同步状态（0.69.0 工作区）
+
+本机 SQLite 新增 `email_sync_state`，主键为 `(account_id, folder)`，随邮箱账号删除级联删除。记录 `phase`、时间窗口、UID 游标、目标/扫描/新增/匹配/剩余数量、首次完成时间、最近增量时间、错误和更新时间。它只是当前设备上 IMAP 首次/历史同步的可恢复进度，不是中心共享事实，也不保存邮件正文或凭据。
+
+首次窗口为最近 90 天入站邮件与服务器最新 200 封的并集；每批最多 500 封，后台会连续推进直到窗口完成。窗口完成后才允许 `inbox:syncHistory` 向更早月份继续补拉。迁移名称为 `v0.69-email-sync-state`，与 `schema-sql.ts` 同步。
+
+## 2026-10-30 CRM 核心迁移 057-062（工作区基线，未部署）
+
+以下迁移均由 `server/adapters/postgres/*-schema.ts` 的 SQL 文本计算 SHA-256。`company-postgres-bootstrap.sql` 与 `company-postgres-tables.sql` 已写入相同版本和 checksum；应用启动发现记录一致时跳过重复建表，不一致时拒绝继续。当前工作区基线不代表本机 `55847` 或正式中心已经应用。
+
+| 迁移 | checksum | 主要对象 | 事实与边界 |
+|---|---|---|---|
+| `057-contact-assignment-state` | `a3d4bb7bebfcb3e8ddcf3bbd1ff8d99a38bbdabc3ce8f98327d390e6cd30f8fb` | `crm_contact_ownership`、`crm_contact_monitor_audits`，分配请求增加 7 天到期、转交字段和来源组织快照 | 当前归属取 `crm_contact_ownership` 的唯一开放行；接受、拒绝、撤回、过期、转交待确认都有历史。主管监督读取单独审计，不授予普通联系人读写。 |
+| `058-lead-ingress-conflict` | `e4cd1b6e1c376c8e2e75451980f0b63621dd7378831189bf5bf4bacf5ddae773` | `crm_lead_match_decisions` | 记录统一入口的邮箱、域名、公司名、国家、候选、裁决、幂等和受限结果；用于审批与重放，不替代联系人主档。 |
+| `059-contact-mail-analysis` | `15f634196a13af8dbc9d132b813393d766bd2b471fd726b4ce780a781aac616b` | `crm_contact_mail_analyses`、`crm_contact_mail_task_suggestions` | 追加式规则/AI/人工分析、当前版本指针、结构化信号和任务建议。主键组合保证同一邮件分析幂等；人工锁定优先，不存正文或附件。 |
+| `060-team-attention-task-gating` | `4cc0018361fe8ab3faf6d9f9d1aa638dfca9bcbc1b1f4ecea78c77b00f5f716d` | 跟进任务来源字段与去重索引、`crm_team_attention_items/audits/idempotency/notifications` | 只有明确询价、报价、投诉、订单动作或退信修正进入待办门槛；关注项独立于客户待办，状态为 `open/acknowledged/resolved/dismissed`。 |
+| `061-team-monitoring` | `32f0c44454c2d03069355411944de177169557290d2597c30332dd8e114e4095` | `crm_team_monitoring_audits`、邮件/分析/任务聚合索引 | 联系人和邮件下钻先写审计；审计表由触发器禁止更新和删除。接口只返回结构化摘要，不读取邮件正文或附件。 |
+| `062-sales-performance-customer-grade` | `abd5a75764ef941846171b0c7c91732de94225024a79741dab9315d9effac38a` | `crm_customer_grade_overrides/audits/idempotency`、查询索引 | 销售指标和 A/B/C 等级实时派生；只持久化人工覆盖、原因、版本和审计，不保存评分或等级快照。 |
+
+所有新 Prospector 对象使用 `prospector` schema，身份引用使用 `public.identity_users`，消息复用 `public.identity_outbox`。`company-postgres-schema-split.sql` 与 rollback 已包含 057-062 的新增表；`company-postgres-programmable.sql` 包含 061/062 的追加式审计触发器。完整 bootstrap 的 DMS 表文件是全新库的一次性结构工单；传输重试的幂等由各表唯一键、操作回执和迁移 checksum 完成，不承诺把已部分执行的 DMS 工单本身重复执行。DMS 文件保留 44 条迁移记录并故意不记录 `056`，让应用启动补建组织触发器；057-062 六条记录均已写入。
+
+隔离验证（2026-10-30）：完整 bootstrap 在临时空库执行成功，得到 `114` 张表、`2` 个视图、`1107` 字段、`1286` 个约束、`316` 个索引、`45` 条迁移和 061/062 两个追加式触发器。DMS 表文件加可编程对象在另一临时空库执行成功，结果为 `57` 张 Prospector 表、`549` 字段、`821` 约束、`178` 索引。两套临时库均已删除，未连接或修改现有中心。
+
+## 2026-10-29 Prospector 单活跃设备（008-desktop-active-device-public）
+
+`public.identity_sessions` 新增 `desktop_product`、`desktop_device_id`、`desktop_device_name`、`desktop_platform`、`desktop_app_version` 和 `revocation_reason`。部分唯一索引 `idx_identity_sessions_active_desktop_product(user_id,desktop_product)` 只覆盖 `desktop_product IS NOT NULL AND revoked_at IS NULL`，保证同一 CRM 桌面用户最多一个活跃设备，同时不影响 Navigator、浏览器和旧版无设备信息的 API 会话。
+
+登录事务锁住中心用户后再检查/撤销旧会话，旧 refresh token 随原 session 一起失效。部署模板 `company-postgres-tables.sql` 与 `company-postgres-bootstrap.sql` 已同步；当前一次性空库执行基线为 101 张表、936 个字段、1,039 个约束、258 个索引、39 条迁移和 2 个视图。该类会话元数据属于运行状态，含设备显示名但不保存账号密码、邮箱授权码或 Token 原文。
+
 ## 2026-10-29 公司三 schema 正式落位
 
 `milogin_center` 已从全部对象集中在 `public` 改为三 schema：`public` 保留 17 张共享身份/公共表，`prospector` 保存 32 张 CRM 业务表，`navigator` 保存 40 张运价及运行表。迁移工单 `28630577` 仅执行 `ALTER TABLE/SEQUENCE SET SCHEMA`，89 张表、379 个约束、219 个索引和业务数据均保持不变。
 
 Prospector 生产连接使用 `search_path=prospector,public`，Navigator 使用 `FREIGHT_POSTGRES_SCHEMA=navigator` 生成 `search_path=navigator,public`。后续新建 Prospector 表必须落在 `prospector`，Navigator 表落在 `navigator`，共享账号和产品种子继续留在 `public`。
 
-## 2026-10-29 团队关系（051-team-foundation-public）
+## 2026-10-29 组织关系（051/052 / 053 / 055 canonical / 056 integrity）
 
-中心 `public` 新增 4 张团队表。隔离库完整执行公司 bootstrap 后为 93 表、878 字段、948 约束、229 索引、33 条迁移记录和 2 个视图：
+`051-team-foundation-public` 与 `052-team-tree-public` 只保留为旧团队表兼容层。`055-organization-canonical` 建立运行时唯一组织模型：
 
 | 表 | 作用 | 关键约束 |
 |---|---|---|
-| `prospector.crm_teams` | 团队主表 | `team_id` 主键；团队名大小写去重；负责人/创建人引用中心账号 |
-| `prospector.crm_team_members` | 团队成员关系 | `(team_id,user_id)` 主键；`user_id` 唯一；角色 leader/member |
-| `prospector.crm_team_invitations` | 团队邀请和决定 | 状态 pending/accepted/declined/cancelled；同团队同账号只能一条 pending |
-| `prospector.crm_team_idempotency` | 创建/邀请操作的幂等回执 | `(actor_id,operation,idempotency_key)` 主键；保存请求 digest 与 Result 数据 |
+| `prospector.crm_org_units` | 公司根、运营组、销售团队的 canonical 组织树 | `kind=company/operations_group/sales_team`；公司根唯一；销售团队为叶子；同一父级名称大小写不敏感唯一 |
+| `prospector.crm_org_assignments` | 负责人/普通成员关系 | 普通成员在全部销售团队中最多一条；每个组织单元最多一个 primary leader；leader 可管理多个销售团队 |
+| `prospector.crm_org_invitations` | 邀请和生命周期历史 | pending/accepted/declined/cancelled/expired；同一单元同一账号只有一条 pending；取消更新状态而不删除历史 |
+| `prospector.crm_org_idempotency` | 创建、移动、换负责人、成员和分组操作的幂等回执 | `(actor_id,operation,idempotency_key)` 主键；相同请求重放首次结果，不同请求冲突 |
+| `prospector.crm_org_member_groups` | 团队内展示分组 | 有条目版本；只用于展示，不改变归属或权限 |
+| `prospector.crm_org_member_group_members` | 展示分组成员 | 只允许当前团队负责人或普通成员，跨团队引用被外键拒绝 |
 
-负责人是团队成员关系上的角色，不改全局 `crmRoles`。当前版本不支持一个账号加入多个团队、子团队、移除成员或负责人转让。部署 SQL 已同步 `company-postgres-tables.sql` 和 `company-postgres-bootstrap.sql`。
+`053-org-supervision-public` 为联系人分配增加直属主管快照和来源组织字段；`055` 将旧团队数据一次性迁入 canonical 表并冻结旧表，运行时不再读写 `crm_teams/crm_team_members`。`056-organization-assignment-integrity` 在数据库触发器中强制“普通成员不能同时成为其他团队负责人”，并按用户序列化并发关系写入。
+
+普通销售只能读取本人成员行，但 `TeamSnapshot.memberCount` 始终返回服务端聚合的完整人数。运营管理员共享运营来源权限，不是组织成员关系；超级管理员查看完整公司树但不写入成员关系。`company-postgres-bootstrap.sql` 包含完整 canonical 对象、触发器以及 055/056 迁移记录；DMS 使用的 `company-postgres-tables.sql` 只包含普通表和索引，保留 055 记录但故意不记录 056，应用启动时会应用 056 创建或替换触发器，避免把触发器混入表工单。迁移记录按 SQL 文本 SHA-256 校验，已存在记录的 checksum 不一致时服务会拒绝继续，而不是覆盖。文档只描述工作区基线，不表示任何本地或正式中心已经部署 055/056。
 
 ## 2026-10-28 历史映射：拆分前全部使用 public
 

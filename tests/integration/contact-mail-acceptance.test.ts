@@ -11,6 +11,10 @@ import { CONTACT_MAIL_ROUTE, type ContactMailEventInput, type ContactMailReposit
 import { createContactMailService } from '../../server/services/contact-mail';
 import { createContactMailHandler } from '../../server/transport/contact-mail-http';
 import type { Result } from '../../server/core/crm';
+import { PostgresContactMailAnalysisRepository } from '../../server/adapters/postgres/contact-mail-analysis-repository';
+import { createContactMailAnalysisService } from '../../server/services/contact-mail-analysis';
+import { createContactMailAnalysisHandler } from '../../server/transport/contact-mail-analysis-http';
+import { CONTACT_MAIL_ANALYSIS_ROUTES } from '../../server/core/mail-analysis';
 function unwrap<T>(result: Result<T>): T { if (!result.ok) throw Error(`${result.error.code}: ${result.error.message}`); return result.data; }
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail events outer rollback PostgreSQL', () => {
   it('isolates selected contacts, deduplicates, keeps monotonic touch and commits fact/activity/outbox together', async () => {
@@ -26,6 +30,11 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail even
       const repo = new PostgresLeadRepository(facade, { write: () => {} }), mail = repo as unknown as ContactMailRepository;
       expect(typeof mail.recordContactMailEvent).toBe('function');
       unwrap(await repo.migrate());
+      unwrap(await repo.migrateAssignmentState());
+      unwrap(await repo.migrateLeadMatch());
+      const analysisRepo=new PostgresContactMailAnalysisRepository(facade,{write:()=>{}});
+      unwrap(await analysisRepo.migrate());
+      unwrap(await analysisRepo.migrate());
       const actors: Array<{ id: string; hash: string; token: string }> = [];
       for (const role of ['operations', 'sales', 'sales'] as const) {
         const id = randomUUID(), token = randomBytes(32).toString('base64url');
@@ -43,38 +52,60 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail even
         const contactId = (await client.query('INSERT INTO contacts(email,first_name,company_id) VALUES($1,$2,$3) RETURNING id', [`${randomUUID()}@example.invalid`, name, company])).rows[0].id;
         contacts.push(contactId); await client.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)', [customerId, contactId]);
       }
-      const contactId = contacts[0]!, sibling = contacts[1]!, sender = 'sales@example.invalid';
+      const contactId = contacts[0]!, sibling = contacts[1]!, sender = 'sales@agency.test';
       const primary = (await client.query('SELECT email FROM contacts WHERE id=$1', [contactId])).rows[0].email;
       const event: ContactMailEventInput = { contactId, customerId, eventKey: randomUUID(), mailboxKey: 'opaque-account', messageKey: '<fixture-message>', kind: 'sent', direction: 'outbound', occurredAt: '2020-01-02T00:00:00.000Z', subject: 'Fixture subject', preview: 'Fixture preview', fromEmail: sender, toEmails: [primary], ccEmails: [] };
       expect(await mail.recordContactMailEvent(sales.hash, event)).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
       // The uploading administrator retains authority after acceptance; unrelated users never gain it.
       const opsEvent = unwrap(await mail.recordContactMailEvent(ops.hash, { ...event, contactId: sibling, eventKey: randomUUID(), toEmails: [] }));
       expect(opsEvent.contact.touchStatus).toBe('uncontacted');
-      const request = unwrap(await repo.createContactAssignments(ops.hash, { contacts: [{ contactId, customerId, expectedVersion: 1 }], targetUserId: sales.id, notifyUserIds: [], idempotencyKey: randomUUID() })).items[0]!;
+      const request = unwrap(await repo.createContactAssignments(ops.hash, { contacts: [{ contactId, customerId, expectedVersion: 1 }], targetUserId: sales.id, idempotencyKey: randomUUID() })).items[0]!;
       unwrap(await repo.decideContactAssignment(sales.hash, 'accept', { requestId: request.requestId, expectedVersion: 1, idempotencyKey: randomUUID() }));
       expect(unwrap(await mail.recordContactMailEvent(ops.hash, {...event,eventKey:randomUUID()})).event.actorId).toBe(ops.id);
       expect(await mail.recordContactMailEvent(other.hash, event)).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
       expect(await mail.recordContactMailEvent(sales.hash, { ...event, contactId: sibling })).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
       const sent = unwrap(await mail.recordContactMailEvent(sales.hash, event));
       expect(sent).toMatchObject({ duplicate: false, contact: { contactId, touchStatus: 'contacted', lastFollowupAt: event.occurredAt }, event: { actorId: sales.id, subject: event.subject, preview: event.preview } });
+      expect(sent.analysis).toMatchObject({ source:'rule', relevance:'customer_business', contactState:'contacted', requiresAction:false });
+      expect(sent.event.contentHash).toMatch(/^[a-f0-9]{64}$/);
       expect(sent.event.activityId).not.toBeNull();
       const duplicate = unwrap(await mail.recordContactMailEvent(sales.hash, event));
       expect(duplicate).toMatchObject({ duplicate: true, eventId: sent.eventId }); expect(duplicate.contact.contactVersion).toBe(sent.contact.contactVersion);
       expect(await mail.recordContactMailEvent(sales.hash, { ...event, preview: 'different payload' })).toMatchObject({ ok: false, error: { code: 'CONFLICT' } });
-      const replyInput = { ...event, eventKey: randomUUID(), messageKey: '<reply>', kind: 'replied' as const, direction: 'inbound' as const, fromEmail: primary, toEmails: [sender], occurredAt: '2020-02-02T00:00:00.000Z' };
-      const reply = unwrap(await mail.recordContactMailEvent(sales.hash, replyInput)); expect(reply.contact.touchStatus).toBe('replied');
+      const replyInput = { ...event, eventKey: randomUUID(), messageKey: '<reply>', kind: 'replied' as const, direction: 'inbound' as const, fromEmail: primary, toEmails: [sender], occurredAt: '2020-02-02T00:00:00.000Z', subject:'Re: Quotation request', preview:'Please quote two 40HQ containers' };
+      const reply = unwrap(await mail.recordContactMailEvent(sales.hash, replyInput));
+      expect(reply.contact.touchStatus).toBe('replied');
+      expect(reply.analysis).toMatchObject({ source:'rule', contactState:'replied', signals:[{code:'quote_request'}], requiresAction:true });
+      const replyKey={contactId,customerId,mailboxKey:replyInput.mailboxKey,messageKey:replyInput.messageKey,contentHash:reply.event.contentHash};
+      const ai=unwrap(await analysisRepo.submitAI(sales.hash,{...replyKey,inputSequence:Date.parse(replyInput.occurredAt)+10,idempotencyKey:'ai-quote-1',result:{classification:'replied',relevance:'customer_business',summary:'客户要求两个40HQ报价',signals:[{code:'quote_request',label:'报价请求',confidence:.94,evidence:'quote two'}],actionability:{requiresAction:true,nextAction:'回复客户询价',priority:'important',dueHint:'24 小时内'},confidence:.94,evidence:['quote two'],analyzerVersion:'ai-test-v1'}}));
+      expect(ai).toMatchObject({source:'ai',isCurrent:true,contactState:'replied',summary:'客户要求两个40HQ报价'});
+      expect(unwrap(await analysisRepo.submitAI(sales.hash,{...replyKey,inputSequence:Date.parse(replyInput.occurredAt)+10,idempotencyKey:'ai-quote-1',result:{classification:'replied',relevance:'customer_business',summary:'客户要求两个40HQ报价',signals:[{code:'quote_request',label:'报价请求',confidence:.94,evidence:'quote two'}],actionability:{requiresAction:true,nextAction:'回复客户询价',priority:'important',dueHint:'24 小时内'},confidence:.94,evidence:['quote two'],analyzerVersion:'ai-test-v1'}})).analysisId).toBe(ai.analysisId);
+      const lateAI=unwrap(await analysisRepo.submitAI(sales.hash,{...replyKey,inputSequence:1,idempotencyKey:'ai-quote-late',result:{classification:'replied',relevance:'customer_business',summary:'过期AI',signals:[{code:'no_action',label:'无需行动',confidence:.9,evidence:'late'}],actionability:{requiresAction:false,nextAction:null,priority:'normal',dueHint:null},confidence:.9,evidence:['late'],analyzerVersion:'ai-test-v2'}}));
+      expect(lateAI.isCurrent).toBe(false);
+      const human=unwrap(await analysisRepo.correct(sales.hash,{...replyKey,idempotencyKey:'human-quote-1',expectedCurrentId:ai.analysisId,classification:'replied',relevance:'customer_business',summary:'人工确认：客户在等报价',signals:[{code:'quote_request',label:'报价请求',confidence:1,evidence:'人工确认'}],requiresAction:true,nextAction:'今天回复报价',priority:'urgent',dueHint:'今日',confidence:1,evidence:['人工确认']}));
+      expect(human).toMatchObject({source:'human',humanLocked:true,isCurrent:true,nextAction:'今天回复报价'});
+      const afterHuman=unwrap(await analysisRepo.submitAI(sales.hash,{...replyKey,inputSequence:Number.MAX_SAFE_INTEGER,idempotencyKey:'ai-after-human',result:{classification:'replied',relevance:'customer_business',summary:'AI后来结论',signals:[],actionability:{requiresAction:false,nextAction:null,priority:'normal',dueHint:null},confidence:.8,evidence:[],analyzerVersion:'ai-test-v3'}}));
+      expect(afterHuman.isCurrent).toBe(false);
+      const history=unwrap(await analysisRepo.current(sales.hash,{...replyKey,includeHistory:true,historyLimit:20}));
+      expect(history).toMatchObject({current:{analysisId:human.analysisId,source:'human'},canCorrect:true,access:'normal',taskSuggestion:{actionCode:'quote_request',nextAction:'今天回复报价'}});
+      expect(history.history.map(row=>row.analysisId)).toEqual(expect.arrayContaining([ai.analysisId,lateAI.analysisId,afterHuman.analysisId]));
+      expect(unwrap(await analysisRepo.current(sales.hash,{...replyKey,includeHistory:false,historyLimit:20}))).toMatchObject({current:{analysisId:human.analysisId,source:'human'},history:[]});
+      expect((await client.query("SELECT count(*)::int AS n FROM crm_contact_mail_task_suggestions WHERE actor_id=$1 AND contact_id=$2 AND action_code='quote_request'",[sales.id,contactId])).rows[0].n).toBe(1);
+      expect(await analysisRepo.current(other.hash,{...replyKey,includeHistory:false,historyLimit:20})).toMatchObject({ok:false});
+      expect((await client.query("SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema='prospector' AND table_name='crm_contact_mail_analyses' AND column_name IN ('body','raw_body','attachments')")).rows[0].n).toBe(0);
       const older = unwrap(await mail.recordContactMailEvent(sales.hash, { ...event, eventKey: randomUUID(), occurredAt: '2019-01-02T00:00:00.000Z' }));
       expect(older.contact).toMatchObject({ touchStatus: 'replied', lastFollowupAt: replyInput.occurredAt });
       for (const kind of ['cc', 'received'] as const) {
-        const harmless = unwrap(await mail.recordContactMailEvent(sales.hash, { ...replyInput, kind, eventKey: randomUUID(), messageKey: `<${kind}>`, occurredAt: '2022-01-02T00:00:00.000Z' }));
+        const harmless = unwrap(await mail.recordContactMailEvent(sales.hash, { ...replyInput,kind,eventKey: randomUUID(),messageKey:`<${kind}>`,occurredAt:'2022-01-02T00:00:00.000Z',...(kind==='received'?{subject:'FYI only',preview:'Noted, thanks'}:{}) }));
         expect(harmless.contact).toMatchObject({ touchStatus: 'replied', lastFollowupAt: replyInput.occurredAt }); expect(harmless.event.activityId).toBeNull();
+        expect(harmless.analysis).toMatchObject({contactState:null,requiresAction:false});
       }
       for (const [kind, touchStatus] of [['autoreply', 'autoreply'], ['bounced', 'bounced']] as const) {
         const outcome = unwrap(await mail.recordContactMailEvent(sales.hash, { ...replyInput, kind, eventKey: randomUUID(), messageKey: `<${kind}>`, occurredAt: '2022-01-03T00:00:00.000Z' }));
-        expect(outcome.contact.touchStatus).toBe(touchStatus); expect(outcome.event.activityId).not.toBeNull();
+        expect(outcome.contact.touchStatus).toBe(touchStatus); expect(outcome.event.activityId).not.toBeNull();expect(outcome.analysis.contactState).toBe(touchStatus);
       }
       const falseReply = unwrap(await mail.recordContactMailEvent(sales.hash, { ...replyInput, fromEmail: 'stranger@example.invalid', eventKey: randomUUID(), occurredAt: '2023-01-02T00:00:00.000Z' }));
-      expect(falseReply.contact.touchStatus).toBe('bounced'); expect(falseReply.event.activityId).toBeNull();
+      expect(falseReply.contact.touchStatus).toBe('bounced'); expect(falseReply.event.activityId).toBeNull();expect(falseReply.analysis).toMatchObject({contactState:null,requiresAction:false});
       const ccSent = unwrap(await mail.recordContactMailEvent(sales.hash, { ...event, toEmails: ['someone@example.invalid'], ccEmails: [primary], eventKey: randomUUID(), occurredAt: '2023-01-02T00:00:00.000Z' }));
       expect(ccSent.event.activityId).toBeNull();
       const detail = unwrap(await repo.contactDetail(sales.hash, { contactId, customerId }));
@@ -125,6 +156,16 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('contact mail even
         expect((await fetch(base + CONTACT_MAIL_ROUTE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(event) })).status).toBe(401);
         expect((await fetch(base + CONTACT_MAIL_ROUTE, { method: 'POST', headers, body: JSON.stringify({ ...event, rawBody: 'private' }) })).status).toBe(400);
       } finally { http.closeAllConnections(); await new Promise<void>(resolve => http.close(() => resolve())); }
+      const analysisHttp=createServer(createContactMailAnalysisHandler(createContactMailAnalysisService(analysisRepo,tokenAdapter)));
+      await new Promise<void>(resolve=>analysisHttp.listen(0,'127.0.0.1',resolve));
+      try{
+        const base=`http://127.0.0.1:${(analysisHttp.address() as {port:number}).port}`,headers={Authorization:`Bearer ${sales.token}`,'Content-Type':'application/json'};
+        const query=new URLSearchParams({contactId:String(contactId),customerId,mailboxKey:replyInput.mailboxKey,messageKey:replyInput.messageKey,contentHash:reply.event.contentHash,history:'true',limit:'20'});
+        expect(await (await fetch(`${base}${CONTACT_MAIL_ANALYSIS_ROUTES.analyses}?${query}`,{headers})).json()).toMatchObject({ok:true,data:{current:{source:'human',analysisId:human.analysisId},access:'normal'}});
+        expect((await fetch(`${base}${CONTACT_MAIL_ANALYSIS_ROUTES.analyses}?${query}`,{headers:{}})).status).toBe(401);
+        expect(await (await fetch(`${base}${CONTACT_MAIL_ANALYSIS_ROUTES.correct}`,{method:'POST',headers,body:JSON.stringify({...replyKey,idempotencyKey:'human-http',expectedCurrentId:human.analysisId,classification:'replied',relevance:'customer_business',summary:'HTTP人工修正',signals:[],requiresAction:false,nextAction:null,priority:'normal',dueHint:null,confidence:1,evidence:['HTTP']})})).json()).toMatchObject({ok:true,data:{source:'human',isCurrent:true,summary:'HTTP人工修正'}});
+        expect((await fetch(`${base}${CONTACT_MAIL_ANALYSIS_ROUTES.correct}`,{method:'POST',headers,body:JSON.stringify({...human,rawBody:'private'})})).status).toBe(400);
+      }finally{analysisHttp.closeAllConnections();await new Promise<void>(resolve=>analysisHttp.close(()=>resolve()));}
       await client.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1', [sales.id]);
       expect(await mail.recordContactMailEvent(sales.hash, event)).toMatchObject({ ok: false, error: { code: 'UNAUTHORIZED' } });
     } finally { await client.query('ROLLBACK'); expect(await counts()).toEqual(before); client.release(); await pool.end(); }

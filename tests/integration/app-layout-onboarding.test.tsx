@@ -68,7 +68,7 @@ describe('AppLayout onboarding trigger', () => {
     });
     await mount();
     const later = await vi.waitFor(() => {
-      const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent === '稍后配置');
+      const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.replace(/\s/g, '') === '稍后');
       expect(button).toBeTruthy();
       return button!;
     });

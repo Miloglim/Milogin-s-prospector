@@ -1,6 +1,6 @@
 {
   "name": "prospecting-email",
-  "version": "0.61.0",
+  "version": "0.70.1",
   "description": "Milogin's Outreacher — 货代行业客户开发工具",
   "main": "./dist/main/index.js",
   "scripts": {
@@ -32,7 +32,10 @@
     "crm:production:stop": "node scripts/production-server.mjs stop",
     "crm:production:bootstrap-admin": "node scripts/bootstrap-production-admin.mjs",
     "package:formal": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-formal-download.ps1",
-    "deploy:company": "powershell -ExecutionPolicy Bypass -File scripts/deploy-company-server.ps1"
+    "deploy:company": "powershell -ExecutionPolicy Bypass -File scripts/deploy-company-server.ps1",
+    "mock:dev:setup": "node scripts/mock-dev-hierarchy.mjs setup",
+    "mock:dev:status": "node scripts/mock-dev-hierarchy.mjs status",
+    "mock:dev:cleanup": "node scripts/mock-dev-hierarchy.mjs cleanup"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.0",

@@ -38,6 +38,16 @@ function setup() {
 beforeEach(() => { h.campaign.mockReset().mockReturnValue({ success: true, data: undefined }); h.writeBody.mockReset(); });
 
 describe('center send authorization runtime', () => {
+  it('checks the active desktop session immediately before batch execution', async () => {
+    const f = setup();
+    expect(await f.port.assertActiveDevice!()).toEqual({ success: true, data: undefined });
+    expect(f.requestLive).toHaveBeenLastCalledWith('GET', '/api/auth/desktop/me');
+    f.requestLive.mockResolvedValueOnce({ ok: false, error: { code: 'DEVICE_REPLACED', message: '该账号已在另一台电脑登录' } });
+    expect(await f.port.assertActiveDevice!()).toMatchObject({ success: false, error: '该账号已在另一台电脑登录' });
+    f.offline();
+    expect(await f.port.assertActiveDevice!()).toMatchObject({ success: false });
+    f.runtime.close(); f.db.close();
+  });
   it('registers one grouped attempt after live checks and saves grants before releasing SMTP', async () => {
     const f = setup();
     expect(await f.port.authorize(receipt)).toEqual({ success: true, data: undefined });

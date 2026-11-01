@@ -1,3 +1,5 @@
+import type { CenterContactRef } from "../../shared/online-crm";
+
 // ── 首页功能卡片的纯逻辑（提示词拼装 + 推荐名单交接）──────────────────
 // 运价查询卡片：用户填 起运港/目的港/柜型/备注 → 这里拼成一段"固定流程"提示词发进会话。
 // 标准化两头保证：提示词写死流程步骤（不反问、分层报数、表格原样贴、查不到明说）；
@@ -41,18 +43,28 @@ export function buildMailBriefPrompt(): string {
 // localStorage 一次性交接（读走即删）：跨页面传几十个 id，比 hash 传参干净。
 export const DEV_LETTER_PRESET_KEY = "dev-letter-preset";
 
-export function stashDevLetterPreset(ids: number[], note: string): void {
-  try { localStorage.setItem(DEV_LETTER_PRESET_KEY, JSON.stringify({ ids, note, at: Date.now() })); } catch { /* 存不进去就不预选 */ }
+export function stashDevLetterPreset(ids: number[], note: string, centerRefs: CenterContactRef[] = []): void {
+  try { localStorage.setItem(DEV_LETTER_PRESET_KEY, JSON.stringify({ ids, note, centerRefs, at: Date.now() })); } catch { /* 存不进去就不预选 */ }
 }
 
-export function takeDevLetterPreset(): { ids: number[]; note: string } | null {
+export function takeDevLetterPreset(): { ids: number[]; note: string; centerRefs: CenterContactRef[] } | null {
   try {
     const raw = localStorage.getItem(DEV_LETTER_PRESET_KEY);
     if (!raw) return null;
     localStorage.removeItem(DEV_LETTER_PRESET_KEY);
-    const p = JSON.parse(raw) as { ids?: unknown; note?: unknown };
+    const p = JSON.parse(raw) as { ids?: unknown; note?: unknown; centerRefs?: unknown };
     if (Array.isArray(p.ids) && p.ids.every(n => typeof n === "number")) {
-      return { ids: p.ids as number[], note: typeof p.note === "string" ? p.note : "来自首页「自动开发信」推荐" };
+      const centerRefs = Array.isArray(p.centerRefs)
+        ? p.centerRefs.filter((ref): ref is CenterContactRef => !!ref && typeof ref === "object"
+          && Number.isSafeInteger((ref as CenterContactRef).contactId)
+          && typeof (ref as CenterContactRef).customerId === "string"
+          && !!(ref as CenterContactRef).customerId)
+        : [];
+      return {
+        ids: p.ids as number[],
+        note: typeof p.note === "string" ? p.note : "来自首页「自动开发信」推荐",
+        centerRefs,
+      };
     }
   } catch { /* 坏数据当没有 */ }
   return null;

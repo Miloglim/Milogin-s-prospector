@@ -17,6 +17,7 @@ describe('restored original customer view switch', () => {
   const waitForDeferredTable = () => act(async () => { await new Promise<void>(resolve => window.setTimeout(resolve, 220)); });
   const mount = async () => { await act(async () => { root.render(<QueryClientProvider client={new QueryClient()}><LegacyCustomersPage /></QueryClientProvider>); }); await waitForDeferredTable(); };
   const select = (label: string) => act(async () => { Array.from(host.querySelectorAll('.ant-segmented-item')).find(item => item.textContent === label)!.querySelector<HTMLInputElement>('input')!.click(); });
+  const checkedTab = () => Array.from(host.querySelectorAll('.ant-segmented-item')).find(item => item.querySelector<HTMLInputElement>('input')?.checked)?.textContent;
   it('restores all three original tabs and switches the original pages', async () => {
     await mount(); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
     await select('跟进看板'); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
@@ -37,10 +38,16 @@ describe('restored original customer view switch', () => {
     expect(host.textContent).not.toContain('隔离预览');expect(host.textContent).toContain('分配管理');
     expect(window.location.hash).toBe('#/customers'); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
   });
+  it('keeps one top tab selected through repeated switching', async () => {
+    await mount();
+    for (const label of ['公司', '联系人', '分配管理', '跟进看板', '联系人', '公司', '联系人']) await select(label);
+    expect(checkedTab()).toBe('联系人');
+  });
   it('opens the contact table directly from a deep link', async () => {
     window.history.replaceState(null, '', '#/customers?view=table&add=1&email=buyer%40example.invalid');
     await mount();
     expect(host.querySelector('[data-view="table"]')).not.toBeNull();
     expect(host.querySelector('[data-view="board"]')).toBeNull();
+    expect(checkedTab()).toBe('联系人');
   });
 });

@@ -9,6 +9,7 @@ import {PASSWORD_SCHEMA_LOCK,PASSWORD_SCHEMA_SQL,PASSWORD_SCHEMA_VERSION} from '
 import {ADMIN_LOCK} from './admin-schema';
 import type { DesktopSessionDraft, DesktopRotation, RegistrationProduct } from '../../core/desktop-session';
 import { DESKTOP_SCHEMA_LOCK, DESKTOP_SCHEMA_SQL, DESKTOP_SCHEMA_VERSION } from './desktop-session-schema';
+import { DESKTOP_DEVICE_SCHEMA_LOCK, DESKTOP_DEVICE_SCHEMA_SQL, DESKTOP_DEVICE_SCHEMA_VERSION } from './desktop-device-schema';
 import { ACCOUNT_PROFILE_SCHEMA_LOCK, ACCOUNT_PROFILE_SCHEMA_SQL, ACCOUNT_PROFILE_SCHEMA_VERSION } from './account-profile-schema';
 import { ACCOUNT_GROWTH_SCHEMA_LOCK, ACCOUNT_GROWTH_SCHEMA_SQL, ACCOUNT_GROWTH_SCHEMA_VERSION } from './account-growth-schema';
 import { PASSWORD_COMPAT_SCHEMA_LOCK, PASSWORD_COMPAT_SCHEMA_SQL, PASSWORD_COMPAT_SCHEMA_VERSION } from './password-compat-schema';
@@ -96,6 +97,20 @@ export class PostgresAuthRepository implements AuthRepository {
         if (!existing.rows.length) {
           await client.query(DESKTOP_SCHEMA_SQL);
           await client.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)', [DESKTOP_SCHEMA_VERSION, checksum]);
+        }
+        return success(undefined);
+      }));
+    }).then(async result => {
+      if (!result.ok) return result;
+      return this.execute(() => this.tx(async client => {
+        await client.query('SELECT pg_advisory_xact_lock($1)', [DESKTOP_DEVICE_SCHEMA_LOCK]);
+        const checksum = createHash('sha256').update(DESKTOP_DEVICE_SCHEMA_SQL).digest('hex');
+        const existing = await client.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1', [DESKTOP_DEVICE_SCHEMA_VERSION]);
+        if (existing.rows.length && existing.rows[0].checksum !== checksum) return failure('CONFLICT', '桌面设备迁移校验不一致');
+        if (!existing.rows.length) {
+          await client.query(DESKTOP_DEVICE_SCHEMA_SQL);
+          await client.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)', [DESKTOP_DEVICE_SCHEMA_VERSION, checksum]);
+          this.log.write('INFO', 'identity.pg.migrate', `迁移完成 version=${DESKTOP_DEVICE_SCHEMA_VERSION}`);
         }
         return success(undefined);
       }));
@@ -331,9 +346,27 @@ export class PostgresAuthRepository implements AuthRepository {
   }
   createDesktopSession(input: DesktopSessionDraft): Promise<Result<Identity | null>> {
     return this.execute(() => this.tx(async client => {
-      const user = await client.query('SELECT user_id FROM public.identity_users WHERE user_id=$1 AND active AND security_revision=$2 FOR SHARE', [input.userId, input.securityRevision]);
+      const user = await client.query('SELECT user_id FROM public.identity_users WHERE user_id=$1 AND active AND security_revision=$2 FOR UPDATE', [input.userId, input.securityRevision]);
       if (!user.rows.length) return success(null);
-      const session = await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,$3,$4,'api') RETURNING session_id", [input.tokenHash, input.userId, input.securityRevision, input.expiresAt]);
+      const desktop = input.desktop;
+      if (desktop) {
+        await client.query(`UPDATE public.identity_sessions SET revoked_at=now(),revocation_reason='expired'
+          WHERE user_id=$1 AND desktop_product=$2 AND revoked_at IS NULL AND expires_at<=now()`, [input.userId, desktop.product]);
+        const active = await client.query(`SELECT desktop_device_id FROM public.identity_sessions
+          WHERE user_id=$1 AND desktop_product=$2 AND revoked_at IS NULL FOR UPDATE`, [input.userId, desktop.product]);
+        if (active.rows.some(row => row.desktop_device_id !== desktop.deviceId) && !desktop.replaceActiveDevice) {
+          return failure('DEVICE_REPLACEMENT_REQUIRED', '该账号正在另一台电脑使用。继续登录会退出原电脑。');
+        }
+        await client.query(`UPDATE public.identity_sessions SET revoked_at=now(),revocation_reason='replaced'
+          WHERE user_id=$1 AND desktop_product=$2 AND revoked_at IS NULL`, [input.userId, desktop.product]);
+      }
+      const session = await client.query(`INSERT INTO public.identity_sessions(
+        token_hash,user_id,security_revision,expires_at,client,desktop_product,desktop_device_id,
+        desktop_device_name,desktop_platform,desktop_app_version
+      ) VALUES($1,$2,$3,$4,'api',$5,$6,$7,$8,$9) RETURNING session_id`, [
+        input.tokenHash,input.userId,input.securityRevision,input.expiresAt,
+        desktop?.product??null,desktop?.deviceId??null,desktop?.deviceName??null,desktop?.platform??null,desktop?.appVersion??null,
+      ]);
       await client.query('INSERT INTO public.identity_desktop_refresh_tokens(token_hash,session_id,idle_expires_at,absolute_expires_at) VALUES($1,$2,$3,$4)', [input.refreshHash, session.rows[0].session_id, input.idleExpiresAt, input.absoluteExpiresAt]);
       await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,'login')", [input.userId]);
       const identity = await client.query(`SELECT ${IDENTITY_COLUMNS} FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) WHERE u.user_id=$1`, [input.userId]);
@@ -347,7 +380,12 @@ export class PostgresAuthRepository implements AuthRepository {
         JOIN public.identity_sessions s USING(session_id) JOIN public.identity_users u USING(user_id)
         WHERE r.token_hash=$1 AND r.consumed_at IS NULL AND r.idle_expires_at>now() AND r.absolute_expires_at>now()
         AND s.revoked_at IS NULL AND u.active AND s.security_revision=u.security_revision FOR UPDATE OF s,r FOR SHARE OF u`, [refreshHash]);
-      if (!session.rows.length) return success(null);
+      if (!session.rows.length) {
+        const replaced = await client.query(`SELECT 1 FROM public.identity_desktop_refresh_tokens r
+          JOIN public.identity_sessions s USING(session_id) JOIN public.identity_users u USING(user_id)
+          WHERE r.token_hash=$1 AND s.revocation_reason='replaced' AND u.active`, [refreshHash]);
+        return replaced.rows.length ? failure('DEVICE_REPLACED', '该账号已在另一台电脑登录') : success(null);
+      }
       const row = session.rows[0];
       const consumed = await client.query('UPDATE public.identity_desktop_refresh_tokens SET consumed_at=now() WHERE token_hash=$1 AND consumed_at IS NULL RETURNING token_hash', [refreshHash]);
       if (!consumed.rows.length) return success(null);
@@ -361,12 +399,15 @@ export class PostgresAuthRepository implements AuthRepository {
     return this.execute(async () => {
       const result = await this.pool.query(`SELECT ${IDENTITY_COLUMNS} FROM public.identity_sessions s JOIN public.identity_users u USING(user_id) JOIN public.identity_login_emails e USING(user_id)
         WHERE ${SESSION_FILTER} AND s.client='api' AND EXISTS(SELECT 1 FROM public.identity_desktop_refresh_tokens r WHERE r.session_id=s.session_id AND r.consumed_at IS NULL AND r.idle_expires_at>now() AND r.absolute_expires_at>now())`, [tokenHash]);
-      return success(result.rows[0] ?? null);
+      if (result.rows[0]) return success(result.rows[0]);
+      const replaced = await this.pool.query(`SELECT 1 FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
+        WHERE s.token_hash=$1 AND s.client='api' AND s.revocation_reason='replaced' AND u.active`, [tokenHash]);
+      return replaced.rows.length ? failure('DEVICE_REPLACED', '该账号已在另一台电脑登录') : success(null);
     });
   }
   revokeDesktopSession(refreshHash: string): Promise<Result<void>> {
     return this.execute(() => this.tx(async client => {
-      const revoked = await client.query(`UPDATE public.identity_sessions s SET revoked_at=now() FROM public.identity_desktop_refresh_tokens r WHERE r.token_hash=$1 AND r.session_id=s.session_id AND s.revoked_at IS NULL RETURNING s.user_id`, [refreshHash]);
+      const revoked = await client.query(`UPDATE public.identity_sessions s SET revoked_at=now(),revocation_reason='logout' FROM public.identity_desktop_refresh_tokens r WHERE r.token_hash=$1 AND r.session_id=s.session_id AND s.revoked_at IS NULL RETURNING s.user_id`, [refreshHash]);
       if (revoked.rows.length) await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,'logout')", [revoked.rows[0].user_id]);
       return success(undefined);
     }));
@@ -381,7 +422,7 @@ export class PostgresAuthRepository implements AuthRepository {
       const id=actor.rows[0].user_id;
       await client.query('UPDATE public.identity_credentials SET password_hash=$2,changed_at=now() WHERE user_id=$1',[id,newHash]);
       await client.query('UPDATE public.identity_users SET must_change_password=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[id]);
-      await client.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[id]);
+      await client.query("UPDATE public.identity_sessions SET revoked_at=now(),revocation_reason='password-changed' WHERE user_id=$1 AND revoked_at IS NULL",[id]);
       await client.query('UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[id]);
       await client.query("INSERT INTO public.identity_management_audit(actor_id,target_id,action,reason) VALUES($1,$1,'identity.password.changed','用户主动设置新密码，全部旧会话已撤销')",[id]);
       await client.query("INSERT INTO public.identity_outbox(event_type,user_id,revision) SELECT 'identity.password.changed',user_id,management_revision FROM public.identity_users WHERE user_id=$1",[id]);

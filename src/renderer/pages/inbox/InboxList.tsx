@@ -6,16 +6,19 @@ import { Button, Input, message, Modal, Tooltip, Progress, notification, Dropdow
 // (Button etc. used in sub-components)
 import {
   ReloadOutlined, MailOutlined, SearchOutlined,
-  DeleteOutlined,
+  DeleteOutlined, HistoryOutlined,
 } from "@ant-design/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { askAssistant } from "../../lib/ask-ai";
 import { DiamondLogo } from "../../components/DiamondLogo";
 import { STATUS_META, CRM_STAGES } from "../../components/ContactDetail";
 import { useOptionalIdentity } from '../../IdentityContext';
-import { ONLINE_CHANNELS, centerContactDisplayStatus, type ContactDelete, type ContactDeleteReceipt, type CenterContactRef, type CenterContactDetail, type ContactTouchStatus, type CustomerStage } from '../../../shared/online-crm';
-import { INBOX_FETCH_PHASES, type InboxFetchPhase, type InboxFetchProgress } from '../../../shared/inbox';
+import { ONLINE_CHANNELS, centerContactDisplayStatus, type ContactDelete, type ContactDeleteReceipt, type CenterContactRef, type CenterContactDetail, type ContactTouchStatus, type CustomerStage, type ContactMailAnalysisView } from '../../../shared/online-crm';
+import { INBOX_FETCH_PHASES, INBOX_SYNC_PHASES, type InboxFetchPhase, type InboxFetchProgress, type InboxSyncSnapshot } from '../../../shared/inbox';
 import { centerInvoke } from '../customers/centerContactPort';
+import { MailAnalysisPanel, mailAnalysisListIndicator } from '../customers/CenterContactDetail';
+import { projectContactMailHistory } from '../customers/contactMailTimeline';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 
 interface MatchedContact { id: number; email: string; company: string; contactVersion?: number; canDelete?: boolean; centerReference?: CenterContactRef }
 interface MatchContactRow { id: number; email: string; companyName: string | null; contactVersion?: number; canDelete?: boolean; centerReference?: CenterContactRef }
@@ -29,6 +32,14 @@ const FETCH_PHASE_LABEL: Record<InboxFetchPhase, string> = {
   [INBOX_FETCH_PHASES.POST_PROCESSING]: "收尾处理",
   [INBOX_FETCH_PHASES.COMPLETE]: "已完成",
   [INBOX_FETCH_PHASES.FAILED]: "失败",
+};
+const SYNC_PHASE_LABEL: Record<string, string> = {
+  [INBOX_SYNC_PHASES.INITIAL]: "首次同步",
+  [INBOX_SYNC_PHASES.HISTORY]: "同步更早邮件",
+  [INBOX_SYNC_PHASES.READY]: "已同步",
+  [INBOX_SYNC_PHASES.FAILED]: "失败",
+  [INBOX_SYNC_PHASES.UNCONFIGURED]: "未配置收信",
+  [INBOX_SYNC_PHASES.IDLE]: "等待同步",
 };
 function openMatchedContact(contact: { id: number; centerReference?: CenterContactRef }): void {
   const reference = contact.centerReference;
@@ -70,6 +81,28 @@ const FILTERS = [
   { key: "bounce", label: "退信", dot: "#e5484d" },
   { key: "other", label: "其他", dot: "#8b8b8b" },
 ];
+
+const INTENT_LABELS: Record<string, string> = {
+  price_inquiry: '询价', quote_request: '报价请求', schedule_request: '船期', order_followup: '订单跟进',
+  complaint: '投诉', cooperation: '合作', no_action: '无需处理', other: '其他',
+};
+
+function inboxListIndicator(item: InboxItem): string {
+  if (item.intent && INTENT_LABELS[item.intent]) return INTENT_LABELS[item.intent]!;
+  if (item.classification === 'sent') return '已发送';
+  return TYPE[item.classification || 'other']?.label || '其他';
+}
+
+function inboxAnalysisEvent(detail: CenterContactDetail, item: InboxItem) {
+  const events = projectContactMailHistory(detail.mailEvents || []).mail;
+  const subject = (item.subject || '').trim().toLocaleLowerCase();
+  const itemTime = Date.parse(item.receivedAt);
+  return events.find(event => {
+    const eventSubject = (event.subject || '').trim().toLocaleLowerCase();
+    const delta = Math.abs(Date.parse(event.occurredAt) - itemTime);
+    return eventSubject === subject && Number.isFinite(delta) && delta <= 5 * 60 * 1000;
+  });
+}
 
 // ── 未读追踪：真源 = DB isRead（抓取认 \Seen + 程序内标读回写服务器 + 校准对齐，
 //    见 main/transport/inbox.ipc.ts 的未读校准）——列表未读点直接读行的 isRead 字段
@@ -133,6 +166,7 @@ export function InboxList() {
   const centerDeleteRequests = useRef(new Map<string, ContactDelete>());
   // 前端正文缓存：点开过的邮件切回秒开，不重复 invoke / 不闪 loading
   const bodyCache = useRef<Map<number, string | null>>(new Map());
+  const [analysisByMessage, setAnalysisByMessage] = useState<Record<number, ContactMailAnalysisView>>({});
 
   // 联系人库（选中邮件后才加载）
   const { data: contactsData, isLoading: contactsLoading, isError: contactsFailed, error: contactsError } = useQuery({
@@ -162,18 +196,88 @@ export function InboxList() {
     queryKey: ["inbox", includeId],
     queryFn: () => window.api.invoke("inbox:list", includeId ? { includeId } : undefined) as Promise<{ success: boolean; data?: InboxItem[]; error?: string }>,
   });
+  const syncStateQuery = useQuery({
+    queryKey: ["inbox-sync-state"],
+    queryFn: () => window.api.invoke("inbox:syncState") as Promise<InboxSyncSnapshot>,
+    staleTime: 5_000,
+  });
 
   const [fetching, setFetching] = useState(false);
   const [fetchProgressOpen, setFetchProgressOpen] = useState(false);
+  const syncPrompted = useRef(false);
   // 多账号进度按 accountId 聚合，避免并行拉取时互相覆盖导致进度条跳变
   const [fetchProgress, setFetchProgress] = useState<Record<string, InboxFetchProgress>>({});
   const doFetch = async () => {
     setFetching(true);
     setFetchProgressOpen(true);
     setFetchProgress({});
-    try { await window.api.invoke("inbox:fetch"); } finally { setFetching(false); setFetchProgress({}); }
-    invalidateDomain(qc, "inbox");
+    try {
+      const result = await window.api.invoke("inbox:fetch") as { success: boolean; error?: string };
+      if (!result?.success) throw new Error(result?.error || "邮件拉取失败");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "邮件拉取失败");
+    } finally {
+      setFetching(false);
+      void invalidateDomain(qc, "inbox");
+      void syncStateQuery.refetch();
+    }
   };
+  const historySync = useMutation({
+    mutationFn: async (months: number) => {
+      setFetchProgress({});
+      setFetchProgressOpen(true);
+      const result = await window.api.invoke("inbox:syncHistory", { months }) as { success: boolean; error?: string };
+      if (!result?.success) throw new Error(result?.error || "历史邮件同步失败");
+      return result;
+    },
+    onError: error => message.error(error instanceof Error ? error.message : "历史邮件同步失败"),
+    onSettled: () => {
+      void invalidateDomain(qc, "inbox");
+      void syncStateQuery.refetch();
+    },
+  });
+
+  const progressRunning = Object.values(fetchProgress).some(progress =>
+    progress.phase !== INBOX_FETCH_PHASES.COMPLETE && progress.phase !== INBOX_FETCH_PHASES.FAILED,
+  );
+  const syncRunning = fetching || historySync.isPending || progressRunning || Boolean(syncStateQuery.data?.initializing);
+  useVisiblePolling(async () => { await syncStateQuery.refetch(); }, 1_000,
+    fetchProgressOpen || syncRunning);
+
+  useEffect(() => {
+    if (!syncStateQuery.data?.initializing || syncPrompted.current) return;
+    syncPrompted.current = true;
+    setFetchProgressOpen(true);
+  }, [syncStateQuery.data?.initializing]);
+
+  const syncRows = useMemo(() => {
+    const savedAccounts = (syncStateQuery.data?.accounts ?? []).filter(account => account.hasImap);
+    const accountIds = new Set<number>([
+      ...savedAccounts.map(account => account.accountId),
+      ...Object.values(fetchProgress).map(progress => progress.accountId),
+    ]);
+    return [...accountIds].map(accountId => {
+      const live = fetchProgress[String(accountId)];
+      const saved = savedAccounts.find(account => account.accountId === accountId);
+      const current = live?.processedCount ?? live?.scanned ?? saved?.scannedCount ?? 0;
+      const required = live?.requiredCount ?? live?.total ?? saved?.targetCount ?? 0;
+      const failed = live?.phase === INBOX_FETCH_PHASES.FAILED || saved?.phase === INBOX_SYNC_PHASES.FAILED || Boolean(saved?.lastError);
+      const phaseLabel = live
+        ? FETCH_PHASE_LABEL[live.phase] || live.phase
+        : SYNC_PHASE_LABEL[saved?.phase ?? ""] || "处理中";
+      return {
+        accountId,
+        email: live?.email || saved?.email || `账号 #${accountId}`,
+        current,
+        required,
+        newCount: live?.newCount ?? saved?.newCount ?? 0,
+        subject: live?.currentSubject,
+        message: live?.message || saved?.lastError,
+        phaseLabel,
+        failed,
+      };
+    });
+  }, [fetchProgress, syncStateQuery.data]);
 
   // 收信健康度：主进程每轮抓取推送 → 失败账号弹常驻通知，同时刷新设置页账号列表缓存
   useEffect(() => {
@@ -416,6 +520,23 @@ export function InboxList() {
     enabled: !!senderReference,
     queryFn: () => centerInvoke<CenterContactDetail>(ONLINE_CHANNELS.CONTACT_DETAIL, senderReference),
   });
+  const selectedMailEvent = useMemo(() => {
+    const center = senderDetail.data?.ok ? senderDetail.data.data : undefined;
+    return sel_ && center ? inboxAnalysisEvent(center, sel_) : undefined;
+  }, [sel_, senderDetail.data]);
+  const selectedAnalysisQuery = useMemo(() => selectedMailEvent?.contentHash ? {
+    contactId: selectedMailEvent.contactId,
+    customerId: selectedMailEvent.customerId,
+    mailboxKey: selectedMailEvent.mailboxKey,
+    messageKey: selectedMailEvent.messageKey,
+    contentHash: selectedMailEvent.contentHash,
+    includeHistory: true,
+    historyLimit: 20,
+  } : null, [selectedMailEvent]);
+  const rememberSelectedAnalysis = useCallback((view: ContactMailAnalysisView) => {
+    if (sel_) setAnalysisByMessage(current => ({ ...current, [sel_.id]: view }));
+  }, [sel_?.id]);
+  useEffect(() => { setAnalysisByMessage({}); }, [actorScope]);
 
   // 正文 iframe 文档（memo 化，避免每次渲染重新拼接大字符串触发 iframe 重载）
   const bodyDoc = useMemo(() => {
@@ -510,6 +631,9 @@ export function InboxList() {
               total: scanning || pp.total > 0 ? pp.total : current?.total ?? 0,
               newCount: scanning || pp.newCount > 0 ? pp.newCount : current?.newCount ?? 0,
               remaining: scanning || pp.remaining > 0 ? pp.remaining : current?.remaining ?? 0,
+              processedCount: pp.processedCount ?? current?.processedCount,
+              requiredCount: pp.requiredCount ?? current?.requiredCount,
+              currentSubject: pp.currentSubject ?? current?.currentSubject,
             },
           };
         });
@@ -675,10 +799,19 @@ export function InboxList() {
 
         {/* 顶部 */}
         <div className="inbox-action-bar">
-          <Button size="small" onClick={fetching ? () => setFetchProgressOpen(true) : doFetch} disabled={!fetching && offline}
+          <Button size="small" onClick={syncRunning ? () => setFetchProgressOpen(true) : doFetch} disabled={!syncRunning && offline}
             icon={<ReloadOutlined className={fetching ? "animate-spin" : ""} />}>
-            {fetching && !fetchProgressOpen ? "后台拉取中" : "刷新"}
+            {syncRunning && !fetchProgressOpen ? "后台拉取中" : "刷新"}
           </Button>
+          {syncStateQuery.data?.accounts?.some(account => account.hasImap && account.firstCompletedAt) && (
+            <Dropdown trigger={["click"]} disabled={syncRunning || offline}
+              menu={{
+                items: [1, 3, 6, 12].map(months => ({ key: String(months), label: `最近 ${months} 个月` })),
+                onClick: ({ key }) => historySync.mutate(Number(key)),
+              }}>
+              <Button size="small" icon={<HistoryOutlined />}>更早邮件</Button>
+            </Dropdown>
+          )}
           <Input
             size="small"
             prefix={<SearchOutlined />}
@@ -689,43 +822,53 @@ export function InboxList() {
           {sel.size > 1 && <Button size="small" danger onClick={batchDel} title="已选 {n} 封 · Delete 键同样可删（有确认）· Esc 取消选择">删({sel.size})</Button>}
         </div>
         {/* 拉取进度弹窗 — 分账号详细显示 */}
-        <Modal title="刷新邮件" open={fetching && fetchProgressOpen} width={440}
+        <Modal title="收取邮件" open={fetchProgressOpen} width={520}
           onCancel={() => setFetchProgressOpen(false)}
-          maskClosable={false}
-          footer={<Button onClick={() => setFetchProgressOpen(false)}>转入后台</Button>}>
-          <div className="space-y-3">
-            {Object.keys(fetchProgress).length > 0 && (
-              <div className="flex justify-between text-[11px] text-gray-400">
-                <span>{Object.values(fetchProgress).filter(p => p.phase === INBOX_FETCH_PHASES.COMPLETE).length}/{Object.keys(fetchProgress).length} 个账号完成</span>
-                {Object.values(fetchProgress).some(p => p.phase === INBOX_FETCH_PHASES.FAILED) && <span className="text-red-500">部分账号失败</span>}
-              </div>
-            )}
-            {Object.entries(fetchProgress).map(([aid, p]) => (
-              <div key={aid} className="rounded border border-gray-100 px-3 py-2.5">
-                <div className="flex justify-between text-[11px] mb-1">
-                  <span className="text-gray-600 font-mono">{p.email || `账号 #${aid}`}</span>
-                  <span className={p.phase === INBOX_FETCH_PHASES.FAILED ? "text-red-500" : "text-gray-500"}>{FETCH_PHASE_LABEL[p.phase] || p.phase}</span>
-                </div>
-                {p.phase === INBOX_FETCH_PHASES.SCANNING ? (
-                  <>
-                    <Progress percent={p.total > 0 ? Math.round((p.scanned / p.total) * 100) : 0}
-                      showInfo={false} size="small" status="normal" strokeColor="#2563eb" />
-                    <div className="flex justify-between text-[11px] text-gray-400 mt-1">
-                      <span>已扫描 {p.scanned} 封 · 新增 {p.newCount} 封</span>
-                      {p.remaining > 0 && <span>另有 {p.remaining} 封待后续处理</span>}
-                    </div>
-                  </>
-                ) : (
-                  <div className={`text-[11px] ${p.phase === INBOX_FETCH_PHASES.FAILED ? "text-red-500" : "text-gray-400"}`}>
-                    {p.message || "处理中"}
+          maskClosable
+          footer={<div className="flex items-center justify-between gap-4">
+            <span className="min-w-0 truncate text-[12px] text-gray-500" title={syncRows.map(row => row.email).join("；")}>
+              {syncRows.length === 1 ? syncRows[0]!.email : `${syncRows.length || 0} 个邮箱`}
+            </span>
+            <Button onClick={() => setFetchProgressOpen(false)}>转入后台</Button>
+          </div>}>
+          {(() => {
+            const rows = syncRows;
+            if (rows.length === 0) return <div className="py-8 text-center text-xs text-gray-400">正在启动收取...</div>;
+            return <div>
+              {rows.map(row => (
+                <div key={row.accountId} className="flex gap-3 py-3" style={{ borderBottom: "1px solid var(--workspace-line)" }}>
+                  <div className="flex shrink-0 items-center justify-center" style={{ width: 52, height: 52, borderRadius: 6, background: "#f3f0ea", color: "#74808b", fontSize: 25 }}>
+                    <MailOutlined />
                   </div>
-                )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-800" title={row.subject || row.email}>
+                        {row.subject || row.email}
+                      </div>
+                      <div className="shrink-0 text-[12px] tabular-nums text-gray-600">
+                        {row.required > 0 ? `已拉取 ${row.current} / 共需拉取 ${row.required}` : "正在统计邮件"}
+                      </div>
+                    </div>
+                    <Progress percent={row.required > 0 ? Math.min(100, Math.round(row.current / row.required * 100)) : 0}
+                      showInfo={false} size="small" status={row.failed ? "exception" : "normal"}
+                      strokeColor="#71879a" trailColor="#e7ebee" style={{ margin: "7px 0 4px" }} />
+                    <div className={`flex items-center justify-between gap-3 text-[11px] ${row.failed ? "text-red-500" : "text-gray-400"}`}>
+                      <span className="min-w-0 truncate">{row.message || `${row.phaseLabel} · 新增 ${row.newCount} 封`}</span>
+                      <span className="shrink-0">{row.phaseLabel}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div className="mt-3 flex items-center justify-between text-[11px] text-gray-400">
+                <span>邮箱地址</span>
+                <span>状态</span>
               </div>
-            ))}
-            {Object.keys(fetchProgress).length === 0 && (
-              <div className="text-xs text-gray-400 text-center py-4">正在启动刷新...</div>
-            )}
-          </div>
+              {rows.map(row => <div key={`account-${row.accountId}`} className="flex items-center justify-between gap-4 py-1.5 text-[12px]">
+                <span className="min-w-0 truncate font-mono text-gray-600">{row.email}</span>
+                <span className={row.failed ? "shrink-0 text-red-500" : "shrink-0 text-gray-500"}>{row.phaseLabel}</span>
+              </div>)}
+            </div>;
+          })()}
         </Modal>
 
         {/* 视图切换 */}
@@ -867,13 +1010,17 @@ export function InboxList() {
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 1 }}>
                         <span style={{ fontSize: 12, color: "#999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{i.fromName || i.fromEmail}</span>
-                        {i.classification && i.classification !== "other" && <span style={{ fontSize: 9, padding: "0 6px", borderRadius: 10, background: t.dot + "15", color: t.dot, flexShrink: 0 }}>{t.label}</span>}
+                        {<span style={{ fontSize: 9, padding: "0 6px", borderRadius: 10, background: t.dot + "15", color: t.dot, flexShrink: 0 }}>{t.label}</span>}
                       </div>
                       {/* 已匹配 + 联系人状态（始终显示） */}
                       {(() => {
                         const tags = (() => { try { const t = JSON.parse(i._contactTags || "[]"); return Array.isArray(t) ? t : []; } catch { return []; } })();
                         const hasAny = i.matchedContactId || i._centerContact || i._contactStatus || tags.length > 0;
-                        if (!hasAny) return null;
+                        const analysis = analysisByMessage[i.id];
+                        if (analysis) return <div style={{ fontSize: 9, color: "#8a939c", marginTop: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={mailAnalysisListIndicator(analysis)}>
+                          <span style={{ color: analysis.current.requiresAction && analysis.current.relevance === 'customer_business' ? "#8a5800" : "#8a939c" }}>{mailAnalysisListIndicator(analysis)}</span>
+                        </div>;
+                        if (!hasAny) return <div style={{ fontSize: 9, color: "#aaa", marginTop: 1 }}>{inboxListIndicator(i)}</div>;
                         return (
                           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, color: "#bbb", marginTop: 1 }}>
                             {(i.matchedContactId || i._centerContact) && <span>已匹配</span>}
@@ -995,6 +1142,11 @@ export function InboxList() {
                   <InboxDetailRow label="标签">{tagValue}</InboxDetailRow>
                 </div>;
               })()}
+              {selectedAnalysisQuery && <MailAnalysisPanel
+                key={selectedMailEvent?.eventId}
+                queryInput={selectedAnalysisQuery}
+                onCurrent={rememberSelectedAnalysis}
+              />}
             </div>
             {/* 联系人匹配栏 — 始终显示 */}
             {sid && (

@@ -21,7 +21,7 @@ type Member={id:string;token:string};let pool:Pool,repo:PostgresLeadRepository,n
 let actions:ReturnType<typeof createContactAssignmentService>;
 const source=`r3-${randomUUID()}`;
 async function fixture(role:CrmRole){const id=randomUUID(),token=randomBytes(32).toString('base64url');await pool.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)',[id,`${source} ${role}`]);await pool.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm',$2)",[id,role]);await pool.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm',$2,$3)",[id,role==='operations'?'shared':role==='admin'?'summary':'own',JSON.stringify(capabilitiesFor([role]))]);await pool.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+$3*interval '1 second','api')",[tokenAdapter.hash(token),id,SESSION_SECONDS]);return {id,token};}
-async function lead(){const key=randomUUID();return unwrap(await service.importRows(ops.token,{source,sourceDetail:'synthetic',idempotencyKey:key,rows:[{customerKey:key,companyName:'R3_SECRET_COMPANY',email:`${key}@example.invalid`}]}));}
+async function lead(){const key=randomUUID();return unwrap(await service.importRows(ops.token,{source,sourceDetail:'synthetic',idempotencyKey:key,rows:[{customerKey:key,companyName:`R3_SECRET_COMPANY_${key}`,email:`${key}@example.invalid`}]}));}
 async function feed(m:Member){return unwrap(await notifications.feed(tokenAdapter.hash(m.token),{deviceId:'r3',after:'0',limit:100}));}
 async function dispatchAll(){for(let n=0;n<20;n++)unwrap(await notifications.dispatch());}
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('R3 directed assignment PostgreSQL',()=>{
@@ -29,8 +29,8 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('R3 directed assignm
  afterAll(async()=>{await pool?.end();});
  it('paginates product members, marks sales only, and rejects sales directory access',async()=>{const page=unwrap(await service.members(ops.token,{search:source,limit:2,offset:0}));expect(page.total).toBe(5);expect(page.items).toHaveLength(2);const all=unwrap(await service.members(ops.token,{search:source,limit:100,offset:0}));expect(all.items.find(x=>x.userId===sales.id)?.assignable).toBe(true);expect(all.items.find(x=>x.userId===extra.id)?.assignable).toBe(false);expect((await service.members(sales.token,{search:'',limit:10,offset:0}))).toMatchObject({error:{code:'FORBIDDEN'}});expect((await service.members(ops.token,{search:'',limit:101,offset:0})).ok).toBe(false);});
  async function selected(){const r=await lead(),customerId=r.rows[0]!.customerId!,d=unwrap(await service.detail(ops.token,customerId));return {customerId,contactId:d.contacts[0]!.contactId};}
- function command(ref:{customerId:string;contactId:number}){return {contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,notifyUserIds:[extra.id,admin.id],idempotencyKey:randomUUID()};}
- it('requires acceptance, deduplicates requests and projects explicit extras safely',async()=>{
+ function command(ref:{customerId:string;contactId:number}){return {contacts:[{...ref,expectedVersion:1}],targetUserId:sales.id,idempotencyKey:randomUUID()};}
+  it('requires acceptance, deduplicates requests and limits notices to the assigned member',async()=>{
   const ref=await selected(),input=command(ref),request=unwrap(await actions.createAssignments(ops.token,input)).items[0]!;
   expect(request.status).toBe('pending');expect(unwrap(await actions.createAssignments(ops.token,input)).items[0]!.requestId).toBe(request.requestId);
   expect(await actions.contactDetail(sales.token,ref)).toMatchObject({error:{code:'NOT_FOUND'}});
@@ -40,13 +40,12 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('R3 directed assignm
   const detail=unwrap(await actions.contactDetail(sales.token,ref));expect(detail.contact.ownerUserId).toBe(sales.id);
   expect(await actions.contactDetail(other.token,ref)).toMatchObject({error:{code:'NOT_FOUND'}});
   expect(await actions.contactDetail(extra.token,ref)).toMatchObject({error:{code:'NOT_FOUND'}});
-  const event=await pool.query("SELECT * FROM public.identity_outbox WHERE customer_id=$1 AND event_type='crm.contact.assignment.requested'",[ref.customerId]);expect(event.rows).toHaveLength(1);expect(event.rows[0].recipient_user_ids.sort()).toEqual([ops.id,sales.id,extra.id,admin.id].sort());
-  await dispatchAll();const notice=(await feed(extra)).items.find(x=>x.requestId===request.requestId)!;expect(notice).toMatchObject({canOpen:false,customerId:'',version:0});expect(JSON.stringify(notice)).not.toContain('@example.invalid');
+  const event=await pool.query("SELECT * FROM public.identity_outbox WHERE customer_id=$1 AND event_type='crm.contact.assignment.requested'",[ref.customerId]);expect(event.rows).toHaveLength(1);expect(event.rows[0].recipient_user_ids.sort()).toEqual([ops.id,sales.id].sort());
+  await dispatchAll();expect((await feed(extra)).items.some(x=>x.requestId===request.requestId)).toBe(false);
   expect((await feed(sales)).items).toContainEqual(expect.objectContaining({customerId:ref.customerId,canOpen:true}));expect((await feed(other)).items.some(x=>x.requestId===request.requestId)).toBe(false);
-  unwrap(await notifications.read(tokenAdapter.hash(extra.token),notice.id));
   unwrap(await actions.contactFollowup(sales.token,{...ref,expectedVersion:detail.contact.contactVersion,idempotencyKey:randomUUID(),note:'R3 synthetic feedback'}));
   expect(unwrap(await actions.contactDetail(ops.token,ref)).activities[0]!.note).toBe('R3 synthetic feedback');await dispatchAll();expect((await feed(ops)).items).toContainEqual(expect.objectContaining({customerId:ref.customerId,eventType:'crm.contact.followup'}));
-  await pool.query("UPDATE public.identity_product_access SET active=false WHERE user_id=$1 AND product_id='crm'",[extra.id]);try{expect((await notifications.feed(tokenAdapter.hash(extra.token),{deviceId:'r3',after:'0',limit:100})).ok).toBe(false);expect((await notifications.read(tokenAdapter.hash(extra.token),notice.id)).ok).toBe(false);}finally{await pool.query("UPDATE public.identity_product_access SET active=true WHERE user_id=$1 AND product_id='crm'",[extra.id]);}
+  await pool.query("UPDATE public.identity_product_access SET active=false WHERE user_id=$1 AND product_id='crm'",[extra.id]);try{expect((await notifications.feed(tokenAdapter.hash(extra.token),{deviceId:'r3',after:'0',limit:100})).ok).toBe(false);}finally{await pool.query("UPDATE public.identity_product_access SET active=true WHERE user_id=$1 AND product_id='crm'",[extra.id]);}
  },TIMEOUT);
  it('serializes competing requests and rejects unauthorized, stale and revoked targets',async()=>{
   const ref=await selected(),input=command(ref);

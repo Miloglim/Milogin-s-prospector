@@ -7757,7 +7757,7 @@ var import_node_path3 = __toESM(require("node:path"));
 var ONLINE_CONFIG_PATH = ".work/pg-crm/online.json";
 var PORT_MAX = 65535;
 var SESSION_TTL_MAX_SECONDS = 86400;
-var PRODUCTION_HTTP_PORT = 55847;
+var DEFAULT_PRODUCTION_HTTP_PORT = 55847;
 var PRODUCTION_RUNTIME_DIRECTORY = "MiloginCenter";
 var DEFAULT_BIND_HOST = "127.0.0.1";
 var CONTAINER_BIND_HOST = "0.0.0.0";
@@ -7767,6 +7767,12 @@ function productionBindHost(env) {
   if (!ALLOWED_BIND_HOSTS.has(host))
     throw new Error("\u6B63\u5F0F\u4E2D\u5FC3\u76D1\u542C\u5730\u5740\u4EC5\u5141\u8BB8\u56DE\u73AF\u6216\u5BB9\u5668\u5185\u7F51");
   return host;
+}
+function productionPort(env) {
+  const port = Number(env.APP_PORT || DEFAULT_PRODUCTION_HTTP_PORT);
+  if (!Number.isSafeInteger(port) || port < 1 || port > PORT_MAX)
+    throw new Error("\u6B63\u5F0F\u4E2D\u5FC3\u670D\u52A1\u7AEF\u53E3\u65E0\u6548");
+  return port;
 }
 function onlineRuntimeDirectory(env = process.env) {
   const configured = env.PROSPECTOR_CENTER_RUNTIME_DIR?.trim();
@@ -7811,7 +7817,7 @@ function readOnlineConfig(env = process.env) {
     return {
       ...ONLINE_DEFAULTS,
       host: productionBindHost(env),
-      port: PRODUCTION_HTTP_PORT,
+      port: productionPort(env),
       navigator_url: navigatorUrl,
       navigator_entry_url: navigatorEntryUrl,
       test_mode: false,
@@ -13086,7 +13092,8 @@ async function main() {
       await pool.end();
   }
 }
-void main().catch(() => {
-  serverLog.write("ERROR", "identity.runtime", "\u4E2D\u5FC3\u542F\u52A8\u5931\u8D25\uFF1B\u68C0\u67E5\u9694\u79BB\u914D\u7F6E\u4E0E\u672C\u673A\u65E5\u5FD7");
+void main().catch((error) => {
+  const message = error instanceof Error ? error.message : "\u672A\u77E5\u9519\u8BEF";
+  serverLog.write("ERROR", "identity.runtime", `\u4E2D\u5FC3\u542F\u52A8\u5931\u8D25\uFF1A${message}`);
   process.exitCode = EXIT_FAILED;
 });

@@ -3,7 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   DashboardOutlined, UserOutlined, SendOutlined,
   InboxOutlined, FileTextOutlined,
-  SettingOutlined, SearchOutlined, MoreOutlined, DollarOutlined, UpOutlined, BellOutlined,
+  SettingOutlined, SearchOutlined, MoreOutlined, DollarOutlined, UpOutlined, BellOutlined, ApartmentOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined,
 } from "@ant-design/icons";
 import { App as AntApp, ConfigProvider, Dropdown, Input, Modal, Popover } from "antd";
@@ -30,6 +30,7 @@ const navItems: NavItem[] = [
   { key: "/", icon: <DashboardOutlined />, label: "仪表盘" },
   { key: "/inbox", icon: <InboxOutlined />, label: "收件箱" },
   { key: "/customers", icon: <UserOutlined />, label: "客户" },
+  { key: "/team", icon: <ApartmentOutlined />, label: "团队" },
 ];
 
 // 公司大模型正式接入前，先隐藏尚未开放的产品入口；路由和实现保留，后续只需打开开关。
@@ -259,7 +260,7 @@ export function Sidebar() {
   const notifications = useOptionalNotifications();
   const localAvailable = !session || session.localAvailable;
   const offline = session?.status === 'offline';
-  const unavailable = (key: string) => !localAvailable && key !== '/customers';
+  const unavailable = (key: string) => !localAvailable && !['/customers', '/team'].includes(key);
   const { sidebarCollapsed, toggleSidebar } = useAppContext();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: s => s.location.pathname });
