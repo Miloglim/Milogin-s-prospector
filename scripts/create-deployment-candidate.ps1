@@ -85,7 +85,13 @@ $installerName = "prospecting-email-setup-$version.exe"
 $installerPath = Join-Path (Join-Path $projectRoot '..\dist-release') $installerName
 if (!(Test-Path -LiteralPath $installerPath)) { throw "客户端安装包不存在：$installerPath" }
 Copy-Item -LiteralPath $installerPath -Destination (Join-Path $client $installerName)
-$installerHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+try {
+  $installerBytes = [System.IO.File]::ReadAllBytes($installerPath)
+  $installerHash = ([System.BitConverter]::ToString($sha256.ComputeHash($installerBytes))).Replace('-', '')
+} finally {
+  $sha256.Dispose()
+}
 $manifest = [ordered]@{
   product = 'Milogin product chain'
   candidate = $stamp
