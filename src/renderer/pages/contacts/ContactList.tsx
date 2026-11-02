@@ -14,11 +14,13 @@ import { LeadIngressConflictDrawer, type LeadIngressConflictTarget } from "../cu
 /* ---------- 可配置列定义 ---------- */
 const COLS_KEY = "contacts-cols";
 const CENTER_COLS_KEY = "contacts-cols-lead-fields";
-const LOCAL_DEFAULT_COLS = ["name", "email", "companyName", "clientType", "status", "relationshipStage", "stage", "title", "source"];
+const REQUIRED_COLS = ["assignee"] as const;
+const LOCAL_DEFAULT_COLS = ["name", "email", "companyName", "clientType", "status", "relationshipStage", "stage", "title", "source", "assignee"];
 const SCROLL_THUMB_MIN_HEIGHT = 24;
 const SCROLL_THUMB_HIDE_MS = 520;
 const SCROLL_KEY_STEP = 42;
-const DEFAULT_COLS = ["companyName", "country", "clientType", "name", "title", "phone", "whatsapp", "email", "sourceLevel1", "sourceLevel2", "status", "relationshipStage", "stage"];
+const DEFAULT_COLS = ["companyName", "country", "clientType", "name", "title", "phone", "whatsapp", "email", "sourceLevel1", "sourceLevel2", "status", "relationshipStage", "stage", "assignee"];
+const withRequiredCols = (cols: string[]) => [...new Set([...cols, ...REQUIRED_COLS])];
 
 interface ColDef { key: string; title: string; width?: number; render: (c: Contact) => ReactNode; }
 
@@ -38,7 +40,7 @@ const inCrm = (contact: Contact) => contact.dataSource === 'center' ? ['contacte
 const TOUCH_STATUS_META: Record<string, { label: string; color: string }> = {
   uncontacted: { label: '未触达', color: 'default' },
   contacted: { label: '已触达', color: 'blue' },
-  replied: { label: '已回复', color: 'green' },
+  replied: { label: '已收到', color: 'green' },
   bounced: { label: '退信', color: 'red' },
   autoreply: { label: '自动回复', color: 'orange' },
 };
@@ -100,7 +102,13 @@ const COLUMN_DEFS: ColDef[] = [
     key: "source", title: "导入批次来源", width: 120,
     render: (c) => c.source ? <Tag className="text-[10px] my-0 leading-none px-1.5">{c.source}</Tag> : <Dash />,
   },
-  { key: "assignee", title: "负责人", width: 90, render: (c) => <Muted v={c.assignee} /> },
+  {
+    key: "assignee", title: "归属", width: 100,
+    render: (c) => {
+      const owner = c.assignee?.trim();
+      return <Tag color={owner ? "blue" : "default"} className="contact-ownership-tag text-[10px] my-0 leading-none py-0.5 px-1.5" title={owner || "未分配"}>{owner || "未分配"}</Tag>;
+    },
+  },
   {
     key: "tags", title: "标签", width: 90,
     render: (c) => {
@@ -144,8 +152,8 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
       const current = dataPort ? localStorage.getItem(CENTER_COLS_KEY) : null;
       const s = current ?? localStorage.getItem(COLS_KEY);
       const saved = s ? JSON.parse(s) as string[] : dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS;
-      return dataPort && !current ? [...new Set(saved.flatMap(key => key === 'source' ? ['sourceLevel1', 'sourceLevel2'] : [key]))] : saved;
-    } catch { return dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS; }
+      return withRequiredCols(dataPort && !current ? [...new Set(saved.flatMap(key => key === 'source' ? ['sourceLevel1', 'sourceLevel2'] : [key]))] : saved);
+    } catch { return withRequiredCols(dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS); }
   });
   const [form] = Form.useForm();
 
@@ -393,8 +401,9 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   }, [form, location.pathname, location.searchStr, dataPort]);
 
   const updateCols = (cols: string[]) => {
-    setVisibleCols(cols);
-    localStorage.setItem(dataPort ? CENTER_COLS_KEY : COLS_KEY, JSON.stringify(cols));
+    const next = withRequiredCols(cols);
+    setVisibleCols(next);
+    localStorage.setItem(dataPort ? CENTER_COLS_KEY : COLS_KEY, JSON.stringify(next));
   };
 
   const visibleDefinitions = visibleCols.flatMap(key => COLUMN_DEFS.find(d => d.key === key) ?? []);
@@ -464,7 +473,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
         className="contact-columns-options grid grid-cols-2 gap-x-2 gap-y-1"
       >
         {COLUMN_DEFS.map(d => (
-          <Checkbox key={d.key} value={d.key} className="text-xs">{d.title}</Checkbox>
+          <Checkbox key={d.key} value={d.key} disabled={d.key === 'assignee'} className="text-xs">{d.title}</Checkbox>
         ))}
       </Checkbox.Group>
       <div className="flex justify-between mt-3 pt-2 border-t border-gray-100">

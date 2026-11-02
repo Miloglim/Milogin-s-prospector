@@ -1,11 +1,11 @@
 import {LEAD_IMPORT_FIELDS} from '../../../server/core/lead-import-fields';
 import { invalidateDomain } from "../lib/cacheDeps";
-import { useState, useRef, useContext } from "react";
+import { useState, useRef, useContext, useMemo } from "react";
 import { Drawer, Tabs, Upload, Input, Button, Table, Select, message, Tag, Space } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
 import { QueryClientContext } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
-import { ONLINE_LIMITS, type ImportFileContent } from "../../shared/online-crm";
+import { ONLINE_LIMITS, importRowIssue, type ImportFileContent, type ImportRow } from "../../shared/online-crm";
 import { LeadIngressConflictDrawer, type LeadIngressConflictNotice } from "../pages/customers/LeadIngressConflictDrawer";
 
 const { TextArea } = Input;
@@ -68,16 +68,51 @@ const CENTER_FIELD_OPTIONS = [{value:'',label:'— 忽略 —'},...LEAD_IMPORT_F
 export interface PreviewData {
   headers: string[];
   previewRows: string[][];
+  rows?: string[][];
+  rowNumbers?: number[];
   totalRows: number;
   suggestedMapping: Record<string, string>;
   duplicateEmails: string[];
+}
+
+type EditedRows = Record<number, Record<string, string>>;
+type RowReview = { index: number; values: Record<string, string>; issue?: string };
+
+function rowValuesAt(preview: PreviewData, index: number, editedRows: EditedRows = {}): Record<string, string> {
+  const rows = preview.rows?.length ? preview.rows : preview.previewRows;
+  return Object.fromEntries(preview.headers.map((header, column) => [header, (editedRows[index]?.[header] ?? rows[index]?.[column] ?? '').trim()]));
+}
+
+function reviewRows(preview: PreviewData, mapping: Record<string, string>, editedRows: EditedRows = {}): RowReview[] {
+  const rows = preview.rows?.length ? preview.rows : preview.previewRows;
+  const reviews = rows.map((_, index) => {
+    const values = rowValuesAt(preview, index, editedRows);
+    const fields = Object.fromEntries(Object.entries(mapping).filter(([, field]) => field).map(([header, field]) => [field, values[header] ?? '']));
+    const row = { ...fields, customerKey: `row-${index + 1}`, companyName: fields.companyName ?? '', email: (fields.email ?? '').toLowerCase() } as ImportRow;
+    return { index, values, issue: importRowIssue(row) };
+  });
+  const companyFields = new Map<string, Record<string, string>>();
+  for (const review of reviews) {
+    const companyHeader = preview.headers.find(header => mapping[header] === 'companyName');
+    const company = companyHeader ? review.values[companyHeader]?.trim().toLowerCase() : '';
+    if (!company) continue;
+    const current = companyFields.get(company) ?? {};
+    for (const field of ['country', 'customerType', 'businessType', 'website']) {
+      const header = preview.headers.find(item => mapping[item] === field);
+      const value = header ? review.values[header]?.trim() : '';
+      if (value && current[field] && current[field] !== value && !review.issue) review.issue = `同公司的${field === 'country' ? '国家' : field === 'customerType' ? '客户类型' : field === 'businessType' ? '业务类型' : '网站'}不一致`;
+      if (value) current[field] = value;
+    }
+    companyFields.set(company, current);
+  }
+  return reviews;
 }
 
 type Step = "input" | "preview";
 
 export interface ImportDrawerPort {
   preview(input:ImportFileContent):Promise<{success:boolean;data?:PreviewData;error?:string}>;
-  execute(input:ImportFileContent & {mapping:Record<string,string>}):Promise<ImportExecutionResult>;
+  execute(input:ImportFileContent & {mapping:Record<string,string>;rows?:Array<Record<string,string>>}):Promise<ImportExecutionResult>;
   continueAfterConflict?(conflict:LeadIngressConflictNotice):Promise<ImportExecutionResult>;
 }
 export interface ImportExecutionResult { success:boolean;data?:{imported:number;skipped:number};error?:string;conflict?:LeadIngressConflictNotice; }
@@ -90,6 +125,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [editedRows, setEditedRows] = useState<EditedRows>({});
   const [conflict, setConflict] = useState<LeadIngressConflictNotice | null>(null);
   // 缓存原始数据，execute 时重新送后端解析全部行
   const rawDataRef = useRef<ImportFileContent | null>(null);
@@ -99,6 +135,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
     setPasteText("");
     setPreview(null);
     setMapping({});
+    setEditedRows({});
     setLoading(false);
     setImporting(false);
     setConflict(null);
@@ -122,6 +159,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
       if (r.success && r.data) {
         setPreview(r.data);
         setMapping(r.data.suggestedMapping);
+        setEditedRows({});
         setStep("preview");
       } else {
         message.error(r.error || "解析失败");
@@ -146,6 +184,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
       if (r.success && r.data) {
         setPreview(r.data);
         setMapping(r.data.suggestedMapping);
+        setEditedRows({});
         setStep("preview");
       } else {
         message.error(r.error || "解析失败");
@@ -171,13 +210,20 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
     }
     message.error(r.error || "导入失败");
   };
+  const allRows = preview?.rows?.length ? preview.rows : preview?.previewRows ?? [];
+  const rowReviews=preview?reviewRows(preview,mapping,editedRows):[];
+  const originalProblemRows=useMemo(()=>new Set((preview?reviewRows(preview,mapping):[]).filter(review=>review.issue).map(review=>review.index)),[preview,mapping]);
+  const problemCount=rowReviews.filter(review=>review.issue).length;
+  const rowsForExecution=preview?allRows.map((_,index)=>rowValuesAt(preview,index,editedRows)):[];
+  const toTsv=(headers:string[],rows:Array<Record<string,string>>)=>[headers.join('\t'),...rows.map(row=>headers.map(header=>(row[header]??'').replace(/[\t\r\n]+/g,' ')).join('\t'))].join('\n');
   const executeImport = async () => {
     if (disabled) { message.error('导入需要连接服务器'); return; }
     if (!rawDataRef.current) return;
     setImporting(true);
     try {
-      const r = await (port ? port.execute({...rawDataRef.current,mapping}) : window.api.invoke("contacts:import", {
-        mode: "execute", ...rawDataRef.current, mapping,
+      const legacyInput={...rawDataRef.current,type:'tsv' as const,data:toTsv(preview?.headers??[],rowsForExecution),encoding:undefined};
+      const r = await (port ? port.execute({...rawDataRef.current,mapping,rows:rowsForExecution}) : window.api.invoke("contacts:import", {
+        mode: "execute", ...legacyInput, mapping,
       })) as ImportExecutionResult;
       acceptExecution(r);
     } catch (err) {
@@ -206,7 +252,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const columns: ColumnsType<any> = preview
-    ? preview.headers.map((h) => ({
+    ? [{title:'检查',key:'__issue',dataIndex:'__issue',width:120,fixed:'left' as const,render:(issue:string)=>issue?<Tag color="red">{issue}</Tag>:<Tag color="green">可导入</Tag>},...preview.headers.map((h) => ({
         title: (
           <Select
             size="small"
@@ -222,27 +268,21 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
         dataIndex: h,
         width: 130,
         ellipsis: true,
-        render: (v: string) => (
-          <span className={`contact-import-value text-xs ${!v ? "text-gray-300" : "text-gray-700"}`} title={v || undefined}>
-            {v || "—"}
-          </span>
-        ),
-      }))
+        render: (v: string, row: Record<string,unknown>) => <Input size="small" value={v}
+          status={row.__issue?'warning':undefined}
+          onChange={event=>setEditedRows(previous=>({...previous,[Number(row.__idx)]:{...(previous[Number(row.__idx)]??{}),[h]:event.target.value}}))} />,
+      }))]
     : [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dataSource: any[] = preview
-    ? preview.previewRows.map((row, idx) => {
-        const obj: Record<string, string | number> = { __idx: idx };
-        preview.headers.forEach((h, i) => { obj[h] = row[i] || ""; });
-        return obj;
-      })
+    ? [...rowReviews].sort((left,right)=>Number(originalProblemRows.has(right.index))-Number(originalProblemRows.has(left.index))||left.index-right.index).map(review=>({...review.values,__idx:review.index,__issue:review.issue}))
     : [];
 
   const dupCount = preview?.duplicateEmails.length || 0;
   const newCount = preview ? preview.totalRows - dupCount : 0;
   const emailMapped = preview?.headers.some(h => mapping[h] === "email");
-  const readyToImport = port ? Object.values(mapping).includes('companyName') && ['email','name','firstName','lastName','phone','whatsapp'].some(field=>Object.values(mapping).includes(field)) : emailMapped;
+  const readyToImport = (port ? Object.values(mapping).includes('companyName') && ['email','name','firstName','lastName','phone','whatsapp'].some(field=>Object.values(mapping).includes(field)) : emailMapped) && problemCount===0;
   const drawerWidth = step === "input" ? "min(620px, calc(100vw - 24px))" : "min(1180px, calc(100vw - 24px))";
 
   return (
@@ -336,14 +376,15 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
             <Tag color="blue">共 {preview.totalRows} 行</Tag>
             <Tag color="green">{port ? "待处理" : "新增"} {newCount} 条</Tag>
             {dupCount > 0 && <Tag color="orange">重复 {dupCount} 条（跳过）</Tag>}
-            {!readyToImport && <Tag color="red">{port ? "请选择公司及联系人姓名或联系方式" : "未映射邮箱列"}</Tag>}
+            {problemCount > 0 && <Tag color="red">待修正 {problemCount} 条</Tag>}
+            {!readyToImport && <Tag color="red">{problemCount ? "请先修正问题行" : port ? "请选择公司及联系人姓名或联系方式" : "未映射邮箱列"}</Tag>}
           </div>
 
-          {preview.previewRows.length < preview.totalRows && (
+          {allRows.length < preview.totalRows ? (
             <div className="text-[11px] text-gray-400">
-              预览前 {preview.previewRows.length} 行（共 {preview.totalRows} 行），每列下拉可调整字段映射
+              当前可编辑 {allRows.length} 行（共 {preview.totalRows} 行），问题行已置顶；每列下拉可调整字段映射
             </div>
-          )}
+          ) : <div className="text-[11px] text-gray-400">当前可编辑 {allRows.length} 行；问题行已置顶，可直接修改单元格内容</div>}
 
           <Table
             columns={columns}
@@ -351,8 +392,8 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
             rowKey="__idx"
             size="small"
             tableLayout="fixed"
-            scroll={{ x: preview.headers.length * 130 }}
-            pagination={false}
+            scroll={{ x: 120 + preview.headers.length * 160 }}
+            pagination={{pageSize:20,showSizeChanger:false,hideOnSinglePage:true}}
             className="contact-import-preview-table [&_.ant-table-thead>tr>th]:!text-[10px] [&_.ant-table-thead>tr>th]:!p-1"
           />
 

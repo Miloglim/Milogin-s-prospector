@@ -16,7 +16,7 @@ const groups = [
   { key: 'batch-a', label: 'Batch A', count: 2, companyCount: 2, countryCount: 1, touchedCount: 1, companies: ['Acme', 'Northwind'], countries: ['Brazil'], clientTypes: ['代理'], sourceLevel1: ['阿里国际站'], latestImportedAt: timestamp, latestUpdatedAt: timestamp },
   { key: 'batch-b', label: 'Batch B', count: 2, companyCount: 2, countryCount: 2, touchedCount: 2, companies: ['Contoso', 'Fabrikam'], countries: ['Chile', 'Peru'], clientTypes: ['直客'], sourceLevel1: ['展会'], latestImportedAt: timestamp, latestUpdatedAt: timestamp },
 ];
-const contacts = [1, 2, 3].map(contactId => ({ contactId, customerId: `customer-${contactId}`, customerVersion: 1, companyId: contactId, companyName: `Company ${contactId}`, email: `contact-${contactId}@example.invalid`, firstName: `Contact ${contactId}`, lastName: null, title: null, phone: null, linkedinUrl: null, country: 'Brazil', clientType: 'agent', language: 'en', stage: 'cold', status: 'reached', tags: [], extra: {}, touchStatus: 'contacted', assignee: '', source: 'fixture', sourceDetail: null, createdAt: timestamp, updatedAt: timestamp, ownerUserId: 'operations-fixture', ownerName: 'Operator', origin: 'operations', state: 'owned', canAssign: true }));
+const contacts = [1, 2, 3].map(contactId => ({ contactId, customerId: `customer-${contactId}`, customerVersion: 1, companyId: contactId, companyName: `Company ${contactId}`, email: `contact-${contactId}@example.invalid`, firstName: `Contact ${contactId}`, lastName: null, title: null, phone: null, linkedinUrl: null, country: 'Brazil', clientType: 'agent', language: 'en', stage: 'cold', status: 'reached', tags: [], extra: {}, touchStatus: 'contacted', assignee: '', source: 'fixture', sourceDetail: null, createdAt: timestamp, updatedAt: timestamp, ownerUserId: contactId === 2 ? null : 'operations-fixture', ownerName: contactId === 2 ? null : 'Operator', origin: 'operations', state: contactId === 2 ? 'pool' : 'owned', canAssign: true }));
 
 describe('contact group card assignment', () => {
   let root: Root; let host: HTMLDivElement; let queryClient: QueryClient; let invoke: ReturnType<typeof vi.fn>;
@@ -75,6 +75,14 @@ describe('contact group card assignment', () => {
     await act(async () => { assign.click(); await flush(); });
     expect(invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.CONTACT_LIST)).toHaveLength(readsBefore);
     expect(document.body.textContent).toContain('最多 200 人');
+  });
+
+  it('shows current ownership in the contact table as a tag', async () => {
+    await mount();
+    await vi.waitFor(() => expect(host.querySelector('.contact-ownership-tag')).not.toBeNull(), { timeout: 2000 });
+    const ownership = Array.from(host.querySelectorAll('.contact-ownership-tag')).map(tag => tag.textContent);
+    expect(ownership).toContain('Operator');
+    expect(ownership).toContain('未分配');
   });
 
   it('keeps the panel header and previous rows fixed while switching dimensions', async () => {

@@ -4,6 +4,7 @@ import { BankOutlined, BarChartOutlined, LeftOutlined, ShareAltOutlined, Unorder
 import { ContactList } from '../contacts/ContactList';
 import { useQueryClient } from '@tanstack/react-query';
 import { useIdentity } from '../../IdentityContext';
+import { invalidateDomain } from '../../lib/cacheDeps';
 import { CONTACT_ASSIGNMENT_LIMITS, type CenterContact, type CenterContactGroup, type CenterContactGroupDimension, type CenterContactQuery, type CenterContactRef } from '../../../shared/online-crm';
 import { createCenterContactPort, createCenterImportPort, centerInvoke } from './centerContactPort';
 import { CenterContactDetail } from './CenterContactDetail';
@@ -89,8 +90,9 @@ export function LegacyCustomersPage() {
   const currentSession = useRef(''); currentSession.current = `${baseUrl}:${identity?.userId}`;
   const port = useMemo(() => createCenterContactPort({ key, scope: activeScope, group:contactGroup?{groupDimension:contactGroup.dimension,groupKey:contactGroup.key}:undefined, isCurrent: () => currentIdentity.current === identityKey }), [key, activeScope, contactGroup?.dimension, contactGroup?.key]);
   const importPort = useMemo(() => { const session = `${baseUrl}:${identity?.userId}`; return createCenterImportPort(centerInvoke, operations, () => {
-    void qc.invalidateQueries({ queryKey: ['center-contacts'] });
-    void qc.invalidateQueries({ queryKey: ['center-contact-groups'] });
+    void invalidateDomain(qc, 'contacts', 'companies');
+    void qc.refetchQueries({ queryKey: ['center-companies'], type: 'inactive' });
+    void qc.refetchQueries({ queryKey: ['center-company-detail'], type: 'inactive' });
   }, () => currentSession.current === session); }, [key, operations, qc]);
   useEffect(() => {
     if (view !== 'table' && view !== 'groups') { setTableReady(false); return; }

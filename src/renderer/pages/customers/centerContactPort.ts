@@ -131,7 +131,7 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
     async export(kind, filters) {
       const all = await readAll(filters); if (!all.success || !all.data) return { success: false, error: all.error };
       const csv = (rows: unknown[][]) => '\ufeff' + rows.map(row => row.map(value => { const text = String(value ?? ''); return '"' + (/^[\s]*[=+@-]/.test(text) ? "'" + text : text).replace(/"/g, '""') + '"'; }).join(',')).join('\r\n');
-      if (kind === 'contacts') return { success: true, data: csv([['邮箱','名','姓','公司名','职位 / Title','电话','WhatsApp','LinkedIn','国家','语言','客户类型','业务类型','网站','联系状态','发送阶段','负责人','客户阶段','标签','一级来源','二级来源','导入批次来源','备注','创建时间','更新时间'], ...all.data.map(row => [row.email,row.firstName,row.lastName,row.companyName,row.title,row.phone,row.whatsapp,row.linkedinUrl,row.country,row.language,row.clientType === 'agent' ? '代理' : row.clientType === 'direct' ? '直客' : row.clientType,row.businessType,row.website,centerContactDisplayStatus(row),row.stage,row.ownerName,row.relationshipStage,row.tags.join('、'),row.sourceLevel1,row.sourceLevel2,row.source,centerContactRemark(row.extra),row.createdAt,row.updatedAt])]) };
+      if (kind === 'contacts') return { success: true, data: csv([['邮箱','名','姓','公司名','职位 / Title','电话','WhatsApp','LinkedIn','国家','语言','客户类型','业务类型','网站','联系状态','发送阶段','归属','客户阶段','标签','一级来源','二级来源','导入批次来源','备注','创建时间','更新时间'], ...all.data.map(row => [row.email,row.firstName,row.lastName,row.companyName,row.title,row.phone,row.whatsapp,row.linkedinUrl,row.country,row.language,row.clientType === 'agent' ? '代理' : row.clientType === 'direct' ? '直客' : row.clientType,row.businessType,row.website,centerContactDisplayStatus(row),row.stage,row.ownerName ?? '未分配',row.relationshipStage,row.tags.join('、'),row.sourceLevel1,row.sourceLevel2,row.source,centerContactRemark(row.extra),row.createdAt,row.updatedAt])]) };
       const rows: unknown[][] = [];
       for (const row of all.data) {
         const result = await invoke<CenterContactDetail>(ONLINE_CHANNELS.CONTACT_DETAIL, { contactId: row.contactId, customerId: row.customerId });
@@ -195,20 +195,24 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
       preview = result.data; prepared = null;
       const mapping = leadImportMapping(result.data.headers);
       const suggestedMapping = Object.fromEntries(Object.entries(mapping).map(([field,header])=>[header,field]));
-      return { success: true, data: { headers: result.data.headers, previewRows: result.data.rows.slice(0, 20).map(row => result.data.headers.map(header => row[header] ?? '')), totalRows: result.data.rows.length, suggestedMapping, duplicateEmails: [] } };
+      const rows=result.data.rows.map(row => result.data.headers.map(header => row[header] ?? ''));
+      return { success: true, data: { headers: result.data.headers, previewRows: rows.slice(0, 20), rows, totalRows: result.data.rows.length, suggestedMapping, duplicateEmails: [] } };
     },
     async execute(input) {
       if (!isCurrent()) return { success: false, error: '账号已切换，请重新导入' };
       if (!preview) return { success: false, error: '请重新预览文件' };
       const mapping = Object.fromEntries(Object.entries(input.mapping).filter(([, field]) => field).map(([header, field]) => [field, header]));
-      const fingerprint = importFingerprint(input, mapping);
-      if (prepared && prepared.fingerprint !== fingerprint) return { success: false, error: '字段映射已改变，请重新预览' };
+      const fingerprint = importFingerprint(input, mapping,input.rows);
+      if (prepared && prepared.fingerprint !== fingerprint) return { success: false, error: '预览数据已改变，请重新确认导入' };
       if (!prepared) {
         if (new Set(Object.values(input.mapping).filter(Boolean)).size !== Object.values(input.mapping).filter(Boolean).length) return {success:false,error:'同一个字段只能匹配一列'};
         const companyFields = new Map<string,Record<string,string>>();
         const rows = [];
+        if(input.rows&&input.rows.length!==preview.rows.length)return {success:false,error:'预览行数已变化，请重新预览'};
         for (const [index,raw] of preview.rows.entries()) {
-          const fields = Object.fromEntries(Object.entries(mapping).map(([field,header])=>[field,(raw[header]??'').trim()]));
+          const edited=input.rows?.[index];
+          const source=edited?Object.fromEntries(preview.headers.map(header=>[header,edited[header]??''])):raw;
+          const fields = Object.fromEntries(Object.entries(mapping).map(([field,header])=>[field,(source[header]??'').trim()]));
           const companyName=fields.companyName??'';
           const normalized=companyName.toLowerCase();
           const company=companyFields.get(normalized)??{};
@@ -218,7 +222,7 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
           }
           companyFields.set(normalized,company);
           const customerKey=await companyImportKey(companyName);
-          const row={...fields,customerKey,companyName,email:(fields.email??'').toLowerCase(),rawRow:raw};
+          const row={...fields,customerKey,companyName,email:(fields.email??'').toLowerCase(),rawRow:source};
           const issue=importRowIssue(row);if(issue)return {success:false,error:`第 ${index+IMPORT_ROW_OFFSET} 行：${issue}`};
           rows.push(row);
         }

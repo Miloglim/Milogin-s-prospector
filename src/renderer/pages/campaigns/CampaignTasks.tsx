@@ -18,7 +18,7 @@ import {
 interface CampaignRow {
   id: string; name: string; status: string; autoSend: boolean; planRounds: number;
   total: number; pending: number; queued: number; sent: number;
-  replied: number; bounced: number; unsubscribed: number; skipped: number;
+  replied: number; bounced: number; autoreply: number; unsubscribed: number; skipped: number;
   /** 封数口径进度：Σ已发轮次 / 计划封数（终态触点只计已发轮数，止损即收缩分母） */
   touchesSent: number; touchesPlanned: number;
   queuedGroups: number;
@@ -64,6 +64,7 @@ const TARGET_STATUS: Record<string, { color: string; label: string }> = {
   sent: { color: "success", label: "已完成" },
   replied: { color: "green", label: "已收到" },
   bounced: { color: "red", label: "退信" },
+  autoreply: { color: "orange", label: "自动回复" },
   unsubscribed: { color: "orange", label: "退订" },
   skipped: { color: "default", label: "已跳过" },
 };
@@ -328,9 +329,10 @@ export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEd
                 <div className="flex flex-wrap gap-1 mb-2 min-h-[22px]">
                   {r.replied > 0 && <Tag color="green" className="!my-0 !text-[10px]">已收到 {r.replied}</Tag>}
                   {r.bounced > 0 && <Tag color="orange" className="!my-0 !text-[10px]">退信 {r.bounced}</Tag>}
+                  {r.autoreply > 0 && <Tag color="orange" className="!my-0 !text-[10px]">自动回复 {r.autoreply}</Tag>}
                   {r.unsubscribed > 0 && <Tag className="!my-0 !text-[10px]">退订 {r.unsubscribed}</Tag>}
                   {r.skipped > 0 && <Tag className="!my-0 !text-[10px]">跳过 {r.skipped}</Tag>}
-                  {r.replied + r.bounced + r.unsubscribed + r.skipped === 0 && (
+                  {r.replied + r.bounced + r.autoreply + r.unsubscribed + r.skipped === 0 && (
                     <span className="text-[10px] text-gray-300">尚无收到或止损</span>
                   )}
                 </div>

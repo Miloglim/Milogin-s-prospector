@@ -817,11 +817,11 @@ var require_binaryParsers = __commonJS({
         var array = [];
         var i2;
         if (dimension.length > 1) {
-          var count = dimension.shift();
-          for (i2 = 0; i2 < count; i2++) {
+          var count2 = dimension.shift();
+          for (i2 = 0; i2 < count2; i2++) {
             array[i2] = parse(dimension, elementType2);
           }
-          dimension.unshift(count);
+          dimension.unshift(count2);
         } else {
           for (i2 = 0; i2 < dimension[0]; i2++) {
             array[i2] = parseElement(elementType2);
@@ -1242,11 +1242,11 @@ var require_utils2 = __commonJS({
       const outer = await md5(Buffer.concat([Buffer.from(inner), salt]));
       return "md5" + outer;
     }
-    async function sha256(text9) {
-      return await subtleCrypto.digest("SHA-256", text9);
+    async function sha256(text15) {
+      return await subtleCrypto.digest("SHA-256", text15);
     }
-    async function hashByName(hashName, text9) {
-      return await subtleCrypto.digest(hashName, text9);
+    async function hashByName(hashName, text15) {
+      return await subtleCrypto.digest(hashName, text15);
     }
     async function hmacSha256(keyBuffer, msg) {
       const key = await subtleCrypto.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -1470,21 +1470,21 @@ var require_sasl = __commonJS({
         throw new Error("SASL: SCRAM-SERVER-FINAL-MESSAGE: server signature does not match");
       }
     }
-    function isPrintableChars(text9) {
-      if (typeof text9 !== "string") {
+    function isPrintableChars(text15) {
+      if (typeof text15 !== "string") {
         throw new TypeError("SASL: text must be a string");
       }
-      return text9.split("").map((_, i) => text9.charCodeAt(i)).every((c) => c >= 33 && c <= 43 || c >= 45 && c <= 126);
+      return text15.split("").map((_, i) => text15.charCodeAt(i)).every((c) => c >= 33 && c <= 43 || c >= 45 && c <= 126);
     }
-    function isBase64(text9) {
-      return /^(?:[a-zA-Z0-9+/]{4})*(?:[a-zA-Z0-9+/]{2}==|[a-zA-Z0-9+/]{3}=)?$/.test(text9);
+    function isBase64(text15) {
+      return /^(?:[a-zA-Z0-9+/]{4})*(?:[a-zA-Z0-9+/]{2}==|[a-zA-Z0-9+/]{3}=)?$/.test(text15);
     }
-    function parseAttributePairs(text9) {
-      if (typeof text9 !== "string") {
+    function parseAttributePairs(text15) {
+      if (typeof text15 !== "string") {
         throw new TypeError("SASL: attribute pairs text must be a string");
       }
       return new Map(
-        text9.split(",").map((attrValue) => {
+        text15.split(",").map((attrValue) => {
           if (!/^.=/.test(attrValue)) {
             throw new Error("SASL: Invalid attribute pair entry");
           }
@@ -2367,9 +2367,9 @@ var require_messages = __commonJS({
     };
     exports2.ReadyForQueryMessage = ReadyForQueryMessage;
     var CommandCompleteMessage = class {
-      constructor(length, text9) {
+      constructor(length, text15) {
         this.length = length;
-        this.text = text9;
+        this.text = text15;
         this.name = "commandComplete";
       }
     };
@@ -2550,23 +2550,23 @@ var require_serializer = __commonJS({
         /* code.startup */
       );
     };
-    var query = (text9) => {
-      return writer.addCString(text9).flush(
+    var query2 = (text15) => {
+      return writer.addCString(text15).flush(
         81
         /* code.query */
       );
     };
     var emptyArray = [];
-    var parse = (query2) => {
-      const name = query2.name || "";
+    var parse = (query3) => {
+      const name = query3.name || "";
       if (name.length > 63) {
         console.error("Warning! Postgres only supports 63 characters for query names.");
         console.error("You supplied %s (%s)", name, name.length);
         console.error("This can cause conflicts and silent errors executing queries");
       }
-      const types2 = query2.types || emptyArray;
+      const types2 = query3.types || emptyArray;
       const len = types2.length;
-      const buffer = writer.addCString(name).addCString(query2.text).addInt16(len);
+      const buffer = writer.addCString(name).addCString(query3.text).addInt16(len);
       for (let i = 0; i < len; i++) {
         buffer.addInt32(types2[i]);
       }
@@ -2668,8 +2668,8 @@ var require_serializer = __commonJS({
       return msg.name ? cstringMessage(68, `${msg.type}${msg.name || ""}`) : msg.type === "P" ? emptyDescribePortal : emptyDescribeStatement;
     };
     var close = (msg) => {
-      const text9 = `${msg.type}${msg.name || ""}`;
-      return cstringMessage(67, text9);
+      const text15 = `${msg.type}${msg.name || ""}`;
+      return cstringMessage(67, text15);
     };
     var copyData = (chunk) => {
       return writer.add(chunk).flush(
@@ -2703,7 +2703,7 @@ var require_serializer = __commonJS({
       requestSsl,
       sendSASLInitialResponseMessage,
       sendSCRAMClientFinalMessage,
-      query,
+      query: query2,
       parse,
       bind,
       execute,
@@ -2941,8 +2941,8 @@ var require_parser = __commonJS({
       return new messages_1.ReadyForQueryMessage(LATEINIT_LENGTH, status);
     };
     var parseCommandCompleteMessage = (reader) => {
-      const text9 = reader.cstring();
-      return new messages_1.CommandCompleteMessage(LATEINIT_LENGTH, text9);
+      const text15 = reader.cstring();
+      return new messages_1.CommandCompleteMessage(LATEINIT_LENGTH, text15);
     };
     var parseCopyData = (reader, length) => {
       const chunk = reader.bytes(length - 4);
@@ -3329,12 +3329,12 @@ var require_connection = __commonJS({
         }
         return this.stream.write(buffer);
       }
-      query(text9) {
-        this._send(serialize.query(text9));
+      query(text15) {
+        this._send(serialize.query(text15));
       }
       // send parse message
-      parse(query) {
-        this._send(serialize.parse(query));
+      parse(query2) {
+        this._send(serialize.parse(query2));
       }
       // send bind message
       bind(config) {
@@ -3796,9 +3796,9 @@ var require_client = __commonJS({
         return this._activeQuery;
       }
       _errorAllQueries(err) {
-        const enqueueError = (query) => {
+        const enqueueError = (query2) => {
           process.nextTick(() => {
-            query.handleError(err, this.connection);
+            query2.handleError(err, this.connection);
           });
         };
         const activeQuery = this._getActiveQuery();
@@ -4163,8 +4163,8 @@ var require_client = __commonJS({
         }
         return data;
       }
-      cancel(client, query) {
-        if (client.activeQuery === query) {
+      cancel(client, query2) {
+        if (client.activeQuery === query2) {
           const con = this.connection;
           if (this.host && this.host.indexOf("/") === 0) {
             con.connect(this.host + "/.s.PGSQL." + this.port);
@@ -4174,10 +4174,10 @@ var require_client = __commonJS({
           con.on("connect", function() {
             con.cancel(client.processID, client.secretKey);
           });
-        } else if (client._queryQueue.indexOf(query) !== -1) {
-          client._queryQueue.splice(client._queryQueue.indexOf(query), 1);
-        } else if (client._sentQueryQueue.indexOf(query) !== -1) {
-          query.callback = () => {
+        } else if (client._queryQueue.indexOf(query2) !== -1) {
+          client._queryQueue.splice(client._queryQueue.indexOf(query2), 1);
+        } else if (client._sentQueryQueue.indexOf(query2) !== -1) {
+          query2.callback = () => {
           };
         }
       }
@@ -4226,16 +4226,16 @@ var require_client = __commonJS({
           return;
         }
         while (this._queryQueue.length > 0) {
-          const query = this._queryQueue.shift();
+          const query2 = this._queryQueue.shift();
           this.hasExecuted = true;
-          const queryError = query.submit(this.connection);
+          const queryError = query2.submit(this.connection);
           if (queryError) {
             process.nextTick(() => {
-              query.handleError(queryError, this.connection);
+              query2.handleError(queryError, this.connection);
             });
             continue;
           }
-          this._sentQueryQueue.push(query);
+          this._sentQueryQueue.push(query2);
         }
         if (this.readyForQuery && !this._activeQuery && this._sentQueryQueue.length > 0) {
           this._activeQuery = this._sentQueryQueue.shift();
@@ -4246,46 +4246,46 @@ var require_client = __commonJS({
         }
       }
       query(config, values, callback) {
-        let query;
+        let query2;
         let result2;
         if (config == null) {
           throw new TypeError("Client was passed a null or undefined query");
         }
         if (typeof config.submit === "function") {
-          result2 = query = config;
-          if (!query.callback) {
+          result2 = query2 = config;
+          if (!query2.callback) {
             if (typeof values === "function") {
-              query.callback = values;
+              query2.callback = values;
             } else if (callback) {
-              query.callback = callback;
+              query2.callback = callback;
             }
           }
         } else {
-          query = new Query2(config, values, callback);
-          if (!query.callback) {
+          query2 = new Query2(config, values, callback);
+          if (!query2.callback) {
             result2 = new this._Promise((resolve3, reject) => {
-              query.callback = (err, res) => err ? reject(err) : resolve3(res);
+              query2.callback = (err, res) => err ? reject(err) : resolve3(res);
             }).catch((err) => {
               Error.captureStackTrace(err);
               throw err;
             });
-          } else if (typeof query.callback !== "function") {
+          } else if (typeof query2.callback !== "function") {
             throw new TypeError("callback is not a function");
           }
         }
         const readTimeout = config.query_timeout || this.connectionParameters.query_timeout;
         if (readTimeout) {
-          const queryCallback = query.callback || (() => {
+          const queryCallback = query2.callback || (() => {
           });
           const readTimeoutTimer = setTimeout(() => {
             const error = new Error("Query read timeout");
             process.nextTick(() => {
-              query.handleError(error, this.connection);
+              query2.handleError(error, this.connection);
             });
             queryCallback(error);
-            query.callback = () => {
+            query2.callback = () => {
             };
-            const index = this._queryQueue.indexOf(query);
+            const index = this._queryQueue.indexOf(query2);
             if (index > -1) {
               this._queryQueue.splice(index, 1);
             } else if (this.pipeline) {
@@ -4294,42 +4294,42 @@ var require_client = __commonJS({
             }
             this._pulseQueryQueue();
           }, readTimeout);
-          query.callback = (err, res) => {
+          query2.callback = (err, res) => {
             clearTimeout(readTimeoutTimer);
             queryCallback(err, res);
           };
         }
-        if (this.binary && !query.binary) {
-          query.binary = true;
+        if (this.binary && !query2.binary) {
+          query2.binary = true;
         }
-        if (query._result && !query._result._types) {
-          query._result._types = this._types;
+        if (query2._result && !query2._result._types) {
+          query2._result._types = this._types;
         }
         if (this.pipeline) {
-          const portalQuery = typeof config.submit === "function" && !(query instanceof Query2) ? "Custom query classes such as pg-cursor and pg-query-stream are" : query.rows ? "The `rows` option is" : null;
+          const portalQuery = typeof config.submit === "function" && !(query2 instanceof Query2) ? "Custom query classes such as pg-cursor and pg-query-stream are" : query2.rows ? "The `rows` option is" : null;
           if (portalQuery) {
             process.nextTick(() => {
-              query.handleError(new Error(`${portalQuery} not supported in pipeline mode`), this.connection);
+              query2.handleError(new Error(`${portalQuery} not supported in pipeline mode`), this.connection);
             });
             return result2;
           }
         }
         if (!this._queryable) {
           process.nextTick(() => {
-            query.handleError(new Error("Client has encountered a connection error and is not queryable"), this.connection);
+            query2.handleError(new Error("Client has encountered a connection error and is not queryable"), this.connection);
           });
           return result2;
         }
         if (this._ending) {
           process.nextTick(() => {
-            query.handleError(new Error("Client was closed and is not queryable"), this.connection);
+            query2.handleError(new Error("Client was closed and is not queryable"), this.connection);
           });
           return result2;
         }
         if (this._queryQueue.length > 0 && !this.pipeline) {
           queryQueueLengthDeprecationNotice();
         }
-        this._queryQueue.push(query);
+        this._queryQueue.push(query2);
         this._pulseQueryQueue();
         return result2;
       }
@@ -4726,9 +4726,9 @@ var require_pg_pool = __commonJS({
         this._idle.push(new IdleItem(client, idleListener, tid));
         this._pulseQueue();
       }
-      query(text9, values, cb) {
-        if (typeof text9 === "function") {
-          const response2 = promisify(this.Promise, text9);
+      query(text15, values, cb) {
+        if (typeof text15 === "function") {
+          const response2 = promisify(this.Promise, text15);
           setImmediate(function() {
             return response2.callback(new Error("Passing a function as the first parameter to pool.query is not supported"));
           });
@@ -4756,7 +4756,7 @@ var require_pg_pool = __commonJS({
           client.once("error", onError);
           this.log("dispatching query");
           try {
-            client.query(text9, values, (err2, res) => {
+            client.query(text15, values, (err2, res) => {
               this.log("query dispatched");
               client.removeListener("error", onError);
               if (clientReleased) {
@@ -4825,8 +4825,8 @@ var require_query2 = __commonJS({
       this._emitRowEvents = false;
       this.on(
         "newListener",
-        function(event3) {
-          if (event3 === "row")
+        function(event2) {
+          if (event2 === "row")
             this._emitRowEvents = true;
         }.bind(this)
       );
@@ -5004,10 +5004,10 @@ var require_client2 = __commonJS({
     Client2.Query = NativeQuery;
     util.inherits(Client2, EventEmitter);
     Client2.prototype._errorAllQueries = function(err) {
-      const enqueueError = (query) => {
+      const enqueueError = (query2) => {
         process.nextTick(() => {
-          query.native = this.native;
-          query.handleError(err);
+          query2.native = this.native;
+          query2.handleError(err);
         });
       };
       if (this._hasActiveQuery()) {
@@ -5068,7 +5068,7 @@ var require_client2 = __commonJS({
       });
     };
     Client2.prototype.query = function(config, values, callback) {
-      let query;
+      let query2;
       let result2;
       let readTimeout;
       let readTimeoutTimer;
@@ -5077,14 +5077,14 @@ var require_client2 = __commonJS({
         throw new TypeError("Client was passed a null or undefined query");
       } else if (typeof config.submit === "function") {
         readTimeout = config.query_timeout || this.connectionParameters.query_timeout;
-        result2 = query = config;
+        result2 = query2 = config;
         if (typeof values === "function") {
           config.callback = values;
         }
       } else {
         readTimeout = config.query_timeout || this.connectionParameters.query_timeout;
-        query = new NativeQuery(config, values, callback);
-        if (!query.callback) {
+        query2 = new NativeQuery(config, values, callback);
+        if (!query2.callback) {
           let resolveOut, rejectOut;
           result2 = new this._Promise((resolve3, reject) => {
             resolveOut = resolve3;
@@ -5093,49 +5093,49 @@ var require_client2 = __commonJS({
             Error.captureStackTrace(err);
             throw err;
           });
-          query.callback = (err, res) => err ? rejectOut(err) : resolveOut(res);
+          query2.callback = (err, res) => err ? rejectOut(err) : resolveOut(res);
         }
       }
       if (readTimeout) {
-        queryCallback = query.callback || (() => {
+        queryCallback = query2.callback || (() => {
         });
         readTimeoutTimer = setTimeout(() => {
           const error = new Error("Query read timeout");
           process.nextTick(() => {
-            query.handleError(error, this.connection);
+            query2.handleError(error, this.connection);
           });
           queryCallback(error);
-          query.callback = () => {
+          query2.callback = () => {
           };
-          const index = this._queryQueue.indexOf(query);
+          const index = this._queryQueue.indexOf(query2);
           if (index > -1) {
             this._queryQueue.splice(index, 1);
           }
           this._pulseQueryQueue();
         }, readTimeout);
-        query.callback = (err, res) => {
+        query2.callback = (err, res) => {
           clearTimeout(readTimeoutTimer);
           queryCallback(err, res);
         };
       }
       if (!this._queryable) {
-        query.native = this.native;
+        query2.native = this.native;
         process.nextTick(() => {
-          query.handleError(new Error("Client has encountered a connection error and is not queryable"));
+          query2.handleError(new Error("Client has encountered a connection error and is not queryable"));
         });
         return result2;
       }
       if (this._ending) {
-        query.native = this.native;
+        query2.native = this.native;
         process.nextTick(() => {
-          query.handleError(new Error("Client was closed and is not queryable"));
+          query2.handleError(new Error("Client was closed and is not queryable"));
         });
         return result2;
       }
       if (this._queryQueue.length > 0 && !this.pipeline) {
         queryQueueLengthDeprecationNotice();
       }
-      this._queryQueue.push(query);
+      this._queryQueue.push(query2);
       this._pulseQueryQueue();
       return result2;
     };
@@ -5185,17 +5185,17 @@ var require_client2 = __commonJS({
       if (this._hasActiveQuery()) {
         return;
       }
-      const query = this._queryQueue.shift();
-      if (!query) {
+      const query2 = this._queryQueue.shift();
+      if (!query2) {
         if (!initialConnection) {
           this.emit("drain");
         }
         return;
       }
-      this._activeQuery = query;
-      query.submit(this);
+      this._activeQuery = query2;
+      query2.submit(this);
       const self = this;
-      query.once("_done", function() {
+      query2.once("_done", function() {
         self._pulseQueryQueue();
       });
     };
@@ -5215,15 +5215,15 @@ var require_client2 = __commonJS({
       const nativeQueries = [];
       const utils = require_utils();
       while (this._queryQueue.length > 0) {
-        const query = this._queryQueue.shift();
+        const query2 = this._queryQueue.shift();
         this.hasExecuted = true;
-        nativeQueries.push(query);
-        const values = query.values ? query.values.map(utils.prepareValue) : null;
-        const pipelineEntry = { text: query.text, name: query.name, arrayMode: query._arrayMode };
+        nativeQueries.push(query2);
+        const values = query2.values ? query2.values.map(utils.prepareValue) : null;
+        const pipelineEntry = { text: query2.text, name: query2.name, arrayMode: query2._arrayMode };
         if (values) {
           pipelineEntry.values = values;
         }
-        if (query.name && this.namedQueries[query.name]) {
+        if (query2.name && this.namedQueries[query2.name]) {
           pipelineEntry._alreadyPrepared = true;
         }
         queries.push(pipelineEntry);
@@ -5266,12 +5266,12 @@ var require_client2 = __commonJS({
         self._pulsePipelinedQueryQueue();
       });
     };
-    Client2.prototype.cancel = function(query) {
-      if (this._activeQuery === query) {
+    Client2.prototype.cancel = function(query2) {
+      if (this._activeQuery === query2) {
         this.native.cancel(function() {
         });
-      } else if (this._queryQueue.indexOf(query) !== -1) {
-        this._queryQueue.splice(this._queryQueue.indexOf(query), 1);
+      } else if (this._queryQueue.indexOf(query2) !== -1) {
+        this._queryQueue.splice(this._queryQueue.indexOf(query2), 1);
       }
     };
     Client2.prototype.ref = function() {
@@ -5411,12 +5411,12 @@ function remarkValue(value2) {
 function unmatchedImportRemark(rawRow, mappedHeaders) {
   if (!rawRow)
     return "";
-  const mapped5 = new Set(Array.from(mappedHeaders, normalizeImportHeader).filter(Boolean));
+  const mapped7 = new Set(Array.from(mappedHeaders, normalizeImportHeader).filter(Boolean));
   const lines = [];
   for (const [rawHeader, rawValue] of Object.entries(rawRow)) {
     const header = rawHeader.trim();
     const normalizedHeader = normalizeImportHeader(header);
-    if (!header || mapped5.has(normalizedHeader))
+    if (!header || mapped7.has(normalizedHeader))
       continue;
     const value2 = remarkValue(rawValue);
     if (EMPTY_IMPORT_VALUES.has(value2.toLowerCase()))
@@ -5619,8 +5619,8 @@ function isAccountEmail(value2) {
   const parts = value2.split("@");
   if (parts.length !== 2)
     return false;
-  const [local, domain] = parts;
-  const labels = domain.split(".");
+  const [local, domain2] = parts;
+  const labels = domain2.split(".");
   return local.length <= EMAIL_LOCAL_MAX && EMAIL_LOCAL_PATTERN.test(local) && !local.startsWith(".") && !local.endsWith(".") && !local.includes("..") && labels.length > 1 && labels.every((label) => label.length <= EMAIL_LABEL_MAX && EMAIL_LABEL_PATTERN.test(label));
 }
 function isNewAccountPassword(value2) {
@@ -5653,7 +5653,9 @@ var HTTP_STATUS = {
   RATE_LIMITED: 429,
   DATABASE_ERROR: 503,
   UNAVAILABLE: 503,
-  PASSWORD_CHANGE_REQUIRED: 403
+  PASSWORD_CHANGE_REQUIRED: 403,
+  DEVICE_REPLACEMENT_REQUIRED: 409,
+  DEVICE_REPLACED: 401
 };
 
 // server/transport/http.ts
@@ -5879,15 +5881,15 @@ function createContactSharingHandler(service) {
       return;
     }
     if (req.method === "GET" && path4 === CONTACT_SHARING_ROUTES.shares) {
-      const query = {};
+      const query2 = {};
       for (const [k, v] of url.searchParams) {
-        if (k in query) {
+        if (k in query2) {
           send(res, failure("INVALID_INPUT", "\u67E5\u8BE2\u53C2\u6570\u91CD\u590D"));
           return;
         }
-        query[k] = ["limit", "offset", "contactId"].includes(k) ? Number(v) : v;
+        query2[k] = ["limit", "offset", "contactId"].includes(k) ? Number(v) : v;
       }
-      send(res, await service.shares(token, query));
+      send(res, await service.shares(token, query2));
       return;
     }
     if (req.method === "POST") {
@@ -6102,8 +6104,8 @@ function sqlCode(error) {
     return error.code;
   return "UNKNOWN";
 }
-function literalSearch(text9) {
-  return `%${text9.replace(/[\\%_]/g, "\\$&")}%`;
+function literalSearch(text15) {
+  return `%${text15.replace(/[\\%_]/g, "\\$&")}%`;
 }
 var PostgresCrmRepository = class {
   constructor(pool, log) {
@@ -6150,14 +6152,14 @@ var PostgresCrmRepository = class {
       await client.query("SELECT pg_advisory_xact_lock($1)", [CRM_SCHEMA_LOCK]);
       await client.query(`CREATE TABLE IF NOT EXISTS crm_schema_migrations (
         version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
-      const checksum = (0, import_node_crypto.createHash)("sha256").update(CRM_SCHEMA_SQL).digest("hex");
+      const checksum4 = (0, import_node_crypto.createHash)("sha256").update(CRM_SCHEMA_SQL).digest("hex");
       const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CRM_SCHEMA_VERSION]);
       if (existing.rows.length) {
-        if (existing.rows[0].checksum !== checksum)
+        if (existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u5DF2\u5E94\u7528\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4\uFF0C\u62D2\u7EDD\u8986\u76D6");
       } else {
         await client.query(CRM_SCHEMA_SQL);
-        await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES ($1,$2)", [CRM_SCHEMA_VERSION, checksum]);
+        await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES ($1,$2)", [CRM_SCHEMA_VERSION, checksum4]);
         this.log.write("INFO", "crm.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${CRM_SCHEMA_VERSION}`);
       }
       return success(void 0);
@@ -6215,16 +6217,16 @@ var PostgresCrmRepository = class {
       return result2.rows.length ? success(dates(result2.rows[0])) : failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
     });
   }
-  listContacts(query) {
+  listContacts(query2) {
     return this.execute("crm.pg.listContacts", () => this.transaction(async (client) => {
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const filter = `WHERE ($1 = '' OR email ILIKE $2 ESCAPE '\\' OR first_name ILIKE $2 ESCAPE '\\'
         OR last_name ILIKE $2 ESCAPE '\\')`;
-      const params = [query.search, literalSearch(query.search)];
-      const count = await client.query(`SELECT count(*)::int AS total FROM contacts ${filter}`, params);
+      const params = [query2.search, literalSearch(query2.search)];
+      const count2 = await client.query(`SELECT count(*)::int AS total FROM contacts ${filter}`, params);
       const rows = await client.query(`SELECT ${CONTACT_COLUMNS} FROM contacts ${filter}
-        ORDER BY updated_at DESC,id DESC LIMIT $3 OFFSET $4`, [...params, query.limit, query.offset]);
-      return success({ items: rows.rows.map((row2) => dates(row2)), total: count.rows[0].total });
+        ORDER BY updated_at DESC,id DESC LIMIT $3 OFFSET $4`, [...params, query2.limit, query2.offset]);
+      return success({ items: rows.rows.map((row2) => dates(row2)), total: count2.rows[0].total });
     }));
   }
   addFollowup(contactId, note) {
@@ -6750,10 +6752,10 @@ var PostgresAdminRepository = class {
       const relation = `${quoteIdentifier(table.schema)}.${quoteIdentifier(table.table)}`;
       const where = search ? `WHERE (${searchColumns.map((column) => `${quoteIdentifier(column.columnName)}::text ILIKE $1`).join(" OR ")})` : "";
       const searchParams = search ? [`%${search}%`] : [];
-      const count = await c.query(`SELECT count(*)::int AS n FROM ${relation} ${where}`, searchParams);
+      const count2 = await c.query(`SELECT count(*)::int AS n FROM ${relation} ${where}`, searchParams);
       const limitParam = searchParams.length + 1, offsetParam = searchParams.length + 2;
       const selected = await c.query(`SELECT ${safe.map((column) => quoteIdentifier(column.columnName)).join(",")} FROM ${relation} ${where} ORDER BY ${quoteIdentifier(sort)} ${direction},${quoteIdentifier(table.keyColumn)} ${direction} LIMIT $${limitParam} OFFSET $${offsetParam}`, [...searchParams, q.limit, q.offset]);
-      return success({ table: adminDataTableInfo(table), columns, rows: selected.rows.map((row2) => Object.fromEntries(Object.entries(row2).map(([key, value2]) => [key, databaseValue(value2)]))), total: Number(count.rows[0]?.n ?? 0), limit: q.limit, offset: q.offset, search, sort, direction, keyColumn: table.keyColumn });
+      return success({ table: adminDataTableInfo(table), columns, rows: selected.rows.map((row2) => Object.fromEntries(Object.entries(row2).map(([key, value2]) => [key, databaseValue(value2)]))), total: Number(count2.rows[0]?.n ?? 0), limit: q.limit, offset: q.offset, search, sort, direction, keyColumn: table.keyColumn });
     });
   }
   users(hash, q) {
@@ -6766,13 +6768,13 @@ var PostgresAdminRepository = class {
       const filter = `WHERE (($4::text='archived' AND u.deleted_at IS NOT NULL) OR ($4::text='active' AND u.deleted_at IS NULL)) AND ($1='' OR u.user_id::text=$1 OR e.email ILIKE $2 ESCAPE '\\' OR u.display_name ILIKE $2 ESCAPE '\\')
    AND ($3::text IS NULL OR EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id=$3 AND g.active))`;
       const p = [q.search, `%${q.search.replace(/[\\%_]/g, "\\$&")}%`, q.productId ?? null];
-      const count = await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) ${filter}`, [...p, state]);
+      const count2 = await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) ${filter}`, [...p, state]);
       const rows = await c.query(`SELECT ${PERSON} FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) LEFT JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' ${filter}
     ORDER BY CASE WHEN u.identity_admin THEN 0 ELSE COALESCE((
      SELECT MIN(array_position($5::text[],g.role)) FROM public.identity_product_grants g
      WHERE g.user_id=u.user_id AND g.product_id=COALESCE($3,'crm') AND g.active
     ),array_length($5::text[],1)+1) END,u.created_at DESC,u.user_id LIMIT $6 OFFSET $7`, [...p, state, [...CRM_ROLES], q.limit, q.offset]);
-      return success({ items: rows.rows.map(managed), total: count.rows[0].n });
+      return success({ items: rows.rows.map(managed), total: count2.rows[0].n });
     });
   }
   products(hash) {
@@ -6797,17 +6799,17 @@ var PostgresAdminRepository = class {
         c.query(`SELECT t.task_id::text AS id,t.updated_at AS created_at,t.status,t.due_at,EXISTS(SELECT 1 FROM crm_task_due_receipts r WHERE r.task_id=t.task_id AND r.task_version=t.version) AS reminded FROM crm_followup_tasks t ORDER BY t.updated_at DESC,t.task_id LIMIT $1`, [DASHBOARD_LIMITS.receipts])
       ]);
       const value2 = (r) => Number(r.rows[0]?.n ?? 0);
-      const iso2 = (v) => v instanceof Date ? v.toISOString() : typeof v === "string" ? new Date(v).toISOString() : null;
+      const iso5 = (v) => v instanceof Date ? v.toISOString() : typeof v === "string" ? new Date(v).toISOString() : null;
       const customerCount = value2(customers), taskCount = value2(tasks), pendingCount = value2(pending), overdueCount = Number(tasks.rows[0]?.overdue ?? 0), staleCount = Number(pending.rows[0]?.stale ?? 0);
       const databases = [
         { id: "identity", name: "\u8EAB\u4EFD\u6570\u636E\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 public.identity_*", state: "healthy", records: value2(users), updatedAt: null, detail: "\u4E0E\u4E1A\u52A1\u533A\u5171\u7528 public schema\uFF1B\u8D26\u53F7\u8868\u4F7F\u7528 identity_ \u524D\u7F00", recordLabel: "\u542F\u7528\u8D26\u53F7" },
-        { id: "crm", name: "Prospector \u4E1A\u52A1\u6570\u636E\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 public", state: "healthy", records: customerCount, updatedAt: iso2(customers.rows[0]?.updated_at), detail: "\u5BA2\u6237\u3001\u8054\u7CFB\u4EBA\u3001\u8DDF\u8FDB\u4E0E\u534F\u4F5C\u4E8B\u4EF6\uFF1B\u65F6\u95F4\u4E3A\u6700\u8FD1\u5BA2\u6237\u521B\u5EFA\u65F6\u95F4", recordLabel: "\u5BA2\u6237" },
+        { id: "crm", name: "Prospector \u4E1A\u52A1\u6570\u636E\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 public", state: "healthy", records: customerCount, updatedAt: iso5(customers.rows[0]?.updated_at), detail: "\u5BA2\u6237\u3001\u8054\u7CFB\u4EBA\u3001\u8DDF\u8FDB\u4E0E\u534F\u4F5C\u4E8B\u4EF6\uFF1B\u65F6\u95F4\u4E3A\u6700\u8FD1\u5BA2\u6237\u521B\u5EFA\u65F6\u95F4", recordLabel: "\u5BA2\u6237" },
         { id: "local", name: "\u684C\u9762\u4E2A\u4EBA\u6570\u636E", kind: "SQLite", state: "not_connected", records: null, updatedAt: null, detail: "\u5C1A\u672A\u63A5\u5165\u4E2D\u5FC3\u9065\u6D4B", recordLabel: "\u8BB0\u5F55" }
       ];
       const flows = [
-        { id: "import", label: "\u5BFC\u5165 \u2192 \u5BA2\u6237\u5E93", state: "healthy", records: value2(imports), updatedAt: iso2(imports.rows[0]?.updated_at), detail: "\u5DF2\u8BB0\u5F55\u7684\u4E2D\u5FC3\u5BFC\u5165\u6279\u6B21", recordLabel: "\u5BFC\u5165\u6279\u6B21", timeLabel: "\u6700\u8FD1\u5BFC\u5165", stages: ["\u6587\u4EF6\u89E3\u6790", "\u5B57\u6BB5\u6821\u9A8C", "\u5BA2\u6237\u5165\u5E93"] },
-        { id: "events", label: "\u4E1A\u52A1\u4E8B\u4EF6 \u2192 \u901A\u77E5", state: staleCount > 0 ? "attention" : "healthy", records: value2(deliveries), updatedAt: iso2(deliveries.rows[0]?.updated_at), detail: pendingCount > 0 ? `\u6709 ${pendingCount} \u6761\u4E8B\u4EF6\u7B49\u5F85\u5904\u7406\uFF0C${staleCount} \u6761\u8D85\u8FC7\u4E00\u5206\u949F` : "\u5F85\u5904\u7406\u961F\u5217\u4E3A\u7A7A", recordLabel: "\u901A\u77E5\u8BB0\u5F55", timeLabel: "\u6700\u8FD1\u6295\u9012", stages: ["\u4E1A\u52A1\u4E8B\u4EF6", "\u6743\u9650\u6295\u5F71", "\u901A\u77E5\u6295\u9012"] },
-        { id: "tasks", label: "\u8DDF\u8FDB\u4EFB\u52A1 \u2192 \u5230\u671F\u63D0\u9192", state: overdueCount > 0 ? "attention" : "healthy", records: taskCount, updatedAt: iso2(tasks.rows[0]?.next_due), detail: `${taskCount} \u6761\u5F00\u653E\u4EFB\u52A1\uFF0C${overdueCount} \u6761\u5DF2\u5230\u671F`, recordLabel: "\u5F00\u653E\u4EFB\u52A1", timeLabel: "\u6700\u8FD1\u5230\u671F", stages: ["\u4EFB\u52A1\u521B\u5EFA", "\u5230\u671F\u626B\u63CF", "\u63D0\u9192\u6295\u9012"] }
+        { id: "import", label: "\u5BFC\u5165 \u2192 \u5BA2\u6237\u5E93", state: "healthy", records: value2(imports), updatedAt: iso5(imports.rows[0]?.updated_at), detail: "\u5DF2\u8BB0\u5F55\u7684\u4E2D\u5FC3\u5BFC\u5165\u6279\u6B21", recordLabel: "\u5BFC\u5165\u6279\u6B21", timeLabel: "\u6700\u8FD1\u5BFC\u5165", stages: ["\u6587\u4EF6\u89E3\u6790", "\u5B57\u6BB5\u6821\u9A8C", "\u5BA2\u6237\u5165\u5E93"] },
+        { id: "events", label: "\u4E1A\u52A1\u4E8B\u4EF6 \u2192 \u901A\u77E5", state: staleCount > 0 ? "attention" : "healthy", records: value2(deliveries), updatedAt: iso5(deliveries.rows[0]?.updated_at), detail: pendingCount > 0 ? `\u6709 ${pendingCount} \u6761\u4E8B\u4EF6\u7B49\u5F85\u5904\u7406\uFF0C${staleCount} \u6761\u8D85\u8FC7\u4E00\u5206\u949F` : "\u5F85\u5904\u7406\u961F\u5217\u4E3A\u7A7A", recordLabel: "\u901A\u77E5\u8BB0\u5F55", timeLabel: "\u6700\u8FD1\u6295\u9012", stages: ["\u4E1A\u52A1\u4E8B\u4EF6", "\u6743\u9650\u6295\u5F71", "\u901A\u77E5\u6295\u9012"] },
+        { id: "tasks", label: "\u8DDF\u8FDB\u4EFB\u52A1 \u2192 \u5230\u671F\u63D0\u9192", state: overdueCount > 0 ? "attention" : "healthy", records: taskCount, updatedAt: iso5(tasks.rows[0]?.next_due), detail: `${taskCount} \u6761\u5F00\u653E\u4EFB\u52A1\uFF0C${overdueCount} \u6761\u5DF2\u5230\u671F`, recordLabel: "\u5F00\u653E\u4EFB\u52A1", timeLabel: "\u6700\u8FD1\u5230\u671F", stages: ["\u4EFB\u52A1\u521B\u5EFA", "\u5230\u671F\u626B\u63CF", "\u63D0\u9192\u6295\u9012"] }
       ];
       const alerts = [
         ...staleCount > 0 ? [{ id: "pending-events", level: "warning", title: "\u4E8B\u4EF6\u7B49\u5F85\u8D85\u8FC7\u4E00\u5206\u949F", detail: `${staleCount} \u6761\u4E8B\u4EF6\u5C1A\u672A\u5B8C\u6210\u6D88\u8D39\uFF1B\u6D88\u8D39\u56DE\u6267\u4E0D\u7B49\u4E8E\u7528\u6237\u5DF2\u8BFB` }] : [],
@@ -6815,9 +6817,9 @@ var PostgresAdminRepository = class {
         { id: "local-telemetry", level: "warning", title: "\u684C\u9762\u4E2A\u4EBA\u6570\u636E\u672A\u63A5\u5165", detail: "\u90AE\u4EF6\u5E93\u3001\u8FD0\u4EF7\u955C\u50CF\u7B49\u672C\u5730\u6570\u636E\u6682\u4E0D\u7EB3\u5165\u4E2D\u5FC3\u5065\u5EB7\u5224\u65AD" }
       ];
       const receipts = [
-        ...batchReceipts.rows.map((r) => ({ id: r.id, flowId: "import", createdAt: iso2(r.created_at), status: r.review ? "\u5F85\u6838\u5BF9" : r.total ? "\u5DF2\u6709\u56DE\u6267" : "\u6682\u65E0\u884C\u56DE\u6267", detail: `${r.total} \u884C\uFF1A\u65B0\u589E ${r.created}\uFF0C\u91CD\u590D ${r.duplicate}\uFF0C\u5F85\u6838\u5BF9 ${r.review}` })),
-        ...eventReceipts.rows.map((r) => ({ id: r.id, flowId: "events", createdAt: iso2(r.created_at), status: r.consumed_at ? "\u5DF2\u6D88\u8D39" : "\u5F85\u6D88\u8D39", detail: `${r.deliveries} \u4EFD\u901A\u77E5\u6295\u5F71\uFF1B\u6D88\u8D39\u4E0D\u4EE3\u8868\u5DF2\u8BFB` })),
-        ...taskReceipts.rows.map((r) => ({ id: r.id, flowId: "tasks", createdAt: iso2(r.created_at), status: r.status === "completed" ? "\u5DF2\u5B8C\u6210" : r.reminded ? "\u63D0\u9192\u5DF2\u5165\u961F" : "\u5F00\u653E", detail: `\u5230\u671F ${iso2(r.due_at)}\uFF1B\u5F53\u524D\u7248\u672C${r.reminded ? "\u6709" : "\u65E0"}\u63D0\u9192\u56DE\u6267` }))
+        ...batchReceipts.rows.map((r) => ({ id: r.id, flowId: "import", createdAt: iso5(r.created_at), status: r.review ? "\u5F85\u6838\u5BF9" : r.total ? "\u5DF2\u6709\u56DE\u6267" : "\u6682\u65E0\u884C\u56DE\u6267", detail: `${r.total} \u884C\uFF1A\u65B0\u589E ${r.created}\uFF0C\u91CD\u590D ${r.duplicate}\uFF0C\u5F85\u6838\u5BF9 ${r.review}` })),
+        ...eventReceipts.rows.map((r) => ({ id: r.id, flowId: "events", createdAt: iso5(r.created_at), status: r.consumed_at ? "\u5DF2\u6D88\u8D39" : "\u5F85\u6D88\u8D39", detail: `${r.deliveries} \u4EFD\u901A\u77E5\u6295\u5F71\uFF1B\u6D88\u8D39\u4E0D\u4EE3\u8868\u5DF2\u8BFB` })),
+        ...taskReceipts.rows.map((r) => ({ id: r.id, flowId: "tasks", createdAt: iso5(r.created_at), status: r.status === "completed" ? "\u5DF2\u5B8C\u6210" : r.reminded ? "\u63D0\u9192\u5DF2\u5165\u961F" : "\u5F00\u653E", detail: `\u5230\u671F ${iso5(r.due_at)}\uFF1B\u5F53\u524D\u7248\u672C${r.reminded ? "\u6709" : "\u65E0"}\u63D0\u9192\u56DE\u6267` }))
       ];
       return success({ generatedAt: (/* @__PURE__ */ new Date()).toISOString(), overview: { databases: databases.length, healthy: databases.filter((row2) => row2.state === "healthy").length, activeUsers: value2(users), customers: customerCount, openTasks: taskCount, pendingEvents: pendingCount }, databases, flows, alerts, receipts });
     });
@@ -6826,7 +6828,7 @@ var PostgresAdminRepository = class {
     return this.read(hash, async (c, actor) => {
       if (!canReadManagementDashboard(actor))
         return failure("FORBIDDEN", "\u65E0\u7CFB\u7EDF\u8FD0\u884C\u8BFB\u53D6\u6743\u9650");
-      const [database, disk, version3] = await Promise.all([
+      const [database, disk, version4] = await Promise.all([
         c.query("SELECT pg_database_size(current_database())::bigint AS bytes"),
         diskCheck(),
         applicationVersion()
@@ -6834,10 +6836,10 @@ var PostgresAdminRepository = class {
       const databaseBytes = Number(database.rows[0]?.bytes ?? 0);
       return success({
         generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        version: version3,
+        version: version4,
         uptime_seconds: Math.floor(process.uptime()),
         checks: [
-          { id: "center", label: "\u4E2D\u5FC3\u670D\u52A1", state: "healthy", value: `v${version3}`, valueLabel: "\u5F53\u524D\u7248\u672C", detail: "\u4E2D\u5FC3 API \u4E0E\u7BA1\u7406\u5DE5\u4F5C\u53F0\u6B63\u5E38\u54CD\u5E94" },
+          { id: "center", label: "\u4E2D\u5FC3\u670D\u52A1", state: "healthy", value: `v${version4}`, valueLabel: "\u5F53\u524D\u7248\u672C", detail: "\u4E2D\u5FC3 API \u4E0E\u7BA1\u7406\u5DE5\u4F5C\u53F0\u6B63\u5E38\u54CD\u5E94" },
           { id: "database", label: "PostgreSQL", state: "healthy", value: formatBytes(databaseBytes), valueLabel: "\u6570\u636E\u5E93\u5927\u5C0F", detail: "\u4E2D\u5FC3\u4E1A\u52A1\u5E93\u8FDE\u63A5\u6B63\u5E38" },
           disk,
           { id: "backup", label: "\u81EA\u52A8\u5907\u4EFD", state: "not_connected", value: "\u672A\u63A5\u5165", valueLabel: "\u5907\u4EFD\u76D1\u63A7", detail: "\u5C1A\u672A\u8BFB\u53D6\u670D\u52A1\u5668\u5907\u4EFD\u76EE\u5F55" }
@@ -6937,8 +6939,8 @@ var PostgresAdminRepository = class {
           if (targetId === actor.userId)
             return failure("FORBIDDEN", "\u4E0D\u80FD\u5220\u9664\u5F53\u524D\u767B\u5F55\u8D26\u53F7");
           if (target.rows[0].active && target.rows[0].identity_admin) {
-            const count = await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_credentials c USING(user_id) JOIN public.identity_login_emails e USING(user_id) WHERE u.active AND u.identity_admin AND u.deleted_at IS NULL`);
-            if (count.rows[0].n <= 1)
+            const count2 = await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_credentials c USING(user_id) JOIN public.identity_login_emails e USING(user_id) WHERE u.active AND u.identity_admin AND u.deleted_at IS NULL`);
+            if (count2.rows[0].n <= 1)
               return failure("CONFLICT", "\u5FC5\u987B\u4FDD\u7559\u81F3\u5C11\u4E00\u540D\u6709\u6548\u8D85\u7EA7\u7BA1\u7406\u5458");
           }
           const owned = await c.query("SELECT 1 FROM crm_customers WHERE owner_user_id=$1 LIMIT 1", [targetId]);
@@ -6981,8 +6983,8 @@ var PostgresAdminRepository = class {
           if (targetId === actor.userId && cmd.identityAdmin && !target.rows[0].identity_admin)
             return failure("FORBIDDEN", "\u4E0D\u80FD\u4E3A\u672C\u4EBA\u63D0\u6743");
           if (target.rows[0].active && target.rows[0].identity_admin && (!cmd.active || !cmd.identityAdmin)) {
-            const count = await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_credentials c USING(user_id) JOIN public.identity_login_emails e USING(user_id) WHERE u.active AND u.identity_admin`);
-            if (count.rows[0].n <= 1)
+            const count2 = await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_credentials c USING(user_id) JOIN public.identity_login_emails e USING(user_id) WHERE u.active AND u.identity_admin`);
+            if (count2.rows[0].n <= 1)
               return failure("CONFLICT", "\u5FC5\u987B\u4FDD\u7559\u81F3\u5C11\u4E00\u540D\u6709\u6548\u8D85\u7EA7\u7BA1\u7406\u5458");
           }
           await c.query("UPDATE public.identity_users SET active=$2,identity_admin=$3,management_revision=management_revision+1,security_revision=security_revision+1 WHERE user_id=$1", [targetId, cmd.active, cmd.identityAdmin]);
@@ -7058,6 +7060,21 @@ CREATE TABLE public.identity_desktop_refresh_tokens (
   CHECK (idle_expires_at <= absolute_expires_at)
 );
 CREATE INDEX idx_desktop_refresh_session ON public.identity_desktop_refresh_tokens(session_id);
+`;
+
+// server/adapters/postgres/desktop-device-schema.ts
+var DESKTOP_DEVICE_SCHEMA_VERSION = "008-desktop-active-device-public";
+var DESKTOP_DEVICE_SCHEMA_LOCK = 19041008;
+var DESKTOP_DEVICE_SCHEMA_SQL = `
+ALTER TABLE public.identity_sessions ADD COLUMN IF NOT EXISTS desktop_product text;
+ALTER TABLE public.identity_sessions ADD COLUMN IF NOT EXISTS desktop_device_id text;
+ALTER TABLE public.identity_sessions ADD COLUMN IF NOT EXISTS desktop_device_name text;
+ALTER TABLE public.identity_sessions ADD COLUMN IF NOT EXISTS desktop_platform text;
+ALTER TABLE public.identity_sessions ADD COLUMN IF NOT EXISTS desktop_app_version text;
+ALTER TABLE public.identity_sessions ADD COLUMN IF NOT EXISTS revocation_reason text;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_sessions_active_desktop_product
+  ON public.identity_sessions(user_id,desktop_product)
+  WHERE desktop_product IS NOT NULL AND revoked_at IS NULL;
 `;
 
 // server/adapters/postgres/account-profile-schema.ts
@@ -7154,8 +7171,8 @@ function growthEventRule(sourceProduct, eventType) {
 function isGrowthEventInput(value2) {
   if (!value2 || typeof value2 !== "object" || Array.isArray(value2))
     return false;
-  const event3 = value2;
-  return nonEmpty(event3.eventId) && event3.eventId.length <= 128 && GROWTH_SOURCE_PRODUCTS.includes(event3.sourceProduct) && nonEmpty(event3.eventType) && event3.eventType.length <= 80 && nonEmpty(event3.subjectKey) && event3.subjectKey.length <= 256 && Number.isInteger(event3.points) && event3.points >= 1 && event3.points <= 1e3 && Number.isInteger(event3.ruleVersion) && event3.ruleVersion >= 1 && typeof event3.occurredAt === "string" && !Number.isNaN(Date.parse(event3.occurredAt));
+  const event2 = value2;
+  return nonEmpty(event2.eventId) && event2.eventId.length <= 128 && GROWTH_SOURCE_PRODUCTS.includes(event2.sourceProduct) && nonEmpty(event2.eventType) && event2.eventType.length <= 80 && nonEmpty(event2.subjectKey) && event2.subjectKey.length <= 256 && Number.isInteger(event2.points) && event2.points >= 1 && event2.points <= 1e3 && Number.isInteger(event2.ruleVersion) && event2.ruleVersion >= 1 && typeof event2.occurredAt === "string" && !Number.isNaN(Date.parse(event2.occurredAt));
 }
 var GROWTH_LEVELS_PER_CYCLE = 50;
 var GROWTH_LEVEL_BASE_XP = 12;
@@ -7275,14 +7292,14 @@ var PostgresAuthRepository = class {
   migrate() {
     return this.execute(() => this.tx(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock($1)", [AUTH_SCHEMA_LOCK]);
-      const checksum = (0, import_node_crypto3.createHash)("sha256").update(AUTH_SCHEMA_SQL).digest("hex");
+      const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(AUTH_SCHEMA_SQL).digest("hex");
       const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [AUTH_SCHEMA_VERSION]);
       if (existing.rows.length) {
-        if (existing.rows[0].checksum !== checksum)
+        if (existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u8EAB\u4EFD\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4\uFF0C\u62D2\u7EDD\u8986\u76D6");
       } else {
         await client.query(AUTH_SCHEMA_SQL);
-        await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [AUTH_SCHEMA_VERSION, checksum]);
+        await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [AUTH_SCHEMA_VERSION, checksum4]);
         this.log.write("INFO", "identity.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${AUTH_SCHEMA_VERSION}`);
       }
       return success(void 0);
@@ -7291,13 +7308,13 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [PASSWORD_SCHEMA_LOCK]);
-        const checksum = (0, import_node_crypto3.createHash)("sha256").update(PASSWORD_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(PASSWORD_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [PASSWORD_SCHEMA_VERSION]);
-        if (existing.rows.length && existing.rows[0].checksum !== checksum)
+        if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u6539\u5BC6\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
         if (!existing.rows.length) {
           await client.query(PASSWORD_SCHEMA_SQL);
-          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [PASSWORD_SCHEMA_VERSION, checksum]);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [PASSWORD_SCHEMA_VERSION, checksum4]);
         }
         return success(void 0);
       }));
@@ -7306,13 +7323,29 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [DESKTOP_SCHEMA_LOCK]);
-        const checksum = (0, import_node_crypto3.createHash)("sha256").update(DESKTOP_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(DESKTOP_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [DESKTOP_SCHEMA_VERSION]);
-        if (existing.rows.length && existing.rows[0].checksum !== checksum)
+        if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u684C\u9762\u4F1A\u8BDD\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
         if (!existing.rows.length) {
           await client.query(DESKTOP_SCHEMA_SQL);
-          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [DESKTOP_SCHEMA_VERSION, checksum]);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [DESKTOP_SCHEMA_VERSION, checksum4]);
+        }
+        return success(void 0);
+      }));
+    }).then(async (result2) => {
+      if (!result2.ok)
+        return result2;
+      return this.execute(() => this.tx(async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock($1)", [DESKTOP_DEVICE_SCHEMA_LOCK]);
+        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(DESKTOP_DEVICE_SCHEMA_SQL).digest("hex");
+        const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [DESKTOP_DEVICE_SCHEMA_VERSION]);
+        if (existing.rows.length && existing.rows[0].checksum !== checksum4)
+          return failure("CONFLICT", "\u684C\u9762\u8BBE\u5907\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+        if (!existing.rows.length) {
+          await client.query(DESKTOP_DEVICE_SCHEMA_SQL);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [DESKTOP_DEVICE_SCHEMA_VERSION, checksum4]);
+          this.log.write("INFO", "identity.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${DESKTOP_DEVICE_SCHEMA_VERSION}`);
         }
         return success(void 0);
       }));
@@ -7321,13 +7354,13 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [ACCOUNT_PROFILE_SCHEMA_LOCK]);
-        const checksum = (0, import_node_crypto3.createHash)("sha256").update(ACCOUNT_PROFILE_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(ACCOUNT_PROFILE_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [ACCOUNT_PROFILE_SCHEMA_VERSION]);
-        if (existing.rows.length && existing.rows[0].checksum !== checksum)
+        if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u8D26\u53F7\u8D44\u6599\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
         if (!existing.rows.length) {
           await client.query(ACCOUNT_PROFILE_SCHEMA_SQL);
-          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [ACCOUNT_PROFILE_SCHEMA_VERSION, checksum]);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [ACCOUNT_PROFILE_SCHEMA_VERSION, checksum4]);
           this.log.write("INFO", "identity.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${ACCOUNT_PROFILE_SCHEMA_VERSION}`);
         }
         return success(void 0);
@@ -7337,13 +7370,13 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [ACCOUNT_GROWTH_SCHEMA_LOCK]);
-        const checksum = (0, import_node_crypto3.createHash)("sha256").update(ACCOUNT_GROWTH_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(ACCOUNT_GROWTH_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [ACCOUNT_GROWTH_SCHEMA_VERSION]);
-        if (existing.rows.length && existing.rows[0].checksum !== checksum)
+        if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u8D26\u53F7\u6210\u957F\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
         if (!existing.rows.length) {
           await client.query(ACCOUNT_GROWTH_SCHEMA_SQL);
-          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [ACCOUNT_GROWTH_SCHEMA_VERSION, checksum]);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [ACCOUNT_GROWTH_SCHEMA_VERSION, checksum4]);
           this.log.write("INFO", "identity.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${ACCOUNT_GROWTH_SCHEMA_VERSION}`);
         }
         return success(void 0);
@@ -7353,13 +7386,13 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [PASSWORD_COMPAT_SCHEMA_LOCK]);
-        const checksum = (0, import_node_crypto3.createHash)("sha256").update(PASSWORD_COMPAT_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(PASSWORD_COMPAT_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [PASSWORD_COMPAT_SCHEMA_VERSION]);
-        if (existing.rows.length && existing.rows[0].checksum !== checksum)
+        if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u65E7\u5BC6\u7801\u517C\u5BB9\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
         if (!existing.rows.length) {
           await client.query(PASSWORD_COMPAT_SCHEMA_SQL);
-          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [PASSWORD_COMPAT_SCHEMA_VERSION, checksum]);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [PASSWORD_COMPAT_SCHEMA_VERSION, checksum4]);
           this.log.write("INFO", "identity.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${PASSWORD_COMPAT_SCHEMA_VERSION}`);
         }
         return success(void 0);
@@ -7369,13 +7402,13 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [LEGACY_ACCOUNT_MAPPING_SCHEMA_LOCK]);
-        const checksum = (0, import_node_crypto3.createHash)("sha256").update(LEGACY_ACCOUNT_MAPPING_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(LEGACY_ACCOUNT_MAPPING_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEGACY_ACCOUNT_MAPPING_SCHEMA_VERSION]);
-        if (existing.rows.length && existing.rows[0].checksum !== checksum)
+        if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u65E7\u8D26\u53F7\u6620\u5C04\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
         if (!existing.rows.length) {
           await client.query(LEGACY_ACCOUNT_MAPPING_SCHEMA_SQL);
-          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEGACY_ACCOUNT_MAPPING_SCHEMA_VERSION, checksum]);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEGACY_ACCOUNT_MAPPING_SCHEMA_VERSION, checksum4]);
           this.log.write("INFO", "identity.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${LEGACY_ACCOUNT_MAPPING_SCHEMA_VERSION}`);
         }
         return success(void 0);
@@ -7487,42 +7520,42 @@ var PostgresAuthRepository = class {
       return success(profileFromRow(result2.rows[0]));
     }));
   }
-  recordGrowthEvent(tokenHash, event3) {
+  recordGrowthEvent(tokenHash, event2) {
     return this.execute(() => this.tx(async (client) => {
       const allowed = await client.query(`SELECT u.user_id AS "userId" FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
         WHERE ${SESSION_FILTER} AND s.client='api' AND EXISTS(
           SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id=$2 AND a.active
-        ) FOR UPDATE OF u`, [tokenHash, event3.sourceProduct]);
+        ) FOR UPDATE OF u`, [tokenHash, event2.sourceProduct]);
       if (!allowed.rows.length)
         return success(null);
-      const userId = allowed.rows[0].userId, rule = growthEventRule(event3.sourceProduct, event3.eventType);
-      if (!rule || event3.ruleVersion !== GROWTH_RULE_VERSION || event3.points > rule.points)
+      const userId = allowed.rows[0].userId, rule = growthEventRule(event2.sourceProduct, event2.eventType);
+      if (!rule || event2.ruleVersion !== GROWTH_RULE_VERSION || event2.points > rule.points)
         return failure("INVALID_INPUT", "\u6210\u957F\u4E8B\u4EF6\u4E0D\u7B26\u5408\u4E2D\u5FC3\u89C4\u5219");
       const state = await client.query(`SELECT (($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date)::text AS "occurredDay",
-        ((now() AT TIME ZONE 'Asia/Shanghai')::date)::text AS "todayKey"`, [event3.occurredAt]);
+        ((now() AT TIME ZONE 'Asia/Shanghai')::date)::text AS "todayKey"`, [event2.occurredAt]);
       const projection2 = await client.query("SELECT total_xp,today_xp,today_key::text FROM public.identity_account_growth_projection WHERE user_id=$1 FOR UPDATE", [userId]);
       if (!projection2.rows.length) {
-        const count = await client.query("SELECT count(*)::int AS n FROM public.identity_account_experience_events WHERE user_id=$1", [userId]);
-        if (count.rows[0].n > 0)
+        const count2 = await client.query("SELECT count(*)::int AS n FROM public.identity_account_experience_events WHERE user_id=$1", [userId]);
+        if (count2.rows[0].n > 0)
           return failure("CONFLICT", "\u4E2D\u5FC3\u6210\u957F\u6295\u5F71\u7F3A\u5931\uFF0C\u8BF7\u5148\u5B8C\u6210\u5386\u53F2\u8FC1\u79FB");
         await client.query("INSERT INTO public.identity_account_growth_projection(user_id) VALUES($1) ON CONFLICT DO NOTHING", [userId]);
       }
       const current = (await client.query("SELECT total_xp,today_xp,today_key::text FROM public.identity_account_growth_projection WHERE user_id=$1 FOR UPDATE", [userId])).rows[0];
       const duplicate = await client.query(`SELECT 1 FROM public.identity_account_experience_events
-        WHERE user_id=$1 AND source_product=$2 AND event_type=$3 AND subject_key=$4`, [userId, event3.sourceProduct, event3.eventType, event3.subjectKey]);
+        WHERE user_id=$1 AND source_product=$2 AND event_type=$3 AND subject_key=$4`, [userId, event2.sourceProduct, event2.eventType, event2.subjectKey]);
       if (duplicate.rows.length)
         return success(noGrowthAward(growthSummary(Number(current.total_xp), Number(current.today_xp), current.today_key)));
       const earned = (await client.query(`SELECT COALESCE(SUM(points),0)::int AS n FROM public.identity_account_experience_events
         WHERE user_id=$1 AND rule_version>=2 AND event_type<>'account_growth_reset'
           AND (occurred_at AT TIME ZONE 'Asia/Shanghai')::date=$2::date`, [userId, state.rows[0].occurredDay])).rows[0].n;
-      const awarded = rule.dailyCap === null ? event3.points : Math.min(event3.points, Math.max(0, rule.dailyCap - Number(earned)));
+      const awarded = rule.dailyCap === null ? event2.points : Math.min(event2.points, Math.max(0, rule.dailyCap - Number(earned)));
       if (awarded <= 0)
         return success(noGrowthAward(growthSummary(Number(current.total_xp), Number(current.today_xp), current.today_key)));
       const inserted = await client.query(
         `INSERT INTO public.identity_account_experience_events
         (event_id,user_id,source_product,event_type,subject_key,points,rule_version,occurred_at)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING event_id`,
-        [stableGrowthEventId(userId, event3.sourceProduct, event3.eventId), userId, event3.sourceProduct, event3.eventType, event3.subjectKey, awarded, event3.ruleVersion, event3.occurredAt]
+        [stableGrowthEventId(userId, event2.sourceProduct, event2.eventId), userId, event2.sourceProduct, event2.eventType, event2.subjectKey, awarded, event2.ruleVersion, event2.occurredAt]
       );
       if (!inserted.rows.length)
         return success(noGrowthAward(growthSummary(Number(current.total_xp), Number(current.today_xp), current.today_key)));
@@ -7578,10 +7611,35 @@ var PostgresAuthRepository = class {
   }
   createDesktopSession(input) {
     return this.execute(() => this.tx(async (client) => {
-      const user = await client.query("SELECT user_id FROM public.identity_users WHERE user_id=$1 AND active AND security_revision=$2 FOR SHARE", [input.userId, input.securityRevision]);
+      const user = await client.query("SELECT user_id FROM public.identity_users WHERE user_id=$1 AND active AND security_revision=$2 FOR UPDATE", [input.userId, input.securityRevision]);
       if (!user.rows.length)
         return success(null);
-      const session = await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,$3,$4,'api') RETURNING session_id", [input.tokenHash, input.userId, input.securityRevision, input.expiresAt]);
+      const desktop = input.desktop;
+      if (desktop) {
+        await client.query(`UPDATE public.identity_sessions SET revoked_at=now(),revocation_reason='expired'
+          WHERE user_id=$1 AND desktop_product=$2 AND revoked_at IS NULL AND expires_at<=now()`, [input.userId, desktop.product]);
+        const active = await client.query(`SELECT desktop_device_id FROM public.identity_sessions
+          WHERE user_id=$1 AND desktop_product=$2 AND revoked_at IS NULL FOR UPDATE`, [input.userId, desktop.product]);
+        if (active.rows.some((row2) => row2.desktop_device_id !== desktop.deviceId) && !desktop.replaceActiveDevice) {
+          return failure("DEVICE_REPLACEMENT_REQUIRED", "\u8BE5\u8D26\u53F7\u6B63\u5728\u53E6\u4E00\u53F0\u7535\u8111\u4F7F\u7528\u3002\u7EE7\u7EED\u767B\u5F55\u4F1A\u9000\u51FA\u539F\u7535\u8111\u3002");
+        }
+        await client.query(`UPDATE public.identity_sessions SET revoked_at=now(),revocation_reason='replaced'
+          WHERE user_id=$1 AND desktop_product=$2 AND revoked_at IS NULL`, [input.userId, desktop.product]);
+      }
+      const session = await client.query(`INSERT INTO public.identity_sessions(
+        token_hash,user_id,security_revision,expires_at,client,desktop_product,desktop_device_id,
+        desktop_device_name,desktop_platform,desktop_app_version
+      ) VALUES($1,$2,$3,$4,'api',$5,$6,$7,$8,$9) RETURNING session_id`, [
+        input.tokenHash,
+        input.userId,
+        input.securityRevision,
+        input.expiresAt,
+        desktop?.product ?? null,
+        desktop?.deviceId ?? null,
+        desktop?.deviceName ?? null,
+        desktop?.platform ?? null,
+        desktop?.appVersion ?? null
+      ]);
       await client.query("INSERT INTO public.identity_desktop_refresh_tokens(token_hash,session_id,idle_expires_at,absolute_expires_at) VALUES($1,$2,$3,$4)", [input.refreshHash, session.rows[0].session_id, input.idleExpiresAt, input.absoluteExpiresAt]);
       await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,'login')", [input.userId]);
       const identity = await client.query(`SELECT ${IDENTITY_COLUMNS} FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) WHERE u.user_id=$1`, [input.userId]);
@@ -7594,8 +7652,12 @@ var PostgresAuthRepository = class {
         JOIN public.identity_sessions s USING(session_id) JOIN public.identity_users u USING(user_id)
         WHERE r.token_hash=$1 AND r.consumed_at IS NULL AND r.idle_expires_at>now() AND r.absolute_expires_at>now()
         AND s.revoked_at IS NULL AND u.active AND s.security_revision=u.security_revision FOR UPDATE OF s,r FOR SHARE OF u`, [refreshHash]);
-      if (!session.rows.length)
-        return success(null);
+      if (!session.rows.length) {
+        const replaced = await client.query(`SELECT 1 FROM public.identity_desktop_refresh_tokens r
+          JOIN public.identity_sessions s USING(session_id) JOIN public.identity_users u USING(user_id)
+          WHERE r.token_hash=$1 AND s.revocation_reason='replaced' AND u.active`, [refreshHash]);
+        return replaced.rows.length ? failure("DEVICE_REPLACED", "\u8BE5\u8D26\u53F7\u5DF2\u5728\u53E6\u4E00\u53F0\u7535\u8111\u767B\u5F55") : success(null);
+      }
       const row2 = session.rows[0];
       const consumed = await client.query("UPDATE public.identity_desktop_refresh_tokens SET consumed_at=now() WHERE token_hash=$1 AND consumed_at IS NULL RETURNING token_hash", [refreshHash]);
       if (!consumed.rows.length)
@@ -7610,12 +7672,16 @@ var PostgresAuthRepository = class {
     return this.execute(async () => {
       const result2 = await this.pool.query(`SELECT ${IDENTITY_COLUMNS} FROM public.identity_sessions s JOIN public.identity_users u USING(user_id) JOIN public.identity_login_emails e USING(user_id)
         WHERE ${SESSION_FILTER} AND s.client='api' AND EXISTS(SELECT 1 FROM public.identity_desktop_refresh_tokens r WHERE r.session_id=s.session_id AND r.consumed_at IS NULL AND r.idle_expires_at>now() AND r.absolute_expires_at>now())`, [tokenHash]);
-      return success(result2.rows[0] ?? null);
+      if (result2.rows[0])
+        return success(result2.rows[0]);
+      const replaced = await this.pool.query(`SELECT 1 FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
+        WHERE s.token_hash=$1 AND s.client='api' AND s.revocation_reason='replaced' AND u.active`, [tokenHash]);
+      return replaced.rows.length ? failure("DEVICE_REPLACED", "\u8BE5\u8D26\u53F7\u5DF2\u5728\u53E6\u4E00\u53F0\u7535\u8111\u767B\u5F55") : success(null);
     });
   }
   revokeDesktopSession(refreshHash) {
     return this.execute(() => this.tx(async (client) => {
-      const revoked = await client.query(`UPDATE public.identity_sessions s SET revoked_at=now() FROM public.identity_desktop_refresh_tokens r WHERE r.token_hash=$1 AND r.session_id=s.session_id AND s.revoked_at IS NULL RETURNING s.user_id`, [refreshHash]);
+      const revoked = await client.query(`UPDATE public.identity_sessions s SET revoked_at=now(),revocation_reason='logout' FROM public.identity_desktop_refresh_tokens r WHERE r.token_hash=$1 AND r.session_id=s.session_id AND s.revoked_at IS NULL RETURNING s.user_id`, [refreshHash]);
       if (revoked.rows.length)
         await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,'logout')", [revoked.rows[0].user_id]);
       return success(void 0);
@@ -7632,7 +7698,7 @@ var PostgresAuthRepository = class {
       const id = actor.rows[0].user_id;
       await client.query("UPDATE public.identity_credentials SET password_hash=$2,changed_at=now() WHERE user_id=$1", [id, newHash]);
       await client.query("UPDATE public.identity_users SET must_change_password=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1", [id]);
-      await client.query("UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL", [id]);
+      await client.query("UPDATE public.identity_sessions SET revoked_at=now(),revocation_reason='password-changed' WHERE user_id=$1 AND revoked_at IS NULL", [id]);
       await client.query("UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL", [id]);
       await client.query("INSERT INTO public.identity_management_audit(actor_id,target_id,action,reason) VALUES($1,$1,'identity.password.changed','\u7528\u6237\u4E3B\u52A8\u8BBE\u7F6E\u65B0\u5BC6\u7801\uFF0C\u5168\u90E8\u65E7\u4F1A\u8BDD\u5DF2\u64A4\u9500')", [id]);
       await client.query("INSERT INTO public.identity_outbox(event_type,user_id,revision) SELECT 'identity.password.changed',user_id,management_revision FROM public.identity_users WHERE user_id=$1", [id]);
@@ -8473,9 +8539,9 @@ function createAdminStatic(root = (0, import_node_path4.resolve)(__dirname, "../
         send(response, failure("NOT_FOUND", "\u9875\u9762\u4E0D\u5B58\u5728"));
         return;
       }
-      const base = await (0, import_promises2.realpath)(root), file = await (0, import_promises2.realpath)((0, import_node_path4.resolve)(base, asset));
+      const base2 = await (0, import_promises2.realpath)(root), file = await (0, import_promises2.realpath)((0, import_node_path4.resolve)(base2, asset));
       const contentType = TYPES[(0, import_node_path4.extname)(file)];
-      if (!inside(base, file) || !contentType || !(await (0, import_promises2.stat)(file)).isFile()) {
+      if (!inside(base2, file) || !contentType || !(await (0, import_promises2.stat)(file)).isFile()) {
         send(response, failure("NOT_FOUND", "\u9875\u9762\u4E0D\u5B58\u5728"));
         return;
       }
@@ -8515,7 +8581,190 @@ function createPasswordChangeService(repo, authRepo, passwords, tokens, auth) {
 }
 
 // server/adapters/postgres/flat-lead-import.ts
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto15 = require("node:crypto");
+
+// server/adapters/postgres/lead-match-repository.ts
+var import_node_crypto14 = require("node:crypto");
+
+// server/core/lead-conflict.ts
+var LEGAL_SUFFIXES = /* @__PURE__ */ new Set(["co", "company", "corp", "corporation", "inc", "ltd", "limited", "llc", "sa", "sas", "srl", "gmbh", "ag", "bv", "nv", "pty", "plc"]);
+var COMPANY_STOP_WORDS = /* @__PURE__ */ new Set(["the", "group", "holding", "holdings", "international", "global", "logistics", "shipping", "trade", "trading", "import", "export"]);
+var STRONG_COMPANY_SCORE = 0.82;
+var WEAK_COMPANY_SCORE = 0.68;
+function normalizeLeadEmail(value2) {
+  return value2?.trim().toLowerCase() ?? "";
+}
+function normalizeLeadCountry(value2) {
+  return (value2 ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+function normalizeCompanyDomain(value2) {
+  const raw = value2?.trim().toLowerCase() ?? "";
+  if (!raw)
+    return "";
+  try {
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    return url.hostname.replace(/^www\./, "").replace(/\.$/, "");
+  } catch {
+    return raw.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0]?.replace(/\.$/, "") ?? "";
+  }
+}
+function normalizeCompanyName(value2) {
+  const tokens = (value2 ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9\u3400-\u9fff]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  while (tokens.length > 1 && LEGAL_SUFFIXES.has(tokens.at(-1)))
+    tokens.pop();
+  return tokens.filter((token) => !COMPANY_STOP_WORDS.has(token)).join("");
+}
+function bigrams(value2) {
+  if (value2.length < 2)
+    return value2 ? [value2] : [];
+  return Array.from({ length: value2.length - 1 }, (_, index) => value2.slice(index, index + 2));
+}
+function companyNameSimilarity(left, right) {
+  const a = normalizeCompanyName(left);
+  const b = normalizeCompanyName(right);
+  if (!a || !b)
+    return 0;
+  if (a === b)
+    return 1;
+  const first = bigrams(a);
+  const remaining = /* @__PURE__ */ new Map();
+  for (const gram of bigrams(b))
+    remaining.set(gram, (remaining.get(gram) ?? 0) + 1);
+  let overlap = 0;
+  for (const gram of first) {
+    const count2 = remaining.get(gram) ?? 0;
+    if (count2 > 0) {
+      overlap++;
+      remaining.set(gram, count2 - 1);
+    }
+  }
+  return 2 * overlap / (first.length + bigrams(b).length);
+}
+function matchCompanyConflict(input, candidates) {
+  const domain2 = normalizeCompanyDomain(input.domain);
+  const normalizedName = normalizeCompanyName(input.companyName);
+  const country = normalizeLeadCountry(input.country);
+  let best = null;
+  for (const candidate of candidates) {
+    const candidateDomain = normalizeCompanyDomain(candidate.domain);
+    if (domain2 && candidateDomain && domain2 === candidateDomain)
+      return { ...candidate, score: 1, level: "exact_domain" };
+    const score = companyNameSimilarity(input.companyName, candidate.name);
+    const candidateCountry = normalizeLeadCountry(candidate.country);
+    const sameCountry = !country || !candidateCountry || country === candidateCountry;
+    const differentCountry = !!country && !!candidateCountry && country !== candidateCountry;
+    const level = normalizedName && normalizedName === normalizeCompanyName(candidate.name) && sameCountry ? "exact_company" : score >= STRONG_COMPANY_SCORE && sameCountry ? "strong_company" : score >= WEAK_COMPANY_SCORE && !differentCountry ? "weak_company" : "none";
+    if (level !== "none" && (!best || score > best.score))
+      best = { ...candidate, score, level };
+  }
+  return best;
+}
+
+// server/core/lead-ingress.ts
+var LEAD_INGRESS_ROUTES = { decision: "/api/crm/lead-ingress/decision", resolve: "/api/crm/lead-ingress/resolve" };
+var LEAD_INGRESS_LIMITS = { contacts: 200, candidates: 5, text: 500, key: 160 };
+var LEAD_INGRESS_SOURCES = ["manual", "flat_import", "workbook_import", "agent_import", "api_contact_update", "soft_delete_recovery", "migration_recovery"];
+var UUID5 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var record4 = (value2) => !!value2 && typeof value2 === "object" && !Array.isArray(value2);
+var text3 = (value2, max = LEAD_INGRESS_LIMITS.text, min = 1) => typeof value2 === "string" && value2.trim().length >= min && value2.length <= max;
+function validateLeadIngressResolution(value2) {
+  if (!record4(value2) || Object.keys(value2).some((key) => !["decisionId", "action", "expectedVersion", "idempotencyKey"].includes(key)))
+    return failure("INVALID_INPUT", "\u51B2\u7A81\u5904\u7406\u53C2\u6570\u65E0\u6548");
+  if (!text3(value2.decisionId, 64) || !UUID5.test(value2.decisionId) || !["create_new", "attach_company", "restore"].includes(String(value2.action)) || !Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !text3(value2.idempotencyKey, LEAD_INGRESS_LIMITS.key))
+    return failure("INVALID_INPUT", "\u51B2\u7A81\u5904\u7406\u53C2\u6570\u65E0\u6548");
+  return success({ decisionId: value2.decisionId, action: value2.action, expectedVersion: Number(value2.expectedVersion), idempotencyKey: value2.idempotencyKey });
+}
+function validateLeadIngressDecisionQuery(source, idempotencyKey) {
+  if (!LEAD_INGRESS_SOURCES.includes(source) || !text3(idempotencyKey, LEAD_INGRESS_LIMITS.key))
+    return failure("INVALID_INPUT", "\u51B2\u7A81\u8BB0\u5F55\u53C2\u6570\u65E0\u6548");
+  return success({ source, idempotencyKey });
+}
+function sameTarget(input, candidate) {
+  return input.target?.contactId !== void 0 && input.target.contactId === candidate.contactId || input.target?.contactId === void 0 && input.target?.customerId !== void 0 && input.target.customerId === candidate.customerId;
+}
+function accessibleByCompany(candidates) {
+  const byCompany = /* @__PURE__ */ new Map();
+  for (const candidate of candidates) {
+    const previous = byCompany.get(candidate.companyId);
+    if (!previous || candidate.level === "exact_email" && previous.level !== "exact_email" || candidate.canResolve && !previous.canResolve || (candidate.score ?? 0) > (previous.score ?? 0)) {
+      byCompany.set(candidate.companyId, candidate);
+    }
+  }
+  return [...byCompany.values()].sort((left, right) => (right.score ?? 0) - (left.score ?? 0));
+}
+function assessLeadIngress(input, candidates) {
+  const exact = candidates.find((candidate2) => candidate2.level === "exact_email" && candidate2.canResolve);
+  const privateExact = candidates.find((candidate2) => candidate2.level === "exact_email" && !candidate2.canResolve);
+  if (exact) {
+    if (exact.softDeleted && exact.restorable) {
+      return { status: "restore", level: "exact_email", candidate: exact, candidates: [exact], suggestedActions: ["restore"], message: "\u90AE\u7BB1\u5C5E\u4E8E\u5DF2\u5220\u9664\u8054\u7CFB\u4EBA\uFF0C\u53EF\u6062\u590D\u539F\u8BB0\u5F55" };
+    }
+    if (exact.softDeleted) {
+      return { status: "restricted_conflict", level: "exact_email", candidates: [], suggestedActions: [], message: "\u90AE\u7BB1\u5C5E\u4E8E\u4E0D\u53EF\u6062\u590D\u7684\u5DF2\u5220\u9664\u8054\u7CFB\u4EBA\uFF0C\u8BF7\u6838\u5B9E\u5220\u9664\u6743\u9650\u6216\u5F52\u5C5E" };
+    }
+    if (sameTarget(input, exact)) {
+      return { status: "duplicate", level: "exact_email", candidate: exact, candidates: [exact], suggestedActions: [], message: exact.softDeleted ? "\u8054\u7CFB\u4EBA\u5DF2\u5220\u9664\uFF0C\u53EF\u6309\u539F\u8BB0\u5F55\u6062\u590D" : "\u90AE\u7BB1\u5DF2\u5B58\u5728\uFF0C\u4E0D\u80FD\u91CD\u590D\u65B0\u5EFA" };
+    }
+    return { status: "duplicate", level: "exact_email", candidate: exact, candidates: [exact], suggestedActions: [], message: "\u90AE\u7BB1\u5DF2\u5B58\u5728\uFF0C\u4E0D\u80FD\u91CD\u590D\u65B0\u5EFA" };
+  }
+  if (privateExact) {
+    return { status: "restricted_conflict", level: "exact_email", candidates: [], suggestedActions: [], message: "\u90AE\u7BB1\u4E0E\u53D7\u9650\u8BB0\u5F55\u51B2\u7A81\uFF0C\u8BF7\u6838\u5B9E\u6765\u6E90\u6216\u5F52\u5C5E" };
+  }
+  if (input.target?.customerId && !input.checkCompany) {
+    return { status: "clear", level: "none", candidates: [], suggestedActions: ["create_new"], message: "\u53EF\u5728\u73B0\u6709\u5BA2\u6237\u4E0B\u65B0\u589E\u8054\u7CFB\u4EBA" };
+  }
+  const domain2 = normalizeCompanyDomain(input.company.domain);
+  const companyMatches = candidates.filter((candidate2) => ["exact_domain", "exact_company", "strong_company"].includes(candidate2.level ?? "none")).filter((candidate2) => domain2 || candidate2.level !== "exact_domain").filter((candidate2) => candidate2.companyId !== input.target?.companyId);
+  const resolved = accessibleByCompany(companyMatches);
+  const restricted = resolved.find((candidate2) => !candidate2.canResolve);
+  const candidate = resolved.find((item) => item.canResolve);
+  if (restricted && (!candidate || (restricted.score ?? 0) >= (candidate.score ?? 0))) {
+    return { status: "restricted_conflict", level: restricted.level ?? "exact_company", candidates: [], suggestedActions: [], message: "\u516C\u53F8\u4FE1\u606F\u4E0E\u53D7\u9650\u8BB0\u5F55\u51B2\u7A81\uFF0C\u8BF7\u6838\u5B9E\u6765\u6E90\u6216\u5F52\u5C5E" };
+  }
+  if (candidate) {
+    return {
+      status: "needs_resolution",
+      level: candidate.level ?? "strong_company",
+      candidate,
+      candidates: resolved.slice(0, LEAD_INGRESS_LIMITS.candidates),
+      suggestedActions: candidate.softDeleted && candidate.restorable ? ["restore"] : ["create_new", "attach_company"],
+      message: candidate.level === "strong_company" ? "\u5B58\u5728\u76F8\u4F3C\u516C\u53F8\uFF0C\u9700\u8981\u4EBA\u5DE5\u786E\u8BA4" : "\u516C\u53F8\u5DF2\u5B58\u5728\uFF0C\u53EF\u590D\u7528\u516C\u53F8\u6216\u65B0\u5EFA\u72EC\u7ACB\u8D44\u6599"
+    };
+  }
+  return { status: "clear", level: "none", candidates: [], suggestedActions: ["create_new"], message: "\u672A\u53D1\u73B0\u51B2\u7A81" };
+}
+function classifyCompanyCandidates(input, candidates) {
+  const grouped = /* @__PURE__ */ new Map();
+  for (const candidate of candidates)
+    grouped.set(candidate.companyId, [...grouped.get(candidate.companyId) ?? [], candidate]);
+  const result2 = [];
+  for (const rows of grouped.values()) {
+    const representative = rows.find((row2) => row2.canResolve) ?? rows[0];
+    const matched = matchCompanyConflict(
+      { companyName: input.name, domain: input.domain, country: input.country },
+      rows.map((row2) => ({ companyId: row2.companyId, name: row2.name, domain: row2.domain, country: row2.country }))
+    );
+    if (!matched)
+      continue;
+    result2.push({
+      ...representative,
+      level: matched.level,
+      score: matched.score,
+      companyName: matched.name,
+      domain: matched.domain ?? representative.domain,
+      country: matched.country ?? representative.country
+    });
+  }
+  return result2;
+}
+function normalizedLeadIngressKeys(input) {
+  return {
+    email: normalizeLeadEmail(input.contacts.find((contact2) => normalizeLeadEmail(contact2.email))?.email),
+    domain: normalizeCompanyDomain(input.company.domain),
+    company: normalizeCompanyName(input.company.name),
+    country: (input.company.country ?? "").trim().toLowerCase()
+  };
+}
 
 // server/adapters/postgres/contact-mail-projection-sql.ts
 function effectiveMailFactSql(alias = "mf") {
@@ -8558,10 +8807,10 @@ function lastEffectiveFollowupSql(field) {
 
 // server/core/contact-mail-projection.ts
 var TOUCH_STATUS = { replied: "replied", contacted: "reached", bounced: "bounced", autoreply: "autoreply", uncontacted: "" };
-function projectContactMail(primary, mail, manual) {
+function projectContactMail(primary, mail2, manual) {
   const timeline = [];
   const email3 = primary?.toLowerCase();
-  for (const fact of mail) {
+  for (const fact of mail2) {
     const reply = fact.kind === "replied" && fact.direction === "inbound" && fact.fromEmail.toLowerCase() === email3 && fact.toEmails.length > 0;
     const sent = fact.kind === "sent" && fact.direction === "outbound" && fact.toEmails.some((recipient) => recipient.toLowerCase() === email3) && fact.fromEmail.toLowerCase() !== email3;
     const status2 = fact.kind === "bounced" ? "bounced" : fact.kind === "autoreply" ? "autoreply" : reply ? "replied" : sent ? "reached" : null;
@@ -8652,11 +8901,12 @@ function globalContactActor(a) {
   return a.roles.includes("admin") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.read.all");
 }
 function sourceContactManager(a, r) {
-  return r.origin === "operations" && a.roles.some((x) => x === "operations" || x === "admin") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.assign");
+  return r.origin === "operations" && a.roles.includes("operations") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.assign");
 }
 function contactPermissions(a, r) {
-  const develop = a.capabilities.includes("leads.develop"), full = globalContactActor(a) || sourceContactManager(a, r) || r.origin === "personal" && r.ownerUserId === a.userId;
-  const owner = r.ownerUserId === a.userId, grant2 = r.shared_grant, allowed = develop && (full || owner || !!grant2);
+  const develop = a.capabilities.includes("leads.develop"), transferLocked = r.active_assignment_status === "pending_transfer";
+  const manager2 = sourceContactManager(a, r), full = globalContactActor(a) || manager2 || r.origin === "personal" && r.ownerUserId === a.userId;
+  const owner = !transferLocked && r.ownerUserId === a.userId, grant2 = transferLocked ? null : r.shared_grant, allowed = develop && (full || owner || !!grant2);
   const editableFields = (!allowed ? [] : full ? [...FULL_FIELDS] : owner ? [...CONTACT_SHARED_FIELDS, "preferences"] : grant2?.editableFields.filter((f) => CONTACT_SHARED_FIELDS.includes(f)) ?? []).filter((field) => field !== "clientType" && field !== "country");
   return { editableFields, canFollowup: allowed && (full || owner || !!grant2?.canFollowup), canChangeStage: allowed && (full || owner || !!grant2?.canChangeStage), canSendMail: allowed && !r.development_restriction?.trim(), canShare: develop && owner && r.origin === "operations" && r.active_assignment_status === "accepted" && !r.development_restriction?.trim() };
 }
@@ -8670,33 +8920,1113 @@ function sharedAccessSql(actorSql, ownerSql) {
 }
 
 // server/adapters/postgres/contact-assignment-repository.ts
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto12 = require("node:crypto");
+
+// server/core/contact-assignment-state.ts
+var CONTACT_ASSIGNMENT_STATUSES = [
+  "pending",
+  "accepted",
+  "rejected",
+  "cancelled",
+  "expired",
+  "pending_transfer"
+];
+var CONTACT_ASSIGNMENT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+var CONTACT_ASSIGNMENT_EXPIRY_BATCH = 200;
+function canAcceptContactAssignment(status) {
+  return status === "pending" || status === "pending_transfer";
+}
+function canCancelContactAssignment(input) {
+  if (input.status !== "pending" && input.status !== "pending_transfer")
+    return false;
+  return input.manager || input.actorIsRequester;
+}
+function canTransferContactAssignment(input) {
+  if (input.status !== "accepted" || !input.currentOwnerUserId)
+    return false;
+  if (!input.actorIsCurrentOwner && !input.manager)
+    return false;
+  return input.targetUserId !== input.currentOwnerUserId;
+}
+function contactAssignmentRecipients(targetUserId, supervisorUserIds) {
+  return [.../* @__PURE__ */ new Set([targetUserId, ...supervisorUserIds])].sort();
+}
+function contactAssignmentSupervisorsFor(targetIsMember, directLeaderUserIds, targetUserId) {
+  if (!targetIsMember)
+    return [];
+  return [...new Set(directLeaderUserIds.filter((userId) => userId !== targetUserId))].sort();
+}
 
 // server/core/contact-assignments.ts
-var CONTACT_ASSIGNMENT_ROUTES = { assignments: "/api/crm/contact-assignments", groups: "/api/crm/contact-assignments/groups", contact: "/api/crm/contacts" };
+var CONTACT_ASSIGNMENT_ROUTES = {
+  assignments: "/api/crm/contact-assignments",
+  groups: "/api/crm/contact-assignments/groups",
+  expire: "/api/crm/contact-assignments/expire",
+  monitor: "/api/crm/contact-monitor",
+  contact: "/api/crm/contacts"
+};
 var CONTACT_ASSIGNMENT_LIMITS = { batch: 200, page: 50, pageMax: 100, notify: 20, text: 500, note: 2e4, key: 128, preferences: 10, preferenceText: 200 };
-var CONTACT_ASSIGNMENT_EVENTS = { requested: "crm.contact.assignment.requested", accepted: "crm.contact.assignment.accepted", rejected: "crm.contact.assignment.rejected", cancelled: "crm.contact.assignment.cancelled", updated: "crm.contact.updated", followup: "crm.contact.followup" };
-function isContactAssignmentTarget(member, actorId) {
-  return member.userId !== actorId && member.active !== false && member.roles.includes("sales") && member.capabilities.includes("leads.develop");
+var CONTACT_ASSIGNMENT_EVENTS = {
+  requested: "crm.contact.assignment.requested",
+  accepted: "crm.contact.assignment.accepted",
+  rejected: "crm.contact.assignment.rejected",
+  cancelled: "crm.contact.assignment.cancelled",
+  expired: "crm.contact.assignment.expired",
+  transferRequested: "crm.contact.assignment.transfer_requested",
+  transferred: "crm.contact.assignment.transferred",
+  transferCancelled: "crm.contact.assignment.transfer_cancelled",
+  updated: "crm.contact.updated",
+  followup: "crm.contact.followup"
+};
+function isContactAssignmentTarget(member2, actorId) {
+  return member2.userId !== actorId && member2.active !== false && member2.roles.includes("sales") && member2.capabilities.includes("leads.develop");
 }
 
 // server/adapters/postgres/contact-mail-repository.ts
+var import_node_crypto10 = require("node:crypto");
+
+// server/adapters/postgres/contact-mail-analysis-repository.ts
+var import_node_crypto9 = require("node:crypto");
+
+// server/core/mail-analysis.ts
+var MAIL_RELEVANCE_VALUES = ["customer_business", "internal", "notification", "vendor", "spam", "unknown"];
+var MAIL_INTENT_CODES = ["price_inquiry", "quote_request", "schedule_request", "order_followup", "complaint", "cooperation", "no_action", "other"];
+var MAIL_PRIORITIES = ["normal", "important", "urgent"];
+var CONTACT_MAIL_ANALYSIS_ROUTES = {
+  analyses: "/api/crm/contact-mail-analyses",
+  ai: "/api/crm/contact-mail-analyses/ai",
+  correct: "/api/crm/contact-mail-analyses/correct"
+};
+var CONTACT_MAIL_ANALYSIS_LIMITS = {
+  version: 80,
+  summary: 2e3,
+  nextAction: 500,
+  dueHint: 120,
+  evidence: 12,
+  evidenceItem: 500,
+  signals: 16,
+  label: 80,
+  history: 100,
+  bodyBytes: 65536
+};
+var INTERNAL_WORDS = ["internal", "\u5185\u90E8", "\u540C\u4E8B", "\u5458\u5DE5"];
+var VENDOR_WORDS = ["invoice", "receipt", "subscription", "newsletter", "\u5E7F\u544A", "\u4F9B\u5E94\u5546", "\u8D26\u5355"];
+var SPAM_WORDS = ["unsubscribe", "promotion", "marketing", "\u4FC3\u9500", "\u8425\u9500", "\u9000\u8BA2"];
+var INTENT_RULES = [
+  { code: "complaint", label: "\u5BA2\u6237\u6295\u8BC9", words: ["complaint", "claim", "damaged", "\u6295\u8BC9", "\u7D22\u8D54", "\u7834\u635F", "\u5EF6\u8BEF"] },
+  { code: "quote_request", label: "\u62A5\u4EF7\u8BF7\u6C42", words: ["quotation", "quote", "rfq", "\u62A5\u4EF7", "\u8BE2\u4EF7"] },
+  { code: "price_inquiry", label: "\u4EF7\u683C\u54A8\u8BE2", words: ["price", "rate", "cost", "\u4EF7\u683C", "\u8FD0\u8D39"] },
+  { code: "schedule_request", label: "\u8239\u671F\u786E\u8BA4", words: ["schedule", "etd", "eta", "vessel", "\u8239\u671F", "\u5230\u6E2F", "\u4EA4\u4ED8"] },
+  { code: "order_followup", label: "\u8BA2\u5355\u8DDF\u8FDB", words: ["order", "shipment", "delivery", "\u8BA2\u5355", "\u53D1\u8D27", "\u8FDB\u5EA6"] },
+  { code: "cooperation", label: "\u5408\u4F5C\u6C9F\u901A", words: ["cooperation", "partner", "\u5408\u4F5C", "\u4EE3\u7406"] }
+];
+function mailRelevanceFor(input) {
+  if (input.internal)
+    return "internal";
+  if (!input.matchedContact)
+    return input.classification === "bounced" ? "notification" : "unknown";
+  if (input.ccOnly)
+    return "unknown";
+  return "customer_business";
+}
+function actionabilityFor(input) {
+  if (input.relevance !== "customer_business")
+    return { requiresAction: false, nextAction: null, priority: "normal", dueHint: null };
+  if (input.classification === "bounced")
+    return { requiresAction: true, nextAction: "\u6838\u5BF9\u5E76\u4FEE\u6B63\u8054\u7CFB\u4EBA\u90AE\u7BB1", priority: "important", dueHint: "\u540C\u65E5\u5185" };
+  if (input.classification === "autoreply" || input.intent === null || input.intent === "no_action" || input.intent === "other")
+    return { requiresAction: false, nextAction: null, priority: "normal", dueHint: null };
+  if (input.intent === "complaint")
+    return { requiresAction: true, nextAction: "\u4F18\u5148\u5904\u7406\u5BA2\u6237\u95EE\u9898", priority: "urgent", dueHint: "24 \u5C0F\u65F6\u5185" };
+  if (input.intent === "price_inquiry" || input.intent === "quote_request")
+    return { requiresAction: true, nextAction: "\u56DE\u590D\u5BA2\u6237\u8BE2\u4EF7", priority: input.confidence >= 0.85 ? "important" : "normal", dueHint: "24 \u5C0F\u65F6\u5185" };
+  if (input.intent === "schedule_request")
+    return { requiresAction: true, nextAction: "\u786E\u8BA4\u8239\u671F\u6216\u4EA4\u8D27\u5B89\u6392", priority: "important", dueHint: "24 \u5C0F\u65F6\u5185" };
+  if (input.intent === "order_followup")
+    return { requiresAction: true, nextAction: "\u7EE7\u7EED\u8DDF\u8FDB\u8BA2\u5355\u8FDB\u5EA6", priority: "normal", dueHint: "48 \u5C0F\u65F6\u5185" };
+  if (input.intent === "cooperation")
+    return { requiresAction: true, nextAction: "\u8BC4\u4F30\u5408\u4F5C\u8BC9\u6C42", priority: "normal", dueHint: "48 \u5C0F\u65F6\u5185" };
+  return { requiresAction: false, nextAction: null, priority: "normal", dueHint: null };
+}
+function shouldCreateTaskSuggestion(analysis) {
+  if (analysis.relevance !== "customer_business" || !analysis.actionability.requiresAction)
+    return false;
+  return analysis.source === "human" || analysis.confidence >= 0.75;
+}
+function contactStateForMail(kind, direction, fromEmail, primaryEmail) {
+  if (kind === "sent" && direction === "outbound")
+    return "contacted";
+  if (kind === "bounced")
+    return "bounced";
+  if (kind === "autoreply")
+    return "autoreply";
+  if (kind === "replied" && direction === "inbound" && !!primaryEmail && fromEmail.trim().toLowerCase() === primaryEmail.trim().toLowerCase())
+    return "replied";
+  return null;
+}
+function containsAny(text15, words) {
+  return words.find((word) => text15.includes(word)) ?? null;
+}
+function detectedIntent(text15) {
+  for (const rule of INTENT_RULES) {
+    const evidence2 = containsAny(text15, rule.words);
+    if (evidence2)
+      return { code: rule.code, label: rule.label, evidence: evidence2, confidence: evidence2.length >= 5 ? 0.9 : 0.82 };
+  }
+  return null;
+}
+function mechanicalMailAnalysis(input) {
+  const text15 = `${input.subject}
+${input.preview}`.toLocaleLowerCase();
+  const vendor = containsAny(text15, VENDOR_WORDS);
+  const spam = containsAny(text15, SPAM_WORDS);
+  const internal = input.internal || !!containsAny(text15, INTERNAL_WORDS);
+  const classification = input.kind === "bounced" ? "bounced" : input.kind === "autoreply" ? "autoreply" : input.kind === "replied" ? "replied" : "other";
+  const personalReply = input.kind !== "replied" || input.direction === "inbound" && !!input.primaryEmail && input.fromEmail.trim().toLowerCase() === input.primaryEmail.trim().toLowerCase();
+  const relevance = internal ? "internal" : spam ? "spam" : vendor ? "vendor" : mailRelevanceFor({ classification, matchedContact: input.matchedContact && personalReply, internal: false, ccOnly: input.kind === "cc" });
+  const contactState = contactStateForMail(input.kind, input.direction, input.fromEmail, input.primaryEmail);
+  const intent = relevance === "customer_business" ? detectedIntent(text15) : null;
+  const confidence2 = relevance === "customer_business" ? input.kind === "sent" || input.kind === "replied" || input.kind === "bounced" || input.kind === "autoreply" ? 0.99 : intent?.confidence ?? 0.7 : 0.95;
+  const signals2 = intent ? [{
+    code: intent.code,
+    label: intent.label,
+    confidence: intent.confidence,
+    evidence: intent.evidence
+  }] : [];
+  const summary = (input.subject.trim() || input.preview.trim() || (input.kind === "sent" ? "\u5DF2\u53D1\u51FA\u90AE\u4EF6" : "\u6536\u5230\u90AE\u4EF6")).slice(0, CONTACT_MAIL_ANALYSIS_LIMITS.summary);
+  const actionability = actionabilityFor({ relevance, classification, intent: intent?.code ?? null, confidence: confidence2 });
+  return {
+    classification,
+    contactState,
+    relevance,
+    summary,
+    signals: signals2,
+    actionability: input.kind === "sent" || input.direction === "outbound" ? { requiresAction: false, nextAction: null, priority: "normal", dueHint: null } : actionability,
+    confidence: confidence2,
+    evidence: signals2.map((signal) => signal.evidence),
+    source: "rule",
+    analyzerVersion: "mechanical-v1"
+  };
+}
+function mailThreadKey(subject, messageKey) {
+  const normalized2 = subject.trim().toLocaleLowerCase().replace(/^(?:(?:re|fw|fwd|回复|转发)\s*:\s*)+/i, "").replace(/\s+/g, " ");
+  return normalized2 || `message:${messageKey}`;
+}
+function taskSuggestionKey(input) {
+  return [input.actorId, String(input.contactId), input.threadKey, input.actionCode].join("|");
+}
+function taskSuggestionFor(record16) {
+  if (!shouldCreateTaskSuggestion({
+    relevance: record16.relevance,
+    confidence: record16.confidence,
+    source: record16.source,
+    actionability: {
+      requiresAction: record16.requiresAction,
+      nextAction: record16.nextAction,
+      priority: record16.priority,
+      dueHint: record16.dueHint
+    }
+  }) || !record16.nextAction)
+    return null;
+  const actionCode = record16.classification === "bounced" ? "fix_email" : record16.signals[0]?.code ?? "other";
+  return {
+    key: taskSuggestionKey({ actorId: record16.actorId, contactId: record16.contactId, threadKey: record16.threadKey, actionCode }),
+    actionCode,
+    nextAction: record16.nextAction,
+    priority: record16.priority,
+    dueHint: record16.dueHint
+  };
+}
+function analysisSourceRank(source) {
+  return source === "human" ? 3 : source === "ai" ? 2 : 1;
+}
+function newerAnalysisWins(incoming, current) {
+  if (incoming.source === "human")
+    return true;
+  if (!current)
+    return true;
+  if (current.source === "human" || current.humanLocked)
+    return false;
+  if (incoming.inputSequence !== current.inputSequence)
+    return incoming.inputSequence > current.inputSequence;
+  const rank = analysisSourceRank(incoming.source) - analysisSourceRank(current.source);
+  if (rank !== 0)
+    return rank > 0;
+  return incoming.analyzerVersion.localeCompare(current.analyzerVersion) > 0;
+}
+
+// server/adapters/postgres/contact-mail-analysis-schema.ts
 var import_node_crypto6 = require("node:crypto");
+var CONTACT_MAIL_ANALYSIS_SCHEMA_VERSION = "059-contact-mail-analysis";
+var CONTACT_MAIL_ANALYSIS_LOCK = 590059;
+var CONTACT_MAIL_ANALYSIS_SQL = `
+DO $$
+BEGIN
+  IF to_regclass('crm_contact_mail_events') IS NULL THEN
+    RAISE EXCEPTION '059 requires contact mail events';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM crm_schema_migrations WHERE version='057-contact-assignment-state') THEN
+    RAISE EXCEPTION '059 requires contact ownership';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM crm_schema_migrations WHERE version='058-lead-ingress-conflict') THEN
+    RAISE EXCEPTION '059 requires lead conflict decisions';
+  END IF;
+END
+$$;
+
+CREATE TABLE crm_contact_mail_analyses (
+  analysis_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  event_id uuid REFERENCES crm_contact_mail_events(event_id),
+  contact_id integer NOT NULL REFERENCES contacts(id),
+  customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+  mailbox_key text NOT NULL,
+  message_key text NOT NULL,
+  content_hash text NOT NULL CHECK(content_hash ~ '^[a-f0-9]{64}$'),
+  thread_key text NOT NULL,
+  analyzer_version text NOT NULL,
+  input_sequence bigint NOT NULL,
+  source text NOT NULL CHECK(source IN ('rule','ai','human')),
+  relevance text NOT NULL CHECK(relevance IN ('customer_business','internal','notification','vendor','spam','unknown')),
+  classification text NOT NULL CHECK(classification IN ('other','replied','autoreply','bounced')),
+  contact_state text CHECK(contact_state IN ('contacted','replied','bounced','autoreply')),
+  summary text NOT NULL,
+  signals jsonb NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(signals)='array'),
+  requires_action boolean NOT NULL,
+  next_action text,
+  priority text NOT NULL CHECK(priority IN ('normal','important','urgent')),
+  due_hint text,
+  confidence numeric(4,3) NOT NULL CHECK(confidence>=0 AND confidence<=1),
+  evidence jsonb NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(evidence)='array'),
+  human_locked boolean NOT NULL DEFAULT false CHECK(human_locked=(source='human')),
+  idempotency_key text NOT NULL,
+  request_digest text NOT NULL,
+  supersedes_id uuid REFERENCES crm_contact_mail_analyses(analysis_id),
+  is_current boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE(actor_id,mailbox_key,message_key,contact_id,content_hash,idempotency_key),
+  FOREIGN KEY(customer_id,contact_id) REFERENCES crm_customer_contacts(customer_id,contact_id)
+);
+
+CREATE UNIQUE INDEX idx_crm_contact_mail_analyses_current
+  ON crm_contact_mail_analyses(actor_id,mailbox_key,message_key,contact_id,content_hash)
+  WHERE is_current;
+CREATE INDEX idx_crm_contact_mail_analyses_history
+  ON crm_contact_mail_analyses(actor_id,mailbox_key,message_key,contact_id,content_hash,input_sequence DESC,created_at DESC);
+CREATE INDEX idx_crm_contact_mail_analyses_contact
+  ON crm_contact_mail_analyses(contact_id,customer_id,created_at DESC);
+CREATE INDEX idx_crm_contact_mail_analyses_human
+  ON crm_contact_mail_analyses(contact_id,customer_id)
+  WHERE human_locked;
+
+CREATE TABLE crm_contact_mail_task_suggestions (
+  suggestion_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  contact_id integer NOT NULL REFERENCES contacts(id),
+  customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+  thread_key text NOT NULL,
+  action_code text NOT NULL,
+  source_analysis_id uuid NOT NULL REFERENCES crm_contact_mail_analyses(analysis_id),
+  next_action text NOT NULL,
+  priority text NOT NULL CHECK(priority IN ('normal','important','urgent')),
+  due_hint text,
+  status text NOT NULL DEFAULT 'suggested' CHECK(status IN ('suggested','dismissed','superseded')),
+  version integer NOT NULL DEFAULT 1 CHECK(version>0),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE(actor_id,contact_id,thread_key,action_code),
+  FOREIGN KEY(customer_id,contact_id) REFERENCES crm_customer_contacts(customer_id,contact_id)
+);
+CREATE INDEX idx_crm_contact_mail_task_suggestions_active
+  ON crm_contact_mail_task_suggestions(actor_id,status,priority,updated_at DESC);
+`;
+async function ensureContactMailAnalysisSchemaIn(client) {
+  const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_ANALYSIS_SCHEMA_VERSION]);
+  if (existing.rows.length) {
+    const checksum4 = (0, import_node_crypto6.createHash)("sha256").update(CONTACT_MAIL_ANALYSIS_SQL).digest("hex");
+    return existing.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u90AE\u4EF6\u5206\u6790\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  }
+  return migrateContactMailAnalysisSchema(client);
+}
+async function migrateContactMailAnalysisSchema(client) {
+  const checksum4 = (0, import_node_crypto6.createHash)("sha256").update(CONTACT_MAIL_ANALYSIS_SQL).digest("hex");
+  const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_ANALYSIS_SCHEMA_VERSION]);
+  if (existing.rows.length)
+    return existing.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u90AE\u4EF6\u5206\u6790\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  await client.query("SELECT pg_advisory_xact_lock($1)", [CONTACT_MAIL_ANALYSIS_LOCK]);
+  const locked = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_ANALYSIS_SCHEMA_VERSION]);
+  if (locked.rows.length)
+    return locked.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u90AE\u4EF6\u5206\u6790\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  await client.query(CONTACT_MAIL_ANALYSIS_SQL);
+  await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_MAIL_ANALYSIS_SCHEMA_VERSION, checksum4]);
+  return success(void 0);
+}
+
+// server/adapters/postgres/team-attention-schema.ts
+var import_node_crypto7 = require("node:crypto");
+
+// server/core/team-attention.ts
+var TEAM_ATTENTION_ROUTES = {
+  items: "/api/crm/team-attention"
+};
+var TEAM_ATTENTION_LIMITS = {
+  note: 2e3,
+  result: 5e3,
+  key: 128,
+  page: 25,
+  pageMax: 100,
+  bodyBytes: 16384
+};
+var TEAM_ATTENTION_REASONS = [
+  "important_reply",
+  "quote_overdue",
+  "unhandled_inquiry",
+  "bounce_correction"
+];
+var TEAM_ATTENTION_STATUSES = ["open", "acknowledged", "resolved", "dismissed"];
+var TEAM_ATTENTION_EVENTS = {
+  opened: "crm.team.attention.opened",
+  acknowledged: "crm.team.attention.acknowledged",
+  resolved: "crm.team.attention.resolved",
+  dismissed: "crm.team.attention.dismissed"
+};
+var AUTO_TASK_CONFIDENCE = 0.85;
+var STRONG_TASK_ACTIONS = /* @__PURE__ */ new Set([
+  "price_inquiry",
+  "quote_request",
+  "complaint",
+  "order_followup"
+]);
+function mailTaskAdmissionFor(input) {
+  if (input.relevance !== "customer_business" || !input.requiresAction || !input.nextAction?.trim())
+    return "none";
+  if (input.source === "human")
+    return "create";
+  const signal = input.signals[0];
+  const strong = input.classification === "bounced" || !!signal && STRONG_TASK_ACTIONS.has(signal.code);
+  return strong && input.confidence >= AUTO_TASK_CONFIDENCE && (signal?.confidence ?? input.confidence) >= AUTO_TASK_CONFIDENCE ? "create" : "suggest";
+}
+function canTransitionTeamAttention(status, action) {
+  if (status === "resolved" || status === "dismissed")
+    return false;
+  if (action === "acknowledge")
+    return status === "open";
+  return status === "open" || status === "acknowledged";
+}
+
+// server/adapters/postgres/team-attention-schema.ts
+var TEAM_ATTENTION_SCHEMA_VERSION = "060-team-attention-task-gating";
+var TEAM_ATTENTION_LOCK = 600060;
+var TEAM_ATTENTION_SQL = `
+DO $$
+BEGIN
+  IF to_regclass('crm_followup_tasks') IS NULL THEN
+    RAISE EXCEPTION '060 requires follow-up tasks';
+  END IF;
+  IF to_regclass('crm_org_assignments') IS NULL THEN
+    RAISE EXCEPTION '060 requires canonical organization assignments';
+  END IF;
+  IF to_regclass('crm_contact_mail_analyses') IS NULL THEN
+    RAISE EXCEPTION '060 requires contact mail analyses';
+  END IF;
+END
+$$;
+
+ALTER TABLE crm_followup_tasks
+  ADD COLUMN source_kind text CHECK(source_kind IS NULL OR source_kind='mail_analysis'),
+  ADD COLUMN source_suggestion_id uuid REFERENCES crm_contact_mail_task_suggestions(suggestion_id),
+  ADD COLUMN source_analysis_id uuid REFERENCES crm_contact_mail_analyses(analysis_id),
+  ADD COLUMN source_contact_id integer REFERENCES contacts(id),
+  ADD COLUMN source_thread_key text,
+  ADD COLUMN source_action_code text,
+  ADD COLUMN source_responsible_user_id uuid REFERENCES public.identity_users(user_id),
+  ADD CONSTRAINT crm_followup_tasks_mail_source_complete CHECK(
+    source_kind IS NULL OR (
+      source_suggestion_id IS NOT NULL AND source_analysis_id IS NOT NULL
+      AND source_contact_id IS NOT NULL AND btrim(source_thread_key)<>''
+      AND btrim(source_action_code)<>'' AND source_responsible_user_id IS NOT NULL
+    )
+  );
+
+CREATE UNIQUE INDEX idx_crm_followup_tasks_mail_suggestion
+  ON crm_followup_tasks(source_suggestion_id)
+  WHERE source_suggestion_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_crm_followup_tasks_open_mail_action
+  ON crm_followup_tasks(source_responsible_user_id,source_contact_id,source_thread_key,source_action_code)
+  WHERE source_kind='mail_analysis' AND status='open';
+CREATE INDEX idx_crm_followup_tasks_mail_source
+  ON crm_followup_tasks(source_analysis_id,source_contact_id,created_at DESC);
+
+CREATE TABLE crm_team_attention_items (
+  item_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  target_member_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  source_supervisor_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+  contact_id integer NOT NULL REFERENCES contacts(id),
+  mail_event_id uuid REFERENCES crm_contact_mail_events(event_id),
+  analysis_id uuid REFERENCES crm_contact_mail_analyses(analysis_id),
+  reason text NOT NULL CHECK(reason IN ('important_reply','quote_overdue','unhandled_inquiry','bounce_correction')),
+  priority text NOT NULL CHECK(priority IN ('normal','important','urgent')),
+  status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','acknowledged','resolved','dismissed')),
+  note text CHECK(note IS NULL OR (btrim(note)<>'' AND char_length(note)<=${TEAM_ATTENTION_LIMITS.note})),
+  result text CHECK(result IS NULL OR (btrim(result)<>'' AND char_length(result)<=${TEAM_ATTENTION_LIMITS.result})),
+  version integer NOT NULL DEFAULT 1 CHECK(version>0),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  acknowledged_at timestamptz,
+  resolved_at timestamptz,
+  dismissed_at timestamptz,
+  CHECK(
+    (status='open' AND acknowledged_at IS NULL AND resolved_at IS NULL AND dismissed_at IS NULL AND result IS NULL)
+    OR (status='acknowledged' AND acknowledged_at IS NOT NULL AND resolved_at IS NULL AND dismissed_at IS NULL AND result IS NULL)
+    OR (status='resolved' AND resolved_at IS NOT NULL AND dismissed_at IS NULL AND result IS NOT NULL)
+    OR (status='dismissed' AND dismissed_at IS NOT NULL AND resolved_at IS NULL)
+  ),
+  FOREIGN KEY(customer_id,contact_id) REFERENCES crm_customer_contacts(customer_id,contact_id)
+);
+CREATE UNIQUE INDEX idx_crm_team_attention_active_reason
+  ON crm_team_attention_items(target_member_user_id,customer_id,contact_id,reason)
+  WHERE status IN ('open','acknowledged');
+CREATE INDEX idx_crm_team_attention_member
+  ON crm_team_attention_items(target_member_user_id,status,priority,updated_at DESC,item_id);
+CREATE INDEX idx_crm_team_attention_supervisor
+  ON crm_team_attention_items(source_supervisor_user_id,status,updated_at DESC,item_id);
+CREATE INDEX idx_crm_team_attention_contact
+  ON crm_team_attention_items(customer_id,contact_id,created_at DESC);
+
+CREATE TABLE crm_team_attention_audits (
+  audit_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  item_id uuid NOT NULL REFERENCES crm_team_attention_items(item_id),
+  item_version integer NOT NULL CHECK(item_version>0),
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  action text NOT NULL CHECK(action IN ('created','acknowledged','resolved','dismissed')),
+  from_status text CHECK(from_status IS NULL OR from_status IN ('open','acknowledged','resolved','dismissed')),
+  to_status text NOT NULL CHECK(to_status IN ('open','acknowledged','resolved','dismissed')),
+  note text,
+  result text,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE(item_id,item_version)
+);
+CREATE INDEX idx_crm_team_attention_audits_item
+  ON crm_team_attention_audits(item_id,item_version DESC);
+
+CREATE TABLE crm_team_attention_idempotency (
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  operation text NOT NULL,
+  key text NOT NULL,
+  digest text NOT NULL CHECK(digest ~ '^[a-f0-9]{64}$'),
+  response jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY(actor_id,operation,key)
+);
+
+CREATE TABLE crm_team_attention_notifications (
+  item_id uuid NOT NULL REFERENCES crm_team_attention_items(item_id),
+  item_version integer NOT NULL CHECK(item_version>0),
+  status text NOT NULL CHECK(status IN ('open','acknowledged','resolved','dismissed')),
+  event_id uuid NOT NULL UNIQUE REFERENCES public.identity_outbox(event_id),
+  recipient_user_ids uuid[] NOT NULL CHECK(cardinality(recipient_user_ids)>0),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY(item_id,item_version)
+);
+`;
+function checksum() {
+  return (0, import_node_crypto7.createHash)("sha256").update(TEAM_ATTENTION_SQL).digest("hex");
+}
+async function ensureTeamAttentionSchemaIn(client) {
+  const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TEAM_ATTENTION_SCHEMA_VERSION]);
+  if (existing.rows.length) {
+    return existing.rows[0].checksum === checksum() ? success(void 0) : failure("CONFLICT", "\u56E2\u961F\u5173\u6CE8\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  }
+  return migrateTeamAttentionSchema(client);
+}
+async function migrateTeamAttentionSchema(client) {
+  const digest2 = checksum();
+  const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TEAM_ATTENTION_SCHEMA_VERSION]);
+  if (existing.rows.length) {
+    return existing.rows[0].checksum === digest2 ? success(void 0) : failure("CONFLICT", "\u56E2\u961F\u5173\u6CE8\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  }
+  await client.query("SELECT pg_advisory_xact_lock($1)", [TEAM_ATTENTION_LOCK]);
+  const locked = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TEAM_ATTENTION_SCHEMA_VERSION]);
+  if (locked.rows.length) {
+    return locked.rows[0].checksum === digest2 ? success(void 0) : failure("CONFLICT", "\u56E2\u961F\u5173\u6CE8\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  }
+  await client.query(TEAM_ATTENTION_SQL);
+  await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [TEAM_ATTENTION_SCHEMA_VERSION, digest2]);
+  return success(void 0);
+}
+
+// server/adapters/postgres/task-repository.ts
+var import_node_crypto8 = require("node:crypto");
+
+// server/core/tasks.ts
+var TASK_ROUTES = { tasks: "/api/crm/tasks", rescheduleAction: "reschedule", completeAction: "complete" };
+var TASK_LIMITS = { title: 500, feedback: 2e4, key: 128, page: 25, pageMax: 100, dueBatch: 50, dueBatchMax: 100, poll_seconds: 5 };
+var TASK_DUE_EVENT = "crm.task.due";
+var TIME_LIMITS2 = { hours: 24, minutes: 60, seconds: 60 };
+function validTaskTime(value2) {
+  if (typeof value2 !== "string")
+    return false;
+  const p = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-](\d{2}):(\d{2}))$/.exec(value2);
+  if (!p)
+    return false;
+  const [, year, month, day, hour, minute, second, , oh, om] = p;
+  const d = /* @__PURE__ */ new Date(`${year}-${month}-${day}T00:00:00Z`);
+  return d.getUTCFullYear() === Number(year) && d.getUTCMonth() + 1 === Number(month) && d.getUTCDate() === Number(day) && Number(hour) < TIME_LIMITS2.hours && Number(minute) < TIME_LIMITS2.minutes && Number(second) < TIME_LIMITS2.seconds && (oh === void 0 || Number(oh) < TIME_LIMITS2.hours && Number(om) < TIME_LIMITS2.minutes) && Number.isFinite(Date.parse(value2));
+}
+
+// server/adapters/postgres/task-schema.ts
+var TASK_VERSION = "017-followup-tasks-public";
+var TASK_LOCK = 19041017;
+var TASK_SQL = `
+CREATE TABLE crm_followup_tasks (
+ task_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+ title text NOT NULL CHECK(btrim(title)<>'' AND length(title)<=${TASK_LIMITS.title}),due_at timestamptz NOT NULL CHECK(isfinite(due_at)),
+ status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','completed')),version integer NOT NULL DEFAULT 1 CHECK(version>0),
+ created_by uuid NOT NULL REFERENCES public.identity_users(user_id),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
+ completed_at timestamptz,completed_by uuid REFERENCES public.identity_users(user_id),feedback text,
+ CHECK((status='open' AND completed_at IS NULL AND completed_by IS NULL AND feedback IS NULL) OR (status='completed' AND completed_at IS NOT NULL AND completed_by IS NOT NULL AND feedback IS NOT NULL AND btrim(feedback)<>'' AND length(feedback)<=${TASK_LIMITS.feedback}))
+);
+CREATE INDEX idx_crm_tasks_customer ON crm_followup_tasks(customer_id,due_at,task_id);
+CREATE INDEX idx_crm_tasks_due ON crm_followup_tasks(due_at,task_id) WHERE status='open';
+CREATE TABLE crm_task_due_receipts (
+ task_id uuid NOT NULL REFERENCES crm_followup_tasks(task_id),task_version integer NOT NULL CHECK(task_version>0),
+ responsible_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),event_id uuid NOT NULL UNIQUE REFERENCES public.identity_outbox(event_id),
+ PRIMARY KEY(task_id,task_version)
+);
+CREATE FUNCTION crm_tasks_customer_owner_changed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF OLD.owner_user_id IS DISTINCT FROM NEW.owner_user_id THEN
+  UPDATE crm_followup_tasks SET version=version+1,updated_at=clock_timestamp() WHERE customer_id=NEW.customer_id AND status='open';
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER crm_tasks_customer_owner_changed AFTER UPDATE OF owner_user_id ON crm_customers FOR EACH ROW EXECUTE FUNCTION crm_tasks_customer_owner_changed();
+`;
+
+// server/adapters/postgres/task-repository.ts
+var UUID6 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var MAIL_TASK_DUE_HOURS = { normal: 48, important: 24, urgent: 24 };
+function administrator(a) {
+  return a.roles.includes("admin") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.read.all");
+}
+function operations(a) {
+  return a.roles.includes("operations") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("followups.read");
+}
+function canSee(a, c) {
+  return administrator(a) || operations(a) && c.origin === "operations" || c.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
+}
+function canManage(a, c) {
+  return a.capabilities.includes("leads.develop") && (administrator(a) || operations(a) && c.origin === "operations" && c.owner_user_id === null || c.owner_user_id === a.userId && canSee(a, c));
+}
+async function access(db, userId) {
+  const r = await db.query(`SELECT u.user_id,a.scope,a.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM public.identity_users u JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active WHERE u.user_id=$1 AND u.active AND NOT u.must_change_password`, [userId]);
+  if (!r.rows.length)
+    return null;
+  const row2 = r.rows[0], roles = row2.roles;
+  if (!roles.length)
+    return null;
+  return { userId: row2.user_id, roles, scope: row2.scope, capabilities: effectiveCapabilitiesFor(roles, row2.capabilities) };
+}
+async function createMailAnalysisTaskIn(db, input) {
+  if (!input.confirmed && mailTaskAdmissionFor(input) !== "create")
+    return success(null);
+  const c = await db.query("SELECT customer_id,created_by,owner_user_id,origin,state,version FROM crm_customers WHERE customer_id=$1 FOR SHARE", [input.customerId]);
+  const customer2 = c.rows[0];
+  if (!customer2)
+    return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728");
+  const responsible = customer2.owner_user_id ?? customer2.created_by, member2 = await access(db, responsible);
+  if (!member2 || !canManage(member2, customer2))
+    return failure("CONFLICT", "\u4EFB\u52A1\u8D1F\u8D23\u4EBA\u5DF2\u505C\u7528\u6216\u65E0\u5F00\u53D1\u6743\u9650");
+  await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [[responsible, input.contactId, input.threadKey, input.actionCode].join("|")]);
+  const existing = await db.query(`SELECT task_id FROM crm_followup_tasks WHERE source_suggestion_id=$1 OR (source_kind='mail_analysis' AND source_responsible_user_id=$2 AND source_contact_id=$3 AND source_thread_key=$4 AND source_action_code=$5 AND status='open') ORDER BY created_at,task_id LIMIT 1`, [input.suggestionId, responsible, input.contactId, input.threadKey, input.actionCode]);
+  if (existing.rows.length)
+    return success(String(existing.rows[0].task_id));
+  const dueHours = MAIL_TASK_DUE_HOURS[input.priority];
+  const inserted = await db.query(`INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,source_kind,source_suggestion_id,source_analysis_id,source_contact_id,source_thread_key,source_action_code,source_responsible_user_id) VALUES($1,$2,clock_timestamp()+($3::int*interval '1 hour'),$4,'mail_analysis',$5,$6,$7,$8,$9,$10) RETURNING task_id`, [input.customerId, input.title.trim().slice(0, TASK_LIMITS.title), dueHours, input.actorId, input.suggestionId, input.analysisId, input.contactId, input.threadKey, input.actionCode, responsible]);
+  return success(String(inserted.rows[0].task_id));
+}
+async function canProjectTaskDue(db, event2, a) {
+  const p = event2.payload;
+  if (!p || typeof p.taskId !== "string" || !UUID6.test(p.taskId) || !Number.isSafeInteger(p.taskVersion) || typeof p.dueAt !== "string" || typeof p.responsibleUserId !== "string" || !event2.recipient_user_ids?.includes(a.userId))
+    return false;
+  const r = await db.query(`SELECT c.*,t.version AS task_version,t.due_at,t.status,COALESCE(c.owner_user_id,c.created_by) AS responsible_user_id FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) WHERE t.task_id=$1 AND c.customer_id=$2 AND t.due_at<=clock_timestamp()`, [p.taskId, event2.customer_id]);
+  const row2 = r.rows[0];
+  if (!row2 || row2.status !== "open" || row2.task_version !== p.taskVersion || new Date(row2.due_at).toISOString() !== p.dueAt || row2.responsible_user_id !== p.responsibleUserId || row2.responsible_user_id !== a.userId)
+    return false;
+  const current = await access(db, a.userId);
+  return !!current && canManage(current, row2);
+}
+var COLUMNS = `t.opportunity_id AS "opportunityId",(SELECT op.title FROM crm_opportunities op WHERE op.opportunity_id=t.opportunity_id AND op.customer_id=t.customer_id) AS "opportunityTitle",t.task_id AS "taskId",t.customer_id AS "customerId",t.title,t.due_at AS "dueAt",t.status,t.version,t.created_by AS "createdBy",t.created_at AS "createdAt",t.updated_at AS "updatedAt",t.completed_at AS "completedAt",t.completed_by AS "completedBy",t.feedback,to_jsonb(t)->>'source_kind' AS "sourceKind",to_jsonb(t)->>'source_suggestion_id' AS "sourceSuggestionId",to_jsonb(t)->>'source_analysis_id' AS "sourceAnalysisId",(to_jsonb(t)->>'source_contact_id')::int AS "sourceContactId",to_jsonb(t)->>'source_thread_key' AS "sourceThreadKey",to_jsonb(t)->>'source_action_code' AS "sourceActionCode",COALESCE(c.owner_user_id,c.created_by) AS "responsibleUserId",u.display_name AS "responsibleName"`;
+function taskRow(r, manage2) {
+  return { ...r, dueAt: r.dueAt.toISOString(), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), completedAt: r.completedAt instanceof Date ? r.completedAt.toISOString() : null, canManage: manage2 };
+}
+var PostgresTaskRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+    assertCenterDatabasePool(pool);
+  }
+  async tx(fn) {
+    let db;
+    try {
+      db = await this.pool.connect();
+      await db.query("BEGIN");
+      await db.query("SELECT pg_advisory_xact_lock($1)", [ADMIN_LOCK]);
+      await db.query("SELECT pg_advisory_xact_lock($1)", [TASK_LOCK]);
+      const result2 = await fn(db);
+      await db.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      if (db)
+        try {
+          await db.query("ROLLBACK");
+        } catch (rollbackError) {
+          this.log.write("ERROR", "tasks.rollback", `\u4EFB\u52A1\u56DE\u6EDA\u5931\u8D25 ${rollbackError instanceof Error ? rollbackError.stack ?? rollbackError.message : "UNKNOWN"}`);
+        }
+      this.log.write("ERROR", "tasks.pg", `\u4EFB\u52A1\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25 code=${error && typeof error === "object" && "code" in error ? String(error.code) : "UNKNOWN"} ${error instanceof Error ? error.stack ?? error.message : "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u4EFB\u52A1\u670D\u52A1\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      db?.release();
+    }
+  }
+  async actor(db, hash) {
+    const u = await db.query(`SELECT u.user_id FROM public.identity_sessions s JOIN public.identity_users u USING(user_id) WHERE s.token_hash=$1 AND s.client='api' AND s.revoked_at IS NULL AND s.expires_at>now() AND u.active AND NOT u.must_change_password AND s.security_revision=u.security_revision`, [hash]);
+    return u.rows.length ? access(db, u.rows[0].user_id) : null;
+  }
+  async authorized(hash, fn) {
+    return this.tx(async (db) => {
+      const a = await this.actor(db, hash);
+      return a ? fn(db, a) : failure("UNAUTHORIZED", "CRM\u4F1A\u8BDD\u6216\u4EA7\u54C1\u51C6\u5165\u5DF2\u5931\u6548");
+    });
+  }
+  async customer(db, id) {
+    const r = await db.query("SELECT customer_id,created_by,owner_user_id,origin,state,version FROM crm_customers WHERE customer_id=$1 FOR SHARE", [id]);
+    return r.rows[0];
+  }
+  async one(db, id, a, lock = false) {
+    const r = await db.query(`SELECT ${COLUMNS} FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) WHERE t.task_id=$1 ${lock ? "FOR UPDATE OF t" : ""}`, [id]);
+    if (!r.rows.length)
+      return failure("NOT_FOUND", "\u4EFB\u52A1\u4E0D\u5B58\u5728");
+    const c = await this.customer(db, r.rows[0].customerId);
+    if (!c || !canSee(a, c))
+      return failure("NOT_FOUND", "\u4EFB\u52A1\u4E0D\u5B58\u5728");
+    return success(taskRow(r.rows[0], canManage(a, c)));
+  }
+  async cached(db, a, operation, input, fn) {
+    const digest2 = (0, import_node_crypto8.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
+    if (old.rows.length) {
+      if (old.rows[0].digest !== digest2)
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      return this.one(db, old.rows[0].response.taskId, a);
+    }
+    const result2 = await fn();
+    if (result2.ok)
+      await db.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, operation, input.idempotencyKey, digest2, JSON.stringify({ taskId: result2.data.taskId })]);
+    return result2;
+  }
+  async migrate() {
+    return this.tx(async (db) => {
+      const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TASK_VERSION]);
+      const hash = (0, import_node_crypto8.createHash)("sha256").update(TASK_SQL).digest("hex");
+      if (old.rows.length && old.rows[0].checksum !== hash)
+        return failure("CONFLICT", "\u4EFB\u52A1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+      if (!old.rows.length) {
+        await db.query(TASK_SQL);
+        await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [TASK_VERSION, hash]);
+      }
+      return success(void 0);
+    });
+  }
+  create(hash, input) {
+    return this.authorized(hash, async (db, a) => {
+      const c = await this.customer(db, input.customerId);
+      if (!c || !canSee(a, c))
+        return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728");
+      if (!canManage(a, c))
+        return failure("FORBIDDEN", "\u53EA\u80FD\u5904\u7406\u81EA\u8EAB\u4EFB\u52A1");
+      return this.cached(db, a, `task:create:${input.customerId}`, input, async () => {
+        if (c.version !== input.expectedCustomerVersion)
+          return failure("CONFLICT", "\u5BA2\u6237\u7248\u672C\u5DF2\u53D8\u5316");
+        if (input.mailSuggestionId) {
+          const suggestion = (await db.query(`SELECT s.suggestion_id,s.actor_id,s.contact_id,s.customer_id,s.thread_key,s.action_code,s.next_action,s.priority,s.source_analysis_id,a.classification,a.relevance,a.source,a.confidence,a.requires_action,a.signals FROM crm_contact_mail_task_suggestions s JOIN crm_contact_mail_analyses a ON a.analysis_id=s.source_analysis_id WHERE s.suggestion_id=$1 AND s.status='suggested' FOR UPDATE OF s`, [input.mailSuggestionId])).rows[0];
+          if (!suggestion || String(suggestion.actor_id) !== a.userId || String(suggestion.customer_id) !== input.customerId)
+            return failure("NOT_FOUND", "\u90AE\u4EF6\u884C\u52A8\u5EFA\u8BAE\u4E0D\u5B58\u5728");
+          const created = await createMailAnalysisTaskIn(db, { actorId: a.userId, suggestionId: String(suggestion.suggestion_id), analysisId: String(suggestion.source_analysis_id), customerId: String(suggestion.customer_id), contactId: Number(suggestion.contact_id), threadKey: String(suggestion.thread_key), actionCode: String(suggestion.action_code), title: String(suggestion.next_action), priority: suggestion.priority, relevance: suggestion.relevance, classification: suggestion.classification, source: suggestion.source, confidence: Number(suggestion.confidence), requiresAction: !!suggestion.requires_action, nextAction: String(suggestion.next_action), signals: suggestion.signals ?? [], confirmed: true });
+          return created.ok ? this.one(db, created.data, a) : created;
+        }
+        if (input.opportunityId) {
+          const opportunity = await db.query("SELECT opportunity_id FROM crm_opportunities WHERE opportunity_id=$1 AND customer_id=$2", [input.opportunityId, input.customerId]);
+          if (!opportunity.rows.length)
+            return failure("INVALID_INPUT", "\u5546\u673A\u4E0D\u5C5E\u4E8E\u5F53\u524D\u5BA2\u6237");
+        }
+        const responsible = c.owner_user_id ?? c.created_by, member2 = await access(db, responsible);
+        if (!member2 || !canManage(member2, c))
+          return failure("CONFLICT", "\u4EFB\u52A1\u8D1F\u8D23\u4EBA\u5DF2\u505C\u7528\u6216\u65E0\u5F00\u53D1\u6743\u9650");
+        const r = await db.query(`INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,opportunity_id) VALUES($1,$2,$3,$4,$5) RETURNING task_id`, [input.customerId, input.title.trim(), input.dueAt, a.userId, input.opportunityId ?? null]);
+        return this.one(db, r.rows[0].task_id, a);
+      });
+    });
+  }
+  list(hash, input) {
+    return this.authorized(hash, async (db, a) => {
+      const owner = a.capabilities.includes("leads.develop"), ops = operations(a);
+      const visibility2 = administrator(a) ? "($1::uuid IS NOT NULL)" : ops ? `(c.origin='operations'${owner ? " OR c.owner_user_id=$1" : ""})` : owner ? "c.owner_user_id=$1" : "FALSE AND $1::uuid IS NOT NULL";
+      const filter = `WHERE (${visibility2}) AND ($2::uuid IS NULL OR c.customer_id=$2) AND ($3::text IS NULL OR t.status=$3)`;
+      const params = [a.userId, input.customerId ?? null, input.status ?? null];
+      const count2 = await db.query(`SELECT count(*)::int AS n FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) ${filter}`, params);
+      const rows = await db.query(`SELECT ${COLUMNS},c.created_by,c.owner_user_id,c.origin,c.state FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) ${filter} ORDER BY CASE WHEN t.status='open' THEN 0 ELSE 1 END,t.due_at,t.task_id LIMIT $4 OFFSET $5`, [...params, input.limit, input.offset]);
+      return success({ items: rows.rows.map((r) => {
+        const manage2 = canManage(a, r);
+        delete r.created_by;
+        delete r.owner_user_id;
+        delete r.origin;
+        delete r.state;
+        return taskRow(r, manage2);
+      }), total: count2.rows[0].n });
+    });
+  }
+  detail(hash, id) {
+    return this.authorized(hash, (db, a) => this.one(db, id, a));
+  }
+  reschedule(hash, input) {
+    return this.authorized(hash, async (db, a) => {
+      const existing = await this.one(db, input.taskId, a, true);
+      if (!existing.ok)
+        return existing;
+      if (!existing.data.canManage)
+        return failure("FORBIDDEN", "\u53EA\u80FD\u5904\u7406\u81EA\u8EAB\u4EFB\u52A1");
+      return this.cached(db, a, `task:reschedule:${input.taskId}`, input, async () => {
+        const r = await db.query(`UPDATE crm_followup_tasks SET due_at=$2,version=version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND status='open' AND version=$3 RETURNING task_id`, [input.taskId, input.dueAt, input.expectedVersion]);
+        if (!r.rows.length)
+          return failure("CONFLICT", "\u4EFB\u52A1\u5DF2\u5B8C\u6210\u6216\u7248\u672C\u5DF2\u53D8\u5316");
+        return this.one(db, input.taskId, a);
+      });
+    });
+  }
+  complete(hash, input) {
+    return this.authorized(hash, async (db, a) => {
+      const existing = await this.one(db, input.taskId, a, true);
+      if (!existing.ok)
+        return existing;
+      if (!existing.data.canManage)
+        return failure("FORBIDDEN", "\u53EA\u80FD\u5904\u7406\u81EA\u8EAB\u4EFB\u52A1");
+      return this.cached(db, a, `task:complete:${input.taskId}`, input, async () => {
+        const r = await db.query(`UPDATE crm_followup_tasks SET status='completed',feedback=$2,completed_at=clock_timestamp(),completed_by=$3,version=version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND status='open' AND version=$4 RETURNING task_id`, [input.taskId, input.feedback.trim(), a.userId, input.expectedVersion]);
+        if (!r.rows.length)
+          return failure("CONFLICT", "\u4EFB\u52A1\u5DF2\u5B8C\u6210\u6216\u7248\u672C\u5DF2\u53D8\u5316");
+        return this.one(db, input.taskId, a);
+      });
+    });
+  }
+  async processDue(limit) {
+    return this.tx(async (db) => {
+      const rows = await db.query(`SELECT t.task_id,t.customer_id,t.opportunity_id,t.version,t.due_at,c.version AS customer_version,COALESCE(c.owner_user_id,c.created_by) AS responsible_user_id FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active WHERE t.status='open' AND t.due_at<=clock_timestamp() AND u.active AND NOT u.must_change_password AND EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role IN ('admin','operations','sales')) AND (a.capabilities IS NULL OR a.capabilities ? 'leads.develop') AND (c.owner_user_id=u.user_id OR c.owner_user_id IS NULL AND a.scope IN ('shared','summary') AND EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND (g.role='admin' AND (a.capabilities IS NULL OR a.capabilities ? 'leads.read.all') OR g.role='operations' AND (a.capabilities IS NULL OR a.capabilities ? 'followups.read')))) AND NOT EXISTS(SELECT 1 FROM crm_task_due_receipts d WHERE d.task_id=t.task_id AND d.task_version=t.version) ORDER BY t.due_at,t.task_id LIMIT $1 FOR UPDATE OF t SKIP LOCKED`, [limit]);
+      let count2 = 0;
+      for (const r of rows.rows) {
+        const c = await this.customer(db, r.customer_id), member2 = await access(db, r.responsible_user_id);
+        if (!c || !member2 || !canManage(member2, c))
+          continue;
+        const event2 = await db.query(`INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,'crm',$3,$4,$5,$6::uuid[]) RETURNING event_id`, [TASK_DUE_EVENT, r.responsible_user_id, r.version, r.customer_id, JSON.stringify({ customerId: r.customer_id, version: r.customer_version, taskId: r.task_id, ...r.opportunity_id ? { opportunityId: r.opportunity_id } : {}, taskVersion: r.version, dueAt: new Date(r.due_at).toISOString(), responsibleUserId: r.responsible_user_id }), [r.responsible_user_id]]);
+        await db.query("INSERT INTO crm_task_due_receipts(task_id,task_version,responsible_user_id,event_id) VALUES($1,$2,$3,$4)", [r.task_id, r.version, r.responsible_user_id, event2.rows[0].event_id]);
+        count2++;
+      }
+      return success(count2);
+    });
+  }
+};
+
+// server/adapters/postgres/contact-mail-analysis-repository.ts
+var SUMMARY_MAX = 2e3;
+var DIGEST_FIELDS = ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "source", "inputSequence", "result", "classification", "relevance", "summary", "signals", "requiresAction", "nextAction", "priority", "dueHint", "confidence", "evidence"];
+function sha(value2) {
+  return (0, import_node_crypto9.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+}
+function jsonArray(value2) {
+  if (Array.isArray(value2))
+    return value2;
+  try {
+    const parsed = JSON.parse(value2);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function mapped(row2) {
+  return {
+    analysisId: String(row2.analysisId),
+    actorId: String(row2.actorId),
+    eventId: row2.eventId ? String(row2.eventId) : null,
+    contactId: Number(row2.contactId),
+    customerId: String(row2.customerId),
+    mailboxKey: String(row2.mailboxKey),
+    messageKey: String(row2.messageKey),
+    contentHash: String(row2.contentHash),
+    threadKey: String(row2.threadKey),
+    analyzerVersion: String(row2.analyzerVersion),
+    inputSequence: Number(row2.inputSequence),
+    source: row2.source,
+    relevance: row2.relevance,
+    classification: row2.classification,
+    contactState: row2.contactState,
+    summary: String(row2.summary),
+    signals: jsonArray(row2.signals),
+    requiresAction: row2.requiresAction,
+    nextAction: row2.nextAction,
+    priority: row2.priority,
+    dueHint: row2.dueHint,
+    confidence: Number(row2.confidence),
+    evidence: jsonArray(row2.evidence),
+    humanLocked: row2.humanLocked,
+    supersedesId: row2.supersedesId ? String(row2.supersedesId) : null,
+    isCurrent: row2.isCurrent,
+    createdAt: new Date(row2.createdAt).toISOString()
+  };
+}
+var RECORD_COLUMNS = `analysis_id AS "analysisId",actor_id AS "actorId",event_id AS "eventId",contact_id AS "contactId",customer_id AS "customerId",mailbox_key AS "mailboxKey",message_key AS "messageKey",content_hash AS "contentHash",thread_key AS "threadKey",analyzer_version AS "analyzerVersion",input_sequence AS "inputSequence",source,relevance,classification,contact_state AS "contactState",summary,signals,requires_action AS "requiresAction",next_action AS "nextAction",priority,due_hint AS "dueHint",confidence,evidence,human_locked AS "humanLocked",supersedes_id AS "supersedesId",is_current AS "isCurrent",created_at AS "createdAt"`;
+function digestFor(value2) {
+  const source = value2 && typeof value2 === "object" ? value2 : {};
+  const fields = Object.fromEntries(DIGEST_FIELDS.filter((key) => Object.hasOwn(source, key)).map((key) => [key, source[key]]));
+  if (source.source === "rule")
+    delete fields.inputSequence;
+  return sha(fields);
+}
+function streamLockKey(input) {
+  return [input.actorId, input.contactId, input.mailboxKey, input.messageKey, input.contentHash].join("|");
+}
+async function existingReceipt(c, input, digest2) {
+  const old = await c.query(`SELECT ${RECORD_COLUMNS},request_digest FROM crm_contact_mail_analyses WHERE actor_id=$1 AND mailbox_key=$2 AND message_key=$3 AND contact_id=$4 AND content_hash=$5 AND idempotency_key=$6`, [input.actorId, input.mailboxKey, input.messageKey, input.contactId, input.contentHash, input.idempotencyKey]);
+  if (!old.rows.length)
+    return null;
+  if (old.rows[0].request_digest !== digest2)
+    return failure("CONFLICT", "\u5206\u6790\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u7ED3\u8BBA");
+  return success(mapped(old.rows[0]));
+}
+async function syncSuggestionIn(c, record16, previousCurrentId) {
+  const suggestion = taskSuggestionFor(record16);
+  const actionCode = record16.classification === "bounced" ? "fix_email" : record16.signals[0]?.code ?? "other";
+  const actionable = record16.relevance === "customer_business" && record16.requiresAction && !!record16.nextAction?.trim();
+  if (!actionable) {
+    if (previousCurrentId)
+      await c.query("UPDATE crm_contact_mail_task_suggestions SET status='dismissed',version=version+1,updated_at=clock_timestamp() WHERE source_analysis_id=$1 AND status='suggested'", [previousCurrentId]);
+    return success(null);
+  }
+  const nextAction = suggestion?.nextAction ?? record16.nextAction;
+  const priority = suggestion?.priority ?? record16.priority;
+  const dueHint = suggestion?.dueHint ?? record16.dueHint;
+  const inserted = await c.query(`INSERT INTO crm_contact_mail_task_suggestions(actor_id,contact_id,customer_id,thread_key,action_code,source_analysis_id,next_action,priority,due_hint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(actor_id,contact_id,thread_key,action_code) DO UPDATE SET source_analysis_id=EXCLUDED.source_analysis_id,next_action=EXCLUDED.next_action,priority=EXCLUDED.priority,due_hint=EXCLUDED.due_hint,status=CASE WHEN crm_contact_mail_task_suggestions.status='dismissed' AND $10::boolean=false THEN crm_contact_mail_task_suggestions.status ELSE 'suggested' END,version=crm_contact_mail_task_suggestions.version+1,updated_at=clock_timestamp() RETURNING suggestion_id`, [record16.actorId, record16.contactId, record16.customerId, record16.threadKey, actionCode, record16.analysisId, nextAction, priority, dueHint, record16.source === "human"]);
+  return success(inserted.rows.length ? String(inserted.rows[0].suggestion_id) : null);
+}
+async function insertAnalysisIn(c, input) {
+  const migrated = await ensureContactMailAnalysisSchemaIn(c);
+  if (!migrated.ok)
+    return migrated;
+  const attentionMigrated = await ensureTeamAttentionSchemaIn(c);
+  if (!attentionMigrated.ok)
+    return attentionMigrated;
+  const digest2 = digestFor(input), old = await existingReceipt(c, input, digest2);
+  if (old)
+    return old;
+  await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [streamLockKey(input)]);
+  const duplicate = await existingReceipt(c, input, digest2);
+  if (duplicate)
+    return duplicate;
+  const current = (await c.query(`SELECT ${RECORD_COLUMNS} FROM crm_contact_mail_analyses WHERE actor_id=$1 AND mailbox_key=$2 AND message_key=$3 AND contact_id=$4 AND content_hash=$5 AND is_current FOR UPDATE`, [input.actorId, input.mailboxKey, input.messageKey, input.contactId, input.contentHash])).rows[0];
+  const makeCurrent = newerAnalysisWins(input, current ? mapped(current) : null);
+  if (makeCurrent)
+    await c.query("UPDATE crm_contact_mail_analyses SET is_current=false WHERE actor_id=$1 AND mailbox_key=$2 AND message_key=$3 AND contact_id=$4 AND content_hash=$5 AND is_current", [input.actorId, input.mailboxKey, input.messageKey, input.contactId, input.contentHash]);
+  const inserted = (await c.query(`INSERT INTO crm_contact_mail_analyses(actor_id,event_id,contact_id,customer_id,mailbox_key,message_key,content_hash,thread_key,analyzer_version,input_sequence,source,relevance,classification,contact_state,summary,signals,requires_action,next_action,priority,due_hint,confidence,evidence,human_locked,idempotency_key,request_digest,supersedes_id,is_current) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27) RETURNING ${RECORD_COLUMNS}`, [input.actorId, input.eventId, input.contactId, input.customerId, input.mailboxKey, input.messageKey, input.contentHash, input.threadKey, input.analyzerVersion, input.inputSequence, input.source, input.relevance, input.classification, input.contactState, input.summary.slice(0, SUMMARY_MAX), JSON.stringify(input.signals), input.requiresAction, input.nextAction, input.priority, input.dueHint, input.confidence, JSON.stringify(input.evidence), input.source === "human", input.idempotencyKey, digest2, current?.analysisId ?? null, makeCurrent])).rows[0];
+  const record16 = mapped(inserted);
+  if (record16.isCurrent) {
+    const suggestion = await syncSuggestionIn(c, record16, current?.analysisId ? String(current.analysisId) : null);
+    if (!suggestion.ok)
+      return suggestion;
+    if (suggestion.data) {
+      const created = await createMailAnalysisTaskIn(c, { actorId: record16.actorId, suggestionId: suggestion.data, analysisId: record16.analysisId, customerId: record16.customerId, contactId: record16.contactId, threadKey: record16.threadKey, actionCode: record16.classification === "bounced" ? "fix_email" : record16.signals[0]?.code ?? "other", title: record16.nextAction ?? "\u5904\u7406\u5BA2\u6237\u90AE\u4EF6", priority: record16.priority, relevance: record16.relevance, classification: record16.classification, source: record16.source, confidence: record16.confidence, requiresAction: record16.requiresAction, nextAction: record16.nextAction, signals: record16.signals });
+      if (!created.ok)
+        return created;
+    }
+  }
+  return success(record16);
+}
+function domain(email3) {
+  const at = email3.trim().toLowerCase().lastIndexOf("@");
+  return at > 0 ? email3.trim().toLowerCase().slice(at + 1) : null;
+}
+async function recordMechanicalMailAnalysisIn(c, actor, input, eventId, contentHash, primaryEmail, inputSequence = new Date(input.occurredAt).getTime()) {
+  const senderDomain = domain(input.fromEmail), recipientDomains = input.toEmails.map(domain).filter((value2) => !!value2);
+  const result2 = mechanicalMailAnalysis({
+    kind: input.kind,
+    direction: input.direction,
+    subject: input.subject,
+    preview: input.preview,
+    fromEmail: input.fromEmail,
+    toEmails: input.toEmails,
+    ccEmails: input.ccEmails,
+    matchedContact: true,
+    primaryEmail,
+    internal: !!senderDomain && recipientDomains.includes(senderDomain)
+  });
+  return insertAnalysisIn(c, {
+    actorId: actor.userId,
+    eventId,
+    contactId: input.contactId,
+    customerId: input.customerId,
+    mailboxKey: input.mailboxKey,
+    messageKey: input.messageKey,
+    contentHash,
+    threadKey: mailThreadKey(input.subject, input.messageKey),
+    analyzerVersion: result2.analyzerVersion,
+    inputSequence,
+    source: result2.source,
+    relevance: result2.relevance,
+    classification: result2.classification,
+    contactState: result2.contactState,
+    summary: result2.summary,
+    signals: result2.signals,
+    requiresAction: result2.actionability.requiresAction,
+    nextAction: result2.actionability.nextAction,
+    priority: result2.actionability.priority,
+    dueHint: result2.actionability.dueHint,
+    confidence: result2.confidence,
+    evidence: result2.evidence,
+    idempotencyKey: `rule:${result2.analyzerVersion}:${contentHash}:${input.kind}:${input.direction}`
+  });
+}
+var PostgresContactMailAnalysisRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+  }
+  async tx(action, tokenHash) {
+    const c = await this.pool.connect();
+    try {
+      await c.query("BEGIN");
+      const actor = await authorizeLeadActor(c, tokenHash);
+      const result2 = actor ? await action(c, actor) : failure("UNAUTHORIZED", "CRM\u4F1A\u8BDD\u6216\u4EA7\u54C1\u51C6\u5165\u5DF2\u5931\u6548");
+      await c.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      try {
+        await c.query("ROLLBACK");
+      } catch {
+        this.log.write("ERROR", "contact-mail-analysis.rollback", "\u56DE\u6EDA\u5931\u8D25");
+      }
+      this.log.write("ERROR", "contact-mail-analysis.pg", error instanceof Error ? error.message : "\u64CD\u4F5C\u5931\u8D25");
+      return failure("DATABASE_ERROR", "\u90AE\u4EF6\u5206\u6790\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      c.release();
+    }
+  }
+  async migrate() {
+    const c = await this.pool.connect();
+    try {
+      await c.query("BEGIN");
+      const analysis = await ensureContactMailAnalysisSchemaIn(c);
+      if (!analysis.ok) {
+        await c.query("ROLLBACK");
+        return analysis;
+      }
+      const result2 = await ensureTeamAttentionSchemaIn(c);
+      await c.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      try {
+        await c.query("ROLLBACK");
+      } catch {
+        this.log.write("ERROR", "contact-mail-analysis.migrate", "\u8FC1\u79FB\u56DE\u6EDA\u5931\u8D25");
+      }
+      this.log.write("ERROR", "contact-mail-analysis.migrate", error instanceof Error ? error.message : "\u8FC1\u79FB\u5931\u8D25");
+      return failure("DATABASE_ERROR", "\u90AE\u4EF6\u5206\u6790\u8FC1\u79FB\u5931\u8D25");
+    } finally {
+      c.release();
+    }
+  }
+  async scope(c, a, input) {
+    const contact2 = await contact(c, input);
+    if (!contact2)
+      return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
+    if (read(a, contact2))
+      return success("normal");
+    const monitor = await contactMonitorDetailIn(c, a, input);
+    return monitor.ok ? success("monitor") : failure("FORBIDDEN", "\u65E0\u90AE\u4EF6\u5206\u6790\u67E5\u770B\u6743\u9650");
+  }
+  async streamActor(c, input, fallback) {
+    const row2 = (await c.query("SELECT actor_id FROM crm_contact_mail_events WHERE contact_id=$1 AND customer_id=$2 AND mailbox_key=$3 AND message_key=$4 ORDER BY recorded_at DESC,event_id DESC LIMIT 1", [input.contactId, input.customerId, input.mailboxKey, input.messageKey])).rows[0];
+    return row2?.actor_id ? String(row2.actor_id) : fallback;
+  }
+  current(tokenHash, input) {
+    return this.tx(async (c, a) => {
+      const scope = await this.scope(c, a, input);
+      if (!scope.ok)
+        return scope;
+      const migrated = await ensureContactMailAnalysisSchemaIn(c);
+      if (!migrated.ok)
+        return migrated;
+      const actorId = await this.streamActor(c, input, a.userId);
+      const currentRow = (await c.query(`SELECT ${RECORD_COLUMNS} FROM crm_contact_mail_analyses WHERE actor_id=$1 AND mailbox_key=$2 AND message_key=$3 AND contact_id=$4 AND content_hash=$5 AND is_current LIMIT 1`, [actorId, input.mailboxKey, input.messageKey, input.contactId, input.contentHash])).rows[0];
+      if (!currentRow)
+        return failure("NOT_FOUND", "\u90AE\u4EF6\u5206\u6790\u4E0D\u5B58\u5728");
+      const current = mapped(currentRow);
+      const history = input.includeHistory ? (await c.query(`SELECT ${RECORD_COLUMNS} FROM crm_contact_mail_analyses WHERE actor_id=$1 AND mailbox_key=$2 AND message_key=$3 AND contact_id=$4 AND content_hash=$5 AND NOT is_current ORDER BY input_sequence DESC,created_at DESC,analysis_id DESC LIMIT $6`, [actorId, input.mailboxKey, input.messageKey, input.contactId, input.contentHash, input.historyLimit])).rows.map((row2) => mapped(row2)) : [];
+      const suggestion = (await c.query("SELECT suggestion_id,thread_key,action_code,next_action,priority,due_hint FROM crm_contact_mail_task_suggestions WHERE actor_id=$1 AND contact_id=$2 AND thread_key=$3 AND status='suggested' ORDER BY updated_at DESC,suggestion_id LIMIT 1", [actorId, input.contactId, current.threadKey])).rows[0];
+      return success({ current, history, canCorrect: scope.data === "normal", access: scope.data, taskSuggestion: suggestion ? { key: [actorId, String(input.contactId), String(suggestion.thread_key), String(suggestion.action_code)].join("|"), actionCode: String(suggestion.action_code), nextAction: String(suggestion.next_action), priority: String(suggestion.priority), dueHint: suggestion.due_hint ? String(suggestion.due_hint) : null } : null });
+    }, tokenHash);
+  }
+  submitAI(tokenHash, input) {
+    return this.tx(async (c, a) => {
+      const scope = await this.scope(c, a, input);
+      if (!scope.ok)
+        return scope;
+      if (scope.data !== "normal")
+        return failure("FORBIDDEN", "\u76D1\u7763\u8303\u56F4\u53EA\u8BFB");
+      const event2 = (await c.query("SELECT event_id,kind,direction,from_email,subject FROM crm_contact_mail_events WHERE actor_id=$1 AND contact_id=$2 AND customer_id=$3 AND mailbox_key=$4 AND message_key=$5 ORDER BY recorded_at DESC,event_id DESC LIMIT 1", [a.userId, input.contactId, input.customerId, input.mailboxKey, input.messageKey])).rows[0];
+      if (!event2)
+        return failure("NOT_FOUND", "\u90AE\u4EF6\u8BC1\u636E\u4E0D\u5B58\u5728");
+      const contact2 = await contact(c, input), state = contactStateForMail(event2.kind, event2.direction, event2.from_email, contact2?.email ?? null), actionability = event2.direction === "inbound" ? input.result.actionability : { requiresAction: false, nextAction: null, priority: "normal", dueHint: null };
+      return insertAnalysisIn(c, { actorId: a.userId, eventId: String(event2.event_id), contactId: input.contactId, customerId: input.customerId, mailboxKey: input.mailboxKey, messageKey: input.messageKey, contentHash: input.contentHash, threadKey: mailThreadKey(String(event2.subject ?? input.result.summary), input.messageKey), analyzerVersion: input.result.analyzerVersion, inputSequence: input.inputSequence, source: "ai", relevance: input.result.relevance, classification: input.result.classification, contactState: state, summary: input.result.summary, signals: input.result.signals, requiresAction: actionability.requiresAction, nextAction: actionability.nextAction, priority: actionability.priority, dueHint: actionability.dueHint, confidence: input.result.confidence, evidence: input.result.evidence, idempotencyKey: input.idempotencyKey });
+    }, tokenHash);
+  }
+  correct(tokenHash, input) {
+    return this.tx(async (c, a) => {
+      const scope = await this.scope(c, a, input);
+      if (!scope.ok)
+        return scope;
+      if (scope.data !== "normal")
+        return failure("FORBIDDEN", "\u76D1\u7763\u8303\u56F4\u53EA\u8BFB");
+      const actorId = await this.streamActor(c, input, a.userId);
+      const current = (await c.query(`SELECT ${RECORD_COLUMNS} FROM crm_contact_mail_analyses WHERE actor_id=$1 AND mailbox_key=$2 AND message_key=$3 AND contact_id=$4 AND content_hash=$5 AND is_current FOR UPDATE`, [actorId, input.mailboxKey, input.messageKey, input.contactId, input.contentHash])).rows[0];
+      if (!current || String(current.analysisId) !== input.expectedCurrentId)
+        return failure("CONFLICT", "\u90AE\u4EF6\u5206\u6790\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+      const event2 = (await c.query("SELECT event_id,kind,direction,from_email,subject FROM crm_contact_mail_events WHERE actor_id=$1 AND contact_id=$2 AND customer_id=$3 AND mailbox_key=$4 AND message_key=$5 ORDER BY recorded_at DESC,event_id DESC LIMIT 1", [actorId, input.contactId, input.customerId, input.mailboxKey, input.messageKey])).rows[0];
+      if (!event2)
+        return failure("NOT_FOUND", "\u90AE\u4EF6\u8BC1\u636E\u4E0D\u5B58\u5728");
+      const contact2 = await contact(c, input), state = contactStateForMail(event2.kind, event2.direction, event2.from_email, contact2?.email ?? null);
+      return insertAnalysisIn(c, { ...input, actorId, eventId: String(event2.event_id), threadKey: String(current.threadKey), analyzerVersion: "human-v1", inputSequence: Number(current.inputSequence) + 1, source: "human", contactState: state });
+    }, tokenHash);
+  }
+};
+
+// server/adapters/postgres/contact-mail-repository.ts
 var MILLISECONDS_PER_SECOND6 = 1e3;
 var SELECT = `event_id AS "eventId",actor_id AS "actorId",contact_id AS "contactId",customer_id AS "customerId",event_key AS "eventKey",mailbox_key AS "mailboxKey",message_key AS "messageKey",kind,direction,occurred_at AS "occurredAt",subject,preview,from_email AS "fromEmail",to_emails AS "toEmails",cc_emails AS "ccEmails",recorded_at AS "recordedAt",activity_id::text AS "activityId",classification_correction AS correction,classification_revision AS "correctionRevision"`;
-function mapped(row2) {
-  const { correction, correctionRevision, ...event3 } = row2;
-  return { ...event3, ...correction ? { correction } : {}, ...correctionRevision ? { correctionRevision } : {}, occurredAt: new Date(row2.occurredAt).toISOString(), recordedAt: new Date(row2.recordedAt).toISOString() };
+function mapped2(row2) {
+  const { correction, correctionRevision, ...event2 } = row2;
+  return { ...event2, ...correction ? { correction } : {}, ...correctionRevision ? { correctionRevision } : {}, contentHash: contactMailContentHash(row2), occurredAt: new Date(row2.occurredAt).toISOString(), recordedAt: new Date(row2.recordedAt).toISOString() };
 }
 async function contactMailEventsIn(client, input) {
   const rows = await client.query(`SELECT ${SELECT} FROM crm_contact_mail_events WHERE contact_id=$1 AND customer_id=$2 ORDER BY occurred_at DESC,recorded_at DESC,event_id DESC LIMIT $3`, [input.contactId, input.customerId, CONTACT_MAIL_LIMITS.history]);
-  return rows.rows.map(mapped);
+  return rows.rows.map(mapped2);
 }
 function contactMailFingerprint(input) {
   const fields = [input.contactId, input.customerId, input.eventKey, input.mailboxKey, input.messageKey, input.kind, input.direction, input.occurredAt, input.subject, input.preview, input.fromEmail, input.toEmails, input.ccEmails];
   if (input.correction)
     fields.push([input.correction.previousEventKey, input.correction.classification]);
-  return (0, import_node_crypto6.createHash)("sha256").update(JSON.stringify(fields)).digest("hex");
+  return (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify(fields)).digest("hex");
+}
+function contactMailContentHash(input) {
+  return (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify([input.contactId, input.customerId, input.mailboxKey, input.messageKey, input.subject, input.preview, input.fromEmail, input.toEmails, input.ccEmails])).digest("hex");
 }
 async function recordContactMailEventIn(client, actor, input) {
   if (input.advanceSendStage !== void 0 && (typeof input.advanceSendStage !== "boolean" || input.kind !== "sent" || input.direction !== "outbound"))
@@ -8712,6 +10042,7 @@ async function recordContactMailEventIn(client, actor, input) {
     await client.query("UPDATE contacts SET stage=CASE stage WHEN 'cold' THEN 'f1' WHEN 'f1' THEN 'f2' WHEN 'f2' THEN 'f3' WHEN 'f3' THEN 'f4' ELSE stage END WHERE id=$1", [input.contactId]);
   };
   const fingerprint2 = contactMailFingerprint(input), old = (await client.query(`SELECT ${SELECT},digest,send_stage_advanced,archive_only FROM crm_contact_mail_events WHERE actor_id=$1 AND event_key=$2 FOR UPDATE`, [actor.userId, input.eventKey])).rows[0];
+  const contentHash = contactMailContentHash(input);
   if (old) {
     if (old.digest !== fingerprint2)
       return failure("CONFLICT", "\u90AE\u4EF6\u4E8B\u4EF6\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u4E8B\u5B9E");
@@ -8721,11 +10052,14 @@ async function recordContactMailEventIn(client, actor, input) {
       await client.query("UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [input.contactId]);
       await contactEvent(client, actor, contact2, CONTACT_ASSIGNMENT_EVENTS.followup, (contact2.contactVersion ?? 1) + 1, void 0, old.eventId);
     }
+    const analysis2 = await recordMechanicalMailAnalysisIn(client, actor, input, old.eventId, contentHash, primary ?? null, new Date(input.occurredAt).getTime() + Number(old.classification_revision ?? 0));
+    if (!analysis2.ok)
+      return analysis2;
     const detail2 = await contactDetailIn(client, actor, input);
     if (!detail2.ok)
       return detail2;
-    const { digest: _digest, send_stage_advanced: _advanced, archive_only: _archived, ...event3 } = old;
-    return success({ eventId: old.eventId, duplicate: true, event: mapped(event3), contact: detail2.data.contact });
+    const { digest: _digest, send_stage_advanced: _advanced, archive_only: _archived, ...event2 } = old;
+    return success({ eventId: old.eventId, duplicate: true, event: mapped2(event2), contact: detail2.data.contact, analysis: analysis2.data });
   }
   const recorded = (await client.query("SELECT clock_timestamp() AS stamp")).rows[0].stamp, occurred = new Date(input.occurredAt);
   if (!Number.isFinite(occurred.getTime()) || occurred.getTime() > recorded.getTime() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND6)
@@ -8754,7 +10088,7 @@ async function recordContactMailEventIn(client, actor, input) {
     if (!newer)
       await client.query("UPDATE contacts SET status=$2 WHERE id=$1", [input.contactId, classification]);
   }
-  const eventId = (0, import_node_crypto6.randomUUID)();
+  const eventId = (0, import_node_crypto10.randomUUID)();
   await client.query("INSERT INTO crm_contact_mail_events(event_id,actor_id,contact_id,customer_id,event_key,mailbox_key,message_key,kind,direction,occurred_at,subject,preview,from_email,to_emails,cc_emails,digest,recorded_at,activity_id,classification_correction,classification_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16,$17,$18,$19::jsonb,$20)", [eventId, actor.userId, input.contactId, input.customerId, input.eventKey, input.mailboxKey, input.messageKey, input.kind, input.direction, occurred, input.subject, input.preview, input.fromEmail, JSON.stringify(input.toEmails), JSON.stringify(input.ccEmails), fingerprint2, recorded, activityId, input.correction ? JSON.stringify(input.correction) : null, revision.data]);
   if (input.advanceSendStage) {
     await advanceStage();
@@ -8763,14 +10097,17 @@ async function recordContactMailEventIn(client, actor, input) {
   await refreshMailProjectionIn(client, input, contact2.email);
   await client.query("UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [input.contactId]);
   await contactEvent(client, actor, contact2, CONTACT_ASSIGNMENT_EVENTS.followup, (contact2.contactVersion ?? 1) + 1, activityId ?? void 0, eventId);
+  const analysis = await recordMechanicalMailAnalysisIn(client, actor, input, eventId, contentHash, primary ?? null, occurred.getTime() + (revision.data ?? 0));
+  if (!analysis.ok)
+    return analysis;
   const detail = await contactDetailIn(client, actor, input);
   if (!detail.ok)
     return detail;
-  return success({ eventId, duplicate: false, contact: detail.data.contact, event: { ...input, eventId, actorId: actor.userId, recordedAt: recorded.toISOString(), occurredAt: occurred.toISOString(), activityId, ...revision.data ? { correctionRevision: revision.data } : {} } });
+  return success({ eventId, duplicate: false, contact: detail.data.contact, analysis: analysis.data, event: { ...input, contentHash, eventId, actorId: actor.userId, recordedAt: recorded.toISOString(), occurredAt: occurred.toISOString(), activityId, ...revision.data ? { correctionRevision: revision.data } : {} } });
 }
 
 // server/adapters/postgres/contact-assignment-group-schema.ts
-var import_node_crypto7 = require("node:crypto");
+var import_node_crypto11 = require("node:crypto");
 var CONTACT_ASSIGNMENT_GROUP_VERSION = "050-contact-assignment-groups";
 var CONTACT_ASSIGNMENT_GROUP_SQL = `
 CREATE TABLE IF NOT EXISTS crm_contact_assignment_group_members(
@@ -8781,30 +10118,35 @@ CREATE TABLE IF NOT EXISTS crm_contact_assignment_group_members(
 CREATE INDEX IF NOT EXISTS idx_crm_contact_assignment_group_member ON crm_contact_assignment_group_members(group_id,request_id);
 `;
 async function migrateContactAssignmentGroups(c) {
-  const checksum = (0, import_node_crypto7.createHash)("sha256").update(CONTACT_ASSIGNMENT_GROUP_SQL).digest("hex");
+  const checksum4 = (0, import_node_crypto11.createHash)("sha256").update(CONTACT_ASSIGNMENT_GROUP_SQL).digest("hex");
   const old = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_ASSIGNMENT_GROUP_VERSION]);
-  if (old.rows.length && old.rows[0].checksum !== checksum)
+  if (old.rows.length && old.rows[0].checksum !== checksum4)
     return failure("CONFLICT", "\u5206\u914D\u7EC4\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
   if (!old.rows.length) {
     await c.query(CONTACT_ASSIGNMENT_GROUP_SQL);
-    await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_ASSIGNMENT_GROUP_VERSION, checksum]);
+    await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_ASSIGNMENT_GROUP_VERSION, checksum4]);
   }
   return success(void 0);
 }
 
 // server/adapters/postgres/contact-assignment-repository.ts
 var MILLISECONDS_PER_SECOND7 = 1e3;
+var CONTACT_ASSIGNMENT_EXPIRY_POLL_SECONDS = 30;
+var CONTACT_ASSIGNMENT_EXPIRY_LOCK = 570058;
 var FOLLOWUP_LEGACY_STATUS = { contacted: "reached", replied: "replied", bounced: "bounced", autoreply: "autoreply", uncontacted: "" };
-var CONTACT_OWNER_SQL = "COALESCE((SELECT ar.target_user_id FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status='accepted'),c.owner_user_id)";
+var CONTACT_OWNER_SQL = "COALESCE((SELECT own.owner_user_id FROM crm_contact_ownership own WHERE own.contact_id=ct.id AND own.customer_id=c.customer_id AND own.ended_at IS NULL ORDER BY own.started_at DESC,own.ownership_id DESC LIMIT 1),c.owner_user_id)";
 var JOINS = `FROM contacts ct JOIN crm_customer_contacts cc ON cc.contact_id=ct.id JOIN crm_customers c ON c.customer_id=cc.customer_id JOIN companies co ON co.id=c.company_id`;
 var LAST_FOLLOWUP_AT = lastEffectiveFollowupSql("occurred_at");
 var LAST_FOLLOWUP_NOTE = lastEffectiveFollowupSql("note");
-var PROJECTION = `ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted')) AS active_assignment_status,(SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1) AS "relationshipStage",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
+var PROJECTION = `ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT COALESCE(array_agg(DISTINCT sid),'{}'::uuid[]) FROM crm_contact_assignment_requests sar CROSS JOIN LATERAL unnest(sar.supervisor_user_ids) sid WHERE sar.contact_id=ct.id AND sar.customer_id=c.customer_id AND sar.status='accepted') AS supervisor_user_ids,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted','pending_transfer')) AS active_assignment_status,(SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1) AS "relationshipStage",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
 function contactPermissionsFor(a, row2) {
   return contactPermissions(a, { ...row2, shared_grant: row2.shared_grants?.find((g) => g.targetUserId === a.userId) });
 }
 function contactManager(a) {
-  return ["shared", "summary"].includes(a.scope) && a.roles.some((r) => r === "admin" || r === "operations") && a.capabilities.includes("leads.assign");
+  return ["shared", "summary"].includes(a.scope) && a.roles.includes("operations") && a.capabilities.includes("leads.assign");
+}
+function assignmentOversight(a) {
+  return ["shared", "summary"].includes(a.scope) && a.roles.includes("admin") && a.capabilities.includes("leads.read.all");
 }
 function all(a) {
   return a.roles.includes("admin") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.read.all");
@@ -8822,12 +10164,15 @@ function assign(a, row2) {
   return contactManager(a) && row2.origin === "operations" && !row2.development_restriction?.trim() && row2.ownerUserId === null && !row2.active_assignment_status;
 }
 function canDeleteContact(a, row2) {
-  return row2.active_assignment_status !== "pending" && (all(a) || ownManager(a, row2) || row2.origin === "personal" && row2.ownerUserId === a.userId && a.capabilities.includes("leads.develop"));
+  if (row2.active_assignment_status === "pending")
+    return false;
+  if (row2.active_assignment_status === "pending_transfer")
+    return ownManager(a, row2);
+  return ownManager(a, row2) || row2.origin === "personal" && row2.ownerUserId === a.userId && a.capabilities.includes("leads.develop");
 }
-function mapped2(a, row2) {
-  const { created_by: _, development_restriction: __, active_assignment_status: ___, shared_grants: ____, ...ct } = row2;
-  const permissions = contactPermissionsFor(a, row2);
-  return { ...ct, assignmentStatus: row2.active_assignment_status, relationshipStage: ct.relationshipStage ?? (["contacted", "replied", "bounced", "autoreply"].includes(ct.touchStatus) ? "reaching" : "cold"), lastFollowupAt: ct.lastFollowupAt ? new Date(ct.lastFollowupAt).toISOString() : null, lastFollowupNote: ct.lastFollowupNote ?? null, createdAt: new Date(ct.createdAt).toISOString(), updatedAt: new Date(ct.updatedAt).toISOString(), canDelete: canDeleteContact(a, row2), permissions, isShared: !!row2.shared_grants?.some((g) => g.targetUserId === a.userId) && row2.ownerUserId !== a.userId, canSendMail: permissions.canSendMail, canEdit: edit(a, row2), canFollowup: permissions.canFollowup, canAssign: assign(a, row2) };
+function mapped3(a, row2) {
+  const { created_by: _, development_restriction: __, active_assignment_status: ___, supervisor_user_ids: _____, shared_grants: ______, ...ct } = row2, permissions = contactPermissionsFor(a, row2), assignmentStatus = row2.active_assignment_status === "pending_transfer" ? "accepted" : row2.active_assignment_status;
+  return { ...ct, assignmentStatus, relationshipStage: ct.relationshipStage ?? (["contacted", "replied", "bounced", "autoreply"].includes(ct.touchStatus) ? "reaching" : "cold"), lastFollowupAt: ct.lastFollowupAt ? new Date(ct.lastFollowupAt).toISOString() : null, lastFollowupNote: ct.lastFollowupNote ?? null, createdAt: new Date(ct.createdAt).toISOString(), updatedAt: new Date(ct.updatedAt).toISOString(), canDelete: canDeleteContact(a, row2), permissions, isShared: !!row2.shared_grants?.some((g) => g.targetUserId === a.userId) && row2.ownerUserId !== a.userId, canSendMail: permissions.canSendMail, canEdit: edit(a, row2), canFollowup: permissions.canFollowup, canAssign: assign(a, row2) };
 }
 async function contact(c, input, lock = false, includeDeleted = false) {
   return (await c.query(`SELECT ${PROJECTION} ${JOINS} WHERE ct.id=$1 AND c.customer_id=$2 AND co.crm_deleted_at IS NULL ${includeDeleted ? "" : "AND ct.crm_deleted_at IS NULL"} ${lock ? "FOR UPDATE OF ct,c" : ""}`, [input.contactId, input.customerId])).rows[0];
@@ -8838,11 +10183,39 @@ async function contactDetailIn(c, a, input) {
     return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
   const co = (await c.query('SELECT customer_type AS "customerType",industry,country,size,updated_at::text AS revision,domain,backcheck_data AS "backcheckData" FROM companies WHERE id=$1', [ct.companyId])).rows[0];
   const activities = await c.query(`SELECT act.id::text,(SELECT mf.event_id::text FROM crm_contact_mail_events mf WHERE mf.activity_id=act.id LIMIT 1) AS "mailEventId",NOT (${effectiveActivitySql()}) AS "mailSuperseded",act.actor_id AS "actorId",u.display_name AS "actorName",act.note,act.stage,act.method,act.contact_id AS "contactId",act.contact_status AS "contactStatus",act.created_at AS "createdAt",act.occurred_at AS "occurredAt",act.recorded_at AS "recordedAt",ct.first_name AS "contactName" FROM crm_shared_activities act LEFT JOIN public.identity_users u ON u.user_id=act.actor_id LEFT JOIN contacts ct ON ct.id=act.contact_id WHERE act.customer_id=$1 AND act.contact_id=$2 AND act.opportunity_id IS NULL ORDER BY act.occurred_at DESC,act.id DESC`, [input.customerId, input.contactId]);
-  return success({ contact: mapped2(a, ct), company: { companyId: ct.companyId, name: ct.companyName, domain: co.domain, backcheckData: co.backcheckData, customerType: co.customerType, industry: co.industry, country: co.country, size: co.size, revision: co.revision, canEdit: await companyEditable(c, a, ct) }, activities: activities.rows.map((x) => ({ ...x, createdAt: new Date(x.createdAt).toISOString(), occurredAt: new Date(x.occurredAt).toISOString(), recordedAt: new Date(x.recordedAt).toISOString() })), canDelete: canDeleteContact(a, ct), permissions: contactPermissionsFor(a, ct), canSendMail: contactPermissionsFor(a, ct).canSendMail, canEdit: edit(a, ct), canFollowup: contactPermissionsFor(a, ct).canFollowup, canAssign: assign(a, ct), mailAvailable: true, mailEvents: await contactMailEventsIn(c, input), mailEventLimit: CONTACT_MAIL_LIMITS.history });
+  return success({ contact: mapped3(a, ct), company: { companyId: ct.companyId, name: ct.companyName, domain: co.domain, backcheckData: co.backcheckData, customerType: co.customerType, industry: co.industry, country: co.country, size: co.size, revision: co.revision, canEdit: await companyEditable(c, a, ct) }, activities: activities.rows.map((x) => ({ ...x, createdAt: new Date(x.createdAt).toISOString(), occurredAt: new Date(x.occurredAt).toISOString(), recordedAt: new Date(x.recordedAt).toISOString() })), canDelete: canDeleteContact(a, ct), permissions: contactPermissionsFor(a, ct), canSendMail: contactPermissionsFor(a, ct).canSendMail, canEdit: edit(a, ct), canFollowup: contactPermissionsFor(a, ct).canFollowup, canAssign: assign(a, ct), mailAvailable: true, mailEvents: await contactMailEventsIn(c, input), mailEventLimit: CONTACT_MAIL_LIMITS.history });
+}
+async function contactMonitorDetailIn(c, a, input) {
+  const ct = await contact(c, input);
+  if (!ct || !a.capabilities.includes("leads.develop") || !ct.ownerUserId)
+    return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
+  const relationship = (await c.query(`SELECT 1 WHERE EXISTS(
+   SELECT 1 FROM crm_contact_ownership own
+   JOIN crm_org_assignments member ON member.user_id=own.owner_user_id AND member.role='member' AND member.ended_at IS NULL
+   JOIN crm_org_units unit ON unit.unit_id=member.unit_id AND unit.kind='sales_team' AND unit.dissolved_at IS NULL
+   JOIN crm_org_assignments leader ON leader.unit_id=unit.unit_id AND leader.role='leader' AND leader.is_primary AND leader.ended_at IS NULL
+   WHERE own.contact_id=$1 AND own.customer_id=$2 AND own.ended_at IS NULL AND leader.user_id=$3
+ )`, [input.contactId, input.customerId, a.userId])).rowCount;
+  if (!relationship)
+    return failure("FORBIDDEN", "\u4EC5\u76F4\u5C5E\u8D1F\u8D23\u4EBA\u53EF\u76D1\u7763\u67E5\u770B");
+  const audit = (await c.query("INSERT INTO crm_contact_monitor_audits(actor_id,contact_id,customer_id,relationship) VALUES($1,$2,$3,'direct_leader') RETURNING audit_id::text AS id,created_at AS at", [a.userId, input.contactId, input.customerId])).rows[0];
+  const co = (await c.query("SELECT domain,country FROM companies WHERE id=$1", [ct.companyId])).rows[0];
+  const activities = (await c.query(`SELECT act.id::text,(SELECT mf.event_id::text FROM crm_contact_mail_events mf WHERE mf.activity_id=act.id LIMIT 1) AS "mailEventId",NOT (${effectiveActivitySql()}) AS "mailSuperseded",act.actor_id AS "actorId",u.display_name AS "actorName",act.note,act.stage,act.method,act.contact_id AS "contactId",act.contact_status AS "contactStatus",act.created_at AS "createdAt",act.occurred_at AS "occurredAt",act.recorded_at AS "recordedAt",ct.first_name AS "contactName" FROM crm_shared_activities act LEFT JOIN public.identity_users u ON u.user_id=act.actor_id LEFT JOIN contacts ct ON ct.id=act.contact_id WHERE act.customer_id=$1 AND act.contact_id=$2 AND act.opportunity_id IS NULL ORDER BY act.occurred_at DESC,act.id DESC`, [input.customerId, input.contactId])).rows;
+  const safe = mapped3(a, ct);
+  return success({
+    auditId: String(audit.id),
+    accessedAt: new Date(audit.at).toISOString(),
+    relationship: "direct_leader",
+    contact: { contactId: safe.contactId, customerId: safe.customerId, companyId: safe.companyId, companyName: safe.companyName, email: safe.email, firstName: safe.firstName, lastName: safe.lastName, title: safe.title, phone: safe.phone, whatsapp: safe.whatsapp, country: safe.country, clientType: safe.clientType, language: safe.language, stage: safe.stage, status: safe.status, tags: safe.tags, touchStatus: safe.touchStatus, source: safe.source, sourceDetail: safe.sourceDetail, createdAt: safe.createdAt, updatedAt: safe.updatedAt, ownerUserId: safe.ownerUserId, ownerName: safe.ownerName, origin: safe.origin },
+    company: { contactId: ct.contactId, customerId: ct.customerId, companyId: ct.companyId, name: ct.companyName, domain: co.domain, country: co.country },
+    activities: activities.map((x) => ({ ...x, createdAt: new Date(x.createdAt).toISOString(), occurredAt: new Date(x.occurredAt).toISOString(), recordedAt: new Date(x.recordedAt).toISOString() })),
+    mailEvents: await contactMailEventsIn(c, input),
+    mailEventLimit: CONTACT_MAIL_LIMITS.history
+  });
 }
 async function listContactsIn(c, a, q, companyId) {
-  const manager = contactManager(a), global3 = all(a), develop = a.capabilities.includes("leads.develop");
-  if (!manager && !global3 && !develop)
+  const manager2 = contactManager(a), global3 = all(a), develop = a.capabilities.includes("leads.develop");
+  if (!manager2 && !global3 && !develop)
     return failure("FORBIDDEN", "\u65E0\u8054\u7CFB\u4EBA\u67E5\u8BE2\u6743\u9650");
   const filter = `WHERE ct.crm_deleted_at IS NULL AND co.crm_deleted_at IS NULL ${companyId !== void 0 ? `AND co.id=${companyId}` : ""} AND ($1::boolean OR ($2::boolean AND c.origin='operations') OR ($3::boolean AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql("$4::uuid", CONTACT_OWNER_SQL)})))
  AND (ct.email ILIKE $5 ESCAPE '!' OR ct.first_name ILIKE $5 ESCAPE '!' OR ct.last_name ILIKE $5 ESCAPE '!' OR ct.title ILIKE $5 ESCAPE '!' OR co.name ILIKE $5 ESCAPE '!' OR COALESCE(ct.extra->>'note','') ILIKE $5 ESCAPE '!')
@@ -8853,14 +10226,14 @@ async function listContactsIn(c, a, q, companyId) {
  AND ($14::text IS NULL OR COALESCE((SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1),CASE WHEN ct.crm_touch_status IN ('contacted','replied','bounced','autoreply') THEN 'reaching' ELSE 'cold' END)=$14)
  AND ($15::text IS NULL OR ct.crm_touch_status=$15) AND ($16::text IS NULL OR ct.language=$16)
  AND ($17::text IS NULL OR (CASE $17::text ${Object.entries(CONTACT_GROUP_SQL).map(([dimension, value2]) => `WHEN '${dimension}' THEN ${value2.key}`).join(" ")} END)=$18::text)`;
-  const p = [global3, manager, develop, a.userId, `%${q.search.replace(/[!%_]/g, "!$&")}%`, q.stage ?? null, q.status ?? null, q.tags ?? null, q.clientType ?? null, q.country ?? null, q.scope ?? "all", q.assignment ?? null, q.followupOnly ?? false, q.crmStage ?? null, q.touchStatus ?? null, q.language ?? null, q.groupDimension ?? null, q.groupKey ?? null];
+  const p = [global3, manager2, develop, a.userId, `%${q.search.replace(/[!%_]/g, "!$&")}%`, q.stage ?? null, q.status ?? null, q.tags ?? null, q.clientType ?? null, q.country ?? null, q.scope ?? "all", q.assignment ?? null, q.followupOnly ?? false, q.crmStage ?? null, q.touchStatus ?? null, q.language ?? null, q.groupDimension ?? null, q.groupKey ?? null];
   const order = q.followupOnly ? "page.last_followup_at DESC NULLS LAST," : "";
-  const count = await c.query(`SELECT count(*)::int AS n ${JOINS} ${filter}`, p), rows = await c.query(`WITH contact_page AS MATERIALIZED (
+  const count2 = await c.query(`SELECT count(*)::int AS n ${JOINS} ${filter}`, p), rows = await c.query(`WITH contact_page AS MATERIALIZED (
  SELECT ct.id AS contact_id,c.customer_id,ct.updated_at ${q.followupOnly ? `,${LAST_FOLLOWUP_AT} AS last_followup_at` : ""}
  ${JOINS} ${filter} ORDER BY ${q.followupOnly ? "last_followup_at DESC NULLS LAST," : ""}ct.updated_at DESC,ct.id DESC LIMIT $19 OFFSET $20
  ) SELECT ${PROJECTION} FROM contact_page page JOIN contacts ct ON ct.id=page.contact_id JOIN crm_customer_contacts cc ON cc.contact_id=page.contact_id AND cc.customer_id=page.customer_id JOIN crm_customers c ON c.customer_id=page.customer_id JOIN companies co ON co.id=c.company_id
  ORDER BY ${order}page.updated_at DESC,page.contact_id DESC`, [...p, q.limit, q.offset]);
-  return success({ items: rows.rows.map((row2) => mapped2(a, row2)), total: count.rows[0].n });
+  return success({ items: rows.rows.map((row2) => mapped3(a, row2)), total: count2.rows[0].n });
 }
 var CONTACT_GROUP_SQL = {
   batch: { key: "COALESCE(NULLIF(ct.source_detail,''),NULLIF(ct.source_level1,''),NULLIF(ct.source_level2,''),'unset')", label: "CASE WHEN COALESCE(NULLIF(ct.source_detail,''),NULLIF(ct.source_level1,''),NULLIF(ct.source_level2,'')) IS NULL THEN '\u672A\u6807\u8BB0' ELSE COALESCE(NULLIF(ct.source_detail,''),NULLIF(ct.source_level1,''),NULLIF(ct.source_level2,'')) END" },
@@ -8869,8 +10242,8 @@ var CONTACT_GROUP_SQL = {
   clientType: { key: "COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type,'unset')", label: "CASE COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type) WHEN 'agent' THEN '\u4EE3\u7406' WHEN 'direct' THEN '\u76F4\u5BA2' ELSE '\u672A\u8BBE\u7F6E' END" }
 };
 async function listContactGroupsIn(c, a, q) {
-  const manager = contactManager(a), global3 = all(a), develop = a.capabilities.includes("leads.develop");
-  if (!manager && !global3 && !develop)
+  const manager2 = contactManager(a), global3 = all(a), develop = a.capabilities.includes("leads.develop");
+  if (!manager2 && !global3 && !develop)
     return failure("FORBIDDEN", "\u65E0\u8054\u7CFB\u4EBA\u67E5\u8BE2\u6743\u9650");
   const expression = CONTACT_GROUP_SQL[q.dimension];
   const access2 = `WHERE ct.crm_deleted_at IS NULL AND co.crm_deleted_at IS NULL AND ($1::boolean OR ($2::boolean AND c.origin='operations') OR ($3::boolean AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql("$4::uuid", CONTACT_OWNER_SQL)}))) AND ($5::text='all' OR ($5='personal' AND c.origin='personal' AND ${CONTACT_OWNER_SQL}=$4::uuid) OR ($5='assigned' AND c.origin='operations' AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql("$4::uuid", CONTACT_OWNER_SQL)})))`;
@@ -8888,86 +10261,91 @@ async function listContactGroupsIn(c, a, q) {
    (array_agg(DISTINCT COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN '\u4EE3\u7406' WHEN '\u76F4\u5BA2' THEN '\u76F4\u5BA2' END,ct.client_type,'\u672A\u8BBE\u7F6E') ORDER BY COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN '\u4EE3\u7406' WHEN '\u76F4\u5BA2' THEN '\u76F4\u5BA2' END,ct.client_type,'\u672A\u8BBE\u7F6E')))[1:3] AS client_types
   ${JOINS} ${access2} GROUP BY 1,2
  ),filtered AS (SELECT * FROM grouped WHERE ($6::text='' OR label ILIKE $6 ESCAPE '!' OR member_match))
- SELECT *,count(*) OVER()::int AS total FROM filtered ORDER BY count DESC,label LIMIT $7 OFFSET $8`, [global3, manager, develop, a.userId, q.scope, q.search ? `%${q.search.replace(/[!%_]/g, "!$&")}%` : "", q.limit, q.offset]);
+ SELECT *,count(*) OVER()::int AS total FROM filtered ORDER BY count DESC,label LIMIT $7 OFFSET $8`, [global3, manager2, develop, a.userId, q.scope, q.search ? `%${q.search.replace(/[!%_]/g, "!$&")}%` : "", q.limit, q.offset]);
   return success({ items: rows.rows.map((row2) => ({ key: String(row2.key), label: String(row2.label), count: Number(row2.count), companyCount: Number(row2.company_count), countryCount: Number(row2.country_count), touchedCount: Number(row2.touched_count), companies: row2.companies ?? [], countries: row2.countries ?? [], clientTypes: row2.client_types ?? [], sourceLevel1: row2.source_level1 ?? [], latestImportedAt: row2.latest_imported_at ? new Date(row2.latest_imported_at).toISOString() : null, latestUpdatedAt: row2.latest_updated_at ? new Date(row2.latest_updated_at).toISOString() : null })), total: Number(rows.rows[0]?.total ?? 0) });
 }
 async function cached(c, a, operation, input, work, replay) {
-  const digest = (0, import_node_crypto8.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = (await c.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey])).rows[0];
+  const digest2 = (0, import_node_crypto12.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = (await c.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey])).rows[0];
   if (old)
-    return old.digest !== digest ? failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42") : replay ? replay(old.response) : success(old.response);
+    return old.digest !== digest2 ? failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42") : replay ? replay(old.response) : success(old.response);
   const result2 = await work();
   if (result2.ok)
-    await c.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, operation, input.idempotencyKey, digest, JSON.stringify(result2.data)]);
+    await c.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, operation, input.idempotencyKey, digest2, JSON.stringify(result2.data)]);
   return result2;
 }
 async function members(c) {
   return (await c.query(`SELECT u.user_id,pa.scope,pa.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM public.identity_users u JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE u.active AND NOT u.must_change_password FOR SHARE OF u,pa`)).rows;
 }
-function validTarget(member, actorId) {
-  return !!member && isContactAssignmentTarget({ userId: member.user_id, roles: member.roles, capabilities: effectiveCapabilitiesFor(member.roles, member.capabilities) }, actorId);
+function validTarget(member2, actorId) {
+  return !!member2 && isContactAssignmentTarget({ userId: member2.user_id, roles: member2.roles, capabilities: effectiveCapabilitiesFor(member2.roles, member2.capabilities) }, actorId);
 }
-var REQUEST_SELECT = `SELECT r.request_id AS "requestId",COALESCE(gm.group_id,r.request_id) AS "groupId",r.contact_id AS "contactId",r.customer_id AS "customerId",r.version,COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'\u8054\u7CFB\u4EBA') AS "contactName",NULL::text AS email,co.name AS "companyName",r.target_user_id AS "targetUserId",target.display_name AS "targetName",r.actor_id AS "actorId",actor.display_name AS "actorName",r.status,r.created_at AS "createdAt",r.decided_at AS "decidedAt",c.origin FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id JOIN public.identity_users target ON target.user_id=r.target_user_id JOIN public.identity_users actor ON actor.user_id=r.actor_id`;
-function mapRequest(a, r) {
-  const { origin: _, ...item } = r;
-  return { ...item, createdAt: new Date(r.createdAt).toISOString(), decidedAt: r.decidedAt ? new Date(r.decidedAt).toISOString() : null, canAccept: r.status === "pending" && r.targetUserId === a.userId && a.capabilities.includes("leads.develop"), canReject: r.status === "pending" && r.targetUserId === a.userId && a.capabilities.includes("leads.develop"), canCancel: r.status === "pending" && r.origin === "operations" && contactManager(a) };
+async function assignmentOrgContext(c, actorId, targetUserId) {
+  const relation = (await c.query(`SELECT EXISTS(SELECT 1 FROM crm_org_assignments WHERE user_id=$1 AND role='member' AND ended_at IS NULL) AS "isMember",COALESCE(array_agg(DISTINCT leader.user_id) FILTER(WHERE leader.user_id IS NOT NULL),'{}'::uuid[]) AS "leaderUserIds" FROM crm_org_assignments member JOIN crm_org_units unit ON unit.unit_id=member.unit_id AND unit.kind='sales_team' AND unit.dissolved_at IS NULL LEFT JOIN crm_org_assignments leader ON leader.unit_id=unit.unit_id AND leader.role='leader' AND leader.is_primary AND leader.ended_at IS NULL WHERE member.user_id=$1 AND member.role='member' AND member.ended_at IS NULL`, [targetUserId])).rows[0];
+  let source = (await c.query(`SELECT unit.unit_id AS "unitId",unit.name FROM crm_org_assignments assignment JOIN crm_org_units unit ON unit.unit_id=assignment.unit_id AND unit.kind='operations_group' AND unit.dissolved_at IS NULL WHERE assignment.user_id=$1 AND assignment.role='leader' AND assignment.ended_at IS NULL ORDER BY assignment.is_primary DESC,unit.created_at,unit.unit_id LIMIT 1`, [actorId])).rows[0];
+  if (!source)
+    source = (await c.query(`SELECT parent.unit_id AS "unitId",parent.name FROM crm_org_assignments member JOIN crm_org_units team ON team.unit_id=member.unit_id AND team.kind='sales_team' AND team.dissolved_at IS NULL JOIN crm_org_units parent ON parent.unit_id=team.parent_unit_id AND parent.kind='operations_group' AND parent.dissolved_at IS NULL WHERE member.user_id=$1 AND member.role='member' AND member.ended_at IS NULL LIMIT 1`, [targetUserId])).rows[0];
+  return { supervisorUserIds: contactAssignmentSupervisorsFor(relation.isMember, relation.leaderUserIds ?? [], targetUserId), sourceOrgUnitId: source?.unitId ?? null, sourceOrgUnitName: source?.name ?? null };
 }
-async function request(c, a, id) {
+var REQUEST_SELECT = `SELECT r.request_id AS "requestId",COALESCE(gm.group_id,r.request_id) AS "groupId",r.contact_id AS "contactId",r.customer_id AS "customerId",r.version,COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'\u8054\u7CFB\u4EBA') AS "contactName",NULL::text AS email,co.name AS "companyName",r.target_user_id AS "targetUserId",target.display_name AS "targetName",r.actor_id AS "actorId",actor.display_name AS "actorName",r.supervisor_user_ids AS "supervisorUserIds",r.source_org_unit_id AS "sourceOrgUnitId",r.source_org_unit_name AS "sourceOrgUnitName",r.previous_target_user_id AS "previousTargetUserId",r.transfer_actor_id AS "transferActorId",r.transfer_requested_at AS "transferRequestedAt",r.status,r.created_at AS "createdAt",r.expires_at AS "expiresAt",r.decided_at AS "decidedAt",c.origin FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id JOIN public.identity_users target ON target.user_id=r.target_user_id JOIN public.identity_users actor ON actor.user_id=r.actor_id`;
+function mapRequest(a, r, currentOwnerUserId) {
+  const { origin: _, ...item } = r, owner = currentOwnerUserId === void 0 ? r.status === "pending_transfer" ? r.previousTargetUserId : r.status === "accepted" ? r.targetUserId : null : currentOwnerUserId, target = a.userId === r.targetUserId, manager2 = contactManager(a), actorIsRequester = r.transferActorId === a.userId || r.actorId === a.userId, transferTarget = r.status === "accepted" ? "" : r.targetUserId;
+  return { ...item, status: r.status, createdAt: new Date(r.createdAt).toISOString(), expiresAt: new Date(r.expiresAt).toISOString(), decidedAt: r.decidedAt ? new Date(r.decidedAt).toISOString() : null, transferRequestedAt: r.transferRequestedAt ? new Date(r.transferRequestedAt).toISOString() : null, canAccept: target && a.capabilities.includes("leads.develop") && canAcceptContactAssignment(r.status), canReject: target && a.capabilities.includes("leads.develop") && (r.status === "pending" || r.status === "pending_transfer"), canCancel: canCancelContactAssignment({ status: r.status, actorIsRequester, manager: manager2 }), canTransfer: canTransferContactAssignment({ status: r.status, actorIsCurrentOwner: owner === a.userId, manager: manager2, targetUserId: transferTarget, currentOwnerUserId: owner }) };
+}
+async function request(c, a, id, decisionActorId) {
   const row2 = (await c.query(`${REQUEST_SELECT} WHERE r.request_id=$1`, [id])).rows[0];
-  if (!row2 || !([row2.actorId, row2.targetUserId].includes(a.userId) || row2.origin === "operations" && contactManager(a)))
+  if (!row2 || !([row2.actorId, row2.targetUserId, row2.transferActorId, row2.previousTargetUserId, decisionActorId].includes(a.userId) || row2.origin === "operations" && (contactManager(a) || assignmentOversight(a))))
     return failure("NOT_FOUND", "\u5206\u914D\u8BF7\u6C42\u4E0D\u5B58\u5728");
-  return success(mapRequest(a, row2));
+  const owner = (await c.query('SELECT owner_user_id AS "ownerUserId" FROM crm_contact_ownership WHERE contact_id=$1 AND customer_id=$2 AND ended_at IS NULL', [row2.contactId, row2.customerId])).rows[0]?.ownerUserId ?? null;
+  return success(mapRequest(a, row2, owner));
 }
 async function assignmentEvent(c, a, r, type, recipients2, activityId, groupCount) {
   await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,'crm',$3,$4,$5,$6::uuid[])", [type, a.userId, r.version, r.customerId, JSON.stringify({ requestId: r.requestId, groupId: r.groupId, contactId: r.contactId, customerId: r.customerId, version: r.version, companyName: r.companyName, contactName: r.contactName, ...groupCount ? { groupCount } : {}, ...activityId ? { activityId } : {} }), [...new Set(recipients2)].sort()]);
 }
 async function contactAssignmentsIn(c, a, q) {
-  const column = q.view === "incoming" ? "target_user_id" : "actor_id";
-  if (q.view === "outgoing" && !contactManager(a))
-    return failure("FORBIDDEN", "\u65E0\u5206\u914D\u7BA1\u7406\u6743\u9650");
   if (q.view === "incoming" && !a.capabilities.includes("leads.develop"))
     return failure("FORBIDDEN", "\u65E0\u5206\u914D\u63A5\u6536\u6743\u9650");
+  const visible2 = (managerParam) => q.view === "outgoing" ? `(r.actor_id=$1 OR r.transfer_actor_id=$1 OR r.previous_target_user_id=$1 OR ${managerParam}::boolean AND c.origin='operations')` : `(r.target_user_id=$1 AND ${managerParam}::boolean IS NOT NULL)`;
   if (q.requestId) {
-    const rows2 = await c.query(`${REQUEST_SELECT} WHERE (r.${column}=$1 OR $3::boolean AND c.origin='operations') AND r.request_id=$2`, [a.userId, q.requestId, q.view === "outgoing" && contactManager(a)]);
+    const rows2 = await c.query(`${REQUEST_SELECT} WHERE ${visible2("$3")} AND r.request_id=$2`, [a.userId, q.requestId, q.view === "outgoing" && (contactManager(a) || assignmentOversight(a))]);
     return success({ items: rows2.rows.map((r) => mapRequest(a, r)), total: rows2.rows.length });
   }
   if (q.groupId) {
     const migrated = await migrateContactAssignmentGroups(c);
     if (!migrated.ok)
       return migrated;
-    const rows2 = await c.query(`${REQUEST_SELECT} WHERE COALESCE(gm.group_id,r.request_id)=$2 AND (r.${column}=$1 OR $3::boolean AND c.origin='operations') ORDER BY r.created_at,r.request_id`, [a.userId, q.groupId, q.view === "outgoing" && contactManager(a)]);
+    const rows2 = await c.query(`${REQUEST_SELECT} WHERE COALESCE(gm.group_id,r.request_id)=$2 AND ${visible2("$3")} ORDER BY r.created_at,r.request_id`, [a.userId, q.groupId, q.view === "outgoing" && (contactManager(a) || assignmentOversight(a))]);
     return success({ items: rows2.rows.map((r) => mapRequest(a, r)), total: rows2.rows.length });
   }
-  const filter = `WHERE ct.crm_deleted_at IS NULL AND (r.${column}=$1 OR $4::boolean AND c.origin='operations') AND r.status=$2 AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!')`, p = [a.userId, q.status, `%${q.search.replace(/[!%_]/g, "!$&")}%`, q.view === "outgoing" && contactManager(a)];
-  const rows = await c.query(`${REQUEST_SELECT} ${filter} ORDER BY r.created_at DESC,r.request_id DESC LIMIT $5 OFFSET $6`, [...p, q.limit, q.offset]), count = await c.query(`SELECT count(*)::int AS n FROM crm_contact_assignment_requests r JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id ${filter}`, p);
-  return success({ items: rows.rows.map((r) => mapRequest(a, r)), total: count.rows[0].n });
+  const filter = `WHERE ct.crm_deleted_at IS NULL AND ${visible2("$4")} AND r.status=$2 AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!')`, p = [a.userId, q.status, `%${q.search.replace(/[!%_]/g, "!$&")}%`, q.view === "outgoing" && (contactManager(a) || assignmentOversight(a))];
+  const rows = await c.query(`${REQUEST_SELECT} ${filter} ORDER BY r.created_at DESC,r.request_id DESC LIMIT $5 OFFSET $6`, [...p, q.limit, q.offset]), count2 = await c.query(`SELECT count(*)::int AS n FROM crm_contact_assignment_requests r JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id ${filter}`, p);
+  return success({ items: rows.rows.map((r) => mapRequest(a, r)), total: count2.rows[0].n });
 }
 async function contactAssignmentGroupsIn(c, a, q) {
   const migrated = await migrateContactAssignmentGroups(c);
   if (!migrated.ok)
     return migrated;
-  const column = q.view === "incoming" ? "target_user_id" : "actor_id";
-  if (q.view === "outgoing" && !contactManager(a))
-    return failure("FORBIDDEN", "\u65E0\u5206\u914D\u7BA1\u7406\u6743\u9650");
   if (q.view === "incoming" && !a.capabilities.includes("leads.develop"))
     return failure("FORBIDDEN", "\u65E0\u5206\u914D\u63A5\u6536\u6743\u9650");
-  const search = `%${q.search.replace(/[!%_]/g, "!$&")}%`, manager = q.view === "outgoing" && contactManager(a);
+  const visible2 = q.view === "outgoing" ? `(r.actor_id=$1 OR r.transfer_actor_id=$1 OR r.previous_target_user_id=$1 OR $4::boolean AND c.origin='operations')` : "(r.target_user_id=$1 AND $4::boolean IS NOT NULL)";
+  const search = `%${q.search.replace(/[!%_]/g, "!$&")}%`, manager2 = q.view === "outgoing" && (contactManager(a) || assignmentOversight(a));
   const rows = await c.query(`WITH grouped AS (
   SELECT COALESCE(gm.group_id,r.request_id) AS group_id,count(*)::int AS total,
    count(*) FILTER(WHERE r.status='pending')::int AS pending,count(*) FILTER(WHERE r.status='accepted')::int AS accepted,
    count(*) FILTER(WHERE r.status='rejected')::int AS rejected,count(*) FILTER(WHERE r.status='cancelled')::int AS cancelled,
+   count(*) FILTER(WHERE r.status='expired')::int AS expired,count(*) FILTER(WHERE r.status='pending_transfer')::int AS pending_transfer,
    min(actor.display_name) AS actor_name,min(target.display_name) AS target_name,min(r.created_at) AS created_at,
    (array_agg(COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'\u8054\u7CFB\u4EBA') ORDER BY r.created_at,r.request_id))[1:5] AS contact_names,
    (array_agg(DISTINCT co.name ORDER BY co.name))[1:5] AS company_names
   FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id
   JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id
   JOIN public.identity_users actor ON actor.user_id=r.actor_id JOIN public.identity_users target ON target.user_id=r.target_user_id
-  WHERE ct.crm_deleted_at IS NULL AND (r.${column}=$1 OR $4::boolean AND c.origin='operations')
+  WHERE ct.crm_deleted_at IS NULL AND ${visible2}
   GROUP BY COALESCE(gm.group_id,r.request_id),r.target_user_id,r.actor_id
   HAVING bool_or(r.status=$2 AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!'))
- ) SELECT *,count(*) OVER()::int AS group_total FROM grouped ORDER BY created_at DESC,group_id DESC LIMIT $5 OFFSET $6`, [a.userId, q.status, search, manager, q.limit, q.offset]);
+ ) SELECT *,count(*) OVER()::int AS group_total FROM grouped ORDER BY created_at DESC,group_id DESC LIMIT $5 OFFSET $6`, [a.userId, q.status, search, manager2, q.limit, q.offset]);
   const items = rows.rows.map((row2) => {
     const pending = Number(row2.pending);
-    return { groupId: String(row2.group_id), total: Number(row2.total), pending, accepted: Number(row2.accepted), rejected: Number(row2.rejected), cancelled: Number(row2.cancelled), actorName: String(row2.actor_name), targetName: String(row2.target_name), createdAt: new Date(row2.created_at).toISOString(), contactNames: row2.contact_names, companyNames: row2.company_names, canAcceptAll: pending > 0 && q.view === "incoming" && a.capabilities.includes("leads.develop"), canRejectAll: pending > 0 && q.view === "incoming" && a.capabilities.includes("leads.develop"), canCancelAll: pending > 0 && contactManager(a) };
+    return { groupId: String(row2.group_id), total: Number(row2.total), pending, accepted: Number(row2.accepted), rejected: Number(row2.rejected), cancelled: Number(row2.cancelled), expired: Number(row2.expired), pendingTransfer: Number(row2.pending_transfer), actorName: String(row2.actor_name), targetName: String(row2.target_name), createdAt: new Date(row2.created_at).toISOString(), contactNames: row2.contact_names, companyNames: row2.company_names, canAcceptAll: pending > 0 && q.view === "incoming" && a.capabilities.includes("leads.develop"), canRejectAll: pending > 0 && q.view === "incoming" && a.capabilities.includes("leads.develop"), canCancelAll: pending > 0 && contactManager(a) };
   });
   return success({ items, total: Number(rows.rows[0]?.group_total ?? 0) });
 }
@@ -8978,28 +10356,29 @@ async function createContactAssignmentsIn(c, a, input) {
   if (!contactManager(a))
     return failure("FORBIDDEN", "\u65E0\u5206\u914D\u6743\u9650");
   const currentMembers = await members(c);
-  if (!validTarget(currentMembers.find((m) => m.user_id === input.targetUserId), a.userId) || input.notifyUserIds.some((id) => !currentMembers.some((m) => m.user_id === id && m.roles.length)))
+  if (!validTarget(currentMembers.find((m) => m.user_id === input.targetUserId), a.userId))
     return failure("INVALID_INPUT", "\u5206\u914D\u6210\u5458\u5DF2\u5931\u6548\u6216\u65E0\u7528\u6237\u5F00\u53D1\u6743\u9650");
+  const org = await assignmentOrgContext(c, a.userId, input.targetUserId), notifyUserIds = contactAssignmentRecipients(input.targetUserId, org.supervisorUserIds);
   return cached(c, a, "contact-assignments:create", input, async () => {
     const items = [];
-    const groupId = (0, import_node_crypto8.randomUUID)(), ordered = [...input.contacts].sort((x, y) => x.contactId - y.contactId);
+    const groupId = (0, import_node_crypto12.randomUUID)(), ordered = [...input.contacts].sort((x, y) => x.contactId - y.contactId);
     for (const [index, ref2] of ordered.entries()) {
       const ct = await contact(c, ref2, true);
       if (!ct || !read(a, ct))
         return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
       if (!assign(a, ct) || ct.contactVersion !== ref2.expectedVersion)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u5206\u914D\u3001\u53D7\u9650\u6216\u7248\u672C\u5DF2\u53D8\u5316");
-      if ((await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE contact_id=$1 AND status IN ('pending','accepted')", [ref2.contactId])).rows.length)
+      if ((await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE contact_id=$1 AND status IN ('pending','accepted','pending_transfer')", [ref2.contactId])).rows.length)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u6709\u6709\u6548\u5206\u914D\u8BF7\u6C42");
-      const id = (0, import_node_crypto8.randomUUID)();
-      await c.query("INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids) VALUES($1,$2,$3,$4,$5,$6::uuid[])", [id, ref2.contactId, ref2.customerId, input.targetUserId, a.userId, input.notifyUserIds]);
+      const id = (0, import_node_crypto12.randomUUID)();
+      await c.query("INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids,supervisor_user_ids,source_org_unit_id,source_org_unit_name) VALUES($1,$2,$3,$4,$5,$6::uuid[],$7::uuid[],$8,$9)", [id, ref2.contactId, ref2.customerId, input.targetUserId, a.userId, notifyUserIds, org.supervisorUserIds, org.sourceOrgUnitId, org.sourceOrgUnitName]);
       await c.query("INSERT INTO crm_contact_assignment_group_members(group_id,request_id) VALUES($1,$2)", [groupId, id]);
       const r = await request(c, a, id);
       if (!r.ok)
         return r;
       items.push(r.data);
       if (index === 0)
-        await assignmentEvent(c, a, r.data, CONTACT_ASSIGNMENT_EVENTS.requested, [a.userId, input.targetUserId, ...input.notifyUserIds], void 0, ordered.length);
+        await assignmentEvent(c, a, r.data, CONTACT_ASSIGNMENT_EVENTS.requested, [a.userId, ...notifyUserIds], void 0, ordered.length);
     }
     return success({ items });
   }, async (old) => {
@@ -9014,31 +10393,75 @@ async function createContactAssignmentsIn(c, a, input) {
   });
 }
 async function decideContactAssignmentIn(c, a, action, input) {
-  const row2 = (await c.query("SELECT * FROM crm_contact_assignment_requests WHERE request_id=$1 FOR UPDATE", [input.requestId])).rows[0];
-  if (!row2 || (action === "cancel" ? !contactManager(a) : row2.target_user_id !== a.userId || !a.capabilities.includes("leads.develop")))
+  const initial = (await c.query("SELECT * FROM crm_contact_assignment_requests WHERE request_id=$1", [input.requestId])).rows[0];
+  if (!initial)
+    return failure("NOT_FOUND", "\u5206\u914D\u8BF7\u6C42\u4E0D\u5B58\u5728");
+  const initiallyAllowed = action === "cancel" ? contactManager(a) || [initial.actor_id, initial.transfer_actor_id].includes(a.userId) : initial.target_user_id === a.userId && a.capabilities.includes("leads.develop");
+  if (!initiallyAllowed)
     return failure("NOT_FOUND", "\u5206\u914D\u8BF7\u6C42\u4E0D\u5B58\u5728");
   return cached(c, a, `contact-assignment:${action}:${input.requestId}`, input, async () => {
-    if (row2.status !== "pending" || row2.version !== input.expectedVersion)
-      return failure("CONFLICT", "\u5206\u914D\u8BF7\u6C42\u72B6\u6001\u5DF2\u53D8\u5316");
-    const ref2 = { contactId: row2.contact_id, customerId: row2.customer_id }, ct = await contact(c, ref2, true);
-    if (!ct || action === "cancel" && ct.origin !== "operations")
+    const ct = await contact(c, { contactId: initial.contact_id, customerId: initial.customer_id }, true);
+    if (!ct)
       return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
+    const row2 = (await c.query("SELECT *,expires_at<=clock_timestamp() AS expired FROM crm_contact_assignment_requests WHERE request_id=$1 FOR UPDATE", [input.requestId])).rows[0];
+    if (!row2 || row2.version !== input.expectedVersion)
+      return failure("CONFLICT", "\u5206\u914D\u8BF7\u6C42\u72B6\u6001\u5DF2\u53D8\u5316");
+    if (row2.expired)
+      return failure("CONFLICT", "\u5206\u914D\u8BF7\u6C42\u5DF2\u8D85\u65F6\uFF0C\u8BF7\u5237\u65B0");
+    let event2;
     if (action === "accept") {
-      const recipients2 = await members(c);
-      if (!validTarget(recipients2.find((m) => m.user_id === a.userId), row2.actor_id))
+      if (row2.target_user_id !== a.userId || !a.capabilities.includes("leads.develop") || !canAcceptContactAssignment(row2.status))
+        return failure("CONFLICT", "\u5206\u914D\u8BF7\u6C42\u4E0D\u53EF\u63A5\u6536");
+      const currentMembers = await members(c);
+      if (!validTarget(currentMembers.find((m) => m.user_id === a.userId), row2.actor_id))
         return failure("FORBIDDEN", "\u63A5\u6536\u6743\u9650\u5DF2\u53D8\u5316");
-      if (ct.development_restriction?.trim() || ct.ownerUserId !== null)
-        return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5F00\u53D1\u9650\u5236\u6216\u5F52\u5C5E\u5DF2\u53D8\u5316");
-      await c.query("UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [ct.contactId]);
+      if (ct.development_restriction?.trim())
+        return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5B58\u5728\u5F00\u53D1\u9650\u5236");
+      if (row2.status === "pending") {
+        if (ct.ownerUserId !== null)
+          return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5F52\u5C5E\u5DF2\u53D8\u5316");
+      } else if (ct.ownerUserId !== row2.previous_target_user_id) {
+        return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5F53\u524D\u8D1F\u8D23\u4EBA\u5DF2\u53D8\u5316");
+      }
+      await c.query("UPDATE crm_contact_ownership SET ended_at=clock_timestamp(),ended_reason='transfer' WHERE contact_id=$1 AND customer_id=$2 AND ended_at IS NULL", [row2.contact_id, row2.customer_id]);
+      await c.query("INSERT INTO crm_contact_ownership(contact_id,customer_id,owner_user_id,assignment_request_id,source_org_unit_id,created_by) VALUES($1,$2,$3,$4,$5,$6)", [row2.contact_id, row2.customer_id, row2.target_user_id, row2.request_id, row2.source_org_unit_id, a.userId]);
+      await c.query("UPDATE crm_contact_assignment_requests SET status='accepted',version=version+1,decided_at=now() WHERE request_id=$1", [row2.request_id]);
+      await c.query("UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [row2.contact_id]);
+      event2 = row2.status === "pending_transfer" ? CONTACT_ASSIGNMENT_EVENTS.transferred : CONTACT_ASSIGNMENT_EVENTS.accepted;
+    } else if (action === "reject") {
+      if (row2.target_user_id !== a.userId || !a.capabilities.includes("leads.develop") || !["pending", "pending_transfer"].includes(row2.status))
+        return failure("CONFLICT", "\u5206\u914D\u8BF7\u6C42\u4E0D\u53EF\u62D2\u7EDD");
+      if (row2.status === "pending_transfer") {
+        if (!row2.previous_target_user_id)
+          return failure("CONFLICT", "\u8F6C\u4EA4\u8BB0\u5F55\u7F3A\u5C11\u539F\u8D1F\u8D23\u4EBA");
+        const restored = await assignmentOrgContext(c, row2.actor_id, row2.previous_target_user_id);
+        await c.query("UPDATE crm_contact_assignment_requests SET status='accepted',target_user_id=previous_target_user_id,supervisor_user_ids=$2::uuid[],notify_user_ids=$3::uuid[],version=version+1,decided_at=now() WHERE request_id=$1", [row2.request_id, restored.supervisorUserIds, contactAssignmentRecipients(row2.previous_target_user_id, restored.supervisorUserIds)]);
+        event2 = CONTACT_ASSIGNMENT_EVENTS.transferCancelled;
+      } else {
+        await c.query("UPDATE crm_contact_assignment_requests SET status='rejected',version=version+1,decided_at=now() WHERE request_id=$1", [row2.request_id]);
+        event2 = CONTACT_ASSIGNMENT_EVENTS.rejected;
+      }
+    } else {
+      const actorIsRequester = [row2.actor_id, row2.transfer_actor_id].includes(a.userId);
+      if (!canCancelContactAssignment({ status: row2.status, actorIsRequester, manager: contactManager(a) }))
+        return failure("CONFLICT", "\u5206\u914D\u8BF7\u6C42\u4E0D\u53EF\u64A4\u56DE");
+      if (row2.status === "pending_transfer") {
+        if (!row2.previous_target_user_id)
+          return failure("CONFLICT", "\u8F6C\u4EA4\u8BB0\u5F55\u7F3A\u5C11\u539F\u8D1F\u8D23\u4EBA");
+        const restored = await assignmentOrgContext(c, row2.actor_id, row2.previous_target_user_id);
+        await c.query("UPDATE crm_contact_assignment_requests SET status='accepted',target_user_id=previous_target_user_id,supervisor_user_ids=$2::uuid[],notify_user_ids=$3::uuid[],version=version+1,decided_at=now() WHERE request_id=$1", [row2.request_id, restored.supervisorUserIds, contactAssignmentRecipients(row2.previous_target_user_id, restored.supervisorUserIds)]);
+        event2 = CONTACT_ASSIGNMENT_EVENTS.transferCancelled;
+      } else {
+        await c.query("UPDATE crm_contact_assignment_requests SET status='cancelled',version=version+1,decided_at=now() WHERE request_id=$1", [row2.request_id]);
+        event2 = CONTACT_ASSIGNMENT_EVENTS.cancelled;
+      }
     }
-    const status = action === "accept" ? "accepted" : action === "reject" ? "rejected" : "cancelled";
-    await c.query("UPDATE crm_contact_assignment_requests SET status=$2,version=version+1,decided_at=now() WHERE request_id=$1", [input.requestId, status]);
-    const result2 = await request(c, a, input.requestId);
+    const result2 = await request(c, a, input.requestId, a.userId);
     if (!result2.ok)
       return result2;
-    await assignmentEvent(c, a, result2.data, CONTACT_ASSIGNMENT_EVENTS[status], [row2.actor_id, row2.target_user_id, ...row2.notify_user_ids]);
+    await assignmentEvent(c, a, result2.data, event2, [row2.actor_id, row2.target_user_id, row2.transfer_actor_id, row2.previous_target_user_id, ...row2.notify_user_ids, ...row2.supervisor_user_ids].filter((id) => !!id));
     return result2;
-  }, () => request(c, a, input.requestId));
+  }, () => request(c, a, input.requestId, a.userId));
 }
 async function decideContactAssignmentGroupIn(c, a, action, input) {
   const migrated = await migrateContactAssignmentGroups(c);
@@ -9050,13 +10473,138 @@ async function decideContactAssignmentGroupIn(c, a, action, input) {
   if (action === "cancel" ? !contactManager(a) : rows.some((row2) => row2.target_user_id !== a.userId) || !a.capabilities.includes("leads.develop"))
     return failure("NOT_FOUND", "\u5206\u914D\u8BF7\u6C42\u4E0D\u5B58\u5728");
   for (const row2 of rows.filter((row3) => row3.status === "pending")) {
-    const decision = { requestId: row2.request_id, expectedVersion: Number(row2.version), idempotencyKey: (0, import_node_crypto8.createHash)("sha256").update(`${input.idempotencyKey}:${row2.request_id}`).digest("hex") };
-    const result3 = await decideContactAssignmentIn(c, a, action, decision);
+    const decision2 = { requestId: row2.request_id, expectedVersion: Number(row2.version), idempotencyKey: (0, import_node_crypto12.createHash)("sha256").update(`${input.idempotencyKey}:${row2.request_id}`).digest("hex") };
+    const result3 = await decideContactAssignmentIn(c, a, action, decision2);
     if (!result3.ok)
       return result3;
   }
   const result2 = await contactAssignmentsIn(c, a, { view: action === "cancel" ? "outgoing" : "incoming", status: "pending", search: "", limit: 200, offset: 0, groupId: input.groupId });
   return result2.ok ? success({ items: result2.data.items }) : result2;
+}
+async function transferContactAssignmentIn(c, a, input) {
+  const initial = (await c.query("SELECT * FROM crm_contact_assignment_requests WHERE request_id=$1", [input.requestId])).rows[0];
+  if (!initial)
+    return failure("NOT_FOUND", "\u5206\u914D\u8BF7\u6C42\u4E0D\u5B58\u5728");
+  return cached(c, a, `contact-assignment:transfer:${input.requestId}`, input, async () => {
+    const ct = await contact(c, { contactId: initial.contact_id, customerId: initial.customer_id }, true);
+    if (!ct)
+      return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
+    const row2 = (await c.query("SELECT * FROM crm_contact_assignment_requests WHERE request_id=$1 FOR UPDATE", [input.requestId])).rows[0];
+    if (!row2 || row2.version !== input.expectedVersion)
+      return failure("CONFLICT", "\u5206\u914D\u8BF7\u6C42\u72B6\u6001\u5DF2\u53D8\u5316");
+    const manager2 = contactManager(a), actorIsCurrentOwner = ct.ownerUserId === a.userId;
+    if (!canTransferContactAssignment({ status: row2.status, actorIsCurrentOwner, manager: manager2, targetUserId: input.targetUserId, currentOwnerUserId: ct.ownerUserId }))
+      return failure("FORBIDDEN", "\u6CA1\u6709\u8F6C\u4EA4\u8BE5\u8054\u7CFB\u4EBA\u7684\u6743\u9650");
+    const currentMembers = await members(c), target = currentMembers.find((m) => m.user_id === input.targetUserId);
+    if (!validTarget(target, a.userId) || input.targetUserId === ct.ownerUserId)
+      return failure("INVALID_INPUT", "\u8F6C\u4EA4\u6210\u5458\u5DF2\u5931\u6548");
+    const org = await assignmentOrgContext(c, a.userId, input.targetUserId), notifyUserIds = contactAssignmentRecipients(input.targetUserId, org.supervisorUserIds);
+    await c.query("UPDATE crm_contact_assignment_requests SET status='pending_transfer',target_user_id=$2,previous_target_user_id=$3,transfer_actor_id=$4,transfer_requested_at=now(),expires_at=now()+interval '7 days',supervisor_user_ids=$5::uuid[],notify_user_ids=$6::uuid[],version=version+1,decided_at=NULL WHERE request_id=$1", [row2.request_id, input.targetUserId, ct.ownerUserId, a.userId, org.supervisorUserIds, notifyUserIds]);
+    const result2 = await request(c, a, input.requestId);
+    if (!result2.ok)
+      return result2;
+    await assignmentEvent(c, a, result2.data, CONTACT_ASSIGNMENT_EVENTS.transferRequested, [a.userId, ct.ownerUserId, input.targetUserId, ...org.supervisorUserIds].filter((id) => !!id));
+    return result2;
+  }, () => request(c, a, input.requestId));
+}
+async function processExpiredAssignmentsIn(c, a, input) {
+  if (!contactManager(a))
+    return failure("FORBIDDEN", "\u65E0\u5206\u914D\u7BA1\u7406\u6743\u9650");
+  const due = await expireDueAssignmentsIn(c, input.limit);
+  if (!due.ok)
+    return due;
+  const expired = [];
+  for (const id of due.data.expiredIds) {
+    const result2 = await request(c, a, id);
+    if (!result2.ok)
+      return result2;
+    expired.push(result2.data);
+  }
+  return success({ expired });
+}
+async function expireDueAssignmentsIn(c, limit) {
+  const candidates = (await c.query("SELECT request_id AS id FROM crm_contact_assignment_requests WHERE status IN ('pending','pending_transfer') AND expires_at<=clock_timestamp() ORDER BY expires_at,request_id LIMIT $1", [limit])).rows;
+  const expiredIds = [], transferRestoredIds = [];
+  for (const candidate of candidates) {
+    const initial = (await c.query("SELECT contact_id,customer_id FROM crm_contact_assignment_requests WHERE request_id=$1", [candidate.id])).rows[0];
+    if (!initial)
+      continue;
+    const ct = await contact(c, { contactId: initial.contact_id, customerId: initial.customer_id }, true);
+    if (!ct)
+      continue;
+    const row2 = (await c.query("SELECT *,expires_at<=clock_timestamp() AS expired FROM crm_contact_assignment_requests WHERE request_id=$1 FOR UPDATE", [candidate.id])).rows[0];
+    if (!row2 || !row2.expired)
+      continue;
+    let event2 = null;
+    if (row2.status === "pending") {
+      const changed = await c.query("UPDATE crm_contact_assignment_requests SET status='expired',version=version+1,decided_at=clock_timestamp() WHERE request_id=$1 AND status='pending' AND expires_at<=clock_timestamp() RETURNING request_id", [row2.request_id]);
+      if (changed.rowCount) {
+        expiredIds.push(row2.request_id);
+        event2 = CONTACT_ASSIGNMENT_EVENTS.expired;
+      }
+    } else if (row2.status === "pending_transfer" && row2.previous_target_user_id) {
+      const restored = await assignmentOrgContext(c, row2.actor_id, row2.previous_target_user_id);
+      const changed = await c.query("UPDATE crm_contact_assignment_requests SET status='accepted',target_user_id=previous_target_user_id,supervisor_user_ids=$2::uuid[],notify_user_ids=$3::uuid[],version=version+1,decided_at=clock_timestamp() WHERE request_id=$1 AND status='pending_transfer' AND expires_at<=clock_timestamp() RETURNING request_id", [row2.request_id, restored.supervisorUserIds, contactAssignmentRecipients(row2.previous_target_user_id, restored.supervisorUserIds)]);
+      if (changed.rowCount) {
+        transferRestoredIds.push(row2.request_id);
+        event2 = CONTACT_ASSIGNMENT_EVENTS.transferCancelled;
+      }
+    }
+    if (event2)
+      await assignmentEventForRequest(c, event2, row2.request_id);
+  }
+  return success({ expiredIds, transferRestoredIds });
+}
+async function assignmentEventForRequest(c, type, requestId) {
+  const row2 = (await c.query(`SELECT request.request_id AS "requestId",COALESCE(group_member.group_id,request.request_id) AS "groupId",request.contact_id AS "contactId",request.customer_id AS "customerId",request.version,request.actor_id AS "actorId",request.target_user_id AS "targetId",request.previous_target_user_id AS "previousTargetId",request.transfer_actor_id AS "transferActorId",request.notify_user_ids AS "notifyUserIds",request.supervisor_user_ids AS "supervisorUserIds",COALESCE(NULLIF(concat_ws(' ',contact.first_name,contact.last_name),''),'\u8054\u7CFB\u4EBA') AS "contactName",company.name AS "companyName" FROM crm_contact_assignment_requests request LEFT JOIN crm_contact_assignment_group_members group_member USING(request_id) JOIN contacts contact ON contact.id=request.contact_id JOIN crm_customers customer ON customer.customer_id=request.customer_id JOIN companies company ON company.id=customer.company_id WHERE request.request_id=$1`, [requestId])).rows[0];
+  if (!row2)
+    return;
+  const recipients2 = [row2.actorId, row2.targetId, row2.previousTargetId, row2.transferActorId, ...row2.notifyUserIds, ...row2.supervisorUserIds].filter((id) => !!id);
+  const eventUserId = String(row2.transferActorId ?? row2.actorId);
+  await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,'crm',$3,$4,$5,$6::uuid[])", [type, eventUserId, row2.version, row2.customerId, JSON.stringify({ requestId: row2.requestId, groupId: row2.groupId, contactId: row2.contactId, customerId: row2.customerId, version: row2.version, companyName: row2.companyName, contactName: row2.contactName }), [...new Set(recipients2)].sort()]);
+}
+async function processExpiredAssignmentsSystemIn(c, limit) {
+  return expireDueAssignmentsIn(c, limit);
+}
+function startAssignmentExpiryScheduler(pool, log) {
+  let stopped = false, timer, active;
+  const tick = () => {
+    if (stopped)
+      return;
+    active = (async () => {
+      const c = await pool.connect();
+      try {
+        await c.query("BEGIN");
+        const lock = await c.query("SELECT pg_try_advisory_xact_lock($1) AS acquired", [CONTACT_ASSIGNMENT_EXPIRY_LOCK]);
+        if (lock.rows[0]?.acquired) {
+          const result2 = await processExpiredAssignmentsSystemIn(c, 200);
+          if (!result2.ok)
+            throw new Error(result2.error.message);
+        }
+        await c.query("COMMIT");
+      } catch (error) {
+        try {
+          await c.query("ROLLBACK");
+        } catch {
+          log.write("ERROR", "contact-assignment.expiry.rollback", "\u5206\u914D\u8D85\u65F6\u626B\u63CF\u56DE\u6EDA\u5931\u8D25");
+        }
+        log.write("ERROR", "contact-assignment.expiry", `\u5206\u914D\u8D85\u65F6\u626B\u63CF\u5931\u8D25 ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        c.release();
+        if (!stopped) {
+          timer = setTimeout(tick, CONTACT_ASSIGNMENT_EXPIRY_POLL_SECONDS * MILLISECONDS_PER_SECOND7);
+          timer.unref();
+        }
+      }
+    })();
+  };
+  tick();
+  return { async stop() {
+    stopped = true;
+    if (timer)
+      clearTimeout(timer);
+    await active;
+  } };
 }
 async function contactUpdateIn(c, a, input) {
   const ct = await contact(c, input, true);
@@ -9066,6 +10614,13 @@ async function contactUpdateIn(c, a, input) {
     return failure("INVALID_INPUT", "\u5BA2\u6237\u7C7B\u578B\u5C5E\u4E8E\u516C\u53F8\u8D44\u6599\uFF0C\u8BF7\u4FEE\u6539\u516C\u53F8\u5BA2\u6237\u7C7B\u578B");
   if (Object.keys(input.fields).some((f) => !contactPermissionsFor(a, ct).editableFields.includes(f)))
     return failure("FORBIDDEN", "\u6CA1\u6709\u6240\u9009\u5B57\u6BB5\u7684\u4FEE\u6539\u6743\u9650");
+  if (typeof input.fields.email === "string" && input.fields.email.trim().toLowerCase() !== (ct.email ?? "").trim().toLowerCase()) {
+    const ingress = await evaluateLeadIngressIn(c, a, { source: "api_contact_update", sourceChannel: ct.source, sourceDetail: ct.sourceDetail ?? "", kind: ct.origin, idempotencyKey: input.idempotencyKey, customerKey: ct.customerId, company: { name: ct.companyName, country: ct.country }, contacts: [{ email: input.fields.email }], target: { customerId: ct.customerId, contactId: ct.contactId, companyId: ct.companyId } });
+    if (!ingress.ok)
+      return ingress;
+    if (ingress.data.assessment.status !== "clear")
+      return failure("CONFLICT", `${ingress.data.assessment.message}\uFF08\u51B2\u7A81\u7F16\u53F7 ${ingress.data.decision.decisionId}\uFF09`);
+  }
   return cached(c, a, `contact-update:${input.contactId}`, input, async () => {
     if (ct.contactVersion !== input.expectedVersion)
       return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u7248\u672C\u5DF2\u53D8\u5316");
@@ -9084,8 +10639,8 @@ async function contactUpdateIn(c, a, input) {
     return contactDetailIn(c, a, input);
   }, () => contactDetailIn(c, a, input));
 }
-async function contactEvent(c, a, ct, type, version3, activityId, mailEventId) {
-  await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,'crm',$3,$4,$5,$6::uuid[])", [type, a.userId, version3, ct.customerId, JSON.stringify({ contactId: ct.contactId, customerId: ct.customerId, version: version3, ...activityId ? { activityId } : {}, ...mailEventId ? { mailEventId } : {} }), [.../* @__PURE__ */ new Set([a.userId, ct.created_by, ...ct.ownerUserId ? [ct.ownerUserId] : [], ...(ct.shared_grants ?? []).map((g) => g.targetUserId)])].sort()]);
+async function contactEvent(c, a, ct, type, version4, activityId, mailEventId) {
+  await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,'crm',$3,$4,$5,$6::uuid[])", [type, a.userId, version4, ct.customerId, JSON.stringify({ contactId: ct.contactId, customerId: ct.customerId, version: version4, ...activityId ? { activityId } : {}, ...mailEventId ? { mailEventId } : {} }), [.../* @__PURE__ */ new Set([a.userId, ct.created_by, ...ct.ownerUserId ? [ct.ownerUserId] : [], ...(ct.shared_grants ?? []).map((g) => g.targetUserId)])].sort()]);
 }
 async function contactFollowupIn(c, a, input) {
   const ct = await contact(c, input, true);
@@ -9110,9 +10665,8 @@ async function contactFollowupIn(c, a, input) {
   }, () => contactDetailIn(c, a, input));
 }
 async function companyEditable(c, a, ct) {
-  if (all(a))
-    return true;
-  if (!a.capabilities.includes("leads.develop") || !(ownManager(a, ct) || ct.origin === "personal" && ct.ownerUserId === a.userId))
+  const manager2 = ownManager(a, ct), personal = ct.origin === "personal" && ct.ownerUserId === a.userId;
+  if (!a.capabilities.includes("leads.develop") || !(manager2 || personal) || ct.active_assignment_status === "pending_transfer" && !manager2)
     return false;
   const restricted = ownManager(a, ct) ? await c.query("SELECT 1 FROM crm_customers WHERE company_id=$1 AND origin='personal' LIMIT 1", [ct.companyId]) : await c.query("SELECT 1 FROM crm_customers WHERE company_id=$1 AND created_by<>$2 LIMIT 1", [ct.companyId, a.userId]);
   return !restricted.rowCount;
@@ -9121,6 +10675,12 @@ async function companyUpdateIn(c, a, input) {
   const ct = await contact(c, input, true);
   if (!ct || !read(a, ct) || !await companyEditable(c, a, ct))
     return failure("FORBIDDEN", "\u6CA1\u6709\u516C\u53F8\u8D44\u6599\u4FEE\u6539\u6743\u9650");
+  const currentCompany = (await c.query("SELECT name,domain,country FROM companies WHERE id=$1", [ct.companyId])).rows[0];
+  const ingress = await evaluateLeadIngressIn(c, a, { source: "api_contact_update", sourceChannel: ct.source, sourceDetail: ct.sourceDetail ?? "", kind: ct.origin, idempotencyKey: input.idempotencyKey, customerKey: ct.customerId, company: { name: typeof input.fields.name === "string" ? input.fields.name : currentCompany.name, domain: input.fields.domain !== void 0 ? input.fields.domain : currentCompany.domain, country: input.fields.country !== void 0 ? input.fields.country : currentCompany.country }, contacts: [], target: { customerId: ct.customerId, contactId: ct.contactId, companyId: ct.companyId }, checkCompany: true });
+  if (!ingress.ok)
+    return ingress;
+  if (ingress.data.assessment.status !== "clear")
+    return failure("CONFLICT", `${ingress.data.assessment.message}\uFF08\u51B2\u7A81\u7F16\u53F7 ${ingress.data.decision.decisionId}\uFF09`);
   return cached(c, a, `company-update:${ct.companyId}`, input, async () => {
     const company = (await c.query("SELECT updated_at::text AS revision FROM companies WHERE id=$1 FOR UPDATE", [ct.companyId])).rows[0];
     if (company.revision !== input.expectedRevision)
@@ -9140,11 +10700,662 @@ async function companyUpdateIn(c, a, input) {
   }, () => contactDetailIn(c, a, input));
 }
 
+// server/core/customer-import.ts
+var WORKBOOK_IMPORT_ROUTE = "/api/crm/workbook-imports";
+var WORKBOOK_LIMITS = { sheets: 20, columns: 100, entityRows: 1e4, totalRows: 2e4, reference: 500, batchRows: 200, bodyBytes: 1048576 };
+var FIELD_LIMIT = 4096;
+var EMAIL_LIMIT = 254;
+var CLOCK_HOUR_MAX = 23;
+var CLOCK_MINUTE_SECOND_MAX = 59;
+function normalizeSourceDate(value2) {
+  const match = /^(?:(\d{4})-(\d{2})-(\d{2})|(\d{4})\/(\d{1,2})\/(\d{1,2}))(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})?)?$/.exec(value2);
+  if (!match)
+    return void 0;
+  const year = Number(match[1] ?? match[4]);
+  const month = Number(match[2] ?? match[5]);
+  const day = Number(match[3] ?? match[6]);
+  if (!year)
+    return void 0;
+  const calendar = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const date = /* @__PURE__ */ new Date(`${calendar}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day)
+    return void 0;
+  if (!match[7])
+    return date.toISOString();
+  if (Number(match[7]) > CLOCK_HOUR_MAX || Number(match[8]) > CLOCK_MINUTE_SECOND_MAX || Number(match[9] ?? 0) > CLOCK_MINUTE_SECOND_MAX)
+    return void 0;
+  const zone = match[11] ?? "Z";
+  if (zone !== "Z" && (Number(zone.slice(1, 3)) > CLOCK_HOUR_MAX || Number(zone.slice(4)) > CLOCK_MINUTE_SECOND_MAX))
+    return void 0;
+  const time = `${match[7]}:${match[8]}:${match[9] ?? "00"}${match[10] ? `.${match[10]}` : ""}${zone}`;
+  const timestamp2 = Date.parse(`${calendar}T${time}`);
+  return Number.isFinite(timestamp2) ? new Date(timestamp2).toISOString() : void 0;
+}
+function workbookRowIssue(row2) {
+  if (!row2 || !["customer", "contact"].includes(row2.entity))
+    return "\u8BB0\u5F55\u7C7B\u578B\u65E0\u6548";
+  if (!row2.sourceRef?.trim() || row2.sourceRef.length > WORKBOOK_LIMITS.reference)
+    return "\u6765\u6E90\u5F15\u7528\u7F3A\u5931\u6216\u8FC7\u957F";
+  if (!row2.sheetName?.trim() || !Number.isSafeInteger(row2.rowNumber) || row2.rowNumber < 1)
+    return "\u6765\u6E90\u884C\u5B9A\u4F4D\u65E0\u6548";
+  if (row2.entity === "customer" && !row2.companyName?.trim())
+    return "\u5BA2\u6237\u62AC\u5934\u4E3A\u7A7A";
+  if (row2.entity === "customer" && row2.customerType && !["\u4EE3\u7406", "\u76F4\u5BA2"].includes(row2.customerType.trim()))
+    return "\u5BA2\u6237\u7C7B\u578B\u53EA\u80FD\u586B\u5199\u4EE3\u7406\u6216\u76F4\u5BA2";
+  if (row2.entity === "contact" && !row2.customerRef?.trim())
+    return "\u8054\u7CFB\u4EBA\u7F3A\u5C11\u5BA2\u6237\u5173\u8054";
+  if (row2.customerRef && row2.customerRef.length > WORKBOOK_LIMITS.reference)
+    return "\u5BA2\u6237\u5173\u8054\u5F15\u7528\u8FC7\u957F";
+  if (row2.entity === "contact" && ![row2.email, row2.name, row2.firstName, row2.lastName, row2.phone, row2.whatsapp].some((value2) => value2?.trim()))
+    return "\u8054\u7CFB\u4EBA\u59D3\u540D\u3001\u7535\u8BDD\u6216\u90AE\u7BB1\u81F3\u5C11\u586B\u5199\u4E00\u9879";
+  if (row2.email && (row2.email.length > EMAIL_LIMIT || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row2.email)))
+    return "\u8054\u7CFB\u4EBA\u90AE\u7BB1\u683C\u5F0F\u65E0\u6548\u6216\u8D85\u8FC7254\u5B57\u7B26";
+  if ([row2.companyName, row2.country, row2.customerType, row2.businessType, row2.developmentRestriction, row2.name, row2.phone, row2.whatsapp, row2.title, row2.firstName, row2.lastName, row2.linkedinUrl, row2.language, row2.clientType, row2.sourceLevel1, row2.sourceLevel2, row2.stage, row2.status].some((value2) => value2 !== void 0 && value2.length > LEAD_LIMITS.text))
+    return "\u5BA2\u6237\u6216\u8054\u7CFB\u4EBA\u5B57\u6BB5\u5185\u5BB9\u8FC7\u957F";
+  if (row2.tags !== void 0 && (!Array.isArray(row2.tags) || row2.tags.length > LEAD_LIMITS.pageMax || row2.tags.some((tag) => typeof tag !== "string" || !tag.trim() || tag.length > LEAD_LIMITS.text)))
+    return "\u8054\u7CFB\u4EBA\u6807\u7B7E\u65E0\u6548";
+  if (row2.sourceCreatedAt && !normalizeSourceDate(row2.sourceCreatedAt))
+    return "\u6E90\u521B\u5EFA\u65F6\u95F4\u65E0\u6548\uFF0C\u8BF7\u4F7F\u7528YYYY-MM-DD\u6216YYYY/M/D\u53CA\u6709\u6548\u65F6\u95F4";
+  if (Object.values(row2).some((value2) => typeof value2 === "string" && value2.length > FIELD_LIMIT))
+    return "\u5B57\u6BB5\u5185\u5BB9\u8FC7\u957F";
+  return void 0;
+}
+
+// server/adapters/postgres/lead-match-schema.ts
+var import_node_crypto13 = require("node:crypto");
+var LEAD_MATCH_SCHEMA_VERSION = "058-lead-ingress-conflict";
+var LEAD_MATCH_LOCK = 580058;
+var LEAD_MATCH_SQL = `
+DO $$
+BEGIN
+  IF to_regclass('contacts') IS NULL OR to_regclass('crm_customer_contacts') IS NULL THEN
+    RAISE EXCEPTION '058 requires CRM contacts';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM crm_schema_migrations WHERE version='057-contact-assignment-state') THEN
+    RAISE EXCEPTION '058 requires assignment ownership state';
+  END IF;
+END
+$$;
+
+CREATE TABLE crm_lead_match_decisions (
+  decision_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  ingress_source text NOT NULL,
+  idempotency_key text NOT NULL,
+  request_digest text NOT NULL,
+  status text NOT NULL CHECK(status IN ('allowed','duplicate','restricted_conflict','needs_resolution','resolved')),
+  conflict_level text NOT NULL CHECK(conflict_level IN ('exact_email','exact_domain','exact_company','strong_company','weak_company','none')),
+  action text CHECK(action IN ('create_new','attach_company','restore')),
+  message text NOT NULL,
+  original_values jsonb NOT NULL,
+  normalized_email text NOT NULL DEFAULT '',
+  normalized_domain text NOT NULL DEFAULT '',
+  normalized_company text NOT NULL DEFAULT '',
+  normalized_country text NOT NULL DEFAULT '',
+  candidate_contact_ids integer[] NOT NULL DEFAULT '{}',
+  candidate_customer_ids uuid[] NOT NULL DEFAULT '{}',
+  candidate_company_ids integer[] NOT NULL DEFAULT '{}',
+  candidate_scores numeric[] NOT NULL DEFAULT '{}',
+  candidate_levels text[] NOT NULL DEFAULT '{}',
+  selected_contact_id integer REFERENCES contacts(id),
+  selected_customer_id uuid REFERENCES crm_customers(customer_id),
+  selected_company_id integer REFERENCES companies(id),
+  version integer NOT NULL DEFAULT 1 CHECK(version>0),
+  resolution_key text,
+  resolution_digest text,
+  resolution_response jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz,
+  UNIQUE(actor_id,ingress_source,idempotency_key)
+);
+CREATE INDEX idx_crm_lead_match_decisions_actor_status
+  ON crm_lead_match_decisions(actor_id,status,created_at DESC,decision_id DESC);
+CREATE INDEX idx_crm_lead_match_decisions_email
+  ON crm_lead_match_decisions(normalized_email)
+  WHERE normalized_email<>'';
+CREATE INDEX idx_crm_lead_match_decisions_domain
+  ON crm_lead_match_decisions(normalized_domain)
+  WHERE normalized_domain<>'';
+CREATE INDEX idx_crm_lead_match_decisions_company
+  ON crm_lead_match_decisions(normalized_company,normalized_country)
+  WHERE normalized_company<>'';
+CREATE INDEX idx_crm_lead_match_decisions_selected_contact
+  ON crm_lead_match_decisions(selected_contact_id)
+  WHERE selected_contact_id IS NOT NULL;
+`;
+async function migrateLeadMatchSchema(client) {
+  const checksum4 = (0, import_node_crypto13.createHash)("sha256").update(LEAD_MATCH_SQL).digest("hex");
+  const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_MATCH_SCHEMA_VERSION]);
+  if (existing.rows.length)
+    return existing.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u7EBF\u7D22\u51B2\u7A81\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  await client.query("SELECT pg_advisory_xact_lock($1)", [LEAD_MATCH_LOCK]);
+  const locked = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_MATCH_SCHEMA_VERSION]);
+  if (locked.rows.length)
+    return locked.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u7EBF\u7D22\u51B2\u7A81\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  if (!locked.rows.length) {
+    await client.query(LEAD_MATCH_SQL);
+    await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEAD_MATCH_SCHEMA_VERSION, checksum4]);
+  }
+  return success(void 0);
+}
+
+// server/adapters/postgres/lead-match-repository.ts
+var globalActor = (actor) => actor.roles.includes("admin") && ["shared", "summary"].includes(actor.scope) && actor.capabilities.includes("leads.read.all");
+var operationsManager = (actor) => actor.roles.includes("operations") && ["shared", "summary"].includes(actor.scope) && actor.capabilities.includes("leads.assign");
+var contactLookupToken = (name) => name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\u3400-\u9fff]+/g, "").slice(0, 4);
+var text4 = (value2) => value2?.trim() || null;
+function candidateVisible(actor, row2) {
+  if (globalActor(actor))
+    return true;
+  if (!row2.customer_id)
+    return actor.capabilities.includes("leads.develop") && row2.company_created_by === actor.userId;
+  if (operationsManager(actor) && row2.origin === "operations")
+    return true;
+  return actor.capabilities.includes("leads.develop") && row2.origin === "personal" && row2.owner_user_id === actor.userId || actor.capabilities.includes("leads.develop") && row2.shared;
+}
+function candidateRestorable(actor, row2) {
+  if (!row2.deleted_at || row2.origin === null || row2.company_deleted_at)
+    return false;
+  if (row2.active_assignment_status === "pending")
+    return false;
+  if (row2.active_assignment_status === "pending_transfer")
+    return operationsManager(actor) && row2.origin === "operations";
+  return operationsManager(actor) && row2.origin === "operations" || actor.capabilities.includes("leads.develop") && row2.origin === "personal" && row2.owner_user_id === actor.userId;
+}
+function snapshot(actor, row2, level, score) {
+  return {
+    contactId: row2.contact_id ?? void 0,
+    customerId: row2.customer_id ?? void 0,
+    companyId: row2.company_id,
+    contactName: row2.contact_name,
+    companyName: row2.company_name,
+    domain: row2.domain,
+    country: row2.country,
+    origin: row2.origin,
+    ownerUserId: row2.owner_user_id,
+    createdBy: row2.created_by,
+    customerState: row2.customer_state,
+    softDeleted: !!row2.deleted_at,
+    contactVersion: row2.contact_version ?? void 0,
+    canResolve: candidateVisible(actor, row2),
+    restorable: candidateRestorable(actor, row2),
+    level,
+    score
+  };
+}
+var CANDIDATE_SELECT = `
+  ct.id AS contact_id,
+  c.customer_id,
+  co.id AS company_id,
+  co.name AS company_name,
+  co.domain,
+  co.country,
+  COALESCE(NULLIF(btrim(concat_ws(' ',ct.first_name,ct.last_name)),''),NULLIF(btrim(ct.email),'')) AS contact_name,
+  ct.crm_contact_version AS contact_version,
+  c.origin,
+  COALESCE((SELECT own.owner_user_id FROM crm_contact_ownership own WHERE own.contact_id=ct.id AND own.customer_id=c.customer_id AND own.ended_at IS NULL ORDER BY own.started_at DESC,own.ownership_id DESC LIMIT 1),c.owner_user_id) AS owner_user_id,
+  c.state AS customer_state,
+  c.created_by,
+  co.crm_created_by AS company_created_by,
+  CASE WHEN ct.crm_deleted_at IS NULL THEN NULL ELSE ct.crm_deleted_at::text END AS deleted_at,
+  CASE WHEN co.crm_deleted_at IS NULL THEN NULL ELSE co.crm_deleted_at::text END AS company_deleted_at,
+  (SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.customer_id=c.customer_id AND ar.status IN ('pending','accepted','pending_transfer') ORDER BY ar.created_at DESC LIMIT 1) AS active_assignment_status,
+  EXISTS(SELECT 1 FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.target_user_id=$1::uuid AND sh.status='accepted') AS shared
+`;
+async function emailCandidates(c, actor, email3) {
+  if (!email3)
+    return [];
+  const rows = await c.query(`SELECT ${CANDIDATE_SELECT}
+    FROM contacts ct
+    JOIN crm_customer_contacts cc ON cc.contact_id=ct.id
+    JOIN crm_customers c ON c.customer_id=cc.customer_id
+    JOIN companies co ON co.id=c.company_id
+    WHERE lower(btrim(ct.email))=$2
+    FOR SHARE OF ct,c`, [actor.userId, email3]);
+  return rows.rows.map((row2) => snapshot(actor, row2, "exact_email", 1));
+}
+async function companyCandidates(c, actor, input) {
+  const keys12 = normalizedLeadIngressKeys(input);
+  const token = contactLookupToken(input.company.name);
+  const rows = await c.query(`SELECT ${CANDIDATE_SELECT}
+    FROM companies co
+    LEFT JOIN crm_customers c ON c.company_id=co.id
+    LEFT JOIN crm_customer_contacts cc ON cc.customer_id=c.customer_id
+    LEFT JOIN contacts ct ON ct.id=cc.contact_id
+    WHERE co.crm_deleted_at IS NULL AND (
+      ($2::text<>'' AND lower(btrim(co.domain)) LIKE '%'||split_part($2::text,'.',1)||'%')
+      OR lower(btrim(co.name))=lower(btrim($3))
+      OR ($4::text<>'' AND lower(btrim(co.name)) LIKE '%'||$4::text||'%')
+    )
+    ORDER BY co.id,ct.id
+    LIMIT 200
+    FOR SHARE OF co`, [actor.userId, keys12.domain, input.company.name, token]);
+  const snapshots = rows.rows.map((row2) => snapshot(actor, row2, "none", 0));
+  return classifyCompanyCandidates(input.company, snapshots.map((row2) => {
+    return {
+      companyId: row2.companyId,
+      name: row2.companyName,
+      domain: row2.domain,
+      country: row2.country,
+      contactName: row2.contactName,
+      customerId: row2.customerId,
+      contactId: row2.contactId,
+      softDeleted: row2.softDeleted,
+      contactVersion: row2.contactVersion,
+      canResolve: row2.canResolve,
+      restorable: row2.restorable,
+      origin: row2.origin,
+      ownerUserId: row2.ownerUserId,
+      createdBy: row2.createdBy,
+      customerState: row2.customerState
+    };
+  }));
+}
+async function candidatesIn(c, actor, input) {
+  const emails = [...new Set(input.contacts.map((contact2) => (contact2.email ?? "").trim().toLowerCase()).filter(Boolean))];
+  const exact = [];
+  for (const email3 of emails)
+    exact.push(...await emailCandidates(c, actor, email3));
+  const companies = input.target?.customerId ? [] : await companyCandidates(c, actor, input);
+  return [...exact, ...companies];
+}
+function requestDigest(input) {
+  return JSON.stringify(input);
+}
+function decisionBase(row2) {
+  return {
+    decisionId: row2.decision_id,
+    ingressSource: row2.ingress_source,
+    idempotencyKey: row2.idempotency_key,
+    status: row2.status,
+    level: row2.conflict_level,
+    action: row2.action,
+    suggestedActions: [],
+    candidates: [],
+    version: row2.version,
+    message: row2.message,
+    createdAt: row2.created_at.toISOString(),
+    resolvedAt: row2.resolved_at?.toISOString() ?? null
+  };
+}
+function candidateDTO(candidate) {
+  return {
+    contactId: candidate.contactId,
+    customerId: candidate.customerId,
+    companyId: candidate.companyId,
+    label: candidate.companyName,
+    domain: candidate.domain ?? null,
+    country: candidate.country ?? null,
+    score: candidate.score ?? 0,
+    level: candidate.level ?? "none"
+  };
+}
+function decisionDTO(row2, assessment) {
+  const base2 = decisionBase(row2);
+  const candidates = assessment?.candidates ?? [];
+  return {
+    ...base2,
+    action: row2.action,
+    suggestedActions: assessment?.suggestedActions ?? [],
+    candidates: candidates.map(candidateDTO),
+    ...candidates[0] ? { candidate: candidateDTO(candidates[0]) } : {}
+  };
+}
+async function decisionRow(c, actor, decisionId, lock = false) {
+  return (await c.query("SELECT * FROM crm_lead_match_decisions WHERE decision_id=$1 AND actor_id=$2" + (lock ? " FOR UPDATE" : ""), [decisionId, actor.userId])).rows[0];
+}
+async function saveAssessment(c, actor, input, assessment) {
+  const keys12 = normalizedLeadIngressKeys(input);
+  const candidates = assessment.candidates.slice(0, LEAD_INGRESS_LIMITS.candidates);
+  const selected = assessment.candidate;
+  const digest2 = requestDigest(input);
+  const existing = (await c.query("SELECT * FROM crm_lead_match_decisions WHERE actor_id=$1 AND ingress_source=$2 AND idempotency_key=$3 FOR UPDATE", [actor.userId, input.source, input.idempotencyKey])).rows[0];
+  if (existing) {
+    if (existing.request_digest !== digest2)
+      return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u7EBF\u7D22\u8BF7\u6C42");
+    return success({ row: existing, assessment });
+  }
+  const row2 = (await c.query(`INSERT INTO crm_lead_match_decisions(
+    actor_id,ingress_source,idempotency_key,request_digest,status,conflict_level,action,message,original_values,
+    normalized_email,normalized_domain,normalized_company,normalized_country,
+    candidate_contact_ids,candidate_customer_ids,candidate_company_ids,candidate_scores,candidate_levels,
+    selected_contact_id,selected_customer_id,selected_company_id
+  ) VALUES($1,$2,$3,$4,$5,$6,NULL,$7,$8::jsonb,$9,$10,$11,$12,$13::int[],$14::uuid[],$15::int[],$16::numeric[],$17::text[],$18,$19,$20)
+  RETURNING *`, [
+    actor.userId,
+    input.source,
+    input.idempotencyKey,
+    digest2,
+    assessment.status === "clear" ? "allowed" : assessment.status === "restore" ? "needs_resolution" : assessment.status,
+    assessment.level,
+    assessment.message,
+    JSON.stringify(input),
+    keys12.email,
+    keys12.domain,
+    keys12.company,
+    keys12.country,
+    candidates.map((item) => item.contactId ?? null).filter((value2) => value2 !== void 0),
+    candidates.map((item) => item.customerId ?? null).filter((value2) => value2 !== null),
+    candidates.map((item) => item.companyId),
+    candidates.map((item) => item.score ?? 0),
+    candidates.map((item) => item.level ?? "none"),
+    selected?.contactId ?? null,
+    selected?.customerId ?? null,
+    selected?.companyId ?? null
+  ])).rows[0];
+  return success({ row: row2, assessment });
+}
+async function eventIn(c, actor, customerId, version4, type, contactId) {
+  await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,'crm',$3,$4,$5)", [
+    type,
+    actor.userId,
+    version4,
+    customerId,
+    JSON.stringify({ customerId, version: version4, ...contactId ? { contactId } : {} })
+  ]);
+}
+async function createCustomerIn(c, actor, input, companyId) {
+  const customerId = (0, import_node_crypto14.randomUUID)();
+  const inserted = await c.query(`INSERT INTO crm_customers(
+    customer_id,company_id,source,customer_key,source_detail,created_by,origin,state,owner_user_id,business_type,development_restriction,source_created_at
+  ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(source,customer_key) DO NOTHING RETURNING customer_id`, [
+    customerId,
+    companyId,
+    input.sourceChannel,
+    input.customerKey || customerId,
+    input.sourceDetail,
+    actor.userId,
+    input.kind,
+    input.kind === "personal" ? "owned" : "draft",
+    input.kind === "personal" ? actor.userId : null,
+    text4(input.company.businessType),
+    text4(input.profile?.developmentRestriction),
+    input.profile?.sourceCreatedAt ? normalizeSourceDate(input.profile.sourceCreatedAt) : null
+  ]);
+  return inserted.rows[0]?.customer_id;
+}
+async function appendContactsIn(c, actor, input, companyId, customerId) {
+  const ids = [];
+  const createdIds = [];
+  for (const contact2 of input.contacts) {
+    const email3 = (contact2.email ?? "").trim().toLowerCase() || null;
+    if (!email3 && input.target?.customerId) {
+      const duplicate = await c.query(`SELECT ct.id FROM contacts ct JOIN crm_customer_contacts cc ON cc.contact_id=ct.id
+        WHERE cc.customer_id=$1 AND ct.crm_deleted_at IS NULL AND ct.email IS NULL
+          AND ct.first_name IS NOT DISTINCT FROM $2 AND ct.last_name IS NOT DISTINCT FROM $3
+          AND ct.title IS NOT DISTINCT FROM $4 AND ct.phone IS NOT DISTINCT FROM $5
+          AND ct.whatsapp IS NOT DISTINCT FROM $6 AND ct.linkedin IS NOT DISTINCT FROM $7
+        LIMIT 1`, [input.target.customerId, text4(contact2.firstName ?? contact2.name), text4(contact2.lastName), text4(contact2.title), text4(contact2.phone), text4(contact2.whatsapp), text4(contact2.linkedinUrl)]);
+      if (duplicate.rows.length) {
+        ids.push(Number(duplicate.rows[0].id));
+        continue;
+      }
+    }
+    const created = await c.query(`INSERT INTO contacts(
+      email,company_id,first_name,last_name,title,phone,whatsapp,linkedin,country,language,client_type,
+      source_level1,source_level2,stage,status,tags,extra,source,source_detail
+    ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18,$19)
+    RETURNING id`, [
+      email3,
+      companyId,
+      text4(contact2.firstName ?? contact2.name),
+      text4(contact2.lastName),
+      text4(contact2.title),
+      text4(contact2.phone),
+      text4(contact2.whatsapp),
+      text4(contact2.linkedinUrl),
+      text4(contact2.country),
+      text4(contact2.language),
+      text4(contact2.clientType),
+      text4(contact2.sourceLevel1),
+      text4(contact2.sourceLevel2),
+      text4(contact2.stage) ?? "cold",
+      text4(contact2.status) ?? "",
+      JSON.stringify(contact2.tags ?? []),
+      JSON.stringify(contact2.extra ?? {}),
+      input.sourceChannel,
+      input.sourceDetail
+    ]);
+    const contactId = Number(created.rows[0].id);
+    await c.query("INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)", [customerId, contactId]);
+    ids.push(contactId);
+    createdIds.push(contactId);
+  }
+  return { ids, createdIds };
+}
+async function restoreContactIn(c, actor, input, candidate) {
+  if (!candidate.contactId || !candidate.customerId)
+    return failure("CONFLICT", "\u53EF\u6062\u590D\u8054\u7CFB\u4EBA\u5DF2\u53D8\u5316");
+  const existing = await contact(c, { contactId: candidate.contactId, customerId: candidate.customerId }, true, true);
+  const state = (await c.query("SELECT crm_deleted_at FROM contacts WHERE id=$1", [candidate.contactId])).rows[0];
+  if (!existing || !state?.crm_deleted_at || !canDeleteContact(actor, existing))
+    return failure("CONFLICT", "\u539F\u8054\u7CFB\u4EBA\u4E0D\u53EF\u6062\u590D\uFF0C\u8BF7\u6838\u5B9E\u5220\u9664\u6743\u9650\u6216\u5F52\u5C5E");
+  const contact2 = input.contacts[0] ?? {};
+  const restored = await c.query(`UPDATE contacts SET
+    first_name=COALESCE($2,first_name),last_name=COALESCE($3,last_name),title=COALESCE($4,title),phone=COALESCE($5,phone),
+    whatsapp=COALESCE($6,whatsapp),linkedin=COALESCE($7,linkedin),country=COALESCE($8,country),language=COALESCE($9,language),
+    client_type=COALESCE($10,client_type),source_level1=COALESCE($11,source_level1),source_level2=COALESCE($12,source_level2),
+    stage=COALESCE($13,stage),status=COALESCE($14,status),tags=CASE WHEN $15::jsonb='[]'::jsonb THEN tags ELSE $15::jsonb END,
+    extra=CASE WHEN $16::jsonb='{}'::jsonb THEN extra ELSE COALESCE(extra,'{}'::jsonb)||$16::jsonb END,
+    crm_deleted_at=NULL,crm_deleted_by=NULL,crm_contact_version=crm_contact_version+1,updated_at=clock_timestamp()
+    WHERE id=$1 AND crm_deleted_at IS NOT NULL RETURNING id,crm_contact_version`, [
+    candidate.contactId,
+    text4(contact2.firstName ?? contact2.name),
+    text4(contact2.lastName),
+    text4(contact2.title),
+    text4(contact2.phone),
+    text4(contact2.whatsapp),
+    text4(contact2.linkedinUrl),
+    text4(contact2.country),
+    text4(contact2.language),
+    text4(contact2.clientType),
+    text4(contact2.sourceLevel1),
+    text4(contact2.sourceLevel2),
+    text4(contact2.stage),
+    text4(contact2.status),
+    JSON.stringify(contact2.tags ?? []),
+    JSON.stringify(contact2.extra ?? {})
+  ]);
+  if (!restored.rows.length)
+    return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u6062\u590D\u72B6\u6001\u5DF2\u53D8\u5316");
+  await eventIn(c, actor, candidate.customerId, restored.rows[0].crm_contact_version, "crm.contact.updated", candidate.contactId);
+  return success({ contactId: candidate.contactId, customerId: candidate.customerId, companyId: existing.companyId });
+}
+function customerAttachable(actor, input, candidate) {
+  if (!candidate?.customerId)
+    return false;
+  if (input.kind === "personal")
+    return candidate.origin === "personal" && candidate.ownerUserId === actor.userId;
+  return candidate.origin === "operations" && !candidate.ownerUserId && ["draft", "published"].includes(candidate.customerState ?? "");
+}
+async function materializeLeadIngressIn(c, actor, input, action, candidate) {
+  if (action === "restore") {
+    const restored = await restoreContactIn(c, actor, input, candidate);
+    if (!restored.ok)
+      return restored;
+    return success({ ...restored.data, contactIds: [restored.data.contactId], createdContactIds: [], createdCustomer: false, restoredContactIds: [restored.data.contactId] });
+  }
+  if (input.target?.customerId) {
+    const target = (await c.query(`SELECT c.company_id,c.origin,c.owner_user_id,c.state,co.crm_deleted_at AS company_deleted_at
+      FROM crm_customers c JOIN companies co ON co.id=c.company_id WHERE c.customer_id=$1 FOR UPDATE OF c`, [input.target.customerId])).rows[0];
+    const editable2 = target && !target.company_deleted_at && target.origin === input.kind && (input.kind === "personal" ? target.owner_user_id === actor.userId && target.state === "owned" : operationsManager(actor) && !target.owner_user_id && ["draft", "published"].includes(target.state));
+    if (!editable2)
+      return failure("FORBIDDEN", "\u76EE\u6807\u5BA2\u6237\u4E0D\u5728\u5F53\u524D\u5199\u5165\u8303\u56F4");
+    const appended2 = await appendContactsIn(c, actor, input, target.company_id, input.target.customerId);
+    if (appended2.createdIds.length) {
+      const version4 = Number((await c.query("UPDATE crm_customers SET version=version+1 WHERE customer_id=$1 RETURNING version", [input.target.customerId])).rows[0].version);
+      await eventIn(c, actor, input.target.customerId, version4, "crm.customer.updated");
+    }
+    return success({ customerId: input.target.customerId, companyId: target.company_id, contactIds: appended2.ids, createdContactIds: appended2.createdIds, createdCustomer: false, restoredContactIds: [] });
+  }
+  let companyId;
+  let customerId;
+  let createdCustomer = false;
+  if (action === "attach_company") {
+    if (!candidate)
+      return failure("CONFLICT", "\u5F85\u5173\u8054\u516C\u53F8\u5DF2\u53D8\u5316");
+    companyId = candidate.companyId;
+    const attached = customerAttachable(actor, input, candidate);
+    if (attached)
+      customerId = candidate.customerId;
+    else {
+      const created = await createCustomerIn(c, actor, input, companyId);
+      if (!created)
+        return failure("CONFLICT", "\u540C\u4E00\u6765\u6E90\u5BA2\u6237\u5DF2\u5B58\u5728\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+      customerId = created;
+      createdCustomer = true;
+    }
+  } else {
+    const company = await c.query("INSERT INTO companies(name,country,customer_type,industry,domain) VALUES($1,$2,$3,$4,$5) RETURNING id", [
+      input.company.name.trim(),
+      text4(input.company.country),
+      text4(input.company.customerType),
+      text4(input.company.businessType),
+      text4(input.company.domain)
+    ]);
+    companyId = company.rows[0].id;
+    const created = await createCustomerIn(c, actor, input, companyId);
+    if (!created)
+      return failure("CONFLICT", "\u540C\u4E00\u6765\u6E90\u5BA2\u6237\u5DF2\u5B58\u5728\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+    customerId = created;
+    createdCustomer = true;
+  }
+  const appended = await appendContactsIn(c, actor, input, companyId, customerId), contactIds = appended.ids;
+  const currentVersion = Number((await c.query("SELECT version FROM crm_customers WHERE customer_id=$1 FOR UPDATE", [customerId])).rows[0]?.version ?? 1);
+  if (createdCustomer)
+    await eventIn(c, actor, customerId, currentVersion, "crm.customer.created");
+  else if (contactIds.length) {
+    const version4 = Number((await c.query("UPDATE crm_customers SET version=version+1 WHERE customer_id=$1 RETURNING version", [customerId])).rows[0].version);
+    await eventIn(c, actor, customerId, version4, "crm.customer.updated");
+  }
+  return success({ customerId, companyId, contactIds, createdContactIds: appended.createdIds, createdCustomer, restoredContactIds: [] });
+}
+async function finalizeDecisionIn(c, row2, action, idempotencyKey, resolutionDigest, application, assessment) {
+  const response = { customerId: application.customerId, companyId: application.companyId, contactIds: application.contactIds };
+  const updated = (await c.query(`UPDATE crm_lead_match_decisions SET
+    status='resolved',action=$2,version=version+1,resolution_key=$3,resolution_digest=$4,resolution_response=$5::jsonb,
+    updated_at=clock_timestamp(),resolved_at=clock_timestamp()
+    WHERE decision_id=$1 RETURNING *`, [row2.decision_id, action, idempotencyKey, resolutionDigest, JSON.stringify(response)])).rows[0];
+  return success({ decision: decisionDTO(updated, { ...assessment, candidates: [], candidate: void 0, suggestedActions: [] }), ...response });
+}
+async function persistReferencesIn(c, actor, input, application) {
+  const refs = input.references;
+  if (input.source !== "workbook_import" || !refs?.sourceRef || !refs.entity)
+    return success(void 0);
+  const contactId = refs.entity === "contact" ? application.contactIds[0] : null;
+  if (refs.entity === "contact" && !contactId)
+    return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u6765\u6E90\u6620\u5C04\u7F3A\u5C11\u8054\u7CFB\u4EBA");
+  await c.query(`INSERT INTO crm_workbook_source_mappings(
+    actor_id,source,origin,entity,source_ref,customer_ref,customer_id,contact_id
+  ) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`, [
+    actor.userId,
+    input.sourceChannel,
+    input.kind,
+    refs.entity,
+    refs.sourceRef,
+    refs.customerRef ?? refs.sourceRef,
+    application.customerId,
+    contactId
+  ]);
+  return success(void 0);
+}
+function persistedResolution(row2) {
+  if (!row2.resolution_response)
+    return void 0;
+  const value2 = typeof row2.resolution_response === "string" ? JSON.parse(row2.resolution_response) : row2.resolution_response;
+  return value2 && typeof value2 === "object" && typeof value2.customerId === "string" && Number.isSafeInteger(value2.companyId) && Array.isArray(value2.contactIds) ? value2 : void 0;
+}
+async function resolutionCandidateIn(c, actor, row2, action) {
+  const input = row2.original_values;
+  const assessment = assessLeadIngress(input, await candidatesIn(c, actor, input));
+  if (assessment.status === "restricted_conflict")
+    return failure("CONFLICT", assessment.message);
+  if (action === "restore") {
+    if (assessment.status !== "restore" || assessment.candidate?.contactId !== row2.selected_contact_id)
+      return failure("CONFLICT", "\u53EF\u6062\u590D\u8054\u7CFB\u4EBA\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+    return success({ assessment, candidate: assessment.candidate });
+  }
+  if (assessment.status === "duplicate" && assessment.level === "exact_email")
+    return failure("CONFLICT", assessment.message);
+  if (action === "attach_company") {
+    const candidate = assessment.candidates.find((item) => item.companyId === row2.selected_company_id && item.canResolve);
+    if (!candidate)
+      return failure("CONFLICT", "\u5F85\u5173\u8054\u516C\u53F8\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+    return success({ assessment, candidate });
+  }
+  return success({ assessment });
+}
+async function applyDecisionIn(c, actor, row2, action, idempotencyKey) {
+  const fresh = await resolutionCandidateIn(c, actor, row2, action);
+  if (!fresh.ok)
+    return fresh;
+  if (!fresh.data.assessment.suggestedActions.includes(action) && action !== "create_new")
+    return failure("CONFLICT", "\u5F53\u524D\u51B2\u7A81\u4E0D\u652F\u6301\u6240\u9009\u5904\u7406\u65B9\u5F0F");
+  const applied = await materializeLeadIngressIn(c, actor, row2.original_values, action, fresh.data.candidate);
+  if (!applied.ok)
+    return applied;
+  const mapped7 = await persistReferencesIn(c, actor, row2.original_values, applied.data);
+  if (!mapped7.ok)
+    return mapped7;
+  return finalizeDecisionIn(c, row2, action, idempotencyKey, JSON.stringify({ action, expectedVersion: row2.version }), applied.data, fresh.data.assessment);
+}
+async function evaluateLeadIngressIn(c, actor, input, options = {}) {
+  const migrated = await migrateLeadMatchSchema(c);
+  if (!migrated.ok)
+    return migrated;
+  const found = await saveAssessment(c, actor, input, assessLeadIngress(input, await candidatesIn(c, actor, input)));
+  if (!found.ok)
+    return found;
+  const { row: row2, assessment } = found.data;
+  if (row2.status === "resolved") {
+    const persisted = persistedResolution(row2);
+    return persisted ? success({ decision: decisionDTO(row2, { ...assessment, candidates: [], candidate: void 0, suggestedActions: [] }), assessment, application: { ...persisted, createdCustomer: false, restoredContactIds: [] } }) : failure("CONFLICT", "\u51B2\u7A81\u8BB0\u5F55\u7ED3\u679C\u7F3A\u5931");
+  }
+  if (options.autoRestore && assessment.status === "restore") {
+    const applied = await materializeLeadIngressIn(c, actor, input, "restore", assessment.candidate);
+    if (!applied.ok)
+      return applied;
+    const finalized = await finalizeDecisionIn(c, row2, "restore", `auto:${input.idempotencyKey}`, `auto:${input.idempotencyKey}`, applied.data, assessment);
+    if (!finalized.ok)
+      return finalized;
+    return success({ decision: finalized.data.decision, assessment, application: applied.data });
+  }
+  return success({ decision: decisionDTO(row2, assessment), assessment });
+}
+async function resolveLeadIngressIn(c, actor, command4) {
+  const row2 = await decisionRow(c, actor, command4.decisionId, true);
+  if (!row2)
+    return failure("NOT_FOUND", "\u51B2\u7A81\u8BB0\u5F55\u4E0D\u5B58\u5728");
+  if (row2.status === "resolved") {
+    const persisted = persistedResolution(row2);
+    const digest2 = JSON.stringify({ action: command4.action, expectedVersion: command4.expectedVersion });
+    if (!persisted || row2.resolution_key !== command4.idempotencyKey || row2.action !== command4.action || row2.resolution_digest !== digest2)
+      return failure("CONFLICT", "\u51B2\u7A81\u5DF2\u7531\u5176\u4ED6\u64CD\u4F5C\u5904\u7406");
+    return success({ decision: decisionDTO(row2, { status: "clear", level: "none", candidates: [], suggestedActions: [], message: row2.message }), ...persisted });
+  }
+  if (row2.version !== command4.expectedVersion)
+    return failure("CONFLICT", "\u51B2\u7A81\u8BB0\u5F55\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u91CD\u8BD5");
+  return applyDecisionIn(c, actor, row2, command4.action, command4.idempotencyKey);
+}
+async function leadIngressDecisionIn(c, actor, source, idempotencyKey) {
+  const row2 = (await c.query("SELECT * FROM crm_lead_match_decisions WHERE actor_id=$1 AND ingress_source=$2 AND idempotency_key=$3", [actor.userId, source, idempotencyKey])).rows[0];
+  if (!row2)
+    return failure("NOT_FOUND", "\u51B2\u7A81\u8BB0\u5F55\u4E0D\u5B58\u5728");
+  if (row2.status !== "needs_resolution")
+    return success(decisionDTO(row2, { status: "clear", level: row2.conflict_level, candidates: [], suggestedActions: [], message: row2.message }));
+  const assessment = assessLeadIngress(row2.original_values, await candidatesIn(c, actor, row2.original_values));
+  return success(decisionDTO(row2, assessment));
+}
+
 // server/adapters/postgres/flat-lead-import.ts
 var optional = (value2) => value2?.trim() || null;
+var attemptKey = (key, index) => `${key.slice(0, 120)}:${index}`;
+function ingressSource(source) {
+  return source.toLowerCase().includes("agent") ? "agent_import" : "flat_import";
+}
 async function importFlatLeadsIn(c, actor, input) {
-  const personal = input.kind === "personal";
-  const batchId = (0, import_node_crypto9.randomUUID)();
+  const batchId = (0, import_node_crypto15.randomUUID)();
   await c.query("INSERT INTO crm_import_batches(batch_id,actor_id,source,source_detail,mapping) VALUES($1,$2,$3,$4,$5)", [batchId, actor.userId, input.source, input.sourceDetail, JSON.stringify(input.mapping ?? {})]);
   const rows = [];
   for (const [index, original] of input.rows.entries()) {
@@ -9155,128 +11366,79 @@ async function importFlatLeadsIn(c, actor, input) {
       email: original.email.trim().toLowerCase(),
       remark: unmatchedImportRemark(original.rawRow, Object.values(input.mapping ?? {}))
     };
-    const extra = JSON.stringify(row2.remark ? { note: row2.remark } : {});
-    const rowId = (0, import_node_crypto9.randomUUID)();
+    const rowId = (0, import_node_crypto15.randomUUID)();
     let status = "created";
     let message = importRowIssue(row2);
     let customerId;
+    let conflict;
     if (message)
       status = "invalid";
     else {
-      const existing = await c.query("SELECT * FROM crm_customers WHERE source=$1 AND customer_key=$2 FOR UPDATE", [input.source, row2.customerKey]);
-      let parent = existing.rows[0];
-      if (!parent && input.companyMatching) {
-        const matches = await c.query(`SELECT cu.* FROM crm_customers cu JOIN companies co ON co.id=cu.company_id
-          WHERE lower(btrim(co.name))=lower(btrim($1)) AND co.crm_deleted_at IS NULL
-          AND cu.origin=$2 AND ($3::boolean AND cu.owner_user_id=$4::uuid OR NOT $3::boolean AND cu.owner_user_id IS NULL AND cu.state IN ('draft','published'))
-          ORDER BY cu.customer_id FOR UPDATE OF cu`, [row2.companyName, input.kind, personal, actor.userId]);
-        if (matches.rows.length > 1) {
+      const existing = (await c.query("SELECT customer_id,company_id FROM crm_customers WHERE source=$1 AND customer_key=$2 FOR UPDATE", [input.source, row2.customerKey])).rows[0];
+      const ingress = {
+        source: ingressSource(input.source),
+        sourceChannel: input.source,
+        sourceDetail: input.sourceDetail,
+        kind: input.kind ?? "operations",
+        idempotencyKey: attemptKey(input.idempotencyKey, index),
+        customerKey: row2.customerKey,
+        company: {
+          name: row2.companyName,
+          domain: optional(row2.website),
+          country: optional(row2.country),
+          customerType: optional(row2.customerType),
+          businessType: optional(row2.businessType)
+        },
+        contacts: [{
+          email: optional(row2.email),
+          name: optional(row2.name),
+          firstName: optional(row2.firstName),
+          lastName: optional(row2.lastName),
+          title: optional(row2.title),
+          phone: optional(row2.phone),
+          whatsapp: optional(row2.whatsapp),
+          linkedinUrl: optional(row2.linkedinUrl),
+          country: optional(row2.country),
+          language: optional(row2.language),
+          clientType: optional(row2.clientType),
+          sourceLevel1: optional(row2.sourceLevel1),
+          sourceLevel2: optional(row2.sourceLevel2),
+          stage: optional(row2.stage),
+          status: optional(row2.status),
+          tags: row2.tags ?? [],
+          extra: row2.remark ? { note: row2.remark } : {}
+        }],
+        ...existing ? { target: { customerId: existing.customer_id, companyId: existing.company_id }, checkCompany: true } : {}
+      };
+      const evaluated = await evaluateLeadIngressIn(c, actor, ingress, { autoRestore: true });
+      if (!evaluated.ok) {
+        status = "restricted_conflict";
+        message = evaluated.error.message;
+      } else if (evaluated.data.assessment.status === "duplicate") {
+        status = "duplicate";
+        customerId = evaluated.data.assessment.candidate?.customerId ?? existing?.customer_id;
+        message = evaluated.data.assessment.message;
+      } else if (evaluated.data.assessment.status === "restricted_conflict") {
+        status = "restricted_conflict";
+        message = evaluated.data.assessment.message;
+      } else if (evaluated.data.assessment.status === "needs_resolution") {
+        status = "restricted_conflict";
+        message = evaluated.data.assessment.message;
+        conflict = { decisionId: evaluated.data.decision.decisionId, level: evaluated.data.decision.level, candidates: evaluated.data.decision.candidates };
+      } else {
+        const restored = evaluated.data.application;
+        const applied = restored ? { ok: true, data: restored } : await materializeLeadIngressIn(c, actor, ingress, "create_new");
+        if (!applied.ok) {
           status = "restricted_conflict";
-          message = "\u5B58\u5728\u591A\u6761\u540C\u540D\u516C\u53F8\uFF0C\u8BF7\u6838\u5BF9\u516C\u53F8\u8D44\u6599";
-        } else
-          parent = matches.rows[0];
-      }
-      const contact2 = row2.email ? await c.query("SELECT ct.*,cc.customer_id FROM contacts ct LEFT JOIN crm_customer_contacts cc ON cc.contact_id=ct.id WHERE ct.email=$1", [row2.email]) : { rows: [] };
-      const activeContact = contact2.rows.find((item) => item.crm_deleted_at === null);
-      const deletedContact = contact2.rows.find((item) => item.crm_deleted_at !== null);
-      if (activeContact && (!parent || activeContact.customer_id !== parent.customer_id))
-        status = "restricted_conflict";
-      const restorableDeleted = deletedContact ? await contact(c, { contactId: deletedContact.id, customerId: deletedContact.customer_id }, true, true) : void 0;
-      if (deletedContact && (!restorableDeleted || !canDeleteContact(actor, restorableDeleted))) {
-        status = "restricted_conflict";
-        message = "\u8BE5\u90AE\u7BB1\u5C5E\u4E8E\u5DF2\u5220\u9664\u8054\u7CFB\u4EBA\uFF0C\u8BF7\u4F7F\u7528\u539F\u516C\u53F8\u8D44\u6599\u6062\u590D";
-      }
-      if (deletedContact && restorableDeleted && canDeleteContact(actor, restorableDeleted) && !parent) {
-        parent = (await c.query("SELECT * FROM crm_customers WHERE customer_id=$1 FOR UPDATE", [deletedContact.customer_id])).rows[0];
-        if (parent)
-          row2.companyName = restorableDeleted.companyName;
-      }
-      if (parent && (parent.origin !== input.kind || (personal ? parent.owner_user_id !== actor.userId || parent.state !== "owned" : parent.owner_user_id !== null || !["draft", ...input.companyMatching ? ["published"] : []].includes(parent.state))))
-        status = "restricted_conflict";
-      if (deletedContact && parent && parent.customer_id !== deletedContact.customer_id) {
-        status = "restricted_conflict";
-        message = "\u8BE5\u90AE\u7BB1\u5C5E\u4E8E\u5DF2\u5220\u9664\u8054\u7CFB\u4EBA\uFF0C\u8BF7\u4F7F\u7528\u539F\u516C\u53F8\u8D44\u6599\u6062\u590D";
-      }
-      if (status === "created") {
-        let companyId = parent?.company_id;
-        const companies = await c.query(`SELECT co.* FROM companies co WHERE co.crm_deleted_at IS NULL AND
-          ${companyId ? "co.id=$1" : `lower(btrim(co.name))=lower(btrim($1)) AND (
-            co.crm_created_by=$2::uuid AND NOT EXISTS(SELECT 1 FROM crm_customers cu WHERE cu.company_id=co.id) AND NOT EXISTS(SELECT 1 FROM contacts ct WHERE ct.company_id=co.id)
-            OR EXISTS(SELECT 1 FROM crm_customers cu WHERE cu.company_id=co.id AND cu.origin=$3 AND ($4::boolean AND cu.owner_user_id=$2::uuid OR NOT $4::boolean)))`}
-          ORDER BY co.id FOR UPDATE`, companyId ? [companyId] : [row2.companyName, actor.userId, input.kind, personal]);
-        const company = companies.rows[0];
-        const fields = { country: optional(row2.country), customer_type: optional(row2.customerType), industry: optional(row2.businessType), domain: optional(row2.website) };
-        const conflict = company && Object.entries(fields).find(([key, value2]) => value2 && company[key] && company[key] !== value2);
-        if (parent && !company || company && company.name.trim().toLowerCase() !== row2.companyName.toLowerCase() || conflict || companies.rows.length > 1) {
-          status = "restricted_conflict";
-          message = "\u540C\u4E00\u516C\u53F8\u7684\u56FD\u5BB6\u3001\u5BA2\u6237\u7C7B\u578B\u3001\u4E1A\u52A1\u7C7B\u578B\u6216\u7F51\u7AD9\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u6838\u5BF9";
+          message = applied.error.message;
         } else {
-          if (company) {
-            companyId = company.id;
-            await c.query("UPDATE companies SET country=COALESCE(NULLIF(btrim(country),''),$2),customer_type=COALESCE(customer_type,$3),industry=COALESCE(NULLIF(btrim(industry),''),$4),domain=COALESCE(NULLIF(btrim(domain),''),$5),updated_at=now() WHERE id=$1", [companyId, ...Object.values(fields)]);
-          } else {
-            companyId = (await c.query("INSERT INTO companies(name,country,customer_type,industry,domain) VALUES($1,$2,$3,$4,$5) RETURNING id", [row2.companyName, ...Object.values(fields)])).rows[0].id;
-          }
-          customerId = parent?.customer_id ?? (0, import_node_crypto9.randomUUID)();
-          const newCustomer = !parent;
-          if (!parent) {
-            await c.query("INSERT INTO crm_customers(customer_id,company_id,source,customer_key,source_detail,created_by,origin,state,owner_user_id,business_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", [customerId, companyId, input.source, row2.customerKey, input.sourceDetail, actor.userId, input.kind, personal ? "owned" : "draft", personal ? actor.userId : null, optional(row2.businessType)]);
-          }
-          const values = [optional(row2.firstName ?? row2.name), optional(row2.lastName), optional(row2.title), optional(row2.phone), optional(row2.whatsapp), optional(row2.linkedinUrl), optional(row2.sourceLevel1), optional(row2.sourceLevel2)];
-          const identical = !row2.email && await c.query(`SELECT ct.id FROM contacts ct JOIN crm_customer_contacts cc ON cc.contact_id=ct.id
-            WHERE cc.customer_id=$1 AND ct.email IS NULL AND ct.crm_deleted_at IS NULL
-            AND ct.first_name IS NOT DISTINCT FROM $2 AND ct.last_name IS NOT DISTINCT FROM $3 AND ct.title IS NOT DISTINCT FROM $4
-            AND ct.phone IS NOT DISTINCT FROM $5 AND ct.whatsapp IS NOT DISTINCT FROM $6 AND ct.linkedin IS NOT DISTINCT FROM $7
-            AND ct.source_level1 IS NOT DISTINCT FROM $8 AND ct.source_level2 IS NOT DISTINCT FROM $9`, [customerId, ...values]);
-          if (activeContact || identical && identical.rows.length)
-            status = "duplicate";
-          else {
-            let contactId;
-            let contactVersion;
-            if (deletedContact) {
-              if (!restorableDeleted) {
-                status = "restricted_conflict";
-                message = "\u8BE5\u90AE\u7BB1\u5C5E\u4E8E\u5DF2\u5220\u9664\u8054\u7CFB\u4EBA\uFF0C\u8BF7\u4F7F\u7528\u539F\u516C\u53F8\u8D44\u6599\u6062\u590D";
-              } else {
-                const restored = await c.query(`UPDATE contacts SET company_id=$2,
-                  first_name=COALESCE($3,first_name),last_name=COALESCE($4,last_name),title=COALESCE($5,title),
-                  phone=COALESCE($6,phone),whatsapp=COALESCE($7,whatsapp),linkedin=COALESCE($8,linkedin),
-                  source_level1=COALESCE($9,source_level1),source_level2=COALESCE($10,source_level2),country=COALESCE($11,country),
-                  language=COALESCE($12,language),client_type=COALESCE($13,client_type),stage=COALESCE($14,stage),status=COALESCE($15,status),
-                  tags=CASE WHEN $16::jsonb='[]'::jsonb THEN tags ELSE $16::jsonb END,
-                  extra=CASE WHEN $17::jsonb='{}'::jsonb THEN extra ELSE COALESCE(extra,'{}'::jsonb)||$17::jsonb END,
-                  crm_deleted_at=NULL,crm_deleted_by=NULL,crm_contact_version=crm_contact_version+1,updated_at=clock_timestamp()
-                  WHERE id=$1 AND crm_deleted_at IS NOT NULL RETURNING crm_contact_version`, [deletedContact.id, companyId, ...values, optional(row2.country), optional(row2.language), optional(row2.clientType), optional(row2.stage), optional(row2.status), JSON.stringify(row2.tags ?? []), extra]);
-                if (!restored.rows.length) {
-                  status = "restricted_conflict";
-                  message = "\u8054\u7CFB\u4EBA\u6062\u590D\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5";
-                } else {
-                  contactId = deletedContact.id;
-                  contactVersion = restored.rows[0].crm_contact_version;
-                  await c.query("INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2) ON CONFLICT(contact_id) DO NOTHING", [customerId, contactId]);
-                }
-              }
-            } else {
-              const created = await c.query("INSERT INTO contacts(email,company_id,first_name,last_name,title,phone,whatsapp,linkedin,source_level1,source_level2,country,language,client_type,stage,status,tags,extra,source,source_detail) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18,$19) RETURNING id,crm_contact_version", [row2.email || null, companyId, ...values, optional(row2.country), optional(row2.language), optional(row2.clientType), row2.stage ?? "cold", row2.status ?? "", JSON.stringify(row2.tags ?? []), extra, input.source, input.sourceDetail]);
-              contactId = created.rows[0].id;
-              contactVersion = created.rows[0].crm_contact_version;
-              await c.query("INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)", [customerId, contactId]);
-            }
-            if (status === "created") {
-              const version3 = (await c.query("SELECT version FROM crm_customers WHERE customer_id=$1", [customerId])).rows[0].version;
-              if (!contactId || !contactVersion) {
-                status = "restricted_conflict";
-                message = "\u8054\u7CFB\u4EBA\u6062\u590D\u7ED3\u679C\u4E0D\u5B8C\u6574\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5";
-              } else {
-                await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)", [newCustomer ? "crm.customer.created" : deletedContact ? "crm.contact.updated" : "crm.customer.updated", actor.userId, "crm", deletedContact ? contactVersion : version3, customerId, JSON.stringify({ customerId, ...deletedContact ? { contactId, version: contactVersion } : { version: version3 }, companyName: row2.companyName })]);
-              }
-            }
-          }
+          customerId = applied.data.customerId;
+          status = applied.data.createdContactIds?.length === 0 && applied.data.restoredContactIds.length === 0 ? "duplicate" : "created";
         }
       }
     }
     await c.query("INSERT INTO crm_import_rows(row_id,batch_id,row_index,customer_key,raw_row,customer_id,status) VALUES($1,$2,$3,$4,$5,$6,$7)", [rowId, batchId, index, row2.customerKey, JSON.stringify({ input: row2, rawRow: row2.rawRow ?? original }), customerId ?? null, status]);
-    rows.push({ rowId, index, status, ...customerId ? { customerId } : {}, ...message ? { message } : status === "restricted_conflict" ? { message: "\u9700\u6838\u5B9E\u6765\u6E90\u6216\u5BA2\u6237\u5F52\u5C5E" } : {} });
+    rows.push({ rowId, index, status, ...customerId ? { customerId } : {}, ...message ? { message } : {}, ...conflict ? { conflict } : {} });
   }
   return { batchId, version: 1, rows };
 }
@@ -9309,11 +11471,11 @@ CREATE TABLE crm_send_authorizations (
 `;
 
 // server/adapters/postgres/send-acceptance-repository.ts
-var import_node_crypto10 = require("node:crypto");
+var import_node_crypto16 = require("node:crypto");
 var MILLISECONDS_PER_SECOND8 = 1e3;
 var normalized = (emails) => [...new Set(emails.map((email3) => email3.toLowerCase()))].sort();
-var fingerprint = (value2) => (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
-function mapped3(row2) {
+var fingerprint = (value2) => (0, import_node_crypto16.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+function mapped4(row2) {
   return {
     authorizationId: row2.authorization_id,
     contactId: row2.contact_id,
@@ -9343,7 +11505,7 @@ async function authorizeSendIn(client, actor, input) {
   if (old.rowCount) {
     if (old.rows.length !== targets.length || old.rows.some((row2, index) => row2.request_fingerprint !== requestFingerprint || row2.consumed_event_id || row2.owner_user_id !== owners[index] || new Date(row2.expires_at) <= now))
       return failure("CONFLICT", "\u53D1\u9001\u7F16\u53F7\u5DF2\u4F7F\u7528\u6216\u5DF2\u8FC7\u671F");
-    return success(old.rows.map(mapped3));
+    return success(old.rows.map(mapped4));
   }
   const expires = new Date(now.getTime() + SEND_AUTHORIZATION_LIMITS.attempt_seconds * MILLISECONDS_PER_SECOND8);
   const allowed = normalized(targets.map((target) => target.email));
@@ -9354,48 +11516,48 @@ async function authorizeSendIn(client, actor, input) {
       VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,true,$12,$13) RETURNING *`,
       [actor.userId, input.sendKey, target.contactId, target.customerId, target.email.toLowerCase(), input.fromEmail.toLowerCase(), input.subject, JSON.stringify(allowed), JSON.stringify(cc), requestFingerprint, owners[index], now, expires]
     );
-    result2.push(mapped3(inserted.rows[0]));
+    result2.push(mapped4(inserted.rows[0]));
   }
   return success(result2);
 }
 async function acceptSendIn(client, actor, input) {
-  const event3 = input.event;
-  if (event3.kind !== "sent" || event3.direction !== "outbound" || event3.correction)
+  const event2 = input.event;
+  if (event2.kind !== "sent" || event2.direction !== "outbound" || event2.correction)
     return failure("INVALID_INPUT", "\u4EC5\u5141\u8BB8\u5DF2\u63A5\u53D7\u7684\u53D1\u9001\u4E8B\u5B9E");
   if (input.observedEvent) {
     const observed = input.observedEvent;
-    if (observed.contactId !== event3.contactId || observed.customerId !== event3.customerId || observed.eventKey !== event3.eventKey || observed.mailboxKey !== event3.mailboxKey || observed.messageKey !== event3.messageKey || observed.fromEmail.toLowerCase() !== event3.fromEmail.toLowerCase() || observed.subject !== event3.subject || observed.kind !== "sent" || observed.direction !== "outbound" || observed.correction)
+    if (observed.contactId !== event2.contactId || observed.customerId !== event2.customerId || observed.eventKey !== event2.eventKey || observed.mailboxKey !== event2.mailboxKey || observed.messageKey !== event2.messageKey || observed.fromEmail.toLowerCase() !== event2.fromEmail.toLowerCase() || observed.subject !== event2.subject || observed.kind !== "sent" || observed.direction !== "outbound" || observed.correction)
       return failure("CONFLICT", "\u539F\u90AE\u4EF6\u8BC1\u636E\u4E0D\u5C5E\u4E8E\u540C\u4E00\u53D1\u9001");
   }
   const grant2 = (await client.query("SELECT * FROM crm_send_authorizations WHERE authorization_id=$1 AND actor_id=$2 FOR UPDATE", [input.authorizationId, actor.userId])).rows[0];
   if (!grant2)
     return failure("NOT_FOUND", "\u53D1\u9001\u6388\u6743\u4E0D\u5B58\u5728");
-  const receiptFingerprint = fingerprint([contactMailFingerprint(event3), event3.advanceSendStage ?? false, input.observedEvent ? contactMailFingerprint(input.observedEvent) : null]);
+  const receiptFingerprint = fingerprint([contactMailFingerprint(event2), event2.advanceSendStage ?? false, input.observedEvent ? contactMailFingerprint(input.observedEvent) : null]);
   if (grant2.consumed_event_id) {
     if (grant2.consumed_fingerprint !== receiptFingerprint)
       return failure("CONFLICT", "\u53D1\u9001\u6388\u6743\u5DF2\u88AB\u5176\u4ED6\u56DE\u6267\u6D88\u8D39");
     return success({ eventId: grant2.consumed_event_id, duplicate: true, archivedAfterRevocation: grant2.archived_after_revocation });
   }
-  const to = normalized(event3.toEmails), cc = normalized(event3.ccEmails);
-  const occurred = new Date(event3.occurredAt).getTime(), skew = SEND_AUTHORIZATION_LIMITS.clock_skew_seconds * MILLISECONDS_PER_SECOND8;
+  const to = normalized(event2.toEmails), cc = normalized(event2.ccEmails);
+  const occurred = new Date(event2.occurredAt).getTime(), skew = SEND_AUTHORIZATION_LIMITS.clock_skew_seconds * MILLISECONDS_PER_SECOND8;
   const now = (await client.query("SELECT clock_timestamp() AS stamp")).rows[0].stamp;
   if (!Number.isFinite(occurred) || occurred > now.getTime() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND8)
     return failure("INVALID_INPUT", "\u90AE\u4EF6\u53D1\u751F\u65F6\u95F4\u65E0\u6548\u6216\u5C1A\u672A\u53D1\u751F");
-  if (event3.contactId !== grant2.contact_id || event3.customerId !== grant2.customer_id || event3.subject !== grant2.subject || event3.fromEmail.toLowerCase() !== grant2.from_email || !to.includes(grant2.recipient_email) || to.some((email3) => !grant2.authorized_recipients.includes(email3)) || JSON.stringify(cc) !== JSON.stringify(grant2.authorized_cc) || event3.advanceSendStage && !grant2.allow_advance_stage || !Number.isFinite(occurred) || occurred < new Date(grant2.issued_at).getTime() - skew || occurred > new Date(grant2.expires_at).getTime() + skew)
+  if (event2.contactId !== grant2.contact_id || event2.customerId !== grant2.customer_id || event2.subject !== grant2.subject || event2.fromEmail.toLowerCase() !== grant2.from_email || !to.includes(grant2.recipient_email) || to.some((email3) => !grant2.authorized_recipients.includes(email3)) || JSON.stringify(cc) !== JSON.stringify(grant2.authorized_cc) || event2.advanceSendStage && !grant2.allow_advance_stage || !Number.isFinite(occurred) || occurred < new Date(grant2.issued_at).getTime() - skew || occurred > new Date(grant2.expires_at).getTime() + skew)
     return failure("CONFLICT", "\u53D1\u9001\u56DE\u6267\u4E0E\u6388\u6743\u4E0D\u4E00\u81F4");
-  const old = (await client.query("SELECT event_id,digest FROM crm_contact_mail_events WHERE actor_id=$1 AND event_key=$2 FOR UPDATE", [actor.userId, event3.eventKey])).rows[0];
-  let storedEvent = event3;
+  const old = (await client.query("SELECT event_id,digest FROM crm_contact_mail_events WHERE actor_id=$1 AND event_key=$2 FOR UPDATE", [actor.userId, event2.eventKey])).rows[0];
+  let storedEvent = event2;
   if (old) {
     if ((await client.query("SELECT 1 FROM crm_send_authorizations WHERE consumed_event_id=$1", [old.event_id])).rowCount)
       return failure("CONFLICT", "\u90AE\u4EF6\u4E8B\u5B9E\u5DF2\u5C5E\u4E8E\u5176\u4ED6\u56DE\u6267");
-    if (old.digest !== contactMailFingerprint(event3)) {
+    if (old.digest !== contactMailFingerprint(event2)) {
       const observed = input.observedEvent;
       if (!observed || old.digest !== contactMailFingerprint(observed))
         return failure("CONFLICT", "\u539F\u90AE\u4EF6\u8BC1\u636E\u4E0E\u53D1\u9001\u56DE\u6267\u4E0D\u4E00\u81F4");
-      storedEvent = { ...observed, advanceSendStage: event3.advanceSendStage };
+      storedEvent = { ...observed, advanceSendStage: event2.advanceSendStage };
     }
   }
-  const contact2 = await contact(client, event3, true);
+  const contact2 = await contact(client, event2, true);
   const current = contact2 && contact2.ownerUserId === grant2.owner_user_id && contact2.email?.toLowerCase() === grant2.recipient_email && read(actor, contact2) && contactPermissionsFor(actor, contact2).canSendMail;
   let eventId, duplicate;
   if (current) {
@@ -9405,18 +11567,18 @@ async function acceptSendIn(client, actor, input) {
     eventId = recorded.data.eventId;
     duplicate = recorded.data.duplicate;
   } else {
-    eventId = old?.event_id ?? (0, import_node_crypto10.randomUUID)();
+    eventId = old?.event_id ?? (0, import_node_crypto16.randomUUID)();
     duplicate = !!old;
     if (!old)
       await client.query(
         `INSERT INTO crm_contact_mail_events(event_id,actor_id,contact_id,customer_id,event_key,mailbox_key,message_key,kind,direction,occurred_at,subject,preview,from_email,to_emails,cc_emails,digest,archive_only)
       VALUES($1,$2,$3,$4,$5,$6,$7,'sent','outbound',$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,true)`,
-        [eventId, actor.userId, event3.contactId, event3.customerId, event3.eventKey, event3.mailboxKey, event3.messageKey, event3.occurredAt, event3.subject, event3.preview, event3.fromEmail, JSON.stringify(event3.toEmails), JSON.stringify(event3.ccEmails), contactMailFingerprint(event3)]
+        [eventId, actor.userId, event2.contactId, event2.customerId, event2.eventKey, event2.mailboxKey, event2.messageKey, event2.occurredAt, event2.subject, event2.preview, event2.fromEmail, JSON.stringify(event2.toEmails), JSON.stringify(event2.ccEmails), contactMailFingerprint(event2)]
       );
     await client.query(
       `INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids)
       VALUES('crm.contact.mail.archived',$1,'crm',1,$2,$3::jsonb,'{}'::uuid[])`,
-      [actor.userId, event3.customerId, JSON.stringify({ contactId: event3.contactId, customerId: event3.customerId, mailEventId: eventId, authorizationId: input.authorizationId })]
+      [actor.userId, event2.customerId, JSON.stringify({ contactId: event2.contactId, customerId: event2.customerId, mailEventId: eventId, authorizationId: input.authorizationId })]
     );
   }
   await client.query("UPDATE crm_send_authorizations SET consumed_event_id=$2,consumed_fingerprint=$3,archived_after_revocation=$4 WHERE authorization_id=$1", [input.authorizationId, eventId, receiptFingerprint, !current]);
@@ -9473,7 +11635,7 @@ CREATE INDEX idx_contact_share_outgoing ON crm_contact_shares(grantor_user_id,st
 `;
 
 // server/adapters/postgres/contact-sharing-repository.ts
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto17 = require("node:crypto");
 var SELECT2 = `SELECT sh.share_id AS "shareId",sh.contact_id AS "contactId",sh.customer_id AS "customerId",sh.grantor_user_id AS "grantorUserId",gu.display_name AS "grantorName",sh.target_user_id AS "targetUserId",tu.display_name AS "targetName",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'\u8054\u7CFB\u4EBA') AS "contactName",co.name AS "companyName",sh.editable_fields AS "editableFields",sh.can_followup AS "canFollowup",sh.can_change_stage AS "canChangeStage",sh.status,sh.version,sh.created_at AS "createdAt",(${validShareSql(CONTACT_OWNER_SQL)}) AS valid,c.created_by,c.origin FROM crm_contact_shares sh JOIN contacts ct ON ct.id=sh.contact_id JOIN crm_customers c ON c.customer_id=sh.customer_id JOIN companies co ON co.id=c.company_id JOIN public.identity_users gu ON gu.user_id=sh.grantor_user_id JOIN public.identity_users tu ON tu.user_id=sh.target_user_id`;
 function manage(a, r) {
   return globalContactActor(a) || sourceContactManager(a, { ...r, ownerUserId: r.grantorUserId }) || r.grantorUserId === a.userId && r.valid;
@@ -9513,8 +11675,8 @@ async function sharesIn(c, a, q) {
   const params = [a.userId, globalContactActor(a), a.roles.includes("operations") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.assign"), q.status ?? null, q.contactId ?? null, q.customerId ?? null];
   const filter = where.replace("WHERE ct.crm_deleted_at", "WHERE $2::boolean IS NOT NULL AND $3::boolean IS NOT NULL AND ct.crm_deleted_at");
   const rows = await c.query(`${SELECT2} ${filter} ORDER BY sh.created_at DESC,sh.share_id DESC LIMIT $7 OFFSET $8`, [...params, q.limit, q.offset]);
-  const count = await c.query(`SELECT count(*)::int AS n FROM (${SELECT2} ${filter}) q`, params);
-  return success({ items: rows.rows.map((r) => map(a, r)), total: count.rows[0].n });
+  const count2 = await c.query(`SELECT count(*)::int AS n FROM (${SELECT2} ${filter}) q`, params);
+  return success({ items: rows.rows.map((r) => map(a, r)), total: count2.rows[0].n });
 }
 async function createShareIn(c, a, input) {
   const ct = await contact(c, input, true);
@@ -9531,7 +11693,7 @@ async function createShareIn(c, a, input) {
     await c.query(`UPDATE crm_contact_shares sh SET status='revoked',version=sh.version+1,updated_at=now(),decided_at=now() FROM crm_customers c WHERE sh.contact_id=$1 AND sh.customer_id=c.customer_id AND sh.status IN ('pending','accepted') AND NOT (${validShareSql(CONTACT_OWNER_SQL.replaceAll("ct.id", "sh.contact_id"))})`, [input.contactId]);
     if ((await c.query("SELECT 1 FROM crm_contact_shares WHERE contact_id=$1 AND target_user_id=$2 AND status IN ('pending','accepted')", [input.contactId, input.targetUserId])).rowCount)
       return failure("CONFLICT", "\u8BE5\u7528\u6237\u5DF2\u6709\u5171\u4EAB\u9080\u8BF7\u6216\u534F\u4F5C\u6743\u9650");
-    const id = (0, import_node_crypto11.randomUUID)();
+    const id = (0, import_node_crypto17.randomUUID)();
     await c.query("INSERT INTO crm_contact_shares(share_id,contact_id,customer_id,grantor_user_id,target_user_id,editable_fields,can_followup,can_change_stage) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8)", [id, input.contactId, input.customerId, a.userId, input.targetUserId, JSON.stringify(input.editableFields), input.canFollowup, input.canChangeStage]);
     const r = await result(c, a, id);
     if (r.ok)
@@ -9587,7 +11749,7 @@ async function updateShareIn(c, a, input) {
 }
 
 // server/adapters/postgres/lead-repository.ts
-var import_node_crypto13 = require("node:crypto");
+var import_node_crypto20 = require("node:crypto");
 
 // server/adapters/postgres/lead-schema.ts
 var LEAD_VERSION = "005-lead-collaboration-public";
@@ -9705,73 +11867,9 @@ ALTER TABLE crm_shared_activities ADD CONSTRAINT crm_shared_activities_contact_s
 `;
 
 // server/adapters/postgres/workbook-import-repository.ts
-var import_node_crypto12 = require("node:crypto");
-
-// server/core/customer-import.ts
-var WORKBOOK_IMPORT_ROUTE = "/api/crm/workbook-imports";
-var WORKBOOK_LIMITS = { sheets: 20, columns: 100, entityRows: 1e4, totalRows: 2e4, reference: 500, batchRows: 200, bodyBytes: 1048576 };
-var FIELD_LIMIT = 4096;
-var EMAIL_LIMIT = 254;
-var CLOCK_HOUR_MAX = 23;
-var CLOCK_MINUTE_SECOND_MAX = 59;
-function normalizeSourceDate(value2) {
-  const match = /^(?:(\d{4})-(\d{2})-(\d{2})|(\d{4})\/(\d{1,2})\/(\d{1,2}))(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})?)?$/.exec(value2);
-  if (!match)
-    return void 0;
-  const year = Number(match[1] ?? match[4]);
-  const month = Number(match[2] ?? match[5]);
-  const day = Number(match[3] ?? match[6]);
-  if (!year)
-    return void 0;
-  const calendar = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  const date = /* @__PURE__ */ new Date(`${calendar}T00:00:00Z`);
-  if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day)
-    return void 0;
-  if (!match[7])
-    return date.toISOString();
-  if (Number(match[7]) > CLOCK_HOUR_MAX || Number(match[8]) > CLOCK_MINUTE_SECOND_MAX || Number(match[9] ?? 0) > CLOCK_MINUTE_SECOND_MAX)
-    return void 0;
-  const zone = match[11] ?? "Z";
-  if (zone !== "Z" && (Number(zone.slice(1, 3)) > CLOCK_HOUR_MAX || Number(zone.slice(4)) > CLOCK_MINUTE_SECOND_MAX))
-    return void 0;
-  const time = `${match[7]}:${match[8]}:${match[9] ?? "00"}${match[10] ? `.${match[10]}` : ""}${zone}`;
-  const timestamp = Date.parse(`${calendar}T${time}`);
-  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : void 0;
-}
-function workbookRowIssue(row2) {
-  if (!row2 || !["customer", "contact"].includes(row2.entity))
-    return "\u8BB0\u5F55\u7C7B\u578B\u65E0\u6548";
-  if (!row2.sourceRef?.trim() || row2.sourceRef.length > WORKBOOK_LIMITS.reference)
-    return "\u6765\u6E90\u5F15\u7528\u7F3A\u5931\u6216\u8FC7\u957F";
-  if (!row2.sheetName?.trim() || !Number.isSafeInteger(row2.rowNumber) || row2.rowNumber < 1)
-    return "\u6765\u6E90\u884C\u5B9A\u4F4D\u65E0\u6548";
-  if (row2.entity === "customer" && !row2.companyName?.trim())
-    return "\u5BA2\u6237\u62AC\u5934\u4E3A\u7A7A";
-  if (row2.entity === "customer" && row2.customerType && !["\u4EE3\u7406", "\u76F4\u5BA2"].includes(row2.customerType.trim()))
-    return "\u5BA2\u6237\u7C7B\u578B\u53EA\u80FD\u586B\u5199\u4EE3\u7406\u6216\u76F4\u5BA2";
-  if (row2.entity === "contact" && !row2.customerRef?.trim())
-    return "\u8054\u7CFB\u4EBA\u7F3A\u5C11\u5BA2\u6237\u5173\u8054";
-  if (row2.customerRef && row2.customerRef.length > WORKBOOK_LIMITS.reference)
-    return "\u5BA2\u6237\u5173\u8054\u5F15\u7528\u8FC7\u957F";
-  if (row2.entity === "contact" && ![row2.email, row2.name, row2.firstName, row2.lastName, row2.phone, row2.whatsapp].some((value2) => value2?.trim()))
-    return "\u8054\u7CFB\u4EBA\u59D3\u540D\u3001\u7535\u8BDD\u6216\u90AE\u7BB1\u81F3\u5C11\u586B\u5199\u4E00\u9879";
-  if (row2.email && (row2.email.length > EMAIL_LIMIT || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row2.email)))
-    return "\u8054\u7CFB\u4EBA\u90AE\u7BB1\u683C\u5F0F\u65E0\u6548\u6216\u8D85\u8FC7254\u5B57\u7B26";
-  if ([row2.companyName, row2.country, row2.customerType, row2.businessType, row2.developmentRestriction, row2.name, row2.phone, row2.whatsapp, row2.title, row2.firstName, row2.lastName, row2.linkedinUrl, row2.language, row2.clientType, row2.sourceLevel1, row2.sourceLevel2, row2.stage, row2.status].some((value2) => value2 !== void 0 && value2.length > LEAD_LIMITS.text))
-    return "\u5BA2\u6237\u6216\u8054\u7CFB\u4EBA\u5B57\u6BB5\u5185\u5BB9\u8FC7\u957F";
-  if (row2.tags !== void 0 && (!Array.isArray(row2.tags) || row2.tags.length > LEAD_LIMITS.pageMax || row2.tags.some((tag) => typeof tag !== "string" || !tag.trim() || tag.length > LEAD_LIMITS.text)))
-    return "\u8054\u7CFB\u4EBA\u6807\u7B7E\u65E0\u6548";
-  if (row2.sourceCreatedAt && !normalizeSourceDate(row2.sourceCreatedAt))
-    return "\u6E90\u521B\u5EFA\u65F6\u95F4\u65E0\u6548\uFF0C\u8BF7\u4F7F\u7528YYYY-MM-DD\u6216YYYY/M/D\u53CA\u6709\u6548\u65F6\u95F4";
-  if (Object.values(row2).some((value2) => typeof value2 === "string" && value2.length > FIELD_LIMIT))
-    return "\u5B57\u6BB5\u5185\u5BB9\u8FC7\u957F";
-  return void 0;
-}
-
-// server/adapters/postgres/workbook-import-repository.ts
-function value(input) {
-  return input?.trim() || null;
-}
+var import_node_crypto18 = require("node:crypto");
+var value = (input) => input?.trim() || null;
+var attemptKey2 = (key, index) => `${key.slice(0, 120)}:${index}`;
 function customerMatches(row2, current) {
   return current.company_name === row2.companyName?.trim() && current.country === value(row2.country) && current.customer_type === value(row2.customerType) && current.business_type === value(row2.businessType) && current.development_restriction === value(row2.developmentRestriction) && (current.source_created_at?.toISOString() ?? null) === (row2.sourceCreatedAt ? normalizeSourceDate(row2.sourceCreatedAt) : null);
 }
@@ -9785,48 +11883,109 @@ async function customer(c, id) {
   return (await c.query(`SELECT cu.*,co.name AS company_name,co.country,co.customer_type FROM crm_customers cu JOIN companies co ON co.id=cu.company_id WHERE cu.customer_id=$1 FOR UPDATE OF cu`, [id])).rows[0];
 }
 async function saveMapping(c, actor, input, row2, customerId, contactId) {
-  await c.query("INSERT INTO crm_workbook_source_mappings(actor_id,source,origin,entity,source_ref,customer_ref,customer_id,contact_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", [actor.userId, input.source, input.kind, row2.entity, row2.sourceRef.trim(), row2.entity === "customer" ? row2.sourceRef.trim() : row2.customerRef.trim(), customerId, contactId ?? null]);
+  await c.query(`INSERT INTO crm_workbook_source_mappings(
+    actor_id,source,origin,entity,source_ref,customer_ref,customer_id,contact_id
+  ) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`, [
+    actor.userId,
+    input.source,
+    input.kind,
+    row2.entity,
+    row2.sourceRef.trim(),
+    row2.entity === "customer" ? row2.sourceRef.trim() : row2.customerRef.trim(),
+    customerId,
+    contactId ?? null
+  ]);
 }
-async function importCustomer(c, actor, input, row2) {
+function contactMatches(row2, current) {
+  const expected = contactValues(row2);
+  return Object.entries(expected).every(([key, item]) => key === "tags" ? JSON.stringify(current[key]) === JSON.stringify(item) : current[key] === item);
+}
+function contactValues(row2) {
+  return {
+    email: value(row2.email)?.toLowerCase() ?? null,
+    first_name: value(row2.firstName ?? row2.name),
+    last_name: value(row2.lastName),
+    country: value(row2.country),
+    phone: value(row2.phone),
+    whatsapp: value(row2.whatsapp),
+    title: value(row2.title),
+    linkedin: value(row2.linkedinUrl),
+    language: value(row2.language),
+    client_type: value(row2.clientType),
+    source_level1: value(row2.sourceLevel1),
+    source_level2: value(row2.sourceLevel2),
+    stage: value(row2.stage) ?? "cold",
+    status: value(row2.status) ?? "",
+    tags: row2.tags ?? []
+  };
+}
+function ingressBase(input, row2, index, current) {
+  const contact2 = {
+    email: value(row2.email)?.toLowerCase(),
+    name: value(row2.name),
+    firstName: value(row2.firstName),
+    lastName: value(row2.lastName),
+    title: value(row2.title),
+    phone: value(row2.phone),
+    whatsapp: value(row2.whatsapp),
+    linkedinUrl: value(row2.linkedinUrl),
+    country: value(row2.country),
+    language: value(row2.language),
+    clientType: value(row2.clientType),
+    sourceLevel1: value(row2.sourceLevel1),
+    sourceLevel2: value(row2.sourceLevel2),
+    stage: value(row2.stage),
+    status: value(row2.status),
+    tags: row2.tags ?? []
+  };
+  return {
+    source: "workbook_import",
+    sourceChannel: input.source,
+    sourceDetail: input.sourceDetail,
+    kind: input.kind,
+    idempotencyKey: attemptKey2(input.idempotencyKey, index),
+    customerKey: row2.entity === "customer" ? "" : row2.customerRef?.trim() || row2.sourceRef.trim(),
+    company: {
+      name: row2.companyName?.trim() || current?.company_name || "Unknown company",
+      country: value(row2.country) ?? current?.country ?? null,
+      customerType: value(row2.customerType) ?? current?.customer_type ?? null,
+      businessType: value(row2.businessType)
+    },
+    contacts: row2.entity === "contact" ? [contact2] : [],
+    profile: { developmentRestriction: value(row2.developmentRestriction), sourceCreatedAt: value(row2.sourceCreatedAt) },
+    references: { sourceRef: row2.sourceRef.trim(), customerRef: row2.customerRef?.trim(), entity: row2.entity },
+    ...current ? { target: { customerId: current.customer_id } } : {}
+  };
+}
+async function importCustomer(c, actor, input, row2, index) {
   const linked = await mapping(c, actor, input, "customer", row2.sourceRef.trim());
+  const current = linked ? await customer(c, linked.customer_id) : void 0;
+  const ingress = ingressBase(input, row2, index, current);
+  const evaluated = await evaluateLeadIngressIn(c, actor, ingress);
+  if (!evaluated.ok)
+    return { status: "restricted_conflict", message: evaluated.error.message };
+  if (evaluated.data.assessment.status === "restricted_conflict")
+    return { status: "restricted_conflict", message: evaluated.data.assessment.message };
+  if (evaluated.data.assessment.status === "needs_resolution")
+    return {
+      status: "restricted_conflict",
+      message: evaluated.data.assessment.message,
+      conflict: { decisionId: evaluated.data.decision.decisionId, level: evaluated.data.decision.level, candidates: evaluated.data.decision.candidates }
+    };
   if (linked) {
-    const current = await customer(c, linked.customer_id);
     if (!current || !editable(actor, current, input.kind))
       return { status: "restricted_conflict", message: "\u9700\u6838\u5B9E\u6765\u6E90\u6216\u5BA2\u6237\u5F52\u5C5E" };
     if (!customerMatches(row2, current))
       return { status: "ambiguous", customerId: current.customer_id, message: "\u6765\u6E90\u5BA2\u6237\u8D44\u6599\u5DF2\u53D8\u5316\uFF0C\u8BF7\u6838\u5BF9\u540E\u4FEE\u6539\u4E3B\u6863" };
     return { status: "duplicate", customerId: current.customer_id };
   }
-  const co = await c.query("INSERT INTO companies(name,country,customer_type) VALUES($1,$2,$3) RETURNING id", [row2.companyName.trim(), value(row2.country), value(row2.customerType)]);
-  const id = (0, import_node_crypto12.randomUUID)();
-  await c.query(`INSERT INTO crm_customers(customer_id,company_id,source,customer_key,source_detail,created_by,origin,state,owner_user_id,business_type,development_restriction,source_created_at) VALUES($1,$2,$3,$1::uuid::text,$4,$5,$6,$7,$8,$9,$10,$11)`, [id, co.rows[0].id, input.source, input.sourceDetail, actor.userId, input.kind, input.kind === "personal" ? "owned" : "draft", input.kind === "personal" ? actor.userId : null, value(row2.businessType), value(row2.developmentRestriction), row2.sourceCreatedAt ? normalizeSourceDate(row2.sourceCreatedAt) : null]);
-  await saveMapping(c, actor, input, row2, id);
-  if (input.kind === "personal")
-    await event2(c, actor, id, 1, "crm.customer.created");
-  return { status: "created", customerId: id };
+  const applied = await materializeLeadIngressIn(c, actor, ingress, "create_new");
+  if (!applied.ok)
+    return { status: "restricted_conflict", message: applied.error.message };
+  await saveMapping(c, actor, input, row2, applied.data.customerId);
+  return { status: "created", customerId: applied.data.customerId };
 }
-function contactValues(row2) {
-  return { email: value(row2.email)?.toLowerCase() ?? null, first_name: value(row2.firstName ?? row2.name), last_name: value(row2.lastName), country: value(row2.country), phone: value(row2.phone), whatsapp: value(row2.whatsapp), title: value(row2.title), linkedin: value(row2.linkedinUrl), language: value(row2.language), client_type: value(row2.clientType), source_level1: value(row2.sourceLevel1), source_level2: value(row2.sourceLevel2), stage: value(row2.stage) ?? "cold", status: value(row2.status) ?? "", tags: row2.tags ?? [] };
-}
-function contactMatches(row2, current) {
-  return Object.entries(contactValues(row2)).every(([key, v]) => key === "tags" ? JSON.stringify(current[key]) === JSON.stringify(v) : current[key] === v);
-}
-async function restoreContact(c, actor, input, row2, customerId, contactId) {
-  const existing = await contact(c, { contactId, customerId }, true, true);
-  if (!existing || !canDeleteContact(actor, existing))
-    return { status: "restricted_conflict", customerId, message: "\u539F\u8054\u7CFB\u4EBA\u4E0D\u53EF\u6062\u590D\uFF0C\u8BF7\u6838\u5B9E\u5220\u9664\u6743\u9650\u6216\u5206\u914D\u72B6\u6001" };
-  const fields = contactValues(row2);
-  const restored = await c.query(`UPDATE contacts SET company_id=(SELECT company_id FROM crm_customers WHERE customer_id=$2),
-  first_name=COALESCE($3,first_name),last_name=COALESCE($4,last_name),country=COALESCE($5,country),phone=COALESCE($6,phone),whatsapp=COALESCE($7,whatsapp),title=COALESCE($8,title),linkedin=COALESCE($9,linkedin),language=COALESCE($10,language),client_type=COALESCE($11,client_type),source_level1=COALESCE($12,source_level1),source_level2=COALESCE($13,source_level2),stage=COALESCE($14,stage),status=COALESCE($15,status),tags=CASE WHEN $16::jsonb='[]'::jsonb THEN tags ELSE $16::jsonb END,
-  crm_deleted_at=NULL,crm_deleted_by=NULL,crm_contact_version=crm_contact_version+1,updated_at=clock_timestamp()
-  WHERE id=$1 AND crm_deleted_at IS NOT NULL RETURNING crm_contact_version`, [contactId, customerId, fields.first_name, fields.last_name, fields.country, fields.phone, fields.whatsapp, fields.title, fields.linkedin, fields.language, fields.client_type, fields.source_level1, fields.source_level2, fields.stage, fields.status, JSON.stringify(fields.tags)]);
-  if (!restored.rows.length)
-    return { status: "ambiguous", customerId, message: "\u8054\u7CFB\u4EBA\u6062\u590D\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5" };
-  await c.query("INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2) ON CONFLICT(contact_id) DO NOTHING", [customerId, contactId]);
-  await event2(c, actor, customerId, restored.rows[0].crm_contact_version, "crm.contact.updated", contactId);
-  return { status: "appended", customerId };
-}
-async function importContact(c, actor, input, row2, blocked) {
+async function importContact(c, actor, input, row2, index, blocked) {
   const parentRef = row2.customerRef.trim();
   if (blocked.has(parentRef))
     return { status: "ambiguous", message: "\u6765\u6E90\u5BA2\u6237\u8D44\u6599\u5F85\u6838\u5BF9" };
@@ -9837,50 +11996,42 @@ async function importContact(c, actor, input, row2, blocked) {
   if (!current || !editable(actor, current, input.kind))
     return { status: "restricted_conflict", message: "\u9700\u6838\u5B9E\u6765\u6E90\u6216\u5BA2\u6237\u5F52\u5C5E" };
   const linked = await mapping(c, actor, input, "contact", row2.sourceRef.trim());
+  const ingress = ingressBase(input, row2, index, current);
+  if (linked)
+    ingress.target = { ...ingress.target, contactId: linked.contact_id };
+  const evaluated = await evaluateLeadIngressIn(c, actor, ingress, { autoRestore: true });
+  if (!evaluated.ok)
+    return { status: "restricted_conflict", message: evaluated.error.message };
+  if (evaluated.data.assessment.status === "restricted_conflict")
+    return { status: "restricted_conflict", message: evaluated.data.assessment.message };
+  if (evaluated.data.assessment.status === "needs_resolution")
+    return {
+      status: "restricted_conflict",
+      message: evaluated.data.assessment.message,
+      conflict: { decisionId: evaluated.data.decision.decisionId, level: evaluated.data.decision.level, candidates: evaluated.data.decision.candidates }
+    };
   if (linked) {
     if (linked.customer_id !== current.customer_id || linked.customer_ref !== parentRef)
       return { status: "ambiguous", message: "\u8054\u7CFB\u4EBA\u6240\u5C5E\u5BA2\u6237\u5DF2\u53D8\u5316\uFF0C\u8BF7\u6838\u5BF9\u5173\u8054" };
-    const co2 = (await c.query("SELECT * FROM contacts WHERE id=$1", [linked.contact_id])).rows[0];
-    if (co2?.crm_deleted_at)
-      return restoreContact(c, actor, input, row2, current.customer_id, co2.id);
-    if (co2 && (await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE contact_id=$1 AND status IN ('pending','accepted')", [co2.id])).rows.length)
-      return { status: "restricted_conflict", message: "\u8054\u7CFB\u4EBA\u5DF2\u8FDB\u5165\u72EC\u7ACB\u5206\u914D\u6D41\u7A0B" };
-    if (!co2 || !contactMatches(row2, co2))
+    const rowContact = (await c.query("SELECT * FROM contacts WHERE id=$1", [linked.contact_id])).rows[0];
+    if (!rowContact || !contactMatches(row2, rowContact))
       return { status: "ambiguous", customerId: current.customer_id, message: "\u6765\u6E90\u8054\u7CFB\u4EBA\u8D44\u6599\u5DF2\u53D8\u5316\uFF0C\u8BF7\u6838\u5BF9\u540E\u4FEE\u6539\u4E3B\u6863" };
+  }
+  if (evaluated.data.assessment.status === "duplicate") {
+    if (!linked)
+      await saveMapping(c, actor, input, row2, current.customer_id, evaluated.data.assessment.candidate?.contactId);
     return { status: "duplicate", customerId: current.customer_id };
   }
-  const email3 = value(row2.email)?.toLowerCase() ?? null;
-  if (email3) {
-    const existing = (await c.query("SELECT co.*,cc.customer_id FROM contacts co LEFT JOIN crm_customer_contacts cc ON cc.contact_id=co.id WHERE co.email=$1", [email3])).rows[0];
-    if (existing) {
-      if (existing.customer_id !== current.customer_id)
-        return { status: "restricted_conflict", message: "\u8054\u7CFB\u4EBA\u4FE1\u606F\u51B2\u7A81\uFF0C\u8BF7\u6838\u5B9E\u6765\u6E90" };
-      if (existing.crm_deleted_at) {
-        const result2 = await restoreContact(c, actor, input, row2, current.customer_id, existing.id);
-        if (result2.status === "appended")
-          await saveMapping(c, actor, input, row2, current.customer_id, existing.id);
-        return result2;
-      }
-      if (!contactMatches(row2, existing))
-        return { status: "ambiguous", customerId: current.customer_id, message: "\u5DF2\u6709\u8054\u7CFB\u4EBA\u8D44\u6599\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u6838\u5BF9" };
-      await saveMapping(c, actor, input, row2, current.customer_id, existing.id);
-      return { status: "duplicate", customerId: current.customer_id };
-    }
-  }
-  const fields = contactValues(row2);
-  const co = await c.query("INSERT INTO contacts(email,company_id,first_name,last_name,country,phone,whatsapp,title,linkedin,language,client_type,source_level1,source_level2,stage,status,tags,source,source_detail) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18) RETURNING id", [email3, current.company_id, fields.first_name, fields.last_name, fields.country, fields.phone, fields.whatsapp, fields.title, fields.linkedin, fields.language, fields.client_type, fields.source_level1, fields.source_level2, fields.stage, fields.status, JSON.stringify(fields.tags), input.source, input.sourceDetail]);
-  await c.query("INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)", [current.customer_id, co.rows[0].id]);
-  await saveMapping(c, actor, input, row2, current.customer_id, co.rows[0].id);
-  await c.query("UPDATE crm_customers SET version=version+1 WHERE customer_id=$1", [current.customer_id]);
-  if (input.kind === "personal")
-    await event2(c, actor, current.customer_id, current.version + 1, "crm.customer.updated");
-  return { status: "appended", customerId: current.customer_id };
-}
-async function event2(c, actor, id, version3, type, contactId) {
-  await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)", [type, actor.userId, "crm", version3, id, JSON.stringify({ customerId: id, version: version3, ...contactId ? { contactId } : {} })]);
+  const restored = evaluated.data.application;
+  const applied = restored ? { ok: true, data: restored } : await materializeLeadIngressIn(c, actor, ingress, "create_new");
+  if (!applied.ok)
+    return { status: "restricted_conflict", customerId: current.customer_id, message: applied.error.message };
+  if (!linked)
+    await saveMapping(c, actor, input, row2, current.customer_id, applied.data.contactIds[0]);
+  return { status: applied.data.createdContactIds?.length === 0 && applied.data.restoredContactIds.length === 0 ? "duplicate" : "appended", customerId: current.customer_id };
 }
 async function importWorkbookIn(c, actor, input) {
-  const batchId = (0, import_node_crypto12.randomUUID)();
+  const batchId = (0, import_node_crypto18.randomUUID)();
   await c.query("INSERT INTO crm_import_batches(batch_id,actor_id,source,source_detail,mapping) VALUES($1,$2,$3,$4,$5)", [batchId, actor.userId, input.source, input.sourceDetail, JSON.stringify({ format: "workbook", kind: input.kind })]);
   const receipts = new Array(input.rows.length), blocked = /* @__PURE__ */ new Set();
   for (const entity of ["customer", "contact"])
@@ -9888,10 +12039,10 @@ async function importWorkbookIn(c, actor, input) {
       if (row2.entity !== entity)
         continue;
       const issue = workbookRowIssue(row2);
-      const outcome = issue ? { status: "invalid", message: issue } : entity === "customer" ? await importCustomer(c, actor, input, row2) : await importContact(c, actor, input, row2, blocked);
+      const outcome = issue ? { status: "invalid", message: issue } : entity === "customer" ? await importCustomer(c, actor, input, row2, index) : await importContact(c, actor, input, row2, index, blocked);
       if (entity === "customer" && !["created", "duplicate"].includes(outcome.status))
         blocked.add(row2.sourceRef.trim());
-      const receipt = { rowId: (0, import_node_crypto12.randomUUID)(), index, entity, sheetName: row2.sheetName, rowNumber: row2.rowNumber, ...outcome };
+      const receipt = { rowId: (0, import_node_crypto18.randomUUID)(), index, entity, sheetName: row2.sheetName, rowNumber: row2.rowNumber, ...outcome };
       await c.query("INSERT INTO crm_import_rows(row_id,batch_id,row_index,customer_key,raw_row,customer_id,status) VALUES($1,$2,$3,$4,$5,$6,$7)", [receipt.rowId, batchId, index, row2.sourceRef, JSON.stringify({ input: row2, rawRow: row2.rawRow, entity, sheetName: row2.sheetName, rowNumber: row2.rowNumber }), outcome.customerId ?? null, outcome.status]);
       receipts[index] = receipt;
     }
@@ -9915,6 +12066,122 @@ CREATE UNIQUE INDEX idx_crm_contact_active_assignment ON crm_contact_assignment_
 CREATE INDEX idx_crm_contact_assignment_target ON crm_contact_assignment_requests(target_user_id,status,created_at DESC);
 CREATE INDEX idx_crm_contact_assignment_actor ON crm_contact_assignment_requests(actor_id,status,created_at DESC);
 `;
+
+// server/adapters/postgres/contact-assignment-state-schema.ts
+var import_node_crypto19 = require("node:crypto");
+var CONTACT_ASSIGNMENT_STATE_VERSION = "057-contact-assignment-state";
+var CONTACT_ASSIGNMENT_STATE_LOCK = 570057;
+var CONTACT_ASSIGNMENT_STATE_SQL = `
+DO $$
+BEGIN
+  IF to_regclass('crm_org_units') IS NULL
+     OR to_regclass('crm_org_assignments') IS NULL THEN
+    RAISE EXCEPTION '057 requires canonical organization tables';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM crm_schema_migrations WHERE version='055-organization-canonical')
+     OR NOT EXISTS (SELECT 1 FROM crm_schema_migrations WHERE version='056-organization-assignment-integrity') THEN
+    RAISE EXCEPTION '057 requires canonical organization migrations';
+  END IF;
+END
+$$;
+
+ALTER TABLE crm_contact_assignment_requests
+  ADD COLUMN IF NOT EXISTS expires_at timestamptz,
+  ADD COLUMN IF NOT EXISTS previous_target_user_id uuid REFERENCES public.identity_users(user_id),
+  ADD COLUMN IF NOT EXISTS transfer_actor_id uuid REFERENCES public.identity_users(user_id),
+  ADD COLUMN IF NOT EXISTS transfer_requested_at timestamptz,
+  ADD COLUMN IF NOT EXISTS source_org_unit_name text;
+
+UPDATE crm_contact_assignment_requests request
+SET source_org_unit_name=unit.name
+FROM crm_org_units unit
+WHERE request.source_org_unit_id=unit.unit_id
+  AND request.source_org_unit_name IS NULL;
+
+UPDATE crm_contact_assignment_requests
+SET expires_at=created_at+interval '7 days'
+WHERE expires_at IS NULL;
+
+ALTER TABLE crm_contact_assignment_requests
+  ALTER COLUMN expires_at SET DEFAULT (now()+interval '7 days'),
+  ALTER COLUMN expires_at SET NOT NULL;
+
+ALTER TABLE crm_contact_assignment_requests
+  DROP CONSTRAINT IF EXISTS crm_contact_assignment_requests_status_check;
+ALTER TABLE crm_contact_assignment_requests
+  ADD CONSTRAINT crm_contact_assignment_status_valid
+  CHECK(status IN ('pending','accepted','rejected','cancelled','expired','pending_transfer'));
+
+DROP INDEX IF EXISTS idx_crm_contact_active_assignment;
+CREATE UNIQUE INDEX idx_crm_contact_active_assignment
+  ON crm_contact_assignment_requests(contact_id)
+  WHERE status IN ('pending','accepted','pending_transfer');
+CREATE INDEX idx_crm_contact_assignment_expiry
+  ON crm_contact_assignment_requests(expires_at,request_id)
+  WHERE status IN ('pending','pending_transfer');
+CREATE INDEX idx_crm_contact_assignment_supervisor_active
+  ON crm_contact_assignment_requests USING gin(supervisor_user_ids)
+  WHERE status IN ('pending','accepted','expired','pending_transfer');
+
+CREATE TABLE crm_contact_ownership (
+  ownership_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_id integer NOT NULL REFERENCES contacts(id),
+  customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+  owner_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  assignment_request_id uuid REFERENCES crm_contact_assignment_requests(request_id),
+  source_org_unit_id uuid REFERENCES crm_org_units(unit_id),
+  started_at timestamptz NOT NULL DEFAULT now(),
+  ended_at timestamptz,
+  ended_reason text,
+  created_by uuid NOT NULL REFERENCES public.identity_users(user_id),
+  CHECK(ended_at IS NULL OR ended_at>=started_at),
+  FOREIGN KEY(customer_id,contact_id) REFERENCES crm_customer_contacts(customer_id,contact_id)
+);
+CREATE UNIQUE INDEX idx_crm_contact_ownership_current
+  ON crm_contact_ownership(contact_id) WHERE ended_at IS NULL;
+CREATE INDEX idx_crm_contact_ownership_history
+  ON crm_contact_ownership(contact_id,started_at DESC,ownership_id DESC);
+CREATE INDEX idx_crm_contact_ownership_owner
+  ON crm_contact_ownership(owner_user_id,ended_at,contact_id);
+
+INSERT INTO crm_contact_ownership(
+  contact_id,customer_id,owner_user_id,assignment_request_id,source_org_unit_id,
+  started_at,created_by
+)
+SELECT DISTINCT ON (r.contact_id)
+  r.contact_id,r.customer_id,r.target_user_id,r.request_id,r.source_org_unit_id,
+  COALESCE(r.decided_at,r.created_at),r.target_user_id
+FROM crm_contact_assignment_requests r
+WHERE r.status='accepted'
+ORDER BY r.contact_id,COALESCE(r.decided_at,r.created_at) DESC,r.request_id DESC
+ON CONFLICT DO NOTHING;
+
+CREATE TABLE crm_contact_monitor_audits (
+  audit_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  contact_id integer NOT NULL REFERENCES contacts(id),
+  customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+  relationship text NOT NULL CHECK(relationship='direct_leader'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  FOREIGN KEY(customer_id,contact_id) REFERENCES crm_customer_contacts(customer_id,contact_id)
+);
+CREATE INDEX idx_crm_contact_monitor_audits_actor
+  ON crm_contact_monitor_audits(actor_id,created_at DESC,audit_id DESC);
+CREATE INDEX idx_crm_contact_monitor_audits_contact
+  ON crm_contact_monitor_audits(contact_id,created_at DESC,audit_id DESC);
+`;
+async function migrateContactAssignmentState(client) {
+  const checksum4 = (0, import_node_crypto19.createHash)("sha256").update(CONTACT_ASSIGNMENT_STATE_SQL).digest("hex");
+  const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_ASSIGNMENT_STATE_VERSION]);
+  if (old.rows.length && old.rows[0].checksum !== checksum4) {
+    return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5206\u914D\u72B6\u6001\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  }
+  if (!old.rows.length) {
+    await client.query(CONTACT_ASSIGNMENT_STATE_SQL);
+    await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_ASSIGNMENT_STATE_VERSION, checksum4]);
+  }
+  return success(void 0);
+}
 
 // server/adapters/postgres/contact-mail-schema.ts
 var CONTACT_MAIL_VERSION = "020-contact-mail-events-public";
@@ -9959,38 +12226,38 @@ function contactGuard(a, scope) {
   return `ct.crm_deleted_at IS NULL AND ${auth} AND (${origin})`;
 }
 function projection(a, scope) {
-  const count = `(SELECT count(*)::int FROM contacts ct JOIN crm_customer_contacts cc ON cc.contact_id=ct.id JOIN crm_customers c ON c.customer_id=cc.customer_id WHERE c.company_id=co.id AND ${contactGuard(a, scope)})`;
+  const count2 = `(SELECT count(*)::int FROM contacts ct JOIN crm_customer_contacts cc ON cc.contact_id=ct.id JOIN crm_customers c ON c.customer_id=cc.customer_id WHERE c.company_id=co.id AND ${contactGuard(a, scope)})`;
   const empty = "NOT EXISTS(SELECT 1 FROM contacts WHERE company_id=co.id) AND NOT EXISTS(SELECT 1 FROM crm_customers WHERE company_id=co.id)";
-  return `co.id AS "companyId",co.name,co.customer_type AS "customerType",co.domain,co.industry,co.country,co.size,co.updated_at::text AS revision,co.created_at AS "createdAt",co.updated_at AS "updatedAt",${count} AS "contactCount",((${global2(a) ? "TRUE" : "FALSE"} OR co.crm_created_by=$1 AND ${createAllowed(a) ? "TRUE" : "FALSE"}) AND ${empty}) AS "canDelete"`;
+  return `co.id AS "companyId",co.name,co.customer_type AS "customerType",co.domain,co.industry,co.country,co.size,co.updated_at::text AS revision,co.created_at AS "createdAt",co.updated_at AS "updatedAt",${count2} AS "contactCount",((${global2(a) ? "TRUE" : "FALSE"} OR co.crm_created_by=$1 AND ${createAllowed(a) ? "TRUE" : "FALSE"}) AND ${empty}) AS "canDelete"`;
 }
 function visibility(a, scope) {
   const emptyOwn = scope === "assigned" ? "FALSE" : `(co.crm_created_by=$1 AND ${a.capabilities.includes("leads.develop") ? "TRUE" : "FALSE"})`;
   const ownCustomer = scope === "all" && contactManager(a) ? `EXISTS(SELECT 1 FROM crm_customers c WHERE c.company_id=co.id AND c.origin='operations')` : "FALSE";
   return `co.crm_deleted_at IS NULL AND (${global2(a) && scope === "all" ? "TRUE" : "FALSE"} OR ${emptyOwn} OR ${ownCustomer} OR EXISTS(SELECT 1 FROM contacts ct JOIN crm_customer_contacts cc ON cc.contact_id=ct.id JOIN crm_customers c ON c.customer_id=cc.customer_id WHERE c.company_id=co.id AND ${contactGuard(a, scope)}))`;
 }
-function mapped4(co) {
+function mapped5(co) {
   return { ...co, canDelete: !!co.canDelete, createdAt: new Date(co.createdAt).toISOString(), updatedAt: new Date(co.updatedAt).toISOString() };
 }
 async function companiesIn(c, a, q) {
   if (!global2(a) && !contactManager(a) && !a.capabilities.includes("leads.develop"))
     return failure("FORBIDDEN", "\u65E0\u516C\u53F8\u67E5\u8BE2\u6743\u9650");
   const where = `WHERE ${visibility(a, q.scope)} AND (co.name ILIKE $2 ESCAPE '!' OR co.domain ILIKE $2 ESCAPE '!')`, args = [a.userId, `%${q.search.replace(/[!%_]/g, "!$&")}%`];
-  const count = await c.query(`SELECT count(*)::int AS n FROM companies co ${where}`, args);
+  const count2 = await c.query(`SELECT count(*)::int AS n FROM companies co ${where}`, args);
   const rows = await c.query(`SELECT ${projection(a, q.scope)} FROM companies co ${where} ORDER BY co.updated_at DESC,co.id DESC LIMIT $3 OFFSET $4`, [...args, q.limit, q.offset]);
-  return success({ items: rows.rows.map(mapped4), total: count.rows[0].n });
+  return success({ items: rows.rows.map(mapped5), total: count2.rows[0].n });
 }
 async function companyDetailIn(c, a, input) {
   const co = (await c.query(`SELECT ${projection(a, input.scope)} FROM companies co WHERE co.id=$2 AND ${visibility(a, input.scope)}`, [a.userId, input.companyId])).rows[0];
   if (!co)
     return failure("NOT_FOUND", "\u516C\u53F8\u4E0D\u5B58\u5728");
   const contacts2 = [];
-  for (let page = 0; page < DETAIL_SCAN_PAGES; page++) {
+  for (let page3 = 0; page3 < DETAIL_SCAN_PAGES; page3++) {
     const r = await listContactsIn(c, a, { search: "", scope: input.scope, limit: CONTACT_PAGE_SIZE, offset: contacts2.length }, input.companyId);
     if (!r.ok)
       return r;
     contacts2.push(...r.data.items);
     if (contacts2.length >= r.data.total)
-      return success({ company: mapped4(co), contacts: contacts2 });
+      return success({ company: mapped5(co), contacts: contacts2 });
   }
   return failure("UNAVAILABLE", "\u516C\u53F8\u8054\u7CFB\u4EBA\u8FC7\u591A\uFF0C\u8BF7\u5728\u8054\u7CFB\u4EBA\u5217\u8868\u7B5B\u9009\u67E5\u770B");
 }
@@ -10039,10 +12306,10 @@ async function deleteContactsIn(c, a, input) {
     }
     const deleted = [];
     for (const ct of contacts2) {
-      const version3 = ct.contactVersion + 1;
-      await c.query("UPDATE contacts SET crm_deleted_at=clock_timestamp(),crm_deleted_by=$2,crm_contact_version=$3,updated_at=clock_timestamp() WHERE id=$1", [ct.contactId, a.userId, version3]);
-      await contactEvent(c, a, ct, "crm.contact.deleted", version3);
-      deleted.push({ contactId: ct.contactId, customerId: ct.customerId, contactVersion: version3 });
+      const version4 = ct.contactVersion + 1;
+      await c.query("UPDATE contacts SET crm_deleted_at=clock_timestamp(),crm_deleted_by=$2,crm_contact_version=$3,updated_at=clock_timestamp() WHERE id=$1", [ct.contactId, a.userId, version4]);
+      await contactEvent(c, a, ct, "crm.contact.deleted", version4);
+      deleted.push({ contactId: ct.contactId, customerId: ct.customerId, contactVersion: version4 });
     }
     return success({ deleted });
   });
@@ -10059,17 +12326,17 @@ async function authorizeLeadActor(c, hash) {
     return null;
   return { ...a, capabilities: effectiveCapabilitiesFor(a.roles, a.capabilities) };
 }
-function administrator(a) {
+function administrator2(a) {
   return a.roles.includes("admin") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.read.all");
 }
 function canReadLead(a, c) {
-  return administrator(a) || operational(a) && c.origin === "operations" || c.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
+  return administrator2(a) || operational(a) && c.origin === "operations" || c.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
 }
 function canAssign(a, c) {
-  return !c.development_restriction?.trim() && a.capabilities.includes("leads.assign") && (operational(a) || administrator(a)) && c.origin === "operations" && c.owner_user_id === null && ["draft", "published"].includes(c.state);
+  return !c.development_restriction?.trim() && a.capabilities.includes("leads.assign") && (operational(a) || administrator2(a)) && c.origin === "operations" && c.owner_user_id === null && ["draft", "published"].includes(c.state);
 }
 function canDevelop(a, c) {
-  return a.capabilities.includes("leads.develop") && (administrator(a) || c.owner_user_id === a.userId || operational(a) && c.origin === "operations" && c.owner_user_id === null && ["draft", "published"].includes(c.state));
+  return a.capabilities.includes("leads.develop") && (administrator2(a) || c.owner_user_id === a.userId || operational(a) && c.origin === "operations" && c.owner_user_id === null && ["draft", "published"].includes(c.state));
 }
 function operationsOrigin(a) {
   return a.roles.some((role) => role === "operations" || role === "admin");
@@ -10100,8 +12367,8 @@ var PostgresLeadRepository = class {
       } catch {
         this.log.write("ERROR", "leads.rollback", "\u56DE\u6EDA\u5931\u8D25");
       }
-      const code2 = error && typeof error === "object" && "code" in error ? String(error.code) : "UNKNOWN";
-      this.log.write("ERROR", "leads.pg", `\u64CD\u4F5C\u5931\u8D25 code=${code2}`);
+      const code2 = error && typeof error === "object" && "code" in error ? String(error.code) : "UNKNOWN", message = error instanceof Error ? error.message : "unknown";
+      this.log.write("ERROR", "leads.pg", `\u64CD\u4F5C\u5931\u8D25 code=${code2} message=${message}`);
       return failure("DATABASE_ERROR", "\u7EBF\u7D22\u670D\u52A1\u6682\u4E0D\u53EF\u7528");
     } finally {
       c.release();
@@ -10110,7 +12377,7 @@ var PostgresLeadRepository = class {
   migrate() {
     return this.tx(async (c) => {
       await c.query("SELECT pg_advisory_xact_lock($1)", [LEAD_LOCK]);
-      const hash = (0, import_node_crypto13.createHash)("sha256").update(LEAD_SQL).digest("hex");
+      const hash = (0, import_node_crypto20.createHash)("sha256").update(LEAD_SQL).digest("hex");
       const old = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u7EBF\u7D22\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10118,7 +12385,7 @@ var PostgresLeadRepository = class {
         await c.query(LEAD_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEAD_VERSION, hash]);
       }
-      const nextHash = (0, import_node_crypto13.createHash)("sha256").update(CUSTOMER_SQL).digest("hex");
+      const nextHash = (0, import_node_crypto20.createHash)("sha256").update(CUSTOMER_SQL).digest("hex");
       const next = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CUSTOMER_VERSION]);
       if (next.rows.length && next.rows[0].checksum !== nextHash)
         return failure("CONFLICT", "\u5BA2\u6237\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10126,7 +12393,7 @@ var PostgresLeadRepository = class {
         await c.query(CUSTOMER_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CUSTOMER_VERSION, nextHash]);
       }
-      const profileHash = (0, import_node_crypto13.createHash)("sha256").update(CUSTOMER_PROFILE_SQL).digest("hex");
+      const profileHash = (0, import_node_crypto20.createHash)("sha256").update(CUSTOMER_PROFILE_SQL).digest("hex");
       const profile2 = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CUSTOMER_PROFILE_VERSION]);
       if (profile2.rows.length && profile2.rows[0].checksum !== profileHash)
         return failure("CONFLICT", "\u5BA2\u6237\u4E3B\u6863\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10134,7 +12401,7 @@ var PostgresLeadRepository = class {
         await c.query(CUSTOMER_PROFILE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CUSTOMER_PROFILE_VERSION, profileHash]);
       }
-      const followupHash = (0, import_node_crypto13.createHash)("sha256").update(FOLLOWUP_SQL).digest("hex");
+      const followupHash = (0, import_node_crypto20.createHash)("sha256").update(FOLLOWUP_SQL).digest("hex");
       const followup = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [FOLLOWUP_VERSION]);
       if (followup.rows.length && followup.rows[0].checksum !== followupHash)
         return failure("CONFLICT", "\u5BA2\u6237\u8DDF\u8FDB\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10142,7 +12409,7 @@ var PostgresLeadRepository = class {
         await c.query(FOLLOWUP_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [FOLLOWUP_VERSION, followupHash]);
       }
-      const contactHash = (0, import_node_crypto13.createHash)("sha256").update(CONTACT_ASSIGNMENT_SQL).digest("hex");
+      const contactHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_ASSIGNMENT_SQL).digest("hex");
       const contactOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_ASSIGNMENT_VERSION]);
       if (contactOld.rows.length && contactOld.rows[0].checksum !== contactHash)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5206\u914D\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10150,7 +12417,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_ASSIGNMENT_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_ASSIGNMENT_VERSION, contactHash]);
       }
-      const mailHash = (0, import_node_crypto13.createHash)("sha256").update(CONTACT_MAIL_SQL).digest("hex");
+      const mailHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_MAIL_SQL).digest("hex");
       const mailOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_VERSION]);
       if (mailOld.rows.length && mailOld.rows[0].checksum !== mailHash)
         return failure("CONFLICT", "\u90AE\u4EF6\u4E8B\u4EF6\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10158,7 +12425,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_MAIL_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_MAIL_VERSION, mailHash]);
       }
-      const sendStageHash = (0, import_node_crypto13.createHash)("sha256").update(CONTACT_MAIL_SEND_STAGE_SQL).digest("hex");
+      const sendStageHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_MAIL_SEND_STAGE_SQL).digest("hex");
       const sendStageOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_SEND_STAGE_VERSION]);
       if (sendStageOld.rows.length && sendStageOld.rows[0].checksum !== sendStageHash)
         return failure("CONFLICT", "\u53D1\u9001\u8F6E\u6B21\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10166,7 +12433,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_MAIL_SEND_STAGE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_MAIL_SEND_STAGE_VERSION, sendStageHash]);
       }
-      const lifecycleHash = (0, import_node_crypto13.createHash)("sha256").update(LIFECYCLE_SQL).digest("hex");
+      const lifecycleHash = (0, import_node_crypto20.createHash)("sha256").update(LIFECYCLE_SQL).digest("hex");
       const lifecycleOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LIFECYCLE_VERSION]);
       if (lifecycleOld.rows.length && lifecycleOld.rows[0].checksum !== lifecycleHash)
         return failure("CONFLICT", "\u751F\u547D\u5468\u671F\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10174,7 +12441,7 @@ var PostgresLeadRepository = class {
         await c.query(LIFECYCLE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LIFECYCLE_VERSION, lifecycleHash]);
       }
-      const shareHash = (0, import_node_crypto13.createHash)("sha256").update(CONTACT_SHARING_SQL).digest("hex");
+      const shareHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_SHARING_SQL).digest("hex");
       const shareOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_SHARING_VERSION]);
       if (shareOld.rows.length && shareOld.rows[0].checksum !== shareHash)
         return failure("CONFLICT", "\u5171\u4EAB\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10182,7 +12449,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_SHARING_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_SHARING_VERSION, shareHash]);
       }
-      const correctionHash = (0, import_node_crypto13.createHash)("sha256").update(MAIL_CORRECTION_SQL).digest("hex");
+      const correctionHash = (0, import_node_crypto20.createHash)("sha256").update(MAIL_CORRECTION_SQL).digest("hex");
       const correctionOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [MAIL_CORRECTION_VERSION]);
       if (correctionOld.rows.length && correctionOld.rows[0].checksum !== correctionHash)
         return failure("CONFLICT", "\u90AE\u4EF6\u66F4\u6B63\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10190,7 +12457,7 @@ var PostgresLeadRepository = class {
         await c.query(MAIL_CORRECTION_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [MAIL_CORRECTION_VERSION, correctionHash]);
       }
-      const acceptanceHash = (0, import_node_crypto13.createHash)("sha256").update(SEND_ACCEPTANCE_SQL).digest("hex");
+      const acceptanceHash = (0, import_node_crypto20.createHash)("sha256").update(SEND_ACCEPTANCE_SQL).digest("hex");
       const acceptanceOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [SEND_ACCEPTANCE_VERSION]);
       if (acceptanceOld.rows.length && acceptanceOld.rows[0].checksum !== acceptanceHash)
         return failure("CONFLICT", "\u53D1\u9001\u5F52\u6863\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10198,7 +12465,7 @@ var PostgresLeadRepository = class {
         await c.query(SEND_ACCEPTANCE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [SEND_ACCEPTANCE_VERSION, acceptanceHash]);
       }
-      const extensionHash = (0, import_node_crypto13.createHash)("sha256").update(LEAD_FIELD_EXTENSION_SQL).digest("hex");
+      const extensionHash = (0, import_node_crypto20.createHash)("sha256").update(LEAD_FIELD_EXTENSION_SQL).digest("hex");
       const extension = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_FIELD_EXTENSION_VERSION]);
       if (extension.rows.length && extension.rows[0].checksum !== extensionHash)
         return failure("CONFLICT", "\u7EBF\u7D22\u5B57\u6BB5\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10206,7 +12473,7 @@ var PostgresLeadRepository = class {
         await c.query(LEAD_FIELD_EXTENSION_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEAD_FIELD_EXTENSION_VERSION, extensionHash]);
       }
-      const touchHash = (0, import_node_crypto13.createHash)("sha256").update(CONTACT_TOUCH_STATUS_SQL).digest("hex");
+      const touchHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_TOUCH_STATUS_SQL).digest("hex");
       const touchOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_TOUCH_STATUS_VERSION]);
       if (touchOld.rows.length && touchOld.rows[0].checksum !== touchHash)
         return failure("CONFLICT", "\u8054\u7CFB\u72B6\u6001\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10216,6 +12483,24 @@ var PostgresLeadRepository = class {
       }
       return success(void 0);
     });
+  }
+  migrateAssignmentState() {
+    return this.tx(async (c) => {
+      await c.query("SELECT pg_advisory_xact_lock($1)", [CONTACT_ASSIGNMENT_STATE_LOCK]);
+      return migrateContactAssignmentState(c);
+    });
+  }
+  migrateLeadMatch() {
+    return this.tx(async (c) => {
+      await c.query("SELECT pg_advisory_xact_lock($1)", [LEAD_MATCH_LOCK]);
+      return migrateLeadMatchSchema(c);
+    });
+  }
+  resolveLeadIngress(hash, input) {
+    return this.authorized(hash, (c, a) => resolveLeadIngressIn(c, a, input));
+  }
+  leadIngressDecision(hash, input) {
+    return this.authorized(hash, (c, a) => leadIngressDecisionIn(c, a, input.source, input.idempotencyKey));
   }
   authorizeSend(hash, input) {
     return this.authorized(hash, (c, a) => authorizeSendIn(c, a, input));
@@ -10262,10 +12547,10 @@ var PostgresLeadRepository = class {
     });
   }
   async cached(c, a, operation, input, action) {
-    const digest = (0, import_node_crypto13.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const digest2 = (0, import_node_crypto20.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
     const old = await c.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
     if (old.rows.length) {
-      if (old.rows[0].digest !== digest)
+      if (old.rows[0].digest !== digest2)
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       if (operation.startsWith("assign:")) {
         const current = await this.detailIn(c, a, operation.split(":")[1]);
@@ -10283,31 +12568,29 @@ var PostgresLeadRepository = class {
     }
     const result2 = await action();
     if (result2.ok)
-      await c.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, operation, input.idempotencyKey, digest, JSON.stringify(result2.data)]);
+      await c.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, operation, input.idempotencyKey, digest2, JSON.stringify(result2.data)]);
     return result2;
   }
-  async event(c, a, id, version3, type, activityId) {
-    await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)", [type, a.userId, "crm", version3, id, JSON.stringify({ customerId: id, version: version3, ...activityId ? { activityId } : {} })]);
+  async event(c, a, id, version4, type, activityId) {
+    await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload) VALUES($1,$2,$3,$4,$5,$6)", [type, a.userId, "crm", version4, id, JSON.stringify({ customerId: id, version: version4, ...activityId ? { activityId } : {} })]);
   }
   createCustomer(hash, input) {
     return this.authorized(hash, async (c, a) => {
       if (!a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop"))
         return failure("FORBIDDEN", "\u65E0\u5BA2\u6237\u521B\u5EFA\u6743\u9650");
       return this.cached(c, a, "create", input, async () => {
-        const emails = input.contacts.map((x) => x.email.trim().toLowerCase()).filter(Boolean);
-        const collision = await c.query("SELECT 1 FROM contacts WHERE email=ANY($1::text[]) LIMIT 1", [emails]);
-        if (collision.rows.length)
-          return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u4FE1\u606F\u51B2\u7A81\uFF0C\u8BF7\u6838\u5B9E\u6765\u6E90");
-        const company = await c.query("INSERT INTO companies(name,country,customer_type,industry) VALUES($1,$2,$3,$4) RETURNING id", [input.companyName.trim(), input.country ?? null, input.customerType?.trim() || null, input.businessType?.trim() || null]);
-        const id = (0, import_node_crypto13.randomUUID)();
-        await c.query("INSERT INTO crm_customers(customer_id,company_id,source,customer_key,source_detail,created_by,origin,state,owner_user_id) VALUES($1::uuid,$2,$3,$1::uuid::text,$4,$5,$6,$7,$8)", [id, company.rows[0].id, input.source, input.sourceDetail, a.userId, operationsOrigin(a) ? "operations" : "personal", operationsOrigin(a) ? "draft" : "owned", operationsOrigin(a) ? null : a.userId]);
-        for (const contact2 of input.contacts) {
-          const row2 = await c.query("INSERT INTO contacts(email,company_id,first_name,country,phone,whatsapp,title,source,source_detail) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id", [contact2.email.trim().toLowerCase() || null, company.rows[0].id, contact2.name ?? null, contact2.country ?? null, contact2.phone ?? null, contact2.whatsapp ?? null, contact2.title ?? null, input.source, input.sourceDetail]);
-          await c.query("INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)", [id, row2.rows[0].id]);
-        }
-        await c.query("UPDATE crm_customers SET business_type=$2,development_restriction=$3,source_created_at=$4 WHERE customer_id=$1", [id, input.businessType?.trim() || null, input.developmentRestriction?.trim() || null, input.sourceCreatedAt ? normalizeSourceDate(input.sourceCreatedAt) : null]);
-        await this.event(c, a, id, 1, "crm.customer.created");
-        return this.detailIn(c, a, id);
+        const ingressInput = { source: input.source.toLowerCase().includes("agent") ? "agent_import" : "manual", sourceChannel: input.source, sourceDetail: input.sourceDetail, kind: operationsOrigin(a) ? "operations" : "personal", idempotencyKey: input.idempotencyKey, customerKey: (0, import_node_crypto20.randomUUID)(), company: { name: input.companyName.trim(), country: input.country ?? null, customerType: input.customerType?.trim() || null, businessType: input.businessType?.trim() || null }, contacts: input.contacts.map((contact2) => ({ email: contact2.email.trim().toLowerCase() || null, name: contact2.name, country: contact2.country, phone: contact2.phone, whatsapp: contact2.whatsapp, title: contact2.title })), profile: { developmentRestriction: input.developmentRestriction, sourceCreatedAt: input.sourceCreatedAt } };
+        const ingress = await evaluateLeadIngressIn(c, a, ingressInput);
+        if (!ingress.ok)
+          return ingress;
+        if (ingress.data.application)
+          return this.detailIn(c, a, ingress.data.application.customerId);
+        if (ingress.data.assessment.status !== "clear")
+          return failure("CONFLICT", `${ingress.data.assessment.message}\uFF08\u51B2\u7A81\u7F16\u53F7 ${ingress.data.decision.decisionId}\uFF09`);
+        const applied = await materializeLeadIngressIn(c, a, ingressInput, "create_new");
+        if (!applied.ok)
+          return applied;
+        return this.detailIn(c, a, applied.data.customerId);
       });
     });
   }
@@ -10321,7 +12604,7 @@ var PostgresLeadRepository = class {
         return failure("CONFLICT", "\u5BA2\u6237\u542B\u72EC\u7ACB\u5206\u914D\u8054\u7CFB\u4EBA\uFF0C\u8BF7\u4F7F\u7528\u8054\u7CFB\u4EBA\u4FEE\u6539");
       if (!customer2 || !canDevelop(a, customer2))
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728");
-      if (customer2.origin === "operations" && !administrator(a) && !operational(a))
+      if (customer2.origin === "operations" && !administrator2(a) && !operational(a))
         return failure("FORBIDDEN", "\u5206\u914D\u7EBF\u7D22\u8BF7\u4F7F\u7528\u8054\u7CFB\u4EBA\u5B57\u6BB5\u4FEE\u6539");
       return this.cached(c, a, `update:${input.customerId}`, input, async () => {
         if (customer2.version !== input.expectedVersion)
@@ -10330,13 +12613,12 @@ var PostgresLeadRepository = class {
         const ids = input.contacts.filter((x) => x.contactId !== void 0).map((x) => x.contactId);
         if (new Set(ids).size !== ids.length || ids.some((id) => !existing.rows.some((x) => x.id === id)) || existing.rows.some((x) => !ids.includes(x.id)))
           return failure("CONFLICT", "\u5DF2\u6709\u8054\u7CFB\u4EBA\u5FC5\u987B\u643A\u5E26\u539F\u7F16\u53F7\u5E76\u5168\u90E8\u4FDD\u7559");
-        const emails = input.contacts.map((x) => x.email.trim().toLowerCase()).filter(Boolean);
-        const collision = await c.query("SELECT id,email FROM contacts WHERE email=ANY($1::text[]) AND crm_deleted_at IS NULL", [emails]);
-        if (collision.rows.some((x) => !input.contacts.some((v) => v.contactId === x.id && v.email.trim().toLowerCase() === x.email)))
-          return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u4FE1\u606F\u51B2\u7A81\uFF0C\u8BF7\u6838\u5B9E\u6765\u6E90");
-        const deletedEmail = input.contacts.find((x) => x.contactId === void 0 && x.email.trim())?.email.trim().toLowerCase();
-        if (deletedEmail && (await c.query("SELECT 1 FROM contacts WHERE email=$1 AND crm_deleted_at IS NOT NULL", [deletedEmail])).rows.length)
-          return failure("CONFLICT", "\u8BE5\u90AE\u7BB1\u5C5E\u4E8E\u5DF2\u5220\u9664\u8054\u7CFB\u4EBA\uFF0C\u8BF7\u5728\u8054\u7CFB\u4EBA\u65B0\u589E\u4E2D\u6062\u590D");
+        const changed = input.contacts.filter((contact2) => contact2.contactId === void 0 || String(existing.rows.find((row2) => row2.id === contact2.contactId)?.email ?? "").trim().toLowerCase() !== contact2.email.trim().toLowerCase());
+        const ingress = await evaluateLeadIngressIn(c, a, { source: "manual", sourceChannel: customer2.source, sourceDetail: customer2.source_detail, kind: customer2.origin, idempotencyKey: input.idempotencyKey, customerKey: customer2.customer_key, company: { name: input.companyName.trim(), country: input.country ?? null }, contacts: changed.map((contact2) => ({ email: contact2.email.trim().toLowerCase() || null, name: contact2.name, country: contact2.country, phone: contact2.phone, whatsapp: contact2.whatsapp, title: contact2.title })), target: { customerId: input.customerId, companyId: customer2.company_id }, checkCompany: true });
+        if (!ingress.ok)
+          return ingress;
+        if (ingress.data.assessment.status !== "clear")
+          return failure("CONFLICT", `${ingress.data.assessment.message}\uFF08\u51B2\u7A81\u7F16\u53F7 ${ingress.data.decision.decisionId}\uFF09`);
         await c.query("UPDATE companies SET name=$2,country=$3,updated_at=now() WHERE id=$1", [customer2.company_id, input.companyName.trim(), input.country ?? null]);
         for (const contact2 of input.contacts) {
           const values = [contact2.email.trim().toLowerCase() || null, contact2.name ?? null, contact2.country ?? null, contact2.phone ?? null, contact2.whatsapp ?? null, contact2.title ?? null];
@@ -10360,7 +12642,7 @@ var PostgresLeadRepository = class {
   }
   members(hash, q) {
     return this.authorized(hash, async (c, a) => {
-      if (!a.capabilities.includes("members.read") || !a.capabilities.includes("leads.assign") || !(operational(a) || administrator(a)))
+      if (!a.capabilities.includes("members.read") || !a.capabilities.includes("leads.assign") || !(operational(a) || administrator2(a)))
         return failure("FORBIDDEN", "\u65E0\u5206\u914D\u6210\u5458\u76EE\u5F55\u6743\u9650");
       const rows = (await this.memberRows(c)).filter((x) => x.displayName.toLocaleLowerCase().includes(q.search.toLocaleLowerCase()));
       return success({ items: rows.slice(q.offset, q.offset + q.limit).map((x) => ({ userId: x.userId, displayName: x.displayName, assignable: isContactAssignmentTarget(x, a.userId) })), total: rows.length });
@@ -10371,16 +12653,16 @@ var PostgresLeadRepository = class {
   }
   bootstrap(hash) {
     return this.authorized(hash, async (c, a) => {
-      const counts = await c.query(`SELECT count(*) FILTER(WHERE state='published')::int AS pool,count(*) FILTER(WHERE owner_user_id=$1)::int AS mine FROM crm_customers`, [a.userId]);
+      const counts2 = await c.query(`SELECT count(*) FILTER(WHERE state='published')::int AS pool,count(*) FILTER(WHERE owner_user_id=$1)::int AS mine FROM crm_customers`, [a.userId]);
       const head = await c.query("SELECT COALESCE((SELECT delivery_seq FROM crm_feed_heads WHERE user_id=$1),0)::text AS cursor", [a.userId]);
-      return success({ userId: a.userId, capabilities: a.capabilities, scope: a.scope, summary: { pool: a.capabilities.includes("leads.claim") ? counts.rows[0].pool : 0, mine: a.capabilities.includes("leads.develop") ? counts.rows[0].mine : 0 }, feedCursor: head.rows[0].cursor });
+      return success({ userId: a.userId, capabilities: a.capabilities, scope: a.scope, summary: { pool: a.capabilities.includes("leads.claim") ? counts2.rows[0].pool : 0, mine: a.capabilities.includes("leads.develop") ? counts2.rows[0].mine : 0 }, feedCursor: head.rows[0].cursor });
     });
   }
   importWorkbook(hash, input) {
     return this.authorized(hash, async (c, a) => {
       const personal = !operationsOrigin(a);
       input = { ...input, kind: personal ? "personal" : "operations" };
-      if (personal ? !a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop") : !administrator(a) && (!a.capabilities.includes("leads.import") || !operational(a)))
+      if (personal ? !a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop") : !administrator2(a) && (!a.capabilities.includes("leads.import") || !operational(a)))
         return failure("FORBIDDEN", "\u65E0\u5BFC\u5165\u6743\u9650\u6216\u6765\u6E90\u7BA1\u7406\u8303\u56F4");
       return this.cached(c, a, "workbook-import", input, () => importWorkbookIn(c, a, input));
     });
@@ -10389,7 +12671,7 @@ var PostgresLeadRepository = class {
     return this.authorized(hash, async (c, a) => {
       const personal = !operationsOrigin(a);
       input = { ...input, kind: personal ? "personal" : "operations", source: input.companyMatching && personal ? `${input.source}:${a.userId}` : input.source };
-      if (personal ? !a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop") : !administrator(a) && (!a.capabilities.includes("leads.import") || !operational(a)))
+      if (personal ? !a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop") : !administrator2(a) && (!a.capabilities.includes("leads.import") || !operational(a)))
         return failure("FORBIDDEN", "\u65E0\u5BFC\u5165\u6743\u9650\u6216\u6765\u6E90\u7BA1\u7406\u8303\u56F4");
       return this.cached(c, a, "import", input, async () => success(await importFlatLeadsIn(c, a, input)));
     });
@@ -10431,6 +12713,9 @@ var PostgresLeadRepository = class {
   contactDetail(hash, input) {
     return this.authorized(hash, (c, a) => contactDetailIn(c, a, input));
   }
+  contactMonitorDetail(hash, input) {
+    return this.authorized(hash, (c, a) => contactMonitorDetailIn(c, a, input));
+  }
   companyUpdate(hash, input) {
     return this.authorized(hash, (c, a) => companyUpdateIn(c, a, input));
   }
@@ -10455,14 +12740,20 @@ var PostgresLeadRepository = class {
   decideContactAssignmentGroup(hash, action, input) {
     return this.authorized(hash, (c, a) => decideContactAssignmentGroupIn(c, a, action, input));
   }
+  transferContactAssignment(hash, input) {
+    return this.authorized(hash, (c, a) => transferContactAssignmentIn(c, a, input));
+  }
+  processExpiredAssignments(hash, input) {
+    return this.authorized(hash, (c, a) => processExpiredAssignmentsIn(c, a, input));
+  }
   list(hash, q) {
     return this.authorized(hash, async (c, a) => {
-      if (q.view === "all" && !administrator(a) || q.view === "operations" && !operational(a) || q.view === "pool" && !a.capabilities.includes("leads.claim") || ["mine", "personal", "assigned"].includes(q.view) && !a.capabilities.includes("leads.develop"))
+      if (q.view === "all" && !administrator2(a) || q.view === "operations" && !operational(a) || q.view === "pool" && !a.capabilities.includes("leads.claim") || ["mine", "personal", "assigned"].includes(q.view) && !a.capabilities.includes("leads.develop"))
         return failure("FORBIDDEN", "\u65E0\u5217\u8868\u6743\u9650");
       const where = q.view === "all" ? "($1::uuid IS NOT NULL)" : q.view === "operations" ? "($1::uuid IS NOT NULL) AND c.origin='operations'" : q.view === "pool" ? `($1::uuid IS NOT NULL) AND c.state='published'` : q.view === "personal" ? `c.owner_user_id=$1 AND c.origin='personal'` : q.view === "assigned" ? `c.owner_user_id=$1 AND c.origin='operations'` : `c.owner_user_id=$1`;
       const filter = `WHERE ${where} AND (co.name ILIKE $2 ESCAPE '!' ${q.view === "pool" ? "" : "OR EXISTS(SELECT 1 FROM contacts ct JOIN crm_customer_contacts cx ON cx.contact_id=ct.id WHERE cx.customer_id=c.customer_id AND ct.crm_deleted_at IS NULL AND (ct.email ILIKE $2 ESCAPE '!' OR ct.first_name ILIKE $2 ESCAPE '!'))"}) AND ($3::text IS NULL OR ($3='assigned' AND c.owner_user_id IS NOT NULL) OR ($3='unassigned' AND c.owner_user_id IS NULL AND c.state IN ('draft','published'))) AND ($4::text IS NULL OR ${q.followupOnly ? BOARD_STAGE_PROJECTION : STAGE_PROJECTION}=$4)${q.followupOnly ? ` AND ${CONTACTED_PREDICATE}` : ""}`;
       const p = [a.userId, `%${q.search.replace(/[!%_]/g, "!$&")}%`, q.assignment ?? null, q.stage ?? null];
-      const count = await c.query(`SELECT count(*)::int AS n FROM crm_customers c JOIN companies co ON co.id=c.company_id ${filter}`, p);
+      const count2 = await c.query(`SELECT count(*)::int AS n FROM crm_customers c JOIN companies co ON co.id=c.company_id ${filter}`, p);
       const items = await c.query(`SELECT ${PREVIEW} FROM crm_customers c JOIN companies co ON co.id=c.company_id ${filter} ORDER BY c.created_at DESC,c.customer_id LIMIT $5 OFFSET $6`, [...p, q.limit, q.offset]);
       for (const item of items.rows)
         if (item.recentActivityAt)
@@ -10478,7 +12769,7 @@ var PostgresLeadRepository = class {
           delete item.primaryContactName;
           delete item.primaryContactEmail;
         }
-      return success({ items: items.rows, total: count.rows[0].n });
+      return success({ items: items.rows, total: count2.rows[0].n });
     });
   }
   async detailIn(c, a, id) {
@@ -10491,10 +12782,10 @@ var PostgresLeadRepository = class {
     }
     if (!v || !canReadLead(a, v))
       return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728");
-    if (!administrator(a) && !(operational(a) && v.origin === "operations") && (await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE customer_id=$1 AND status='accepted' AND target_user_id<>$2 LIMIT 1", [id, a.userId])).rows.length)
+    if (!administrator2(a) && !(operational(a) && v.origin === "operations") && (await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE customer_id=$1 AND status='accepted' AND target_user_id<>$2 LIMIT 1", [id, a.userId])).rows.length)
       return failure("NOT_FOUND", "\u8BF7\u4F7F\u7528\u8054\u7CFB\u4EBA\u8BE6\u60C5");
     const contacts2 = await c.query(`SELECT co.id AS "contactId",COALESCE(co.email,'') AS email,co.first_name AS name,co.country,co.phone,co.whatsapp,co.title,co.crm_touch_status AS "touchStatus" FROM contacts co JOIN crm_customer_contacts cc ON cc.contact_id=co.id WHERE cc.customer_id=$1 AND co.crm_deleted_at IS NULL ORDER BY co.id`, [id]);
-    const feedbackAllowed = administrator(a) || operational(a) && v.origin === "operations" && a.capabilities.includes("followups.read") || v.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
+    const feedbackAllowed = administrator2(a) || operational(a) && v.origin === "operations" && a.capabilities.includes("followups.read") || v.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
     const activities = feedbackAllowed ? await c.query(`SELECT act.id::text,act.actor_id AS "actorId",u.display_name AS "actorName",act.note,act.stage,act.created_at AS "createdAt",act.method,act.occurred_at AS "occurredAt",act.recorded_at AS "recordedAt",act.contact_id AS "contactId",ct.first_name AS "contactName",act.contact_status AS "contactStatus",act.opportunity_id AS "opportunityId",op.title AS "opportunityTitle" FROM crm_shared_activities act LEFT JOIN public.identity_users u ON u.user_id=act.actor_id LEFT JOIN contacts ct ON ct.id=act.contact_id LEFT JOIN crm_opportunities op ON op.opportunity_id=act.opportunity_id AND op.customer_id=act.customer_id WHERE act.customer_id=$1 ORDER BY act.occurred_at DESC,act.id DESC`, [id]) : { rows: [] };
     if (v.sourceCreatedAt)
       v.sourceCreatedAt = v.sourceCreatedAt.toISOString();
@@ -10575,31 +12866,31 @@ function centerContactQuery(value2) {
   const offset = input.offset ?? 0;
   if (typeof search !== "string" || search.length > CENTER_CONTACT_LIMITS.text || !Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > CENTER_CONTACT_LIMITS.pageMax || !Number.isSafeInteger(offset) || Number(offset) < 0)
     return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u5206\u9875\u6216\u641C\u7D22\u53C2\u6570\u65E0\u6548");
-  const query = { search: search.trim(), limit: Number(limit), offset: Number(offset) };
+  const query2 = { search: search.trim(), limit: Number(limit), offset: Number(offset) };
   if (input.scope !== void 0) {
     if (!["all", "personal", "assigned"].includes(input.scope))
       return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u6765\u6E90\u65E0\u6548");
-    query.scope = input.scope;
+    query2.scope = input.scope;
   }
   if (input.assignment !== void 0) {
     if (input.assignment !== "accepted")
       return failure("INVALID_INPUT", "\u5206\u914D\u72B6\u6001\u65E0\u6548");
-    query.assignment = "accepted";
+    query2.assignment = "accepted";
   }
   if (input.followupOnly !== void 0) {
     if (typeof input.followupOnly !== "boolean")
       return failure("INVALID_INPUT", "\u8DDF\u8FDB\u7B5B\u9009\u65E0\u6548");
-    query.followupOnly = input.followupOnly;
+    query2.followupOnly = input.followupOnly;
   }
   if (input.crmStage !== void 0) {
     if (!["cold", ...CRM_STAGES].includes(input.crmStage))
       return failure("INVALID_INPUT", "\u5BA2\u6237\u5173\u7CFB\u9636\u6BB5\u65E0\u6548");
-    query.crmStage = input.crmStage;
+    query2.crmStage = input.crmStage;
   }
   if (input.touchStatus !== void 0) {
     if (!CONTACT_TOUCH_STATUSES.includes(input.touchStatus))
       return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u8054\u7CFB\u72B6\u6001\u65E0\u6548");
-    query.touchStatus = input.touchStatus;
+    query2.touchStatus = input.touchStatus;
   }
   for (const key of CENTER_CONTACT_FILTERS) {
     const item = input[key];
@@ -10608,15 +12899,15 @@ function centerContactQuery(value2) {
     if (typeof item !== "string" || item.length > CENTER_CONTACT_LIMITS.text)
       return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u7B5B\u9009\u53C2\u6570\u65E0\u6548");
     if (item.trim())
-      query[key] = item.trim();
+      query2[key] = item.trim();
   }
   if (input.groupDimension !== void 0 || input.groupKey !== void 0) {
     if (!CENTER_CONTACT_GROUP_DIMENSIONS.includes(input.groupDimension) || typeof input.groupKey !== "string" || !input.groupKey.trim() || input.groupKey.length > CENTER_CONTACT_LIMITS.text)
       return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u5206\u7EC4\u7B5B\u9009\u65E0\u6548");
-    query.groupDimension = input.groupDimension;
-    query.groupKey = input.groupKey.trim();
+    query2.groupDimension = input.groupDimension;
+    query2.groupKey = input.groupKey.trim();
   }
-  return success(query);
+  return success(query2);
 }
 function centerContactGroupQuery(value2) {
   if (!value2 || typeof value2 !== "object" || Array.isArray(value2))
@@ -10635,22 +12926,22 @@ function centerContactGroupQuery(value2) {
 }
 
 // server/services/leads.ts
-var UUID5 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-function record4(v) {
+var UUID7 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function record5(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
-function text3(v, max, min = 1) {
+function text5(v, max, min = 1) {
   return typeof v === "string" && v.trim().length >= min && v.length <= max;
 }
 function keys2(v, allowed) {
   return Object.keys(v).every((k) => allowed.includes(k));
 }
 function command(v) {
-  return record4(v) && text3(v.customerId, LEAD_LIMITS.key) && UUID5.test(v.customerId) && Number.isSafeInteger(v.expectedVersion) && Number(v.expectedVersion) > 0 && text3(v.idempotencyKey, LEAD_LIMITS.key);
+  return record5(v) && text5(v.customerId, LEAD_LIMITS.key) && UUID7.test(v.customerId) && Number.isSafeInteger(v.expectedVersion) && Number(v.expectedVersion) > 0 && text5(v.idempotencyKey, LEAD_LIMITS.key);
 }
 var CONTACT_EMAIL_MAX = 254;
 function contacts(v, update = false) {
-  return Array.isArray(v) && v.length <= LEAD_LIMITS.batchRows && v.every((x) => record4(x) && keys2(x, ["email", "name", "country", "phone", "whatsapp", "title", ...update ? ["contactId"] : []]) && text3(x.email, CONTACT_EMAIL_MAX, 0) && (x.email.trim() ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.email.trim()) : [x.name, x.phone, x.whatsapp].some((v2) => typeof v2 === "string" && v2.trim())) && ["name", "country", "phone", "whatsapp", "title"].every((k) => x[k] === void 0 || text3(x[k], LEAD_LIMITS.text, 0)) && (x.contactId === void 0 || update && Number.isSafeInteger(x.contactId) && Number(x.contactId) > 0)) && new Set(v.filter((x) => x.email.trim()).map((x) => x.email.trim().toLowerCase())).size === v.filter((x) => x.email.trim()).length;
+  return Array.isArray(v) && v.length <= LEAD_LIMITS.batchRows && v.every((x) => record5(x) && keys2(x, ["email", "name", "country", "phone", "whatsapp", "title", ...update ? ["contactId"] : []]) && text5(x.email, CONTACT_EMAIL_MAX, 0) && (x.email.trim() ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.email.trim()) : [x.name, x.phone, x.whatsapp].some((v2) => typeof v2 === "string" && v2.trim())) && ["name", "country", "phone", "whatsapp", "title"].every((k) => x[k] === void 0 || text5(x[k], LEAD_LIMITS.text, 0)) && (x.contactId === void 0 || update && Number.isSafeInteger(x.contactId) && Number(x.contactId) > 0)) && new Set(v.filter((x) => x.email.trim()).map((x) => x.email.trim().toLowerCase())).size === v.filter((x) => x.email.trim()).length;
 }
 var PROFILE_KEYS = ["customerType", "businessType", "developmentRestriction", "sourceCreatedAt"];
 var MILLISECONDS_PER_SECOND9 = 1e3;
@@ -10666,7 +12957,7 @@ function validOccurrence(value2) {
   return date.getUTCFullYear() === Number(year) && date.getUTCMonth() + 1 === Number(month) && date.getUTCDate() === Number(day) && Number(hour) < ISO_TIME_PART_LIMITS.hours && Number(minute) < ISO_TIME_PART_LIMITS.minutes && Number(second) < ISO_TIME_PART_LIMITS.seconds && (offsetHour === void 0 || Number(offsetHour) < ISO_TIME_PART_LIMITS.hours && Number(offsetMinute) < ISO_TIME_PART_LIMITS.minutes) && Number.isFinite(Date.parse(value2)) && Date.parse(value2) <= Date.now() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND9;
 }
 function profile(v) {
-  return (v.customerType === void 0 || v.customerType === "" || v.customerType === "\u4EE3\u7406" || v.customerType === "\u76F4\u5BA2") && ["businessType", "developmentRestriction"].every((k) => v[k] === void 0 || text3(v[k], LEAD_LIMITS.text, 0)) && (v.sourceCreatedAt === void 0 || typeof v.sourceCreatedAt === "string" && (v.sourceCreatedAt === "" || normalizeSourceDate(v.sourceCreatedAt) !== void 0));
+  return (v.customerType === void 0 || v.customerType === "" || v.customerType === "\u4EE3\u7406" || v.customerType === "\u76F4\u5BA2") && ["businessType", "developmentRestriction"].every((k) => v[k] === void 0 || text5(v[k], LEAD_LIMITS.text, 0)) && (v.sourceCreatedAt === void 0 || typeof v.sourceCreatedAt === "string" && (v.sourceCreatedAt === "" || normalizeSourceDate(v.sourceCreatedAt) !== void 0));
 }
 function createLeadService(repo, tokens) {
   function run2(token, action) {
@@ -10674,67 +12965,67 @@ function createLeadService(repo, tokens) {
   }
   return {
     contacts(token, input) {
-      const query = centerContactQuery(input);
-      if (!query.ok)
-        return Promise.resolve(query);
-      return run2(token, (h) => repo.listContacts ? repo.listContacts(h, query.data) : Promise.resolve(failure("UNAVAILABLE", "\u8054\u7CFB\u4EBA\u67E5\u8BE2\u6682\u4E0D\u53EF\u7528")));
+      const query2 = centerContactQuery(input);
+      if (!query2.ok)
+        return Promise.resolve(query2);
+      return run2(token, (h) => repo.listContacts ? repo.listContacts(h, query2.data) : Promise.resolve(failure("UNAVAILABLE", "\u8054\u7CFB\u4EBA\u67E5\u8BE2\u6682\u4E0D\u53EF\u7528")));
     },
     contactGroups(token, input) {
-      const query = centerContactGroupQuery(input);
-      if (!query.ok)
-        return Promise.resolve(query);
-      return run2(token, (h) => repo.listContactGroups ? repo.listContactGroups(h, query.data) : Promise.resolve(failure("UNAVAILABLE", "\u8054\u7CFB\u4EBA\u5206\u7EC4\u6682\u4E0D\u53EF\u7528")));
+      const query2 = centerContactGroupQuery(input);
+      if (!query2.ok)
+        return Promise.resolve(query2);
+      return run2(token, (h) => repo.listContactGroups ? repo.listContactGroups(h, query2.data) : Promise.resolve(failure("UNAVAILABLE", "\u8054\u7CFB\u4EBA\u5206\u7EC4\u6682\u4E0D\u53EF\u7528")));
     },
     createCustomer(token, v) {
-      if (!record4(v) || !keys2(v, ["companyName", "country", "source", "sourceDetail", "contacts", "idempotencyKey", ...PROFILE_KEYS]) || !profile(v) || !text3(v.companyName, LEAD_LIMITS.text) || v.country !== void 0 && !text3(v.country, LEAD_LIMITS.text, 0) || !text3(v.source, LEAD_LIMITS.text) || !text3(v.sourceDetail, LEAD_LIMITS.text, 0) || !text3(v.idempotencyKey, LEAD_LIMITS.key) || !contacts(v.contacts))
+      if (!record5(v) || !keys2(v, ["companyName", "country", "source", "sourceDetail", "contacts", "idempotencyKey", ...PROFILE_KEYS]) || !profile(v) || !text5(v.companyName, LEAD_LIMITS.text) || v.country !== void 0 && !text5(v.country, LEAD_LIMITS.text, 0) || !text5(v.source, LEAD_LIMITS.text) || !text5(v.sourceDetail, LEAD_LIMITS.text, 0) || !text5(v.idempotencyKey, LEAD_LIMITS.key) || !contacts(v.contacts))
         return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.createCustomer ? repo.createCustomer(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u5BA2\u6237\u521B\u5EFA\u6682\u4E0D\u53EF\u7528")));
     },
     updateCustomer(token, v) {
-      if (!command(v) || !record4(v) || !keys2(v, ["customerId", "companyName", "country", "contacts", "expectedVersion", "idempotencyKey", ...PROFILE_KEYS]) || !profile(v) || !text3(v.companyName, LEAD_LIMITS.text) || v.country !== void 0 && !text3(v.country, LEAD_LIMITS.text, 0) || !contacts(v.contacts, true))
+      if (!command(v) || !record5(v) || !keys2(v, ["customerId", "companyName", "country", "contacts", "expectedVersion", "idempotencyKey", ...PROFILE_KEYS]) || !profile(v) || !text5(v.companyName, LEAD_LIMITS.text) || v.country !== void 0 && !text5(v.country, LEAD_LIMITS.text, 0) || !contacts(v.contacts, true))
         return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u66F4\u65B0\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.updateCustomer ? repo.updateCustomer(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u5BA2\u6237\u66F4\u65B0\u6682\u4E0D\u53EF\u7528")));
     },
     assign(token, v) {
-      if (!command(v) || !record4(v) || !keys2(v, ["customerId", "expectedVersion", "idempotencyKey", "salesUserId", "notifyUserIds"]) || typeof v.salesUserId !== "string" || !UUID5.test(v.salesUserId) || !Array.isArray(v.notifyUserIds) || v.notifyUserIds.length > LEAD_LIMITS.notifyMax || v.notifyUserIds.some((x) => typeof x !== "string" || !UUID5.test(x)) || new Set(v.notifyUserIds).size !== v.notifyUserIds.length)
+      if (!command(v) || !record5(v) || !keys2(v, ["customerId", "expectedVersion", "idempotencyKey", "salesUserId", "notifyUserIds"]) || typeof v.salesUserId !== "string" || !UUID7.test(v.salesUserId) || !Array.isArray(v.notifyUserIds) || v.notifyUserIds.length > LEAD_LIMITS.notifyMax || v.notifyUserIds.some((x) => typeof x !== "string" || !UUID7.test(x)) || new Set(v.notifyUserIds).size !== v.notifyUserIds.length)
         return Promise.resolve(failure("INVALID_INPUT", "\u5206\u914D\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.assign ? repo.assign(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u5206\u914D\u6682\u4E0D\u53EF\u7528")));
     },
     members(token, v) {
-      if (!v || !text3(v.search, LEAD_LIMITS.text, 0) || !Number.isSafeInteger(v.limit) || v.limit < 1 || v.limit > LEAD_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0)
+      if (!v || !text5(v.search, LEAD_LIMITS.text, 0) || !Number.isSafeInteger(v.limit) || v.limit < 1 || v.limit > LEAD_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0)
         return Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.members ? repo.members(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u6210\u5458\u76EE\u5F55\u6682\u4E0D\u53EF\u7528")));
     },
     bootstrap: (token) => run2(token, (h) => repo.bootstrap(h)),
     importWorkbook(token, v) {
-      if (!record4(v) || !keys2(v, ["source", "sourceDetail", "idempotencyKey", "kind", "rows"]) || !text3(v.source, LEAD_LIMITS.text) || !text3(v.sourceDetail, LEAD_LIMITS.text, 0) || !text3(v.idempotencyKey, LEAD_LIMITS.key) || !["personal", "operations"].includes(v.kind) || !Array.isArray(v.rows) || !v.rows.length || v.rows.length > WORKBOOK_LIMITS.batchRows)
+      if (!record5(v) || !keys2(v, ["source", "sourceDetail", "idempotencyKey", "kind", "rows"]) || !text5(v.source, LEAD_LIMITS.text) || !text5(v.sourceDetail, LEAD_LIMITS.text, 0) || !text5(v.idempotencyKey, LEAD_LIMITS.key) || !["personal", "operations"].includes(v.kind) || !Array.isArray(v.rows) || !v.rows.length || v.rows.length > WORKBOOK_LIMITS.batchRows)
         return Promise.resolve(failure("INVALID_INPUT", "\u5DE5\u4F5C\u7C3F\u5BFC\u5165\u53C2\u6570\u65E0\u6548\u6216\u8D85\u8FC7200\u884C"));
       const allowed = ["entity", "sourceRef", "customerRef", "companyName", "country", "customerType", "businessType", "developmentRestriction", "sourceCreatedAt", "email", "name", "firstName", "lastName", "phone", "whatsapp", "title", "linkedinUrl", "language", "clientType", "sourceLevel1", "sourceLevel2", "stage", "status", "tags", "sheetName", "rowNumber", "rawRow"];
-      if (v.rows.some((r) => !record4(r) || !keys2(r, allowed) || !["customer", "contact"].includes(r.entity) || typeof r.sourceRef !== "string" || typeof r.sheetName !== "string" || !Number.isSafeInteger(r.rowNumber) || Number(r.rowNumber) < 1 || !record4(r.rawRow) || ["customerRef", "companyName", "country", "customerType", "businessType", "developmentRestriction", "sourceCreatedAt", "email", "name", "firstName", "lastName", "phone", "whatsapp", "title", "linkedinUrl", "language", "clientType", "sourceLevel1", "sourceLevel2", "stage", "status"].some((k) => r[k] !== void 0 && typeof r[k] !== "string") || r.tags !== void 0 && (!Array.isArray(r.tags) || r.tags.some((t) => typeof t !== "string"))))
+      if (v.rows.some((r) => !record5(r) || !keys2(r, allowed) || !["customer", "contact"].includes(r.entity) || typeof r.sourceRef !== "string" || typeof r.sheetName !== "string" || !Number.isSafeInteger(r.rowNumber) || Number(r.rowNumber) < 1 || !record5(r.rawRow) || ["customerRef", "companyName", "country", "customerType", "businessType", "developmentRestriction", "sourceCreatedAt", "email", "name", "firstName", "lastName", "phone", "whatsapp", "title", "linkedinUrl", "language", "clientType", "sourceLevel1", "sourceLevel2", "stage", "status"].some((k) => r[k] !== void 0 && typeof r[k] !== "string") || r.tags !== void 0 && (!Array.isArray(r.tags) || r.tags.some((t) => typeof t !== "string"))))
         return Promise.resolve(failure("INVALID_INPUT", "\u5DE5\u4F5C\u7C3F\u6765\u6E90\u884C\u683C\u5F0F\u65E0\u6548"));
       return run2(token, (h) => repo.importWorkbook ? repo.importWorkbook(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u5DE5\u4F5C\u7C3F\u5BFC\u5165\u6682\u4E0D\u53EF\u7528")));
     },
     importRows(token, v) {
-      if (!record4(v) || !keys2(v, ["source", "sourceDetail", "idempotencyKey", "rows", "mapping", "kind", "companyMatching"]) || v.kind !== void 0 && !["personal", "operations"].includes(v.kind) || !text3(v.source, LEAD_LIMITS.text) || !text3(v.sourceDetail, LEAD_LIMITS.text, 0) || !text3(v.idempotencyKey, LEAD_LIMITS.key) || !Array.isArray(v.rows) || !v.rows.length || v.rows.length > LEAD_LIMITS.batchRows || v.mapping !== void 0 && (!record4(v.mapping) || Object.values(v.mapping).some((x) => !text3(x, LEAD_LIMITS.text))))
+      if (!record5(v) || !keys2(v, ["source", "sourceDetail", "idempotencyKey", "rows", "mapping", "kind", "companyMatching"]) || v.kind !== void 0 && !["personal", "operations"].includes(v.kind) || !text5(v.source, LEAD_LIMITS.text) || !text5(v.sourceDetail, LEAD_LIMITS.text, 0) || !text5(v.idempotencyKey, LEAD_LIMITS.key) || !Array.isArray(v.rows) || !v.rows.length || v.rows.length > LEAD_LIMITS.batchRows || v.mapping !== void 0 && (!record5(v.mapping) || Object.values(v.mapping).some((x) => !text5(x, LEAD_LIMITS.text))))
         return Promise.resolve(failure("INVALID_INPUT", "\u5BFC\u5165\u53C2\u6570\u65E0\u6548\u6216\u8D85\u8FC7200\u884C"));
       if (v.companyMatching !== void 0 && typeof v.companyMatching !== "boolean")
         return Promise.resolve(failure("INVALID_INPUT", "\u516C\u53F8\u5339\u914D\u53C2\u6570\u65E0\u6548"));
-      if (v.rows.some((r) => !record4(r) || !keys2(r, ["customerKey", "companyName", "email", "name", "country", "customerType", "businessType", "website", "whatsapp", "sourceLevel1", "sourceLevel2", "firstName", "lastName", "title", "phone", "linkedinUrl", "language", "clientType", "stage", "status", "tags", "rawRow"]) || typeof r.customerKey !== "string" || typeof r.companyName !== "string" || typeof r.email !== "string" || ["name", "country", "customerType", "businessType", "website", "whatsapp", "sourceLevel1", "sourceLevel2", "firstName", "lastName", "title", "phone", "linkedinUrl", "language", "clientType", "stage", "status"].some((k) => r[k] !== void 0 && typeof r[k] !== "string") || r.tags !== void 0 && (!Array.isArray(r.tags) || r.tags.some((t) => typeof t !== "string")) || r.rawRow !== void 0 && !record4(r.rawRow)))
+      if (v.rows.some((r) => !record5(r) || !keys2(r, ["customerKey", "companyName", "email", "name", "country", "customerType", "businessType", "website", "whatsapp", "sourceLevel1", "sourceLevel2", "firstName", "lastName", "title", "phone", "linkedinUrl", "language", "clientType", "stage", "status", "tags", "rawRow"]) || typeof r.customerKey !== "string" || typeof r.companyName !== "string" || typeof r.email !== "string" || ["name", "country", "customerType", "businessType", "website", "whatsapp", "sourceLevel1", "sourceLevel2", "firstName", "lastName", "title", "phone", "linkedinUrl", "language", "clientType", "stage", "status"].some((k) => r[k] !== void 0 && typeof r[k] !== "string") || r.tags !== void 0 && (!Array.isArray(r.tags) || r.tags.some((t) => typeof t !== "string")) || r.rawRow !== void 0 && !record5(r.rawRow)))
         return Promise.resolve(failure("INVALID_INPUT", "\u5BFC\u5165\u884C\u65E0\u6548"));
       return run2(token, (h) => repo.importRows(h, v));
     },
     publish(token, id, v) {
-      if (!UUID5.test(id) || !record4(v) || !keys2(v, ["rowIds", "expectedVersion", "idempotencyKey"]) || !Array.isArray(v.rowIds) || !v.rowIds.length || v.rowIds.length > LEAD_LIMITS.batchRows || v.rowIds.some((x) => typeof x !== "string" || !UUID5.test(x)) || !Number.isSafeInteger(v.expectedVersion) || Number(v.expectedVersion) < 1 || !text3(v.idempotencyKey, LEAD_LIMITS.key))
+      if (!UUID7.test(id) || !record5(v) || !keys2(v, ["rowIds", "expectedVersion", "idempotencyKey"]) || !Array.isArray(v.rowIds) || !v.rowIds.length || v.rowIds.length > LEAD_LIMITS.batchRows || v.rowIds.some((x) => typeof x !== "string" || !UUID7.test(x)) || !Number.isSafeInteger(v.expectedVersion) || Number(v.expectedVersion) < 1 || !text5(v.idempotencyKey, LEAD_LIMITS.key))
         return Promise.resolve(failure("INVALID_INPUT", "\u53D1\u5E03\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.publish(h, id, v));
     },
     list(token, v) {
-      if (!v || !["pool", "mine", "operations", "personal", "assigned", "all"].includes(v.view) || !text3(v.search, LEAD_LIMITS.text, 0) || !Number.isSafeInteger(v.limit) || v.limit < 1 || v.limit > LEAD_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0 || v.assignment !== void 0 && !["unassigned", "assigned"].includes(v.assignment) || v.followupOnly !== void 0 && (typeof v.followupOnly !== "boolean" || v.followupOnly && v.view === "pool") || v.stage !== void 0 && (!["cold", ...CRM_STAGES].includes(v.stage) || v.view === "pool"))
+      if (!v || !["pool", "mine", "operations", "personal", "assigned", "all"].includes(v.view) || !text5(v.search, LEAD_LIMITS.text, 0) || !Number.isSafeInteger(v.limit) || v.limit < 1 || v.limit > LEAD_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0 || v.assignment !== void 0 && !["unassigned", "assigned"].includes(v.assignment) || v.followupOnly !== void 0 && (typeof v.followupOnly !== "boolean" || v.followupOnly && v.view === "pool") || v.stage !== void 0 && (!["cold", ...CRM_STAGES].includes(v.stage) || v.view === "pool"))
         return Promise.resolve(failure("INVALID_INPUT", "\u5217\u8868\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.list(h, v));
     },
     detail(token, id) {
-      return UUID5.test(id) ? run2(token, (h) => repo.detail(h, id)) : Promise.resolve(failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728"));
+      return UUID7.test(id) ? run2(token, (h) => repo.detail(h, id)) : Promise.resolve(failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728"));
     },
     claim(token, v) {
       if (!command(v) || !keys2(v, ["customerId", "expectedVersion", "idempotencyKey"]))
@@ -10742,9 +13033,23 @@ function createLeadService(repo, tokens) {
       return run2(token, (h) => repo.claim(h, v));
     },
     followup(token, v) {
-      if (!command(v) || !record4(v) || !keys2(v, ["customerId", "expectedVersion", "idempotencyKey", "note", "stage", "method", "occurredAt", "contactId", "contactStatus", "opportunityId"]) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID5.test(v.opportunityId)) || !text3(v.note, LEAD_LIMITS.note) || v.stage !== void 0 && !["cold", ...CRM_STAGES].includes(v.stage) || v.method !== void 0 && !FOLLOWUP_METHODS.includes(v.method) || v.occurredAt !== void 0 && !validOccurrence(v.occurredAt) || v.contactId !== void 0 && (!Number.isSafeInteger(v.contactId) || Number(v.contactId) < 1) || v.contactStatus !== void 0 && (!CONTACT_TOUCH_STATUSES.includes(v.contactStatus) || v.contactId === void 0 || v.method === "note"))
+      if (!command(v) || !record5(v) || !keys2(v, ["customerId", "expectedVersion", "idempotencyKey", "note", "stage", "method", "occurredAt", "contactId", "contactStatus", "opportunityId"]) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID7.test(v.opportunityId)) || !text5(v.note, LEAD_LIMITS.note) || v.stage !== void 0 && !["cold", ...CRM_STAGES].includes(v.stage) || v.method !== void 0 && !FOLLOWUP_METHODS.includes(v.method) || v.occurredAt !== void 0 && !validOccurrence(v.occurredAt) || v.contactId !== void 0 && (!Number.isSafeInteger(v.contactId) || Number(v.contactId) < 1) || v.contactStatus !== void 0 && (!CONTACT_TOUCH_STATUSES.includes(v.contactStatus) || v.contactId === void 0 || v.method === "note"))
         return Promise.resolve(failure("INVALID_INPUT", "\u8DDF\u8FDB\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.followup(h, v));
+    },
+    resolveLeadIngress(token, v) {
+      const parsed = validateLeadIngressResolution(v);
+      if (!parsed.ok)
+        return Promise.resolve(parsed);
+      return run2(token, (h) => repo.resolveLeadIngress ? repo.resolveLeadIngress(h, parsed.data) : Promise.resolve(failure("UNAVAILABLE", "\u51B2\u7A81\u5904\u7406\u6682\u4E0D\u53EF\u7528")));
+    },
+    leadIngressDecision(token, v) {
+      if (!record5(v) || !keys2(v, ["source", "idempotencyKey"]))
+        return Promise.resolve(failure("INVALID_INPUT", "\u51B2\u7A81\u8BB0\u5F55\u53C2\u6570\u65E0\u6548"));
+      const parsed = validateLeadIngressDecisionQuery(v.source, v.idempotencyKey);
+      if (!parsed.ok)
+        return Promise.resolve(parsed);
+      return run2(token, (h) => repo.leadIngressDecision ? repo.leadIngressDecision(h, parsed.data) : Promise.resolve(failure("UNAVAILABLE", "\u51B2\u7A81\u8BB0\u5F55\u6682\u4E0D\u53EF\u7528")));
     }
   };
 }
@@ -10755,33 +13060,33 @@ var CONTACT_DELETE_ROUTE = "/api/crm/contacts/delete";
 var LIFECYCLE_LIMITS = { batch: 200, text: 500, key: 128, page: 50, pageMax: 100 };
 
 // server/services/crm-lifecycle.ts
-var record5 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+var record6 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var keys3 = (v, allowed) => Object.keys(v).every((k) => allowed.includes(k));
-var text4 = (v, max, min = 1) => typeof v === "string" && v.trim().length >= min && v.length <= max;
+var text6 = (v, max, min = 1) => typeof v === "string" && v.trim().length >= min && v.length <= max;
 var positive2 = (v) => Number.isSafeInteger(v) && Number(v) > 0;
 var uuid2 = (v) => typeof v === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v);
 var invalid3 = () => failure("INVALID_INPUT", "\u8D44\u6599\u64CD\u4F5C\u53C2\u6570\u65E0\u6548");
 function contactDelete(v) {
-  if (!record5(v) || !keys3(v, ["contacts", "idempotencyKey"]) || !text4(v.idempotencyKey, LIFECYCLE_LIMITS.key) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > LIFECYCLE_LIMITS.batch || v.contacts.some((r) => !record5(r) || !keys3(r, ["contactId", "customerId", "expectedVersion"]) || !positive2(r.contactId) || !uuid2(r.customerId) || !positive2(r.expectedVersion)) || new Set(v.contacts.map((r) => r.contactId)).size !== v.contacts.length)
+  if (!record6(v) || !keys3(v, ["contacts", "idempotencyKey"]) || !text6(v.idempotencyKey, LIFECYCLE_LIMITS.key) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > LIFECYCLE_LIMITS.batch || v.contacts.some((r) => !record6(r) || !keys3(r, ["contactId", "customerId", "expectedVersion"]) || !positive2(r.contactId) || !uuid2(r.customerId) || !positive2(r.expectedVersion)) || new Set(v.contacts.map((r) => r.contactId)).size !== v.contacts.length)
     return invalid3();
   return success(v);
 }
 function companyCreate(v) {
-  if (!record5(v) || !keys3(v, ["name", "domain", "idempotencyKey"]) || !text4(v.name, LIFECYCLE_LIMITS.text) || !text4(v.idempotencyKey, LIFECYCLE_LIMITS.key) || v.domain !== void 0 && v.domain !== null && (!text4(v.domain, LIFECYCLE_LIMITS.text) || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(v.domain.trim())))
+  if (!record6(v) || !keys3(v, ["name", "domain", "idempotencyKey"]) || !text6(v.name, LIFECYCLE_LIMITS.text) || !text6(v.idempotencyKey, LIFECYCLE_LIMITS.key) || v.domain !== void 0 && v.domain !== null && (!text6(v.domain, LIFECYCLE_LIMITS.text) || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(v.domain.trim())))
     return invalid3();
   return success({ name: v.name.trim(), domain: typeof v.domain === "string" ? v.domain.trim().toLowerCase() : null, idempotencyKey: v.idempotencyKey });
 }
 function companyDelete(v) {
-  return record5(v) && keys3(v, ["companyId", "expectedRevision", "idempotencyKey"]) && positive2(v.companyId) && text4(v.expectedRevision, LIFECYCLE_LIMITS.text) && text4(v.idempotencyKey, LIFECYCLE_LIMITS.key) ? success(v) : invalid3();
+  return record6(v) && keys3(v, ["companyId", "expectedRevision", "idempotencyKey"]) && positive2(v.companyId) && text6(v.expectedRevision, LIFECYCLE_LIMITS.text) && text6(v.idempotencyKey, LIFECYCLE_LIMITS.key) ? success(v) : invalid3();
 }
 function companyQuery(v) {
-  if (!record5(v) || !keys3(v, ["search", "scope", "limit", "offset"]))
+  if (!record6(v) || !keys3(v, ["search", "scope", "limit", "offset"]))
     return invalid3();
   const q = { search: v.search ?? "", scope: v.scope ?? "all", limit: v.limit ?? LIFECYCLE_LIMITS.page, offset: v.offset ?? 0 };
-  return text4(q.search, LIFECYCLE_LIMITS.text, 0) && ["all", "personal", "assigned"].includes(String(q.scope)) && positive2(q.limit) && Number(q.limit) <= LIFECYCLE_LIMITS.pageMax && Number.isSafeInteger(q.offset) && Number(q.offset) >= 0 ? success(q) : invalid3();
+  return text6(q.search, LIFECYCLE_LIMITS.text, 0) && ["all", "personal", "assigned"].includes(String(q.scope)) && positive2(q.limit) && Number(q.limit) <= LIFECYCLE_LIMITS.pageMax && Number.isSafeInteger(q.offset) && Number(q.offset) >= 0 ? success(q) : invalid3();
 }
 function companyRef(v) {
-  return record5(v) && keys3(v, ["companyId", "scope"]) && positive2(v.companyId) && ["all", "personal", "assigned"].includes(String(v.scope ?? "all")) ? success({ companyId: Number(v.companyId), scope: v.scope ?? "all" }) : invalid3();
+  return record6(v) && keys3(v, ["companyId", "scope"]) && positive2(v.companyId) && ["all", "personal", "assigned"].includes(String(v.scope ?? "all")) ? success({ companyId: Number(v.companyId), scope: v.scope ?? "all" }) : invalid3();
 }
 function createLifecycleService(repo, tokens) {
   function run2(token, v, parse, send2) {
@@ -10794,28 +13099,28 @@ function createLifecycleService(repo, tokens) {
 }
 
 // server/services/contact-assignments.ts
-var UUID6 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID8 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var MILLISECONDS_PER_SECOND10 = 1e3;
 var EMAIL_LIMIT2 = 254;
 var TIME_LIMIT = { hour: 24, minute: 60, second: 60 };
 var UPDATE_FIELDS = ["email", "firstName", "lastName", "title", "phone", "whatsapp", "sourceLevel1", "sourceLevel2", "linkedinUrl", "country", "clientType", "language", "stage", "status", "tags", "preferences"];
-function record6(v) {
+function record7(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 function keys4(v, allowed) {
   return Object.keys(v).every((k) => allowed.includes(k));
 }
-function text5(v, max, min = 1) {
+function text7(v, max, min = 1) {
   return typeof v === "string" && v.trim().length >= min && v.length <= max;
 }
 function uuid3(v) {
-  return typeof v === "string" && UUID6.test(v);
+  return typeof v === "string" && UUID8.test(v);
 }
 function positive3(v) {
   return Number.isSafeInteger(v) && Number(v) > 0;
 }
 function version2(v) {
-  return positive3(v.expectedVersion) && text5(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key);
+  return positive3(v.expectedVersion) && text7(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key);
 }
 function ref(v) {
   return positive3(v.contactId) && uuid3(v.customerId);
@@ -10824,66 +13129,72 @@ function invalid4() {
   return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u6216\u5206\u914D\u53C2\u6570\u65E0\u6548");
 }
 function contactRef(v) {
-  return record6(v) && keys4(v, ["contactId", "customerId"]) && ref(v) ? success(v) : invalid4();
+  return record7(v) && keys4(v, ["contactId", "customerId"]) && ref(v) ? success(v) : invalid4();
 }
 var COMPANY_FIELDS = ["customerType", "name", "domain", "country", "industry", "size", "backcheckData"];
 var COMPANY_REPORT_MAX = 1e5;
 function companyUpdate(v) {
-  if (!record6(v) || !keys4(v, ["contactId", "customerId", "expectedRevision", "idempotencyKey", "fields"]) || !ref(v) || !text5(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || !text5(v.expectedRevision, CONTACT_ASSIGNMENT_LIMITS.text) || !record6(v.fields) || !Object.keys(v.fields).length || !keys4(v.fields, COMPANY_FIELDS))
+  if (!record7(v) || !keys4(v, ["contactId", "customerId", "expectedRevision", "idempotencyKey", "fields"]) || !ref(v) || !text7(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || !text7(v.expectedRevision, CONTACT_ASSIGNMENT_LIMITS.text) || !record7(v.fields) || !Object.keys(v.fields).length || !keys4(v.fields, COMPANY_FIELDS))
     return invalid4();
   for (const [field, value2] of Object.entries(v.fields)) {
     if (field === "customerType" && value2 !== null && value2 !== "\u4EE3\u7406" && value2 !== "\u76F4\u5BA2")
       return invalid4();
     if (field === "backcheckData") {
-      if (value2 !== null && (!record6(value2) || JSON.stringify(value2).length > COMPANY_REPORT_MAX))
+      if (value2 !== null && (!record7(value2) || JSON.stringify(value2).length > COMPANY_REPORT_MAX))
         return invalid4();
-    } else if (field === "name" ? !text5(value2, CONTACT_ASSIGNMENT_LIMITS.text) : value2 !== null && !text5(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0))
+    } else if (field === "name" ? !text7(value2, CONTACT_ASSIGNMENT_LIMITS.text) : value2 !== null && !text7(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0))
       return invalid4();
   }
   return success(v);
 }
 function contactAssignmentCreate(v) {
-  if (!record6(v) || !keys4(v, ["contacts", "targetUserId", "notifyUserIds", "idempotencyKey"]) || !uuid3(v.targetUserId) || !text5(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > CONTACT_ASSIGNMENT_LIMITS.batch || v.contacts.some((x) => !record6(x) || !keys4(x, ["contactId", "customerId", "expectedVersion"]) || !ref(x) || !positive3(x.expectedVersion)) || new Set(v.contacts.map((x) => x.contactId)).size !== v.contacts.length || !Array.isArray(v.notifyUserIds) || v.notifyUserIds.length > CONTACT_ASSIGNMENT_LIMITS.notify || v.notifyUserIds.some((x) => !uuid3(x)) || new Set(v.notifyUserIds).size !== v.notifyUserIds.length)
+  if (!record7(v) || !keys4(v, ["contacts", "targetUserId", "idempotencyKey"]) || !uuid3(v.targetUserId) || !text7(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > CONTACT_ASSIGNMENT_LIMITS.batch || v.contacts.some((x) => !record7(x) || !keys4(x, ["contactId", "customerId", "expectedVersion"]) || !ref(x) || !positive3(x.expectedVersion)) || new Set(v.contacts.map((x) => x.contactId)).size !== v.contacts.length)
     return invalid4();
   return success(v);
 }
 function contactAssignmentDecision(v) {
-  return record6(v) && keys4(v, ["requestId", "expectedVersion", "idempotencyKey"]) && uuid3(v.requestId) && version2(v) ? success(v) : invalid4();
+  return record7(v) && keys4(v, ["requestId", "expectedVersion", "idempotencyKey"]) && uuid3(v.requestId) && version2(v) ? success(v) : invalid4();
+}
+function contactAssignmentTransfer(v) {
+  return record7(v) && keys4(v, ["requestId", "targetUserId", "expectedVersion", "idempotencyKey"]) && uuid3(v.requestId) && uuid3(v.targetUserId) && version2(v) ? success(v) : invalid4();
+}
+function contactAssignmentExpiry(v) {
+  return record7(v) && keys4(v, ["limit"]) && positive3(v.limit) && Number(v.limit) <= CONTACT_ASSIGNMENT_EXPIRY_BATCH ? success(v) : invalid4();
 }
 function contactAssignmentGroupDecision(v) {
-  return record6(v) && keys4(v, ["groupId", "idempotencyKey"]) && uuid3(v.groupId) && text5(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) ? success(v) : invalid4();
+  return record7(v) && keys4(v, ["groupId", "idempotencyKey"]) && uuid3(v.groupId) && text7(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) ? success(v) : invalid4();
 }
 function contactAssignmentQuery(v) {
-  if (!record6(v) || !keys4(v, ["view", "status", "search", "limit", "offset", "requestId", "groupId"]) || v.requestId !== void 0 && !uuid3(v.requestId) || v.groupId !== void 0 && !uuid3(v.groupId) || v.requestId !== void 0 && v.groupId !== void 0)
+  if (!record7(v) || !keys4(v, ["view", "status", "search", "limit", "offset", "requestId", "groupId"]) || v.requestId !== void 0 && !uuid3(v.requestId) || v.groupId !== void 0 && !uuid3(v.groupId) || v.requestId !== void 0 && v.groupId !== void 0)
     return invalid4();
-  const query = { view: v.view ?? "incoming", status: v.status ?? "pending", search: v.search ?? "", limit: v.limit ?? CONTACT_ASSIGNMENT_LIMITS.page, offset: v.offset ?? 0, ...v.requestId !== void 0 ? { requestId: v.requestId } : {}, ...v.groupId !== void 0 ? { groupId: v.groupId } : {} };
-  if (!["incoming", "outgoing"].includes(query.view) || !["pending", "accepted", "rejected", "cancelled"].includes(query.status) || !text5(query.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query.limit) || Number(query.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query.offset) || Number(query.offset) < 0)
+  const query2 = { view: v.view ?? "incoming", status: v.status ?? "pending", search: v.search ?? "", limit: v.limit ?? CONTACT_ASSIGNMENT_LIMITS.page, offset: v.offset ?? 0, ...v.requestId !== void 0 ? { requestId: v.requestId } : {}, ...v.groupId !== void 0 ? { groupId: v.groupId } : {} };
+  if (!["incoming", "outgoing"].includes(query2.view) || !CONTACT_ASSIGNMENT_STATUSES.includes(query2.status) || !text7(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
     return invalid4();
-  return success({ ...query, search: query.search.trim() });
+  return success({ ...query2, search: query2.search.trim() });
 }
 function contactAssignmentGroupQuery(v) {
-  if (!record6(v) || !keys4(v, ["view", "status", "search", "limit", "offset"]))
+  if (!record7(v) || !keys4(v, ["view", "status", "search", "limit", "offset"]))
     return invalid4();
-  const query = { view: v.view ?? "incoming", status: v.status ?? "pending", search: v.search ?? "", limit: v.limit ?? CONTACT_ASSIGNMENT_LIMITS.page, offset: v.offset ?? 0 };
-  if (!["incoming", "outgoing"].includes(query.view) || !["pending", "accepted", "rejected", "cancelled"].includes(query.status) || !text5(query.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query.limit) || Number(query.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query.offset) || Number(query.offset) < 0)
+  const query2 = { view: v.view ?? "incoming", status: v.status ?? "pending", search: v.search ?? "", limit: v.limit ?? CONTACT_ASSIGNMENT_LIMITS.page, offset: v.offset ?? 0 };
+  if (!["incoming", "outgoing"].includes(query2.view) || !CONTACT_ASSIGNMENT_STATUSES.includes(query2.status) || !text7(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
     return invalid4();
-  return success({ ...query, search: query.search.trim() });
+  return success({ ...query2, search: query2.search.trim() });
 }
 function contactUpdate(v) {
-  if (!record6(v) || !keys4(v, ["contactId", "customerId", "expectedVersion", "idempotencyKey", "fields"]) || !ref(v) || !version2(v) || !record6(v.fields) || !Object.keys(v.fields).length || !keys4(v.fields, UPDATE_FIELDS))
+  if (!record7(v) || !keys4(v, ["contactId", "customerId", "expectedVersion", "idempotencyKey", "fields"]) || !ref(v) || !version2(v) || !record7(v.fields) || !Object.keys(v.fields).length || !keys4(v.fields, UPDATE_FIELDS))
     return invalid4();
   for (const [key, value2] of Object.entries(v.fields)) {
     if (key === "tags") {
-      if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.pageMax || value2.some((x) => !text5(x, CONTACT_ASSIGNMENT_LIMITS.text)) || new Set(value2).size !== value2.length)
+      if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.pageMax || value2.some((x) => !text7(x, CONTACT_ASSIGNMENT_LIMITS.text)) || new Set(value2).size !== value2.length)
         return invalid4();
       continue;
     }
     if (key === "preferences") {
-      if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.preferences || value2.some((x) => !text5(x, CONTACT_ASSIGNMENT_LIMITS.preferenceText)) || new Set(value2).size !== value2.length)
+      if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.preferences || value2.some((x) => !text7(x, CONTACT_ASSIGNMENT_LIMITS.preferenceText)) || new Set(value2).size !== value2.length)
         return invalid4();
       continue;
     }
-    if (value2 !== null && !text5(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0) || ["stage", "status"].includes(key) && value2 === null)
+    if (value2 !== null && !text7(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0) || ["stage", "status"].includes(key) && value2 === null)
       return invalid4();
     if (key === "email" && typeof value2 === "string" && value2.trim() && (value2.length > EMAIL_LIMIT2 || !/^\S+@[^\s@]+\.[^\s@]+$/.test(value2.trim())))
       return invalid4();
@@ -10900,7 +13211,7 @@ function occurrence2(v) {
   return d.getUTCFullYear() === Number(p[1]) && d.getUTCMonth() + 1 === Number(p[2]) && d.getUTCDate() === Number(p[3]) && Number(p[4]) < TIME_LIMIT.hour && Number(p[5]) < TIME_LIMIT.minute && Number(p[6]) < TIME_LIMIT.second && (p[8] === void 0 || Number(p[8]) < TIME_LIMIT.hour && Number(p[9]) < TIME_LIMIT.minute) && Number.isFinite(Date.parse(v)) && Date.parse(v) <= Date.now() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND10;
 }
 function contactFollowup(v) {
-  if (!record6(v) || !keys4(v, ["contactId", "customerId", "expectedVersion", "idempotencyKey", "note", "stage", "method", "occurredAt", "contactStatus"]) || !ref(v) || !version2(v) || !text5(v.note, CONTACT_ASSIGNMENT_LIMITS.note) || v.stage !== void 0 && !["cold", ...CRM_STAGES].includes(v.stage) || v.method !== void 0 && !FOLLOWUP_METHODS.includes(v.method) || v.occurredAt !== void 0 && !occurrence2(v.occurredAt) || v.contactStatus !== void 0 && (!CONTACT_TOUCH_STATUSES.includes(v.contactStatus) || v.method === "note"))
+  if (!record7(v) || !keys4(v, ["contactId", "customerId", "expectedVersion", "idempotencyKey", "note", "stage", "method", "occurredAt", "contactStatus"]) || !ref(v) || !version2(v) || !text7(v.note, CONTACT_ASSIGNMENT_LIMITS.note) || v.stage !== void 0 && !["cold", ...CRM_STAGES].includes(v.stage) || v.method !== void 0 && !FOLLOWUP_METHODS.includes(v.method) || v.occurredAt !== void 0 && !occurrence2(v.occurredAt) || v.contactStatus !== void 0 && (!CONTACT_TOUCH_STATUSES.includes(v.contactStatus) || v.method === "note"))
     return invalid4();
   return success(v);
 }
@@ -10911,7 +13222,7 @@ function createContactAssignmentService(repo, tokens) {
     const parsed = validate(v);
     return parsed.ok ? work(tokens.hash(token), parsed.data) : Promise.resolve(parsed);
   }
-  return { ...createLifecycleService(repo, tokens), companyUpdate: (t, v) => run2(t, v, companyUpdate, (h, i) => repo.companyUpdate?.(h, i) ?? Promise.resolve(failure("UNAVAILABLE", "\u516C\u53F8\u8D44\u6599\u4FDD\u5B58\u5C1A\u672A\u5F00\u653E"))), contactDetail: (t, v) => run2(t, v, contactRef, (h, i) => repo.contactDetail(h, i)), contactUpdate: (t, v) => run2(t, v, contactUpdate, (h, i) => repo.contactUpdate(h, i)), contactFollowup: (t, v) => run2(t, v, contactFollowup, (h, i) => repo.contactFollowup(h, i)), assignmentGroups: (t, v) => run2(t, v, contactAssignmentGroupQuery, (h, i) => repo.contactAssignmentGroups(h, i)), assignments: (t, v) => run2(t, v, contactAssignmentQuery, (h, i) => repo.contactAssignments(h, i)), createAssignments: (t, v) => run2(t, v, contactAssignmentCreate, (h, i) => repo.createContactAssignments(h, i)), decide: (t, action, v) => run2(t, v, contactAssignmentDecision, (h, i) => repo.decideContactAssignment(h, action, i)), decideGroup: (t, action, v) => run2(t, v, contactAssignmentGroupDecision, (h, i) => repo.decideContactAssignmentGroup(h, action, i)) };
+  return { ...createLifecycleService(repo, tokens), companyUpdate: (t, v) => run2(t, v, companyUpdate, (h, i) => repo.companyUpdate?.(h, i) ?? Promise.resolve(failure("UNAVAILABLE", "\u516C\u53F8\u8D44\u6599\u4FDD\u5B58\u5C1A\u672A\u5F00\u653E"))), contactDetail: (t, v) => run2(t, v, contactRef, (h, i) => repo.contactDetail(h, i)), contactMonitorDetail: (t, v) => run2(t, v, contactRef, (h, i) => repo.contactMonitorDetail?.(h, i) ?? Promise.resolve(failure("UNAVAILABLE", "\u76D1\u7763\u8BE6\u60C5\u5C1A\u672A\u5F00\u653E"))), contactUpdate: (t, v) => run2(t, v, contactUpdate, (h, i) => repo.contactUpdate(h, i)), contactFollowup: (t, v) => run2(t, v, contactFollowup, (h, i) => repo.contactFollowup(h, i)), assignmentGroups: (t, v) => run2(t, v, contactAssignmentGroupQuery, (h, i) => repo.contactAssignmentGroups(h, i)), assignments: (t, v) => run2(t, v, contactAssignmentQuery, (h, i) => repo.contactAssignments(h, i)), createAssignments: (t, v) => run2(t, v, contactAssignmentCreate, (h, i) => repo.createContactAssignments(h, i)), decide: (t, action, v) => run2(t, v, contactAssignmentDecision, (h, i) => repo.decideContactAssignment(h, action, i)), decideGroup: (t, action, v) => run2(t, v, contactAssignmentGroupDecision, (h, i) => repo.decideContactAssignmentGroup(h, action, i)), transfer: (t, v) => run2(t, v, contactAssignmentTransfer, (h, i) => repo.transferContactAssignment?.(h, i) ?? Promise.resolve(failure("UNAVAILABLE", "\u8F6C\u4EA4\u5C1A\u672A\u5F00\u653E"))), expire: (t, v) => run2(t, v, contactAssignmentExpiry, (h, i) => repo.processExpiredAssignments?.(h, i) ?? Promise.resolve(failure("UNAVAILABLE", "\u8D85\u65F6\u5904\u7406\u5C1A\u672A\u5F00\u653E"))) };
 }
 
 // server/transport/crm-lifecycle-http.ts
@@ -10972,32 +13283,45 @@ function createLifecycleHandler(service) {
 function createContactAssignmentHandler(service) {
   return async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`), path4 = url.pathname, token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1] ?? "";
+    if (/^\/api\/crm\/leads\/[^/]+\/assign$/.test(path4)) {
+      send(res, failure("CONFLICT", "\u8BF7\u4F7F\u7528\u8054\u7CFB\u4EBA\u5206\u914D\u8BF7\u6C42\u5E76\u7B49\u5F85\u63A5\u6536"));
+      return;
+    }
     if (path4 === CONTACT_DELETE_ROUTE || path4 === COMPANY_ROUTE || path4.startsWith(COMPANY_ROUTE + "/")) {
       await createLifecycleHandler(service)(req, res);
       return;
     }
     if (req.method === "GET" && path4 === CONTACT_ASSIGNMENT_ROUTES.assignments) {
-      const query = {};
+      const query2 = {};
       for (const [k, v] of url.searchParams) {
-        if (k in query) {
+        if (k in query2) {
           send(res, failure("INVALID_INPUT", "\u67E5\u8BE2\u53C2\u6570\u91CD\u590D"));
           return;
         }
-        query[k] = ["limit", "offset"].includes(k) ? Number(v) : v;
+        query2[k] = ["limit", "offset"].includes(k) ? Number(v) : v;
       }
-      send(res, await service.assignments(token, query));
+      send(res, await service.assignments(token, query2));
       return;
     }
     if (req.method === "GET" && path4 === CONTACT_ASSIGNMENT_ROUTES.groups) {
-      const query = {};
+      const query2 = {};
       for (const [k, v] of url.searchParams) {
-        if (k in query) {
+        if (k in query2) {
           send(res, failure("INVALID_INPUT", "\u67E5\u8BE2\u53C2\u6570\u91CD\u590D"));
           return;
         }
-        query[k] = ["limit", "offset"].includes(k) ? Number(v) : v;
+        query2[k] = ["limit", "offset"].includes(k) ? Number(v) : v;
       }
-      send(res, await service.assignmentGroups(token, query));
+      send(res, await service.assignmentGroups(token, query2));
+      return;
+    }
+    const monitor = new RegExp("^" + CONTACT_ASSIGNMENT_ROUTES.monitor + "/(\\d+)$").exec(path4);
+    if (req.method === "GET" && monitor) {
+      if ([...url.searchParams.keys()].some((k) => k !== "customerId") || url.searchParams.getAll("customerId").length !== 1) {
+        send(res, failure("INVALID_INPUT", "\u76D1\u7763\u8054\u7CFB\u4EBA\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      send(res, await service.contactMonitorDetail(token, { contactId: Number(monitor[1]), customerId: url.searchParams.get("customerId") }));
       return;
     }
     const contact2 = /^\/api\/crm\/contacts\/(\d+)(?:\/(update|followups|company))?$/.exec(path4);
@@ -11019,14 +13343,18 @@ function createContactAssignmentHandler(service) {
         send(res, await service.createAssignments(token, parsed.data));
         return;
       }
-      const decision = /^\/api\/crm\/contact-assignments\/([^/]+)\/(accept|reject|cancel)$/.exec(path4), groupDecision = /^\/api\/crm\/contact-assignments\/groups\/([^/]+)\/(accept|reject|cancel)$/.exec(path4), field = decision ? "requestId" : groupDecision ? "groupId" : "contactId", id = decision || groupDecision ? (decision ?? groupDecision)[1] : contact2 ? Number(contact2[1]) : void 0;
-      if (decision || groupDecision || contact2?.[2]) {
+      if (path4 === CONTACT_ASSIGNMENT_ROUTES.expire) {
+        send(res, await service.expire(token, parsed.data));
+        return;
+      }
+      const transfer = /^\/api\/crm\/contact-assignments\/([^/]+)\/transfer$/.exec(path4), decision2 = /^\/api\/crm\/contact-assignments\/([^/]+)\/(accept|reject|cancel)$/.exec(path4), groupDecision = /^\/api\/crm\/contact-assignments\/groups\/([^/]+)\/(accept|reject|cancel)$/.exec(path4), field = transfer || decision2 ? "requestId" : groupDecision ? "groupId" : "contactId", id = transfer || decision2 || groupDecision ? (transfer ?? decision2 ?? groupDecision)[1] : contact2 ? Number(contact2[1]) : void 0;
+      if (transfer || decision2 || groupDecision || contact2?.[2]) {
         if (!parsed.data || typeof parsed.data !== "object" || Array.isArray(parsed.data) || field in parsed.data && parsed.data[field] !== id) {
           send(res, failure("INVALID_INPUT", "\u8DEF\u5F84\u4E0E\u7F16\u53F7\u4E0D\u4E00\u81F4"));
           return;
         }
         const input = { ...parsed.data, [field]: id };
-        send(res, decision ? await service.decide(token, decision[2], input) : groupDecision ? await service.decideGroup(token, groupDecision[2], input) : contact2[2] === "company" ? await service.companyUpdate(token, input) : contact2[2] === "update" ? await service.contactUpdate(token, input) : await service.contactFollowup(token, input));
+        send(res, transfer ? await service.transfer(token, input) : decision2 ? await service.decide(token, decision2[2], input) : groupDecision ? await service.decideGroup(token, groupDecision[2], input) : contact2[2] === "company" ? await service.companyUpdate(token, input) : contact2[2] === "update" ? await service.contactUpdate(token, input) : await service.contactFollowup(token, input));
         return;
       }
     }
@@ -11062,27 +13390,27 @@ function createCrmHandler(service) {
     const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`), path4 = url.pathname, method = request2.method;
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
     if (method === "GET" && path4 === CENTER_CONTACT_ROUTE) {
-      const query = {};
+      const query2 = {};
       for (const [key, value2] of url.searchParams) {
-        if (key in query) {
+        if (key in query2) {
           send(response, failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u67E5\u8BE2\u53C2\u6570\u91CD\u590D"));
           return;
         }
-        query[key] = ["limit", "offset"].includes(key) ? Number(value2) : key === "followupOnly" ? value2 === "true" ? true : value2 === "false" ? false : value2 : value2;
+        query2[key] = ["limit", "offset"].includes(key) ? Number(value2) : key === "followupOnly" ? value2 === "true" ? true : value2 === "false" ? false : value2 : value2;
       }
-      send(response, await service.contacts(token, query));
+      send(response, await service.contacts(token, query2));
       return;
     }
     if (method === "GET" && path4 === CENTER_CONTACT_GROUP_ROUTE) {
-      const query = {};
+      const query2 = {};
       for (const [key, value2] of url.searchParams) {
-        if (key in query) {
+        if (key in query2) {
           send(response, failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u5206\u7EC4\u67E5\u8BE2\u53C2\u6570\u91CD\u590D"));
           return;
         }
-        query[key] = ["limit", "offset"].includes(key) ? Number(value2) : value2;
+        query2[key] = ["limit", "offset"].includes(key) ? Number(value2) : value2;
       }
-      send(response, await service.contactGroups(token, query));
+      send(response, await service.contactGroups(token, query2));
       return;
     }
     if (method === "GET" && path4 === LEAD_ROUTES.members) {
@@ -11140,8 +13468,33 @@ function createCrmHandler(service) {
   };
 }
 
+// server/transport/lead-http.ts
+function createLeadIngressHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
+    const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (request2.method === "GET" && url.pathname === LEAD_INGRESS_ROUTES.decision) {
+      if ([...url.searchParams.keys()].some((key) => !["source", "idempotencyKey"].includes(key)) || url.searchParams.getAll("source").length !== 1 || url.searchParams.getAll("idempotencyKey").length !== 1) {
+        send(response, failure("INVALID_INPUT", "\u51B2\u7A81\u8BB0\u5F55\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      send(response, await service.leadIngressDecision(token, {
+        source: url.searchParams.get("source"),
+        idempotencyKey: url.searchParams.get("idempotencyKey")
+      }));
+      return;
+    }
+    if (request2.method === "POST" && url.pathname === LEAD_INGRESS_ROUTES.resolve) {
+      const parsed = await body(request2, LEAD_LIMITS.bodyBytes);
+      send(response, parsed.ok ? await service.resolveLeadIngress(token, parsed.data) : parsed);
+      return;
+    }
+    send(response, failure("NOT_FOUND", "\u7EBF\u7D22\u51B2\u7A81\u63A5\u53E3\u4E0D\u5B58\u5728"));
+  };
+}
+
 // server/adapters/postgres/notification-repository.ts
-var import_node_crypto15 = require("node:crypto");
+var import_node_crypto21 = require("node:crypto");
 
 // server/adapters/postgres/assignment-schema.ts
 var ASSIGNMENT_VERSION = "009-directed-assignment-public";
@@ -11169,271 +13522,18 @@ CREATE TABLE crm_device_cursors(user_id uuid NOT NULL REFERENCES public.identity
 CREATE TABLE crm_notification_reads(user_id uuid NOT NULL REFERENCES public.identity_users(user_id),delivery_id uuid NOT NULL REFERENCES crm_event_deliveries(delivery_id),read_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(user_id,delivery_id));
 `;
 
-// server/core/tasks.ts
-var TASK_ROUTES = { tasks: "/api/crm/tasks", rescheduleAction: "reschedule", completeAction: "complete" };
-var TASK_LIMITS = { title: 500, feedback: 2e4, key: 128, page: 25, pageMax: 100, dueBatch: 50, dueBatchMax: 100, poll_seconds: 5 };
-var TASK_DUE_EVENT = "crm.task.due";
-var TIME_LIMITS2 = { hours: 24, minutes: 60, seconds: 60 };
-function validTaskTime(value2) {
-  if (typeof value2 !== "string")
-    return false;
-  const p = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-](\d{2}):(\d{2}))$/.exec(value2);
-  if (!p)
-    return false;
-  const [, year, month, day, hour, minute, second, , oh, om] = p;
-  const d = /* @__PURE__ */ new Date(`${year}-${month}-${day}T00:00:00Z`);
-  return d.getUTCFullYear() === Number(year) && d.getUTCMonth() + 1 === Number(month) && d.getUTCDate() === Number(day) && Number(hour) < TIME_LIMITS2.hours && Number(minute) < TIME_LIMITS2.minutes && Number(second) < TIME_LIMITS2.seconds && (oh === void 0 || Number(oh) < TIME_LIMITS2.hours && Number(om) < TIME_LIMITS2.minutes) && Number.isFinite(Date.parse(value2));
-}
-
 // server/core/opportunities.ts
 var OPPORTUNITY_ROUTES = { opportunities: "/api/crm/opportunities", stageAction: "stage" };
 var OPPORTUNITY_LIMITS = { title: 500, description: 2e4, route: 128, source: 500, evidence: 4096, reason: 2e3, key: 128, page: 25, pageMax: 100, amountWholeDigits: 12, amountFractionDigits: 2 };
 var OPPORTUNITY_STAGES = ["inquiry", "quote_sent", "negotiation", "booking_confirmed", "closed_won", "closed_lost"];
 var OPPORTUNITY_EVENTS = { created: "crm.opportunity.created", stageChanged: "crm.opportunity.stage_changed" };
 
-// server/adapters/postgres/task-repository.ts
-var import_node_crypto14 = require("node:crypto");
-
-// server/adapters/postgres/task-schema.ts
-var TASK_VERSION = "017-followup-tasks-public";
-var TASK_LOCK = 19041017;
-var TASK_SQL = `
-CREATE TABLE crm_followup_tasks (
- task_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
- title text NOT NULL CHECK(btrim(title)<>'' AND length(title)<=${TASK_LIMITS.title}),due_at timestamptz NOT NULL CHECK(isfinite(due_at)),
- status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','completed')),version integer NOT NULL DEFAULT 1 CHECK(version>0),
- created_by uuid NOT NULL REFERENCES public.identity_users(user_id),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
- completed_at timestamptz,completed_by uuid REFERENCES public.identity_users(user_id),feedback text,
- CHECK((status='open' AND completed_at IS NULL AND completed_by IS NULL AND feedback IS NULL) OR (status='completed' AND completed_at IS NOT NULL AND completed_by IS NOT NULL AND feedback IS NOT NULL AND btrim(feedback)<>'' AND length(feedback)<=${TASK_LIMITS.feedback}))
-);
-CREATE INDEX idx_crm_tasks_customer ON crm_followup_tasks(customer_id,due_at,task_id);
-CREATE INDEX idx_crm_tasks_due ON crm_followup_tasks(due_at,task_id) WHERE status='open';
-CREATE TABLE crm_task_due_receipts (
- task_id uuid NOT NULL REFERENCES crm_followup_tasks(task_id),task_version integer NOT NULL CHECK(task_version>0),
- responsible_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),event_id uuid NOT NULL UNIQUE REFERENCES public.identity_outbox(event_id),
- PRIMARY KEY(task_id,task_version)
-);
-CREATE FUNCTION crm_tasks_customer_owner_changed() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
- IF OLD.owner_user_id IS DISTINCT FROM NEW.owner_user_id THEN
-  UPDATE crm_followup_tasks SET version=version+1,updated_at=clock_timestamp() WHERE customer_id=NEW.customer_id AND status='open';
- END IF;
- RETURN NEW;
-END $$;
-CREATE TRIGGER crm_tasks_customer_owner_changed AFTER UPDATE OF owner_user_id ON crm_customers FOR EACH ROW EXECUTE FUNCTION crm_tasks_customer_owner_changed();
-`;
-
-// server/adapters/postgres/task-repository.ts
-var UUID7 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-function administrator2(a) {
-  return a.roles.includes("admin") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.read.all");
-}
-function operations(a) {
-  return a.roles.includes("operations") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("followups.read");
-}
-function canSee(a, c) {
-  return administrator2(a) || operations(a) && c.origin === "operations" || c.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
-}
-function canManage(a, c) {
-  return a.capabilities.includes("leads.develop") && (administrator2(a) || operations(a) && c.origin === "operations" && c.owner_user_id === null || c.owner_user_id === a.userId && canSee(a, c));
-}
-async function access(db, userId) {
-  const r = await db.query(`SELECT u.user_id,a.scope,a.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM public.identity_users u JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active WHERE u.user_id=$1 AND u.active AND NOT u.must_change_password`, [userId]);
-  if (!r.rows.length)
-    return null;
-  const row2 = r.rows[0], roles = row2.roles;
-  if (!roles.length)
-    return null;
-  return { userId: row2.user_id, roles, scope: row2.scope, capabilities: effectiveCapabilitiesFor(roles, row2.capabilities) };
-}
-async function canProjectTaskDue(db, event3, a) {
-  const p = event3.payload;
-  if (!p || typeof p.taskId !== "string" || !UUID7.test(p.taskId) || !Number.isSafeInteger(p.taskVersion) || typeof p.dueAt !== "string" || typeof p.responsibleUserId !== "string" || !event3.recipient_user_ids?.includes(a.userId))
-    return false;
-  const r = await db.query(`SELECT c.*,t.version AS task_version,t.due_at,t.status,COALESCE(c.owner_user_id,c.created_by) AS responsible_user_id FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) WHERE t.task_id=$1 AND c.customer_id=$2 AND t.due_at<=clock_timestamp()`, [p.taskId, event3.customer_id]);
-  const row2 = r.rows[0];
-  if (!row2 || row2.status !== "open" || row2.task_version !== p.taskVersion || new Date(row2.due_at).toISOString() !== p.dueAt || row2.responsible_user_id !== p.responsibleUserId || row2.responsible_user_id !== a.userId)
-    return false;
-  const current = await access(db, a.userId);
-  return !!current && canManage(current, row2);
-}
-var COLUMNS = `t.opportunity_id AS "opportunityId",(SELECT op.title FROM crm_opportunities op WHERE op.opportunity_id=t.opportunity_id AND op.customer_id=t.customer_id) AS "opportunityTitle",t.task_id AS "taskId",t.customer_id AS "customerId",t.title,t.due_at AS "dueAt",t.status,t.version,t.created_by AS "createdBy",t.created_at AS "createdAt",t.updated_at AS "updatedAt",t.completed_at AS "completedAt",t.completed_by AS "completedBy",t.feedback,COALESCE(c.owner_user_id,c.created_by) AS "responsibleUserId",u.display_name AS "responsibleName"`;
-function taskRow(r, manage2) {
-  return { ...r, dueAt: r.dueAt.toISOString(), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), completedAt: r.completedAt instanceof Date ? r.completedAt.toISOString() : null, canManage: manage2 };
-}
-var PostgresTaskRepository = class {
-  constructor(pool, log) {
-    this.pool = pool;
-    this.log = log;
-    assertCenterDatabasePool(pool);
-  }
-  async tx(fn) {
-    let db;
-    try {
-      db = await this.pool.connect();
-      await db.query("BEGIN");
-      await db.query("SELECT pg_advisory_xact_lock($1)", [ADMIN_LOCK]);
-      await db.query("SELECT pg_advisory_xact_lock($1)", [TASK_LOCK]);
-      const result2 = await fn(db);
-      await db.query(result2.ok ? "COMMIT" : "ROLLBACK");
-      return result2;
-    } catch (error) {
-      if (db)
-        try {
-          await db.query("ROLLBACK");
-        } catch (rollbackError) {
-          this.log.write("ERROR", "tasks.rollback", `\u4EFB\u52A1\u56DE\u6EDA\u5931\u8D25 ${rollbackError instanceof Error ? rollbackError.stack ?? rollbackError.message : "UNKNOWN"}`);
-        }
-      this.log.write("ERROR", "tasks.pg", `\u4EFB\u52A1\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25 code=${error && typeof error === "object" && "code" in error ? String(error.code) : "UNKNOWN"} ${error instanceof Error ? error.stack ?? error.message : "UNKNOWN"}`);
-      return failure("DATABASE_ERROR", "\u4EFB\u52A1\u670D\u52A1\u6682\u4E0D\u53EF\u7528");
-    } finally {
-      db?.release();
-    }
-  }
-  async actor(db, hash) {
-    const u = await db.query(`SELECT u.user_id FROM public.identity_sessions s JOIN public.identity_users u USING(user_id) WHERE s.token_hash=$1 AND s.client='api' AND s.revoked_at IS NULL AND s.expires_at>now() AND u.active AND NOT u.must_change_password AND s.security_revision=u.security_revision`, [hash]);
-    return u.rows.length ? access(db, u.rows[0].user_id) : null;
-  }
-  async authorized(hash, fn) {
-    return this.tx(async (db) => {
-      const a = await this.actor(db, hash);
-      return a ? fn(db, a) : failure("UNAUTHORIZED", "CRM\u4F1A\u8BDD\u6216\u4EA7\u54C1\u51C6\u5165\u5DF2\u5931\u6548");
-    });
-  }
-  async customer(db, id) {
-    const r = await db.query("SELECT customer_id,created_by,owner_user_id,origin,state,version FROM crm_customers WHERE customer_id=$1 FOR SHARE", [id]);
-    return r.rows[0];
-  }
-  async one(db, id, a, lock = false) {
-    const r = await db.query(`SELECT ${COLUMNS} FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) WHERE t.task_id=$1 ${lock ? "FOR UPDATE OF t" : ""}`, [id]);
-    if (!r.rows.length)
-      return failure("NOT_FOUND", "\u4EFB\u52A1\u4E0D\u5B58\u5728");
-    const c = await this.customer(db, r.rows[0].customerId);
-    if (!c || !canSee(a, c))
-      return failure("NOT_FOUND", "\u4EFB\u52A1\u4E0D\u5B58\u5728");
-    return success(taskRow(r.rows[0], canManage(a, c)));
-  }
-  async cached(db, a, operation, input, fn) {
-    const digest = (0, import_node_crypto14.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
-    const old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
-    if (old.rows.length) {
-      if (old.rows[0].digest !== digest)
-        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
-      return this.one(db, old.rows[0].response.taskId, a);
-    }
-    const result2 = await fn();
-    if (result2.ok)
-      await db.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, operation, input.idempotencyKey, digest, JSON.stringify({ taskId: result2.data.taskId })]);
-    return result2;
-  }
-  async migrate() {
-    return this.tx(async (db) => {
-      const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TASK_VERSION]);
-      const hash = (0, import_node_crypto14.createHash)("sha256").update(TASK_SQL).digest("hex");
-      if (old.rows.length && old.rows[0].checksum !== hash)
-        return failure("CONFLICT", "\u4EFB\u52A1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
-      if (!old.rows.length) {
-        await db.query(TASK_SQL);
-        await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [TASK_VERSION, hash]);
-      }
-      return success(void 0);
-    });
-  }
-  create(hash, input) {
-    return this.authorized(hash, async (db, a) => {
-      const c = await this.customer(db, input.customerId);
-      if (!c || !canSee(a, c))
-        return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728");
-      if (!canManage(a, c))
-        return failure("FORBIDDEN", "\u53EA\u80FD\u5904\u7406\u81EA\u8EAB\u4EFB\u52A1");
-      return this.cached(db, a, `task:create:${input.customerId}`, input, async () => {
-        if (c.version !== input.expectedCustomerVersion)
-          return failure("CONFLICT", "\u5BA2\u6237\u7248\u672C\u5DF2\u53D8\u5316");
-        if (input.opportunityId) {
-          const opportunity = await db.query("SELECT opportunity_id FROM crm_opportunities WHERE opportunity_id=$1 AND customer_id=$2", [input.opportunityId, input.customerId]);
-          if (!opportunity.rows.length)
-            return failure("INVALID_INPUT", "\u5546\u673A\u4E0D\u5C5E\u4E8E\u5F53\u524D\u5BA2\u6237");
-        }
-        const responsible = c.owner_user_id ?? c.created_by, member = await access(db, responsible);
-        if (!member || !canManage(member, c))
-          return failure("CONFLICT", "\u4EFB\u52A1\u8D1F\u8D23\u4EBA\u5DF2\u505C\u7528\u6216\u65E0\u5F00\u53D1\u6743\u9650");
-        const r = await db.query(`INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,opportunity_id) VALUES($1,$2,$3,$4,$5) RETURNING task_id`, [input.customerId, input.title.trim(), input.dueAt, a.userId, input.opportunityId ?? null]);
-        return this.one(db, r.rows[0].task_id, a);
-      });
-    });
-  }
-  list(hash, input) {
-    return this.authorized(hash, async (db, a) => {
-      const owner = a.capabilities.includes("leads.develop"), ops = operations(a);
-      const visibility2 = administrator2(a) ? "($1::uuid IS NOT NULL)" : ops ? `(c.origin='operations'${owner ? " OR c.owner_user_id=$1" : ""})` : owner ? "c.owner_user_id=$1" : "FALSE AND $1::uuid IS NOT NULL";
-      const filter = `WHERE (${visibility2}) AND ($2::uuid IS NULL OR c.customer_id=$2) AND ($3::text IS NULL OR t.status=$3)`;
-      const params = [a.userId, input.customerId ?? null, input.status ?? null];
-      const count = await db.query(`SELECT count(*)::int AS n FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) ${filter}`, params);
-      const rows = await db.query(`SELECT ${COLUMNS},c.created_by,c.owner_user_id,c.origin,c.state FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) ${filter} ORDER BY CASE WHEN t.status='open' THEN 0 ELSE 1 END,t.due_at,t.task_id LIMIT $4 OFFSET $5`, [...params, input.limit, input.offset]);
-      return success({ items: rows.rows.map((r) => {
-        const manage2 = canManage(a, r);
-        delete r.created_by;
-        delete r.owner_user_id;
-        delete r.origin;
-        delete r.state;
-        return taskRow(r, manage2);
-      }), total: count.rows[0].n });
-    });
-  }
-  detail(hash, id) {
-    return this.authorized(hash, (db, a) => this.one(db, id, a));
-  }
-  reschedule(hash, input) {
-    return this.authorized(hash, async (db, a) => {
-      const existing = await this.one(db, input.taskId, a, true);
-      if (!existing.ok)
-        return existing;
-      if (!existing.data.canManage)
-        return failure("FORBIDDEN", "\u53EA\u80FD\u5904\u7406\u81EA\u8EAB\u4EFB\u52A1");
-      return this.cached(db, a, `task:reschedule:${input.taskId}`, input, async () => {
-        const r = await db.query(`UPDATE crm_followup_tasks SET due_at=$2,version=version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND status='open' AND version=$3 RETURNING task_id`, [input.taskId, input.dueAt, input.expectedVersion]);
-        if (!r.rows.length)
-          return failure("CONFLICT", "\u4EFB\u52A1\u5DF2\u5B8C\u6210\u6216\u7248\u672C\u5DF2\u53D8\u5316");
-        return this.one(db, input.taskId, a);
-      });
-    });
-  }
-  complete(hash, input) {
-    return this.authorized(hash, async (db, a) => {
-      const existing = await this.one(db, input.taskId, a, true);
-      if (!existing.ok)
-        return existing;
-      if (!existing.data.canManage)
-        return failure("FORBIDDEN", "\u53EA\u80FD\u5904\u7406\u81EA\u8EAB\u4EFB\u52A1");
-      return this.cached(db, a, `task:complete:${input.taskId}`, input, async () => {
-        const r = await db.query(`UPDATE crm_followup_tasks SET status='completed',feedback=$2,completed_at=clock_timestamp(),completed_by=$3,version=version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND status='open' AND version=$4 RETURNING task_id`, [input.taskId, input.feedback.trim(), a.userId, input.expectedVersion]);
-        if (!r.rows.length)
-          return failure("CONFLICT", "\u4EFB\u52A1\u5DF2\u5B8C\u6210\u6216\u7248\u672C\u5DF2\u53D8\u5316");
-        return this.one(db, input.taskId, a);
-      });
-    });
-  }
-  async processDue(limit) {
-    return this.tx(async (db) => {
-      const rows = await db.query(`SELECT t.task_id,t.customer_id,t.opportunity_id,t.version,t.due_at,c.version AS customer_version,COALESCE(c.owner_user_id,c.created_by) AS responsible_user_id FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active WHERE t.status='open' AND t.due_at<=clock_timestamp() AND u.active AND NOT u.must_change_password AND EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role IN ('admin','operations','sales')) AND (a.capabilities IS NULL OR a.capabilities ? 'leads.develop') AND (c.owner_user_id=u.user_id OR c.owner_user_id IS NULL AND a.scope IN ('shared','summary') AND EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND (g.role='admin' AND (a.capabilities IS NULL OR a.capabilities ? 'leads.read.all') OR g.role='operations' AND (a.capabilities IS NULL OR a.capabilities ? 'followups.read')))) AND NOT EXISTS(SELECT 1 FROM crm_task_due_receipts d WHERE d.task_id=t.task_id AND d.task_version=t.version) ORDER BY t.due_at,t.task_id LIMIT $1 FOR UPDATE OF t SKIP LOCKED`, [limit]);
-      let count = 0;
-      for (const r of rows.rows) {
-        const c = await this.customer(db, r.customer_id), member = await access(db, r.responsible_user_id);
-        if (!c || !member || !canManage(member, c))
-          continue;
-        const event3 = await db.query(`INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,'crm',$3,$4,$5,$6::uuid[]) RETURNING event_id`, [TASK_DUE_EVENT, r.responsible_user_id, r.version, r.customer_id, JSON.stringify({ customerId: r.customer_id, version: r.customer_version, taskId: r.task_id, ...r.opportunity_id ? { opportunityId: r.opportunity_id } : {}, taskVersion: r.version, dueAt: new Date(r.due_at).toISOString(), responsibleUserId: r.responsible_user_id }), [r.responsible_user_id]]);
-        await db.query("INSERT INTO crm_task_due_receipts(task_id,task_version,responsible_user_id,event_id) VALUES($1,$2,$3,$4)", [r.task_id, r.version, r.responsible_user_id, event3.rows[0].event_id]);
-        count++;
-      }
-      return success(count);
-    });
-  }
-};
-
 // server/adapters/postgres/notification-repository.ts
 var CONTACT_EVENTS = [...Object.values(CONTACT_ASSIGNMENT_EVENTS), ...Object.values(CONTACT_SHARING_EVENTS)];
-var CONTACT_REQUEST_EVENTS = [CONTACT_ASSIGNMENT_EVENTS.requested, CONTACT_ASSIGNMENT_EVENTS.accepted, CONTACT_ASSIGNMENT_EVENTS.rejected, CONTACT_ASSIGNMENT_EVENTS.cancelled, ...Object.values(CONTACT_SHARING_EVENTS)];
+var ASSIGNMENT_REQUEST_EVENTS = [CONTACT_ASSIGNMENT_EVENTS.requested, CONTACT_ASSIGNMENT_EVENTS.accepted, CONTACT_ASSIGNMENT_EVENTS.rejected, CONTACT_ASSIGNMENT_EVENTS.cancelled, CONTACT_ASSIGNMENT_EVENTS.expired, CONTACT_ASSIGNMENT_EVENTS.transferRequested, CONTACT_ASSIGNMENT_EVENTS.transferred, CONTACT_ASSIGNMENT_EVENTS.transferCancelled];
+var CONTACT_REQUEST_EVENTS = [...ASSIGNMENT_REQUEST_EVENTS, ...Object.values(CONTACT_SHARING_EVENTS)];
 var OPPORTUNITY_EVENT_TYPES = Object.values(OPPORTUNITY_EVENTS);
+var TEAM_ATTENTION_EVENT_TYPES = Object.values(TEAM_ATTENTION_EVENTS);
 var SUMMARY_NOTE_MAX = 160;
 var SELF_CREATED_EVENT = "crm.customer.created";
 function visible(a, c, eventType) {
@@ -11460,13 +13560,14 @@ var PostgresNotificationRepository = class {
       const r = await fn(db);
       await db.query(r.ok ? "COMMIT" : "ROLLBACK");
       return r;
-    } catch (e) {
+    } catch (error) {
       try {
         await db.query("ROLLBACK");
       } catch {
         this.log.write("ERROR", "notifications.rollback", "\u901A\u77E5\u56DE\u6EDA\u5931\u8D25");
       }
-      this.log.write("ERROR", "notifications.pg", "\u901A\u77E5\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25");
+      const code2 = error && typeof error === "object" && "code" in error ? String(error.code) : "UNKNOWN", message = error instanceof Error ? error.message : "unknown";
+      this.log.write("ERROR", "notifications.pg", `\u901A\u77E5\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25 code=${code2} message=${message}`);
       return failure("DATABASE_ERROR", "\u901A\u77E5\u670D\u52A1\u6682\u4E0D\u53EF\u7528");
     } finally {
       db.release();
@@ -11475,7 +13576,7 @@ var PostgresNotificationRepository = class {
   async migrate() {
     return this.tx(async (db) => {
       await db.query("SELECT pg_advisory_xact_lock($1)", [NOTIFICATION_LOCK]);
-      const sum = (0, import_node_crypto15.createHash)("sha256").update(NOTIFICATION_SQL).digest("hex");
+      const sum = (0, import_node_crypto21.createHash)("sha256").update(NOTIFICATION_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [NOTIFICATION_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== sum)
         return failure("CONFLICT", "\u901A\u77E5\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -11483,7 +13584,7 @@ var PostgresNotificationRepository = class {
         await db.query(NOTIFICATION_SQL);
         await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [NOTIFICATION_VERSION, sum]);
       }
-      const nextSum = (0, import_node_crypto15.createHash)("sha256").update(ASSIGNMENT_SQL).digest("hex");
+      const nextSum = (0, import_node_crypto21.createHash)("sha256").update(ASSIGNMENT_SQL).digest("hex");
       const next = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [ASSIGNMENT_VERSION]);
       if (next.rows.length && next.rows[0].checksum !== nextSum)
         return failure("CONFLICT", "\u5206\u914D\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -11523,6 +13624,21 @@ var PostgresNotificationRepository = class {
     const row2 = await contact(db, { contactId: Number(contactId), customerId });
     return !!row2 && read(a, row2);
   }
+  async teamAttentionAccess(db, a, itemId) {
+    if (typeof itemId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(itemId))
+      return { canOpen: false, version: 0, contactId: null, contactName: null };
+    const oversight2 = a.roles.includes("admin") || a.roles.includes("operations");
+    const row2 = await db.query(`SELECT i.version,i.contact_id AS "contactId",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),NULLIF(ct.email,''),'\u8054\u7CFB\u4EBA') AS "contactName",
+    ($2::boolean OR i.target_member_user_id=$1 OR EXISTS(
+      SELECT 1 FROM crm_org_assignments target
+      JOIN crm_org_units team ON team.unit_id=target.unit_id AND team.kind='sales_team'
+      JOIN crm_org_assignments leader ON leader.unit_id=target.unit_id AND leader.role='leader'
+      WHERE target.user_id=i.target_member_user_id AND target.role='member' AND leader.user_id=$1
+    )) AS "canOpen"
+    FROM crm_team_attention_items i JOIN contacts ct ON ct.id=i.contact_id WHERE i.item_id=$3`, [a.userId, oversight2, itemId]);
+    const value2 = row2.rows[0];
+    return { canOpen: value2?.canOpen === true, version: Number(value2?.version ?? 0), contactId: Number.isSafeInteger(value2?.contactId) ? Number(value2.contactId) : null, contactName: typeof value2?.contactName === "string" ? value2.contactName : null };
+  }
   async watermark(hash) {
     return this.tx(async (db) => {
       const a = await this.actor(db, hash);
@@ -11548,6 +13664,29 @@ var PostgresNotificationRepository = class {
       let cursor = q.after;
       for (const r of rows.rows) {
         cursor = String(r.delivery_seq);
+        if (TEAM_ATTENTION_EVENT_TYPES.includes(r.event_type)) {
+          if (!r.recipient_user_ids?.includes(a.userId))
+            continue;
+          const itemId = typeof r.payload?.attentionItemId === "string" ? r.payload.attentionItemId : "";
+          const access2 = await this.teamAttentionAccess(db, a, itemId);
+          items.push({
+            id: r.delivery_id,
+            eventType: r.event_type,
+            customerId: access2.canOpen ? r.customer_id : "",
+            version: access2.canOpen ? access2.version : 0,
+            canOpen: access2.canOpen,
+            cursor,
+            createdAt: new Date(r.created_at).toISOString(),
+            read: r.read,
+            taskId: itemId || void 0,
+            attentionItemId: itemId || void 0,
+            ...access2.canOpen && access2.contactId ? { contactId: access2.contactId } : {},
+            ...access2.canOpen ? { summary: { companyName: r.company_name, contactName: access2.contactName, actorName: r.actor_name } } : {}
+          });
+          if (items.length === q.limit)
+            break;
+          continue;
+        }
         if (CONTACT_EVENTS.includes(r.event_type)) {
           if (!r.recipient_user_ids?.includes(a.userId))
             continue;
@@ -11556,9 +13695,11 @@ var PostgresNotificationRepository = class {
           if (!requestEvent && !contactAccess)
             continue;
           const shareEvent = Object.values(CONTACT_SHARING_EVENTS).includes(r.event_type);
-          const requestRow = requestEvent ? (await db.query(shareEvent ? "SELECT grantor_user_id AS actor_id,target_user_id,status FROM crm_contact_shares WHERE share_id=$1" : "SELECT actor_id,target_user_id,status FROM crm_contact_assignment_requests WHERE request_id=$1", [shareEvent ? r.payload.shareId : r.payload.requestId])).rows[0] : void 0;
-          const canOpen = requestEvent ? !!requestRow && ([requestRow.actor_id, requestRow.target_user_id].includes(a.userId) || shareEvent && contactAccess) : contactAccess;
-          items.push({ id: r.delivery_id, eventType: r.event_type, customerId: contactAccess ? r.customer_id : "", version: contactAccess ? r.version : 0, canOpen, cursor, createdAt: new Date(r.created_at).toISOString(), read: r.read, ...requestEvent ? shareEvent ? { shareId: r.payload.shareId, shareStatus: requestRow?.status, shareTargetUserId: requestRow?.target_user_id } : { requestId: r.payload.requestId, assignmentStatus: requestRow?.status, ...typeof r.payload.groupId === "string" ? { assignmentGroupId: r.payload.groupId } : {}, ...Number.isSafeInteger(r.payload.groupCount) ? { assignmentGroupCount: r.payload.groupCount } : {} } : {}, ...contactAccess ? { contactId: r.payload.contactId } : {}, summary: { companyName: r.company_name, actorName: r.actor_name, ...requestEvent ? { contactName: r.payload.contactName } : {} } });
+          const requestRow = requestEvent ? (await db.query(shareEvent ? "SELECT grantor_user_id AS actor_id,target_user_id,status FROM crm_contact_shares WHERE share_id=$1" : "SELECT actor_id,target_user_id,supervisor_user_ids,status FROM crm_contact_assignment_requests WHERE request_id=$1", [shareEvent ? r.payload.shareId : r.payload.requestId])).rows[0] : void 0;
+          const monitorRecipient = !!requestRow && !shareEvent && requestRow.supervisor_user_ids?.includes(a.userId);
+          const canOpen = requestEvent ? shareEvent ? !!requestRow && ([requestRow.actor_id, requestRow.target_user_id].includes(a.userId) || contactAccess) : !!requestRow && r.recipient_user_ids?.includes(a.userId) : contactAccess;
+          const customerId = canOpen ? r.customer_id : "", version4 = canOpen ? r.version : 0;
+          items.push({ id: r.delivery_id, eventType: r.event_type, customerId, version: version4, canOpen, cursor, createdAt: new Date(r.created_at).toISOString(), read: r.read, ...canOpen ? { contactOpenMode: requestEvent ? shareEvent ? "contact" : monitorRecipient ? "monitor" : "assignment" : "contact" } : {}, ...requestEvent ? shareEvent ? { shareId: r.payload.shareId, shareStatus: requestRow?.status, shareTargetUserId: requestRow?.target_user_id } : { requestId: r.payload.requestId, assignmentStatus: requestRow?.status, ...typeof r.payload.groupId === "string" ? { assignmentGroupId: r.payload.groupId } : {}, ...Number.isSafeInteger(r.payload.groupCount) ? { assignmentGroupCount: r.payload.groupCount } : {} } : {}, ...contactAccess || requestEvent && !shareEvent ? { contactId: r.payload.contactId } : {}, summary: { companyName: r.company_name, actorName: r.actor_name, ...requestEvent ? { contactName: r.payload.contactName } : {} } });
           if (items.length === q.limit)
             break;
           continue;
@@ -11586,9 +13727,23 @@ var PostgresNotificationRepository = class {
       if (!actor.ok)
         return actor;
       const rows = await db.query("SELECT c.*,d.event_type,o.recipient_user_ids,o.payload FROM crm_event_deliveries d JOIN crm_customers c USING(customer_id) JOIN public.identity_outbox o ON o.event_id=d.event_id WHERE d.delivery_id=$1 AND d.recipient_user_id=$2 FOR SHARE OF c", [id, actor.data.userId]);
-      if (rows.rows[0]?.event_type === TASK_DUE_EVENT && !await canProjectTaskDue(db, rows.rows[0], actor.data))
+      const row2 = rows.rows[0];
+      if (!row2)
+        return failure("NOT_FOUND", "\u901A\u77E5\u4E0D\u5B58\u5728");
+      if (row2.event_type === TASK_DUE_EVENT && !await canProjectTaskDue(db, row2, actor.data))
         return failure("NOT_FOUND", "\u63D0\u9192\u5DF2\u5931\u6548");
-      if (!rows.rows.length || !(CONTACT_REQUEST_EVENTS.includes(rows.rows[0].event_type) && rows.rows[0].recipient_user_ids?.includes(actor.data.userId)) && !(CONTACT_EVENTS.includes(rows.rows[0].event_type) && await this.contactAccess(db, actor.data, rows.rows[0].payload?.contactId, rows.rows[0].customer_id)) && !(rows.rows[0].event_type === "crm.lead.assigned" && rows.rows[0].recipient_user_ids?.includes(actor.data.userId)) && !visible(actor.data, rows.rows[0], rows.rows[0].event_type))
+      let allowed = false;
+      if (TEAM_ATTENTION_EVENT_TYPES.includes(row2.event_type))
+        allowed = !!row2.recipient_user_ids?.includes(actor.data.userId) && (await this.teamAttentionAccess(db, actor.data, row2.payload?.attentionItemId)).canOpen;
+      else if (CONTACT_REQUEST_EVENTS.includes(row2.event_type))
+        allowed = !!row2.recipient_user_ids?.includes(actor.data.userId);
+      else if (CONTACT_EVENTS.includes(row2.event_type))
+        allowed = await this.contactAccess(db, actor.data, row2.payload?.contactId, row2.customer_id);
+      else if (row2.event_type === "crm.lead.assigned")
+        allowed = !!row2.recipient_user_ids?.includes(actor.data.userId);
+      else
+        allowed = visible(actor.data, row2, row2.event_type);
+      if (!allowed)
         return failure("NOT_FOUND", "\u901A\u77E5\u4E0D\u5B58\u5728");
       await db.query("INSERT INTO crm_notification_reads(user_id,delivery_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [actor.data.userId, id]);
       return success(void 0);
@@ -11608,47 +13763,50 @@ var PostgresNotificationRepository = class {
       await db.query("SELECT pg_advisory_xact_lock($1)", [NOTIFICATION_LOCK]);
       const events = await db.query(`SELECT o.* FROM public.identity_outbox o WHERE NOT EXISTS(SELECT 1 FROM crm_notification_consumed x WHERE x.event_id=o.event_id) ORDER BY o.created_at,o.event_id LIMIT $1 FOR UPDATE OF o SKIP LOCKED`, [NOTIFICATION_LIMITS.dispatchBatch]);
       const recipients2 = await db.query("SELECT user_id FROM public.identity_users WHERE active AND NOT must_change_password ORDER BY user_id FOR SHARE");
-      let count = 0;
-      for (const event3 of events.rows) {
-        if (event3.product_id === "crm" && ["crm.customer.created", "crm.lead.published", "crm.lead.claimed", "crm.lead.followup", "crm.lead.assigned", TASK_DUE_EVENT, ...OPPORTUNITY_EVENT_TYPES, ...CONTACT_EVENTS].includes(event3.event_type) && event3.customer_id) {
-          const customer2 = await db.query("SELECT * FROM crm_customers WHERE customer_id=$1 FOR SHARE", [event3.customer_id]);
+      let count2 = 0;
+      for (const event2 of events.rows) {
+        if (event2.product_id === "crm" && ["crm.customer.created", "crm.lead.published", "crm.lead.claimed", "crm.lead.followup", "crm.lead.assigned", TASK_DUE_EVENT, ...OPPORTUNITY_EVENT_TYPES, ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && event2.customer_id) {
+          const customer2 = await db.query("SELECT * FROM crm_customers WHERE customer_id=$1 FOR SHARE", [event2.customer_id]);
           if (customer2.rows.length)
             for (const user of recipients2.rows) {
-              if (event3.event_type === SELF_CREATED_EVENT && event3.user_id === user.user_id)
+              if (event2.event_type === SELF_CREATED_EVENT && event2.user_id === user.user_id)
                 continue;
-              if ([TASK_DUE_EVENT, "crm.lead.assigned", ...CONTACT_EVENTS].includes(event3.event_type) && !event3.recipient_user_ids?.includes(user.user_id))
+              if ([TASK_DUE_EVENT, "crm.lead.assigned", ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && !event2.recipient_user_ids?.includes(user.user_id))
                 continue;
               const a = await this.access(db, user.user_id);
               if (!a)
                 continue;
-              if (event3.event_type === TASK_DUE_EVENT) {
-                if (!await canProjectTaskDue(db, event3, a))
+              if (event2.event_type === TASK_DUE_EVENT) {
+                if (!await canProjectTaskDue(db, event2, a))
                   continue;
-              } else if (CONTACT_EVENTS.includes(event3.event_type)) {
-                if (!CONTACT_REQUEST_EVENTS.includes(event3.event_type) && !await this.contactAccess(db, a, event3.payload?.contactId, event3.customer_id))
+              } else if (CONTACT_EVENTS.includes(event2.event_type)) {
+                if (!CONTACT_REQUEST_EVENTS.includes(event2.event_type) && !await this.contactAccess(db, a, event2.payload?.contactId, event2.customer_id))
                   continue;
-              } else if (event3.event_type !== "crm.lead.assigned" && !visible(a, customer2.rows[0], event3.event_type))
+              } else if (TEAM_ATTENTION_EVENT_TYPES.includes(event2.event_type)) {
+                if (!(await this.teamAttentionAccess(db, a, event2.payload?.attentionItemId)).canOpen)
+                  continue;
+              } else if (event2.event_type !== "crm.lead.assigned" && !visible(a, customer2.rows[0], event2.event_type))
                 continue;
-              const old = await db.query("SELECT 1 FROM crm_event_deliveries WHERE event_id=$1 AND recipient_user_id=$2 AND projection_type='lead'", [event3.event_id, a.userId]);
+              const old = await db.query("SELECT 1 FROM crm_event_deliveries WHERE event_id=$1 AND recipient_user_id=$2 AND projection_type='lead'", [event2.event_id, a.userId]);
               if (old.rows.length)
                 continue;
               await db.query("INSERT INTO crm_feed_heads(user_id) VALUES($1) ON CONFLICT DO NOTHING", [a.userId]);
               const head = await db.query("UPDATE crm_feed_heads SET delivery_seq=delivery_seq+1 WHERE user_id=$1 RETURNING delivery_seq", [a.userId]);
-              await db.query("INSERT INTO crm_event_deliveries(event_id,recipient_user_id,projection_type,delivery_seq,customer_id,event_type,version) VALUES($1,$2,'lead',$3,$4,$5,$6)", [event3.event_id, a.userId, head.rows[0].delivery_seq, event3.customer_id, event3.event_type, Number.isSafeInteger(event3.payload?.version) ? event3.payload.version : event3.revision]);
-              count++;
+              await db.query("INSERT INTO crm_event_deliveries(event_id,recipient_user_id,projection_type,delivery_seq,customer_id,event_type,version) VALUES($1,$2,'lead',$3,$4,$5,$6)", [event2.event_id, a.userId, head.rows[0].delivery_seq, event2.customer_id, event2.event_type, Number.isSafeInteger(event2.payload?.version) ? event2.payload.version : event2.revision]);
+              count2++;
             }
         }
-        await db.query("INSERT INTO crm_notification_consumed(event_id) VALUES($1) ON CONFLICT DO NOTHING", [event3.event_id]);
+        await db.query("INSERT INTO crm_notification_consumed(event_id) VALUES($1) ON CONFLICT DO NOTHING", [event2.event_id]);
       }
       await db.query(`DELETE FROM crm_notification_reads r USING crm_event_deliveries d,crm_feed_heads h WHERE r.delivery_id=d.delivery_id AND d.recipient_user_id=h.user_id AND d.delivery_seq<=GREATEST(h.delivery_seq-$1,0)`, [NOTIFICATION_LIMITS.history]);
       await db.query(`DELETE FROM crm_event_deliveries d USING crm_feed_heads h WHERE d.recipient_user_id=h.user_id AND d.delivery_seq<=GREATEST(h.delivery_seq-$1,0)`, [NOTIFICATION_LIMITS.history]);
-      return success(count);
+      return success(count2);
     });
   }
 };
 
 // server/services/notifications.ts
-var UUID8 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID9 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var DEVICE = new RegExp(`^[A-Za-z0-9_-]{1,${NOTIFICATION_LIMITS.deviceMax}}$`);
 var CURSOR = new RegExp(`^(0|[1-9][0-9]{0,${NOTIFICATION_LIMITS.cursorDigits - 1}})$`);
 function createNotificationService(repo, tokens) {
@@ -11659,7 +13817,7 @@ function createNotificationService(repo, tokens) {
       return repo.feed(tokens.hash(token), input);
     },
     async read(token, id) {
-      return UUID8.test(id) ? repo.read(tokens.hash(token), id) : failure("INVALID_INPUT", "\u901A\u77E5\u6807\u8BC6\u65E0\u6548");
+      return UUID9.test(id) ? repo.read(tokens.hash(token), id) : failure("INVALID_INPUT", "\u901A\u77E5\u6807\u8BC6\u65E0\u6548");
     },
     async readAll(token) {
       return repo.readAll(tokens.hash(token));
@@ -11681,9 +13839,9 @@ function createEventsHandler(service) {
       return;
     }
     const latest = url.searchParams.get("latest");
-    const query = { deviceId: url.searchParams.get("deviceId") ?? "", after: url.searchParams.get("after") ?? "0", limit: Number(url.searchParams.get("limit") ?? NOTIFICATION_LIMITS.page), ...latest === "true" ? { latest: true } : latest === "false" ? { latest: false } : {} };
+    const query2 = { deviceId: url.searchParams.get("deviceId") ?? "", after: url.searchParams.get("after") ?? "0", limit: Number(url.searchParams.get("limit") ?? NOTIFICATION_LIMITS.page), ...latest === "true" ? { latest: true } : latest === "false" ? { latest: false } : {} };
     if (request2.method === "GET" && path4 === NOTIFICATION_ROUTES.feed) {
-      send(response, await service.feed(token, query));
+      send(response, await service.feed(token, query2));
       return;
     }
     if (request2.method === "POST" && path4 === NOTIFICATION_ROUTES.readAll) {
@@ -11703,7 +13861,7 @@ function createEventsHandler(service) {
       send(response, failure("RATE_LIMITED", "\u901A\u77E5\u8FDE\u63A5\u5DF2\u8FBE\u4E0A\u9650"));
       return;
     }
-    const initial = await service.feed(token, { ...query, limit: 1 });
+    const initial = await service.feed(token, { ...query2, limit: 1 });
     if (!initial.ok) {
       send(response, initial);
       return;
@@ -11715,7 +13873,7 @@ function createEventsHandler(service) {
     response.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Connection": "keep-alive" });
     request2.socket.setTimeout(0);
     streams++;
-    let closed = false, timer, cursor = query.after;
+    let closed = false, timer, cursor = query2.after;
     const close = () => {
       if (closed)
         return;
@@ -11807,15 +13965,37 @@ var DESKTOP_AUTH_ROUTES = {
 };
 var DESKTOP_SESSION_LIMITS = { idle_seconds: 15 * 24 * 60 * 60, absolute_seconds: 90 * 24 * 60 * 60 };
 var REGISTRATION_PRODUCTS = ["crm", "navigator"];
+var DESKTOP_DEVICE_PRODUCTS = ["crm"];
 
 // server/services/desktop-session.ts
 var MILLISECONDS_PER_SECOND11 = 1e3;
 var TOKEN_PATTERN2 = /^[A-Za-z0-9_-]+$/;
 var EMAIL_PATTERN2 = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+var DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+var DEVICE_SAFE_TEXT_PATTERN = /^[^\u0000-\u001f\u007f]+$/;
+var DEVICE_CODE_PATTERN = /^[A-Za-z0-9._-]+$/;
+var DEVICE_TEXT_MAX = 120;
+var APP_VERSION_MAX = 64;
 var unauthorized = () => failure("UNAUTHORIZED", "\u767B\u5F55\u4FE1\u606F\u65E0\u6548\u6216\u4F1A\u8BDD\u5DF2\u5931\u6548");
 var validToken = (token) => typeof token === "string" && token.length === AUTH_LIMITS.tokenCharacters && TOKEN_PATTERN2.test(token);
-function object2(input, keys7) {
-  return input && typeof input === "object" && !Array.isArray(input) && !Object.keys(input).some((key) => !keys7.includes(key)) ? input : null;
+function object2(input, keys12) {
+  return input && typeof input === "object" && !Array.isArray(input) && !Object.keys(input).some((key) => !keys12.includes(key)) ? input : null;
+}
+function desktopContext(input) {
+  if (input === void 0)
+    return void 0;
+  const value2 = object2(input, ["product", "deviceId", "deviceName", "platform", "appVersion", "replaceActiveDevice"]);
+  const deviceName = typeof value2?.deviceName === "string" ? value2.deviceName.trim() : "";
+  if (!value2 || !DESKTOP_DEVICE_PRODUCTS.includes(value2.product) || typeof value2.deviceId !== "string" || !DEVICE_ID_PATTERN.test(value2.deviceId) || !deviceName || deviceName.length > DEVICE_TEXT_MAX || !DEVICE_SAFE_TEXT_PATTERN.test(deviceName) || typeof value2.platform !== "string" || !DEVICE_CODE_PATTERN.test(value2.platform) || value2.platform.length > APP_VERSION_MAX || typeof value2.appVersion !== "string" || !DEVICE_CODE_PATTERN.test(value2.appVersion) || value2.appVersion.length > APP_VERSION_MAX || value2.replaceActiveDevice !== void 0 && typeof value2.replaceActiveDevice !== "boolean")
+    return null;
+  return {
+    product: value2.product,
+    deviceId: value2.deviceId,
+    deviceName,
+    platform: value2.platform,
+    appVersion: value2.appVersion,
+    ...value2.replaceActiveDevice === void 0 ? {} : { replaceActiveDevice: value2.replaceActiveDevice }
+  };
 }
 function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds, offlineIssuer) {
   const date = (seconds) => new Date(clock.now() + seconds * MILLISECONDS_PER_SECOND11).toISOString();
@@ -11849,9 +14029,12 @@ function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds,
       }
     },
     async login(input) {
-      const value2 = object2(input, ["email", "password"]);
+      const value2 = object2(input, ["email", "password", "desktop"]);
       if (!value2 || typeof value2.email !== "string" || value2.email !== value2.email.trim() || !EMAIL_PATTERN2.test(value2.email.trim()) || value2.email.length > AUTH_LIMITS.emailMax || typeof value2.password !== "string" || value2.password.length < BOOTSTRAP_LOGIN_MIN || value2.password.length > AUTH_LIMITS.passwordMax)
         return failure("INVALID_INPUT", "\u767B\u5F55\u53C2\u6570\u65E0\u6548");
+      const desktop = desktopContext(value2.desktop);
+      if (desktop === null)
+        return failure("INVALID_INPUT", "\u8BBE\u5907\u4FE1\u606F\u65E0\u6548");
       const credential = await repo.credential(value2.email.trim().toLowerCase());
       if (!credential.ok)
         return credential;
@@ -11864,7 +14047,7 @@ function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds,
       }
       const token = tokens.create(), refreshToken = tokens.create(), expiresAt = date(ttlSeconds);
       const absoluteExpiresAt = date(DESKTOP_SESSION_LIMITS.absolute_seconds);
-      const session = await repo.createDesktopSession({ tokenHash: tokens.hash(token), refreshHash: tokens.hash(refreshToken), userId: credential.data.userId, securityRevision: credential.data.securityRevision, expiresAt, idleExpiresAt: date(DESKTOP_SESSION_LIMITS.idle_seconds), absoluteExpiresAt });
+      const session = await repo.createDesktopSession({ tokenHash: tokens.hash(token), refreshHash: tokens.hash(refreshToken), userId: credential.data.userId, securityRevision: credential.data.securityRevision, expiresAt, idleExpiresAt: date(DESKTOP_SESSION_LIMITS.idle_seconds), absoluteExpiresAt, ...desktop ? { desktop } : {} });
       return !session.ok ? session : session.data ? loginResponse(token, refreshToken, expiresAt, session.data, absoluteExpiresAt) : unauthorized();
     },
     async refresh(input) {
@@ -11941,7 +14124,7 @@ function createDesktopAuthHandler(service, gate, config) {
 }
 
 // server/adapters/offline-access.ts
-var import_node_crypto16 = require("node:crypto");
+var import_node_crypto22 = require("node:crypto");
 var import_node_fs4 = require("node:fs");
 var import_node_path5 = require("node:path");
 
@@ -11960,7 +14143,7 @@ function createOfflineAccessIssuer(privateKey, issuer) {
   const address = new URL(issuer);
   if (!["http:", "https:"].includes(address.protocol) || address.origin !== issuer || address.username || address.password)
     throw new Error("\u79BB\u7EBF\u7B7E\u53D1\u4E2D\u5FC3\u5730\u5740\u65E0\u6548");
-  const publicKey = (0, import_node_crypto16.createPublicKey)(privateKey).export({ format: "pem", type: "spki" }).toString();
+  const publicKey = (0, import_node_crypto22.createPublicKey)(privateKey).export({ format: "pem", type: "spki" }).toString();
   return {
     issue(identity, now, absoluteExpiresAt = Infinity) {
       if (identity.mustChangePassword)
@@ -11974,7 +14157,7 @@ function createOfflineAccessIssuer(privateKey, issuer) {
       const serialized = JSON.stringify(payload);
       if (Buffer.byteLength(serialized, "utf8") > OFFLINE_ACCESS_LIMITS.payload_bytes)
         throw new Error("\u79BB\u7EBF\u6388\u6743\u8EAB\u4EFD\u8D85\u51FA\u9650\u5236");
-      return { payload: serialized, signature: (0, import_node_crypto16.sign)(null, Buffer.from(serialized, "utf8"), privateKey).toString("base64url"), publicKey };
+      return { payload: serialized, signature: (0, import_node_crypto22.sign)(null, Buffer.from(serialized, "utf8"), privateKey).toString("base64url"), publicKey };
     }
   };
 }
@@ -11982,7 +14165,7 @@ function readPrivateKey(path4) {
   const info = (0, import_node_fs4.lstatSync)(path4);
   if (!info.isFile() || info.isSymbolicLink() || info.size > PRIVATE_KEY_BYTES)
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u6587\u4EF6\u65E0\u6548");
-  const key = (0, import_node_crypto16.createPrivateKey)((0, import_node_fs4.readFileSync)(path4));
+  const key = (0, import_node_crypto22.createPrivateKey)((0, import_node_fs4.readFileSync)(path4));
   if (key.type !== "private" || key.asymmetricKeyType !== "ed25519")
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u7C7B\u578B\u65E0\u6548");
   return key;
@@ -11998,8 +14181,8 @@ function loadOfflineAccessIssuer(runtimeDirectory, issuer) {
     if (error.code !== "ENOENT")
       throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u8BFB\u53D6\u5931\u8D25");
   }
-  const temporary = (0, import_node_path5.join)(directory, `.offline-access-${(0, import_node_crypto16.randomUUID)()}.tmp`);
-  const generated = (0, import_node_crypto16.generateKeyPairSync)("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
+  const temporary = (0, import_node_path5.join)(directory, `.offline-access-${(0, import_node_crypto22.randomUUID)()}.tmp`);
+  const generated = (0, import_node_crypto22.generateKeyPairSync)("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
   (0, import_node_fs4.writeFileSync)(temporary, generated, { flag: "wx", mode: PRIVATE_FILE_MODE2 });
   try {
     try {
@@ -12019,21 +14202,21 @@ function loadOfflineAccessIssuer(runtimeDirectory, issuer) {
 }
 
 // server/services/tasks.ts
-var UUID9 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-function record7(v) {
+var UUID10 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function record8(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 function keys5(v, allowed) {
   return Object.keys(v).every((k) => allowed.includes(k));
 }
-function text6(v, max) {
+function text8(v, max) {
   return typeof v === "string" && !!v.trim() && v.length <= max;
 }
 function positive4(v) {
   return Number.isSafeInteger(v) && Number(v) > 0;
 }
 function command2(v) {
-  return record7(v) && typeof v.taskId === "string" && UUID9.test(v.taskId) && positive4(v.expectedVersion) && text6(v.idempotencyKey, TASK_LIMITS.key);
+  return record8(v) && typeof v.taskId === "string" && UUID10.test(v.taskId) && positive4(v.expectedVersion) && text8(v.idempotencyKey, TASK_LIMITS.key);
 }
 function createTaskService(repo, tokens) {
   function run2(token, action) {
@@ -12041,17 +14224,17 @@ function createTaskService(repo, tokens) {
   }
   return {
     create(token, v) {
-      if (!record7(v) || !keys5(v, ["customerId", "title", "dueAt", "expectedCustomerVersion", "idempotencyKey", "opportunityId"]) || typeof v.customerId !== "string" || !UUID9.test(v.customerId) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID9.test(v.opportunityId)) || !text6(v.title, TASK_LIMITS.title) || !validTaskTime(v.dueAt) || !positive4(v.expectedCustomerVersion) || !text6(v.idempotencyKey, TASK_LIMITS.key))
+      if (!record8(v) || !keys5(v, ["customerId", "title", "dueAt", "expectedCustomerVersion", "idempotencyKey", "opportunityId", "mailSuggestionId"]) || typeof v.customerId !== "string" || !UUID10.test(v.customerId) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID10.test(v.opportunityId)) || v.mailSuggestionId !== void 0 && (typeof v.mailSuggestionId !== "string" || !UUID10.test(v.mailSuggestionId)) || !text8(v.title, TASK_LIMITS.title) || !validTaskTime(v.dueAt) || !positive4(v.expectedCustomerVersion) || !text8(v.idempotencyKey, TASK_LIMITS.key))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.create(h, v));
     },
     list(token, v) {
-      if (!record7(v) || !keys5(v, ["customerId", "status", "limit", "offset"]) || v.customerId !== void 0 && (typeof v.customerId !== "string" || !UUID9.test(v.customerId)) || v.status !== void 0 && !["open", "completed"].includes(v.status) || !positive4(v.limit) || Number(v.limit) > TASK_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || Number(v.offset) < 0)
+      if (!record8(v) || !keys5(v, ["customerId", "status", "limit", "offset"]) || v.customerId !== void 0 && (typeof v.customerId !== "string" || !UUID10.test(v.customerId)) || v.status !== void 0 && !["open", "completed"].includes(v.status) || !positive4(v.limit) || Number(v.limit) > TASK_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || Number(v.offset) < 0)
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u5217\u8868\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.list(h, v));
     },
     detail(token, id) {
-      return UUID9.test(id) ? run2(token, (h) => repo.detail(h, id)) : Promise.resolve(failure("NOT_FOUND", "\u4EFB\u52A1\u4E0D\u5B58\u5728"));
+      return UUID10.test(id) ? run2(token, (h) => repo.detail(h, id)) : Promise.resolve(failure("NOT_FOUND", "\u4EFB\u52A1\u4E0D\u5B58\u5728"));
     },
     reschedule(token, v) {
       if (!command2(v) || !keys5(v, ["taskId", "expectedVersion", "idempotencyKey", "dueAt"]) || !validTaskTime(v.dueAt))
@@ -12059,7 +14242,7 @@ function createTaskService(repo, tokens) {
       return run2(token, (h) => repo.reschedule(h, v));
     },
     complete(token, v) {
-      if (!command2(v) || !keys5(v, ["taskId", "expectedVersion", "idempotencyKey", "feedback"]) || !text6(v.feedback, TASK_LIMITS.feedback))
+      if (!command2(v) || !keys5(v, ["taskId", "expectedVersion", "idempotencyKey", "feedback"]) || !text8(v.feedback, TASK_LIMITS.feedback))
         return Promise.resolve(failure("INVALID_INPUT", "\u5B8C\u6210\u53CD\u9988\u65E0\u6548"));
       return run2(token, (h) => repo.complete(h, v));
     },
@@ -12139,7 +14322,7 @@ function startTaskDispatcher(service, log) {
 }
 
 // server/adapters/postgres/opportunity-repository.ts
-var import_node_crypto17 = require("node:crypto");
+var import_node_crypto23 = require("node:crypto");
 
 // server/adapters/postgres/opportunity-schema.ts
 var OPPORTUNITY_VERSION = "018-opportunities-public";
@@ -12272,9 +14455,9 @@ var PostgresOpportunityRepository = class {
     return success({ ...dates2(r.rows[0]), canManage: canManage2(a, customer2), history: await this.history(db, id) });
   }
   async cached(db, a, operation, input, fn) {
-    const digest = (0, import_node_crypto17.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
+    const digest2 = (0, import_node_crypto23.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
     if (old.rows.length) {
-      if (old.rows[0].digest !== digest)
+      if (old.rows[0].digest !== digest2)
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const current = await this.one(db, old.rows[0].response.opportunityId, a);
       if (!current.ok)
@@ -12285,7 +14468,7 @@ var PostgresOpportunityRepository = class {
     }
     const result2 = await fn();
     if (result2.ok)
-      await db.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, operation, input.idempotencyKey, digest, JSON.stringify({ opportunityId: result2.data.opportunityId })]);
+      await db.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, operation, input.idempotencyKey, digest2, JSON.stringify({ opportunityId: result2.data.opportunityId })]);
     return result2;
   }
   async record(db, a, o, from) {
@@ -12295,7 +14478,7 @@ var PostgresOpportunityRepository = class {
   }
   migrate() {
     return this.tx(async (db) => {
-      const hash = (0, import_node_crypto17.createHash)("sha256").update(OPPORTUNITY_SQL).digest("hex"), old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [OPPORTUNITY_VERSION]);
+      const hash = (0, import_node_crypto23.createHash)("sha256").update(OPPORTUNITY_SQL).digest("hex"), old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [OPPORTUNITY_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u5546\u673A\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
       if (!old.rows.length) {
@@ -12330,11 +14513,11 @@ var PostgresOpportunityRepository = class {
       const c = await this.customer(db, input.customerId);
       if (!c || !canSee2(a, c))
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728");
-      const count = await db.query("SELECT count(*)::int AS n FROM crm_opportunities WHERE customer_id=$1", [input.customerId]), rows = await db.query(`SELECT ${COLUMNS2} FROM crm_opportunities o JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) WHERE o.customer_id=$1 ORDER BY o.created_at DESC,o.opportunity_id LIMIT $2 OFFSET $3`, [input.customerId, input.limit, input.offset]);
+      const count2 = await db.query("SELECT count(*)::int AS n FROM crm_opportunities WHERE customer_id=$1", [input.customerId]), rows = await db.query(`SELECT ${COLUMNS2} FROM crm_opportunities o JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) WHERE o.customer_id=$1 ORDER BY o.created_at DESC,o.opportunity_id LIMIT $2 OFFSET $3`, [input.customerId, input.limit, input.offset]);
       const items = [];
       for (const row2 of rows.rows)
         items.push({ ...dates2(row2), canManage: canManage2(a, c), history: await this.history(db, row2.opportunityId) });
-      return success({ items, total: count.rows[0].n });
+      return success({ items, total: count2.rows[0].n });
     });
   }
   detail(hash, id) {
@@ -12358,10 +14541,10 @@ var PostgresOpportunityRepository = class {
         }
         if (["closed_won", "closed_lost"].includes(o.stage) || OPPORTUNITY_STAGES.indexOf(input.stage) < OPPORTUNITY_STAGES.indexOf(o.stage))
           return failure("CONFLICT", "\u5546\u673A\u9636\u6BB5\u4E0D\u80FD\u56DE\u9000\u6216\u91CD\u5F00");
-        const amount2 = input.amount ?? o.amount, currency = input.currency ?? o.currency, evidence = input.stage === "closed_won" ? input.evidence?.trim() ?? null : null, lostReason = input.stage === "closed_lost" ? input.lostReason?.trim() ?? null : null;
-        if (input.stage === "closed_won" && (!amount2 || !currency || !evidence) || input.stage === "closed_lost" && !lostReason)
+        const amount2 = input.amount ?? o.amount, currency = input.currency ?? o.currency, evidence2 = input.stage === "closed_won" ? input.evidence?.trim() ?? null : null, lostReason = input.stage === "closed_lost" ? input.lostReason?.trim() ?? null : null;
+        if (input.stage === "closed_won" && (!amount2 || !currency || !evidence2) || input.stage === "closed_lost" && !lostReason)
           return failure("INVALID_INPUT", "\u6210\u4EA4\u9700\u91D1\u989D\u3001\u5E01\u79CD\u548C\u8BC1\u636E\uFF1B\u4E22\u5355\u9700\u539F\u56E0");
-        await db.query(`UPDATE crm_opportunities SET stage=$2,amount=$3,currency=$4,evidence=$5,lost_reason=$6,version=version+1,updated_at=clock_timestamp(),closed_at=CASE WHEN $2 IN ('closed_won','closed_lost') THEN clock_timestamp() ELSE NULL END,closed_by=CASE WHEN $2 IN ('closed_won','closed_lost') THEN $7::uuid ELSE NULL END WHERE opportunity_id=$1 AND version=$8`, [input.opportunityId, input.stage, amount2, currency, evidence, lostReason, a.userId, input.expectedVersion]);
+        await db.query(`UPDATE crm_opportunities SET stage=$2,amount=$3,currency=$4,evidence=$5,lost_reason=$6,version=version+1,updated_at=clock_timestamp(),closed_at=CASE WHEN $2 IN ('closed_won','closed_lost') THEN clock_timestamp() ELSE NULL END,closed_by=CASE WHEN $2 IN ('closed_won','closed_lost') THEN $7::uuid ELSE NULL END WHERE opportunity_id=$1 AND version=$8`, [input.opportunityId, input.stage, amount2, currency, evidence2, lostReason, a.userId, input.expectedVersion]);
         const changed = await this.one(db, input.opportunityId, a);
         if (!changed.ok)
           return changed;
@@ -12373,15 +14556,15 @@ var PostgresOpportunityRepository = class {
 };
 
 // server/services/opportunities.ts
-var UUID10 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID11 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var AMOUNT = new RegExp(`^(0|[1-9][0-9]{0,${OPPORTUNITY_LIMITS.amountWholeDigits - 1}})(\\.[0-9]{1,${OPPORTUNITY_LIMITS.amountFractionDigits}})?$`);
-function record8(v) {
+function record9(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 function keys6(v, allowed) {
   return Object.keys(v).every((k) => allowed.includes(k));
 }
-function text7(v, max, required = false) {
+function text9(v, max, required = false) {
   return typeof v === "string" && v.length <= max && (!required || !!v.trim());
 }
 function positive5(v) {
@@ -12396,20 +14579,20 @@ function createOpportunityService(repo, tokens) {
   }
   return {
     create(token, v) {
-      if (!record8(v) || !keys6(v, ["customerId", "expectedCustomerVersion", "idempotencyKey", "title", "description", "pol", "pod", "containerType", "source", "amount", "currency"]) || typeof v.customerId !== "string" || !UUID10.test(v.customerId) || !positive5(v.expectedCustomerVersion) || !text7(v.idempotencyKey, OPPORTUNITY_LIMITS.key, true) || !text7(v.title, OPPORTUNITY_LIMITS.title, true) || !amount(v) || v.description !== void 0 && !text7(v.description, OPPORTUNITY_LIMITS.description) || ["pol", "pod", "containerType"].some((k) => v[k] !== void 0 && !text7(v[k], OPPORTUNITY_LIMITS.route)) || v.source !== void 0 && !text7(v.source, OPPORTUNITY_LIMITS.source))
+      if (!record9(v) || !keys6(v, ["customerId", "expectedCustomerVersion", "idempotencyKey", "title", "description", "pol", "pod", "containerType", "source", "amount", "currency"]) || typeof v.customerId !== "string" || !UUID11.test(v.customerId) || !positive5(v.expectedCustomerVersion) || !text9(v.idempotencyKey, OPPORTUNITY_LIMITS.key, true) || !text9(v.title, OPPORTUNITY_LIMITS.title, true) || !amount(v) || v.description !== void 0 && !text9(v.description, OPPORTUNITY_LIMITS.description) || ["pol", "pod", "containerType"].some((k) => v[k] !== void 0 && !text9(v[k], OPPORTUNITY_LIMITS.route)) || v.source !== void 0 && !text9(v.source, OPPORTUNITY_LIMITS.source))
         return Promise.resolve(failure("INVALID_INPUT", "\u5546\u673A\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.create(h, v));
     },
     list(token, v) {
-      if (!record8(v) || !keys6(v, ["customerId", "limit", "offset"]) || typeof v.customerId !== "string" || !UUID10.test(v.customerId) || !positive5(v.limit) || v.limit > OPPORTUNITY_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0)
+      if (!record9(v) || !keys6(v, ["customerId", "limit", "offset"]) || typeof v.customerId !== "string" || !UUID11.test(v.customerId) || !positive5(v.limit) || v.limit > OPPORTUNITY_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0)
         return Promise.resolve(failure("INVALID_INPUT", "\u5546\u673A\u5217\u8868\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.list(h, v));
     },
     detail(token, id) {
-      return typeof id === "string" && UUID10.test(id) ? run2(token, (h) => repo.detail(h, id)) : Promise.resolve(failure("NOT_FOUND", "\u5546\u673A\u4E0D\u5B58\u5728"));
+      return typeof id === "string" && UUID11.test(id) ? run2(token, (h) => repo.detail(h, id)) : Promise.resolve(failure("NOT_FOUND", "\u5546\u673A\u4E0D\u5B58\u5728"));
     },
     updateStage(token, v) {
-      if (!record8(v) || !keys6(v, ["opportunityId", "expectedVersion", "idempotencyKey", "stage", "amount", "currency", "evidence", "lostReason"]) || typeof v.opportunityId !== "string" || !UUID10.test(v.opportunityId) || !positive5(v.expectedVersion) || !text7(v.idempotencyKey, OPPORTUNITY_LIMITS.key, true) || !OPPORTUNITY_STAGES.includes(v.stage) || !amount(v) || v.evidence !== void 0 && !text7(v.evidence, OPPORTUNITY_LIMITS.evidence, true) || v.lostReason !== void 0 && !text7(v.lostReason, OPPORTUNITY_LIMITS.reason, true) || v.stage === "closed_won" && !text7(v.evidence, OPPORTUNITY_LIMITS.evidence, true) || v.stage === "closed_lost" && !text7(v.lostReason, OPPORTUNITY_LIMITS.reason, true) || v.evidence !== void 0 && v.stage !== "closed_won" || v.lostReason !== void 0 && v.stage !== "closed_lost")
+      if (!record9(v) || !keys6(v, ["opportunityId", "expectedVersion", "idempotencyKey", "stage", "amount", "currency", "evidence", "lostReason"]) || typeof v.opportunityId !== "string" || !UUID11.test(v.opportunityId) || !positive5(v.expectedVersion) || !text9(v.idempotencyKey, OPPORTUNITY_LIMITS.key, true) || !OPPORTUNITY_STAGES.includes(v.stage) || !amount(v) || v.evidence !== void 0 && !text9(v.evidence, OPPORTUNITY_LIMITS.evidence, true) || v.lostReason !== void 0 && !text9(v.lostReason, OPPORTUNITY_LIMITS.reason, true) || v.stage === "closed_won" && !text9(v.evidence, OPPORTUNITY_LIMITS.evidence, true) || v.stage === "closed_lost" && !text9(v.lostReason, OPPORTUNITY_LIMITS.reason, true) || v.evidence !== void 0 && v.stage !== "closed_won" || v.lostReason !== void 0 && v.stage !== "closed_lost")
         return Promise.resolve(failure("INVALID_INPUT", "\u5546\u673A\u9636\u6BB5\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.updateStage(h, v));
     }
@@ -12460,16 +14643,17 @@ function createManagementDashboardService(repo, tokens) {
 // server/services/admin-data-browser.ts
 function createAdminDataBrowserService(repo, tokens) {
   const tables = (token) => repo.dataTables(tokens.hash(token));
-  const page = (token, query) => repo.dataPage(tokens.hash(token), query);
-  return { tables, page };
+  const page3 = (token, query2) => repo.dataPage(tokens.hash(token), query2);
+  return { tables, page: page3 };
 }
 
 // server/adapters/postgres/contact-change-repository.ts
-var import_node_crypto18 = require("node:crypto");
+var import_node_crypto24 = require("node:crypto");
 
 // server/adapters/postgres/contact-change-schema.ts
 var CONTACT_CHANGE_VERSION = "008-contact-change-import-capture-public";
 var CONTACT_CHANGE_LOCK = 19041007;
+var PUBLIC_OUTBOX_FK_REPAIR_VERSION = "063-public-outbox-fk-repair";
 var CONTACT_CHANGE_SQL = `
 CREATE SEQUENCE IF NOT EXISTS crm_contact_change_seq AS bigint;
 CREATE TABLE IF NOT EXISTS crm_contact_changes (
@@ -12505,6 +14689,20 @@ END $$;
 DROP TRIGGER IF EXISTS crm_contact_change_capture ON public.identity_outbox;
 CREATE TRIGGER crm_contact_change_capture AFTER INSERT ON public.identity_outbox FOR EACH ROW EXECUTE FUNCTION crm_contact_change_capture();
 `;
+var PUBLIC_OUTBOX_FK_REPAIR_SQL = `
+ALTER TABLE public.crm_contact_changes DROP CONSTRAINT IF EXISTS crm_contact_changes_event_id_fkey;
+ALTER TABLE public.crm_contact_changes ADD CONSTRAINT crm_contact_changes_event_id_fkey
+  FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
+ALTER TABLE public.crm_event_deliveries DROP CONSTRAINT IF EXISTS crm_event_deliveries_event_id_fkey;
+ALTER TABLE public.crm_event_deliveries ADD CONSTRAINT crm_event_deliveries_event_id_fkey
+  FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
+ALTER TABLE public.crm_notification_consumed DROP CONSTRAINT IF EXISTS crm_notification_consumed_event_id_fkey;
+ALTER TABLE public.crm_notification_consumed ADD CONSTRAINT crm_notification_consumed_event_id_fkey
+  FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
+ALTER TABLE public.crm_task_due_receipts DROP CONSTRAINT IF EXISTS crm_task_due_receipts_event_id_fkey;
+ALTER TABLE public.crm_task_due_receipts ADD CONSTRAINT crm_task_due_receipts_event_id_fkey
+  FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
+`;
 
 // server/adapters/postgres/contact-change-repository.ts
 var TOMBSTONE_EVENTS = /* @__PURE__ */ new Set(["crm.contact.deleted", "crm.contact.share.revoked"]);
@@ -12536,13 +14734,21 @@ var PostgresContactChangeRepository = class {
   }
   async migrate() {
     return this.tx(async (db) => {
-      const checksum = (0, import_node_crypto18.createHash)("sha256").update(CONTACT_CHANGE_SQL).digest("hex");
+      const checksum4 = (0, import_node_crypto24.createHash)("sha256").update(CONTACT_CHANGE_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_CHANGE_VERSION]);
-      if (old.rows.length && old.rows[0].checksum !== checksum)
+      if (old.rows.length && old.rows[0].checksum !== checksum4)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u53D8\u5316\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
       if (!old.rows.length) {
         await db.query(CONTACT_CHANGE_SQL);
-        await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_CHANGE_VERSION, checksum]);
+        await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_CHANGE_VERSION, checksum4]);
+      }
+      const repairChecksum = (0, import_node_crypto24.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest("hex");
+      const repaired = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [PUBLIC_OUTBOX_FK_REPAIR_VERSION]);
+      if (repaired.rows.length && repaired.rows[0].checksum !== repairChecksum)
+        return failure("CONFLICT", "\u516C\u5171 outbox \u5916\u952E\u4FEE\u590D\u6821\u9A8C\u4E0D\u4E00\u81F4");
+      if (!repaired.rows.length) {
+        await db.query(PUBLIC_OUTBOX_FK_REPAIR_SQL);
+        await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [PUBLIC_OUTBOX_FK_REPAIR_VERSION, repairChecksum]);
       }
       return success(void 0);
     });
@@ -12600,12 +14806,12 @@ function contactChangeQuery(value2) {
 // server/services/contact-change-feed.ts
 function createContactChangeService(repo, tokens) {
   return { feed(token, input) {
-    const query = contactChangeQuery(input);
-    if (!query.ok)
-      return Promise.resolve(query);
+    const query2 = contactChangeQuery(input);
+    if (!query2.ok)
+      return Promise.resolve(query2);
     if (!/^[A-Za-z0-9_-]{43}$/.test(token))
       return Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
-    return repo.feed(tokens.hash(token), query.data);
+    return repo.feed(tokens.hash(token), query2.data);
   } };
 }
 
@@ -12624,7 +14830,7 @@ function createContactChangeHandler(service) {
 }
 
 // server/adapters/postgres/campaign-repository.ts
-var import_node_crypto19 = require("node:crypto");
+var import_node_crypto25 = require("node:crypto");
 
 // server/core/campaigns.ts
 var CAMPAIGN_ROUTES = { campaigns: "/api/crm/campaigns", confirm: "confirm", pause: "pause", dryRunClaim: "dry-run-claim" };
@@ -12712,7 +14918,7 @@ var PostgresCampaignRepository = class {
   }
   async migrate() {
     return this.tx(async (db) => {
-      const hash = (0, import_node_crypto19.createHash)("sha256").update(CAMPAIGN_SQL).digest("hex");
+      const hash = (0, import_node_crypto25.createHash)("sha256").update(CAMPAIGN_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CAMPAIGN_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u81EA\u52A8\u5F00\u53D1\u4EFB\u52A1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12744,9 +14950,9 @@ var PostgresCampaignRepository = class {
         return failure("FORBIDDEN", "\u65E0\u81EA\u52A8\u5F00\u53D1\u4EFB\u52A1\u8BFB\u53D6\u6743\u9650");
       const params = [a.userId, input.state ?? null, input.limit, input.offset];
       const visibility2 = canRead(a) && a.capabilities.includes("leads.read.all") ? "TRUE" : "created_by=$1";
-      const count = await db.query(`SELECT count(*)::int AS n FROM crm_campaigns WHERE ${visibility2} AND ($2::text IS NULL OR state=$2)`, params.slice(0, 2));
+      const count2 = await db.query(`SELECT count(*)::int AS n FROM crm_campaigns WHERE ${visibility2} AND ($2::text IS NULL OR state=$2)`, params.slice(0, 2));
       const rows = await db.query(`SELECT campaign_id AS "campaignId",created_by AS "createdBy",name,state,version,auto_send AS "autoSend",confirmed_at AS "confirmedAt",paused_at AS "pausedAt",stopped_at AS "stoppedAt",stop_reason AS "stopReason",next_run_at AS "nextRunAt",created_at AS "createdAt",updated_at AS "updatedAt" FROM crm_campaigns WHERE ${visibility2} AND ($2::text IS NULL OR state=$2) ORDER BY created_at DESC,campaign_id LIMIT $3 OFFSET $4`, params);
-      return success({ items: rows.rows.map(campaignRow), total: Number(count.rows[0].n) });
+      return success({ items: rows.rows.map(campaignRow), total: Number(count2.rows[0].n) });
     });
   }
   confirm(hash, input) {
@@ -12794,18 +15000,18 @@ var PostgresCampaignRepository = class {
         return failure("FORBIDDEN", "\u53EA\u80FD\u4FEE\u6539\u81EA\u5DF1\u7684\u4EFB\u52A1");
       if (c.data.version !== input.expectedVersion || c.data.state !== "draft")
         return failure("CONFLICT", "\u53EA\u6709\u672A\u786E\u8BA4\u8349\u7A3F\u53EF\u4EE5\u6DFB\u52A0\u89E6\u70B9");
-      const digest = (0, import_node_crypto19.createHash)("sha256").update(JSON.stringify(input.targets)).digest("hex");
+      const digest2 = (0, import_node_crypto25.createHash)("sha256").update(JSON.stringify(input.targets)).digest("hex");
       const idem = await db.query("SELECT response,digest FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, `campaign:targets:${input.campaignId}`, input.idempotencyKey]);
       if (idem.rows.length) {
-        if (idem.rows[0].digest !== digest)
+        if (idem.rows[0].digest !== digest2)
           return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
         return success(Number(idem.rows[0].response.count));
       }
       for (const t of input.targets)
         await db.query(`INSERT INTO crm_campaign_targets(campaign_id,contact_id,customer_id,contact_version,round,next_touch_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(campaign_id,contact_id,round) DO NOTHING`, [input.campaignId, t.contactId, t.customerId, t.contactVersion, t.round, t.nextTouchAt]);
-      const count = await db.query("SELECT count(*)::int AS n FROM crm_campaign_targets WHERE campaign_id=$1", [input.campaignId]);
-      await db.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, `campaign:targets:${input.campaignId}`, input.idempotencyKey, digest, JSON.stringify({ count: Number(count.rows[0].n) })]);
-      return success(Number(count.rows[0].n));
+      const count2 = await db.query("SELECT count(*)::int AS n FROM crm_campaign_targets WHERE campaign_id=$1", [input.campaignId]);
+      await db.query("INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [a.userId, `campaign:targets:${input.campaignId}`, input.idempotencyKey, digest2, JSON.stringify({ count: Number(count2.rows[0].n) })]);
+      return success(Number(count2.rows[0].n));
     });
   }
   claimDryRun(hash, input) {
@@ -12851,12 +15057,12 @@ var PostgresCampaignRepository = class {
 };
 
 // server/services/campaigns.ts
-var UUID11 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID12 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var TOKEN2 = /^[A-Za-z0-9_-]{43}$/;
-function record9(v) {
+function record10(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
-function text8(v, max, min = 1) {
+function text10(v, max, min = 1) {
   return typeof v === "string" && v.trim().length >= min && v.length <= max && !v.includes("\0");
 }
 function positive6(v) {
@@ -12866,22 +15072,22 @@ function run(token, tokens, fn) {
   return TOKEN2.test(token) ? fn(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
 }
 function command3(v) {
-  return record9(v) && UUID11.test(String(v.campaignId)) && positive6(v.expectedVersion) && text8(v.idempotencyKey, CAMPAIGN_LIMITS.key);
+  return record10(v) && UUID12.test(String(v.campaignId)) && positive6(v.expectedVersion) && text10(v.idempotencyKey, CAMPAIGN_LIMITS.key);
 }
 function createCampaignService(repository, tokens) {
   const tokenPort = tokens ?? { hash: (v) => v };
   return {
     create(token, v) {
-      if (!record9(v) || !text8(v.name, CAMPAIGN_LIMITS.name) || !text8(v.idempotencyKey, CAMPAIGN_LIMITS.key) || v.autoSend !== void 0 && typeof v.autoSend !== "boolean" || v.nextRunAt !== void 0 && (typeof v.nextRunAt !== "string" || !Number.isFinite(Date.parse(v.nextRunAt))))
+      if (!record10(v) || !text10(v.name, CAMPAIGN_LIMITS.name) || !text10(v.idempotencyKey, CAMPAIGN_LIMITS.key) || v.autoSend !== void 0 && typeof v.autoSend !== "boolean" || v.nextRunAt !== void 0 && (typeof v.nextRunAt !== "string" || !Number.isFinite(Date.parse(v.nextRunAt))))
         return Promise.resolve(failure("INVALID_INPUT", "\u4E2D\u5FC3\u4EFB\u52A1\u53C2\u6570\u65E0\u6548"));
       const value2 = v;
       return run(token, tokenPort, (h) => repository.create(h, { name: value2.name.trim(), idempotencyKey: value2.idempotencyKey, autoSend: false, nextRunAt: value2.nextRunAt }));
     },
     detail(token, id) {
-      return UUID11.test(id) ? run(token, tokenPort, (h) => repository.detail(h, id)) : Promise.resolve(failure("NOT_FOUND", "\u4EFB\u52A1\u4E0D\u5B58\u5728"));
+      return UUID12.test(id) ? run(token, tokenPort, (h) => repository.detail(h, id)) : Promise.resolve(failure("NOT_FOUND", "\u4EFB\u52A1\u4E0D\u5B58\u5728"));
     },
     list(token, v) {
-      if (!record9(v) || !positive6(v.limit) || Number(v.limit) > CAMPAIGN_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || Number(v.offset) < 0 || v.state !== void 0 && !CAMPAIGN_STATES.includes(v.state))
+      if (!record10(v) || !positive6(v.limit) || Number(v.limit) > CAMPAIGN_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || Number(v.offset) < 0 || v.state !== void 0 && !CAMPAIGN_STATES.includes(v.state))
         return Promise.resolve(failure("INVALID_INPUT", "\u4E2D\u5FC3\u4EFB\u52A1\u5217\u8868\u53C2\u6570\u65E0\u6548"));
       return run(token, tokenPort, (h) => repository.list(h, { limit: Number(v.limit), offset: Number(v.offset), ...v.state ? { state: v.state } : {} }));
     },
@@ -12891,23 +15097,23 @@ function createCampaignService(repository, tokens) {
       return run(token, tokenPort, (h) => repository.confirm(h, v));
     },
     pause(token, v) {
-      if (!command3(v) || !record9(v) || v.reason !== void 0 && !text8(v.reason, CAMPAIGN_LIMITS.reason, 0))
+      if (!command3(v) || !record10(v) || v.reason !== void 0 && !text10(v.reason, CAMPAIGN_LIMITS.reason, 0))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u6682\u505C\u53C2\u6570\u65E0\u6548"));
       return run(token, tokenPort, (h) => repository.pause(h, v));
     },
     addTargets(token, v) {
-      if (!record9(v) || !UUID11.test(String(v.campaignId)) || !positive6(v.expectedVersion) || !text8(v.idempotencyKey, CAMPAIGN_LIMITS.key) || !Array.isArray(v.targets) || v.targets.length < 1 || v.targets.length > CAMPAIGN_LIMITS.claimBatchMax || !v.targets.every((t) => record9(t) && Number.isSafeInteger(t.contactId) && Number(t.contactId) > 0 && UUID11.test(String(t.customerId)) && positive6(t.contactVersion) && Number.isSafeInteger(t.round) && Number(t.round) >= 0 && typeof t.nextTouchAt === "string" && Number.isFinite(Date.parse(t.nextTouchAt))))
+      if (!record10(v) || !UUID12.test(String(v.campaignId)) || !positive6(v.expectedVersion) || !text10(v.idempotencyKey, CAMPAIGN_LIMITS.key) || !Array.isArray(v.targets) || v.targets.length < 1 || v.targets.length > CAMPAIGN_LIMITS.claimBatchMax || !v.targets.every((t) => record10(t) && Number.isSafeInteger(t.contactId) && Number(t.contactId) > 0 && UUID12.test(String(t.customerId)) && positive6(t.contactVersion) && Number.isSafeInteger(t.round) && Number(t.round) >= 0 && typeof t.nextTouchAt === "string" && Number.isFinite(Date.parse(t.nextTouchAt))))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u89E6\u70B9\u53C2\u6570\u65E0\u6548"));
       return run(token, tokenPort, (h) => repository.addTargets(h, v));
     },
     claimDryRun(token, v) {
-      if (!record9(v) || !positive6(v.limit) || Number(v.limit) > CAMPAIGN_LIMITS.claimBatchMax || !text8(v.workerId, CAMPAIGN_LIMITS.workerId))
+      if (!record10(v) || !positive6(v.limit) || Number(v.limit) > CAMPAIGN_LIMITS.claimBatchMax || !text10(v.workerId, CAMPAIGN_LIMITS.workerId))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u9886\u53D6\u53C2\u6570\u65E0\u6548"));
       const value2 = v;
       return run(token, tokenPort, (h) => repository.claimDryRun(h, { limit: Number(value2.limit), workerId: value2.workerId.trim() }));
     },
     completeDryRun(token, v) {
-      if (!record9(v) || !UUID11.test(String(v.attemptId)) || !text8(v.executionKey, CAMPAIGN_LIMITS.key) || !["accepted", "rejected", "unknown"].includes(String(v.state)) || v.error !== void 0 && !text8(v.error, CAMPAIGN_LIMITS.reason, 0))
+      if (!record10(v) || !UUID12.test(String(v.attemptId)) || !text10(v.executionKey, CAMPAIGN_LIMITS.key) || !["accepted", "rejected", "unknown"].includes(String(v.state)) || v.error !== void 0 && !text10(v.error, CAMPAIGN_LIMITS.reason, 0))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u8BD5\u8FD0\u884C\u56DE\u6267\u65E0\u6548"));
       return run(token, tokenPort, (h) => repository.completeDryRun(h, v));
     }
@@ -12962,6 +15168,3910 @@ function createCampaignHandler(service) {
   };
 }
 
+// server/adapters/postgres/team-repository.ts
+var import_node_crypto26 = require("node:crypto");
+
+// server/core/organization.ts
+function canPlaceOrganizationUnit(parent, child) {
+  if (child === "company")
+    return false;
+  if (parent === "company")
+    return child === "operations_group" || child === "sales_team";
+  return parent === "operations_group" && child === "sales_team";
+}
+function createsOrganizationCycle(unitId, parentUnitId, ancestorIds) {
+  return parentUnitId === unitId || parentUnitId !== null && ancestorIds.includes(unitId);
+}
+function canDissolveOrganizationUnit(kind, activeChildCount, primaryLeader, manager2) {
+  if (kind === "company")
+    return { allowed: false, reason: "\u516C\u53F8\u6839\u4E0D\u80FD\u89E3\u6563" };
+  if (!manager2 && !primaryLeader)
+    return { allowed: false, reason: "\u53EA\u6709\u4E3B\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u89E3\u6563\u7EC4\u7EC7" };
+  if (activeChildCount > 0)
+    return { allowed: false, reason: "\u8BF7\u5148\u79FB\u52A8\u6216\u89E3\u6563\u4E0B\u7EA7\u7EC4\u7EC7" };
+  return { allowed: true };
+}
+function canCreateOrganizationAssignment(kind, role, existing, unitId) {
+  if (kind === "company")
+    return { allowed: false, reason: "\u516C\u53F8\u6839\u4E0D\u63A5\u53D7\u6210\u5458\u5173\u7CFB" };
+  if (role === "member") {
+    if (kind !== "sales_team")
+      return { allowed: false, reason: "\u53EA\u6709\u9500\u552E\u56E2\u961F\u63A5\u53D7\u666E\u901A\u6210\u5458" };
+    if (existing.some((item) => item.role === "member" && item.unitId !== unitId))
+      return { allowed: false, reason: "\u666E\u901A\u6210\u5458\u53EA\u80FD\u5C5E\u4E8E\u4E00\u4E2A\u9500\u552E\u56E2\u961F" };
+    if (existing.some((item) => item.role === "leader"))
+      return { allowed: false, reason: "\u8D1F\u8D23\u4EBA\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u666E\u901A\u6210\u5458\u52A0\u5165\u56E2\u961F" };
+    return { allowed: true };
+  }
+  if (existing.some((item) => item.role === "member"))
+    return { allowed: false, reason: "\u666E\u901A\u6210\u5458\u4E0D\u80FD\u540C\u65F6\u62C5\u4EFB\u8D1F\u8D23\u4EBA" };
+  if (kind === "sales_team" || kind === "operations_group")
+    return { allowed: true };
+  return { allowed: false, reason: "\u516C\u53F8\u6839\u4E0D\u63A5\u53D7\u8D1F\u8D23\u4EBA\u5173\u7CFB" };
+}
+function isSuperAdministrator(access2) {
+  return access2.identityAdmin || access2.roles.includes("admin");
+}
+function canGovernOrganization(access2) {
+  return isSuperAdministrator(access2) || access2.roles.includes("operations");
+}
+
+// server/core/teams.ts
+var TEAM_ROUTES = {
+  context: "/api/crm/team-context",
+  candidates: "/api/crm/team-invite-candidates",
+  teams: "/api/crm/teams",
+  invitations: "/api/crm/team-invitations"
+};
+var TEAM_LIMITS = {
+  name: 80,
+  groupName: 40,
+  text: 500,
+  page: 50,
+  pageMax: 100,
+  inviteBatch: 20,
+  groupMembers: 100,
+  bodyBytes: 8192,
+  key: 128
+};
+var TEAM_INVITATION_TTL_SECONDS = 604800;
+var DEFAULT_TEAM_UNIT_TYPE = "sales_team";
+function teamAcceptsMembers(unitType2) {
+  return (unitType2 ?? DEFAULT_TEAM_UNIT_TYPE) === "sales_team";
+}
+
+// server/adapters/postgres/team-schema.ts
+var TEAM_SCHEMA_VERSION = "051-team-foundation-public";
+var TEAM_SCHEMA_LOCK = 19041051;
+var TEAM_TREE_VERSION = "052-team-tree-public";
+var TEAM_SCHEMA_SQL = `
+CREATE TABLE crm_teams (
+  team_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL CHECK (btrim(name) <> '' AND char_length(btrim(name)) BETWEEN 2 AND 80),
+  leader_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  created_by uuid NOT NULL REFERENCES public.identity_users(user_id),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX idx_crm_teams_name_ci ON crm_teams(lower(btrim(name)));
+
+CREATE TABLE crm_team_members (
+  team_id uuid NOT NULL REFERENCES crm_teams(team_id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  role text NOT NULL CHECK (role IN ('leader','member')),
+  joined_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(team_id, user_id),
+  UNIQUE(user_id)
+);
+CREATE INDEX idx_crm_team_members_team ON crm_team_members(team_id, role, joined_at);
+
+CREATE TABLE crm_team_invitations (
+  invitation_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id uuid NOT NULL REFERENCES crm_teams(team_id) ON DELETE CASCADE,
+  inviter_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  invitee_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined','cancelled')),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  decided_at timestamptz,
+  CHECK (inviter_user_id <> invitee_user_id)
+);
+CREATE UNIQUE INDEX idx_crm_team_invitations_pending ON crm_team_invitations(team_id, invitee_user_id) WHERE status='pending';
+CREATE INDEX idx_crm_team_invitations_invitee ON crm_team_invitations(invitee_user_id, status, created_at DESC);
+CREATE INDEX idx_crm_team_invitations_team ON crm_team_invitations(team_id, status, created_at DESC);
+
+CREATE TABLE crm_team_idempotency (
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  operation text NOT NULL,
+  idempotency_key text NOT NULL,
+  digest text NOT NULL,
+  response jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(actor_id, operation, idempotency_key)
+);
+`;
+var TEAM_TREE_SQL = `
+ALTER TABLE crm_teams ADD COLUMN parent_team_id uuid REFERENCES crm_teams(team_id) ON DELETE RESTRICT;
+DROP INDEX idx_crm_teams_name_ci;
+CREATE UNIQUE INDEX idx_crm_teams_parent_name_ci ON crm_teams(COALESCE(parent_team_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(btrim(name)));
+CREATE INDEX idx_crm_teams_parent ON crm_teams(parent_team_id, created_at, team_id);
+`;
+
+// server/adapters/postgres/organization-supervision-schema.ts
+var ORG_SUPERVISION_VERSION = "053-org-supervision-public";
+var ORG_SUPERVISION_SQL = `
+ALTER TABLE crm_teams ADD COLUMN unit_type text NOT NULL DEFAULT 'sales_team'
+  CHECK (unit_type IN ('operations','sales_team'));
+CREATE INDEX idx_crm_teams_unit_type ON crm_teams(unit_type, parent_team_id, created_at);
+
+CREATE TABLE crm_team_member_groups (
+  group_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id uuid NOT NULL REFERENCES crm_teams(team_id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (btrim(name) <> '' AND char_length(btrim(name)) BETWEEN 1 AND 40),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(team_id, name)
+);
+CREATE TABLE crm_team_member_group_members (
+  group_id uuid NOT NULL REFERENCES crm_team_member_groups(group_id) ON DELETE CASCADE,
+  team_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  PRIMARY KEY(group_id, user_id),
+  FOREIGN KEY(team_id, user_id) REFERENCES crm_team_members(team_id, user_id) ON DELETE CASCADE,
+  UNIQUE(user_id)
+);
+
+ALTER TABLE crm_contact_assignment_requests
+  ADD COLUMN supervisor_user_ids uuid[] NOT NULL DEFAULT '{}';
+ALTER TABLE crm_contact_assignment_requests
+  ADD COLUMN source_unit_id uuid REFERENCES crm_teams(team_id);
+CREATE INDEX idx_crm_contact_assignment_supervisor
+  ON crm_contact_assignment_requests USING gin(supervisor_user_ids)
+  WHERE status='accepted';
+`;
+var TEAM_ORGANIZATION_VERSION = "054-team-organization-public";
+var TEAM_ORGANIZATION_SQL = `
+CREATE INDEX idx_crm_teams_leader_unit
+  ON crm_teams(leader_user_id, unit_type, team_id);
+CREATE INDEX idx_crm_team_member_groups_team_order
+  ON crm_team_member_groups(team_id, name, group_id);
+`;
+
+// server/adapters/postgres/organization-schema.ts
+var ORGANIZATION_SCHEMA_VERSION = "055-organization-canonical";
+var ORGANIZATION_ASSIGNMENT_INTEGRITY_VERSION = "056-organization-assignment-integrity";
+var LEGACY_ORGANIZATION_REPAIR_VERSION = "054a-legacy-organization-repair";
+var LEGACY_ORGANIZATION_REPAIR_SQL = `
+UPDATE crm_teams t
+SET unit_type='operations',updated_at=now()
+WHERE EXISTS(SELECT 1 FROM crm_teams child WHERE child.parent_team_id=t.team_id);
+
+UPDATE crm_teams
+SET parent_team_id=NULL,updated_at=now()
+WHERE unit_type='operations' AND parent_team_id IS NOT NULL;
+`;
+var ORGANIZATION_SCHEMA_SQL = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM crm_teams child
+    JOIN crm_teams parent ON parent.team_id=child.parent_team_id
+    WHERE (child.unit_type='sales_team' AND parent.unit_type='sales_team')
+       OR child.unit_type='operations'
+  ) THEN
+    RAISE EXCEPTION 'unsupported legacy organization hierarchy';
+  END IF;
+
+  IF (SELECT count(*) FROM crm_teams) <> (
+    WITH RECURSIVE reachable(team_id) AS (
+      SELECT team_id FROM crm_teams WHERE parent_team_id IS NULL
+      UNION ALL
+      SELECT child.team_id FROM crm_teams child JOIN reachable parent ON child.parent_team_id=parent.team_id
+    )
+    SELECT count(*) FROM reachable
+  ) THEN
+    RAISE EXCEPTION 'unsupported legacy organization cycle';
+  END IF;
+END
+$$;
+
+CREATE TABLE crm_org_units (
+  unit_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind text NOT NULL CHECK (kind IN ('company','operations_group','sales_team')),
+  parent_unit_id uuid REFERENCES crm_org_units(unit_id) ON DELETE RESTRICT,
+  name text NOT NULL CHECK (btrim(name) <> '' AND char_length(btrim(name)) BETWEEN 2 AND 80),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  created_by uuid REFERENCES public.identity_users(user_id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CHECK ((kind = 'company' AND parent_unit_id IS NULL) OR (kind <> 'company' AND parent_unit_id IS NOT NULL)),
+  CHECK (kind = 'company' OR created_by IS NOT NULL)
+);
+CREATE UNIQUE INDEX idx_crm_org_units_company ON crm_org_units(kind) WHERE kind='company';
+CREATE UNIQUE INDEX idx_crm_org_units_parent_name_ci
+  ON crm_org_units(COALESCE(parent_unit_id,'00000000-0000-0000-0000-000000000000'::uuid),lower(btrim(name)));
+CREATE INDEX idx_crm_org_units_parent ON crm_org_units(parent_unit_id, kind, created_at, unit_id);
+
+CREATE OR REPLACE FUNCTION crm_validate_org_unit_hierarchy() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  parent_kind text;
+  cycle_found boolean;
+BEGIN
+  IF NEW.kind='company' THEN
+    IF NEW.parent_unit_id IS NOT NULL THEN RAISE EXCEPTION 'company root cannot have a parent'; END IF;
+    RETURN NEW;
+  END IF;
+  SELECT kind INTO parent_kind FROM crm_org_units WHERE unit_id=NEW.parent_unit_id;
+  IF parent_kind IS NULL THEN RAISE EXCEPTION 'organization parent does not exist'; END IF;
+  IF parent_kind='sales_team' THEN RAISE EXCEPTION 'sales teams are leaves'; END IF;
+  IF NEW.kind='operations_group' AND parent_kind<>'company' THEN RAISE EXCEPTION 'operations groups must be under the company'; END IF;
+  IF NEW.kind='sales_team' AND parent_kind NOT IN ('company','operations_group') THEN RAISE EXCEPTION 'sales teams must be under the company or an operations group'; END IF;
+  IF TG_OP='UPDATE' AND NEW.parent_unit_id IS DISTINCT FROM OLD.parent_unit_id THEN
+    WITH RECURSIVE ancestors(unit_id,parent_unit_id) AS (
+      SELECT unit_id,parent_unit_id FROM crm_org_units WHERE unit_id=NEW.parent_unit_id
+      UNION ALL
+      SELECT u.unit_id,u.parent_unit_id FROM crm_org_units u JOIN ancestors a ON u.unit_id=a.parent_unit_id
+    ) SELECT EXISTS(SELECT 1 FROM ancestors WHERE unit_id=NEW.unit_id) INTO cycle_found;
+    IF cycle_found THEN RAISE EXCEPTION 'organization cycle'; END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_crm_org_unit_hierarchy BEFORE INSERT OR UPDATE OF parent_unit_id,kind ON crm_org_units
+FOR EACH ROW EXECUTE FUNCTION crm_validate_org_unit_hierarchy();
+
+CREATE TABLE crm_org_assignments (
+  user_id uuid NOT NULL REFERENCES public.identity_users(user_id) ON DELETE CASCADE,
+  unit_id uuid NOT NULL REFERENCES crm_org_units(unit_id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('leader','member')),
+  is_primary boolean NOT NULL DEFAULT false,
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(user_id, unit_id, role),
+  UNIQUE(unit_id, user_id),
+  CHECK (NOT is_primary OR role='leader')
+);
+CREATE UNIQUE INDEX idx_crm_org_assignments_member_once ON crm_org_assignments(user_id) WHERE role='member';
+CREATE UNIQUE INDEX idx_crm_org_assignments_primary_once
+  ON crm_org_assignments(unit_id) WHERE role='leader' AND is_primary;
+CREATE INDEX idx_crm_org_assignments_unit ON crm_org_assignments(unit_id, role, created_at, user_id);
+
+CREATE OR REPLACE FUNCTION crm_validate_org_assignment() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE unit_kind text;
+BEGIN
+  SELECT kind INTO unit_kind FROM crm_org_units WHERE unit_id=NEW.unit_id;
+  IF unit_kind IS NULL OR unit_kind='company' THEN RAISE EXCEPTION 'company root does not accept assignments'; END IF;
+  IF NEW.role='member' AND unit_kind<>'sales_team' THEN RAISE EXCEPTION 'only sales teams accept members'; END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_crm_org_assignment_kind BEFORE INSERT OR UPDATE OF unit_id,role ON crm_org_assignments
+FOR EACH ROW EXECUTE FUNCTION crm_validate_org_assignment();
+
+CREATE TABLE crm_org_invitations (
+  invitation_id uuid PRIMARY KEY,
+  unit_id uuid NOT NULL REFERENCES crm_org_units(unit_id) ON DELETE CASCADE,
+  inviter_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  invitee_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined','cancelled','expired')),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL DEFAULT now()+(${TEAM_INVITATION_TTL_SECONDS} * interval '1 second'),
+  decided_at timestamptz,
+  CHECK (inviter_user_id <> invitee_user_id)
+);
+CREATE UNIQUE INDEX idx_crm_org_invitations_pending ON crm_org_invitations(unit_id, invitee_user_id) WHERE status='pending';
+CREATE INDEX idx_crm_org_invitations_invitee ON crm_org_invitations(invitee_user_id, status, created_at DESC);
+CREATE INDEX idx_crm_org_invitations_unit ON crm_org_invitations(unit_id, status, created_at DESC);
+
+CREATE TABLE crm_org_idempotency (
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id) ON DELETE CASCADE,
+  operation text NOT NULL,
+  idempotency_key text NOT NULL,
+  digest text NOT NULL,
+  response jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(actor_id, operation, idempotency_key)
+);
+
+CREATE TABLE crm_org_member_groups (
+  group_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  unit_id uuid NOT NULL REFERENCES crm_org_units(unit_id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (btrim(name) <> '' AND char_length(btrim(name)) BETWEEN 1 AND 40),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX idx_crm_org_member_groups_name_ci ON crm_org_member_groups(unit_id, lower(btrim(name)));
+CREATE TABLE crm_org_member_group_members (
+  group_id uuid NOT NULL REFERENCES crm_org_member_groups(group_id) ON DELETE CASCADE,
+  unit_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  PRIMARY KEY(group_id, user_id),
+  UNIQUE(unit_id, user_id),
+  FOREIGN KEY(unit_id, user_id) REFERENCES crm_org_assignments(unit_id, user_id) ON DELETE CASCADE
+);
+
+INSERT INTO crm_org_units(kind,parent_unit_id,name,version,created_by,created_at,updated_at)
+VALUES('company',NULL,'Milogin',1,NULL,now(),now());
+
+WITH RECURSIVE legacy_tree AS (
+  SELECT t.*,0 AS depth
+  FROM crm_teams t
+  WHERE t.parent_team_id IS NULL
+  UNION ALL
+  SELECT child.*,parent.depth+1
+  FROM crm_teams child
+  JOIN legacy_tree parent ON child.parent_team_id=parent.team_id
+), mapped AS (
+  SELECT t.team_id,
+    CASE t.unit_type WHEN 'operations' THEN 'operations_group' ELSE 'sales_team' END AS kind,
+    CASE WHEN t.parent_team_id IS NULL THEN company.unit_id ELSE t.parent_team_id END AS parent_unit_id,
+    t.name,t.version,t.created_by,t.created_at,t.updated_at,t.depth
+  FROM legacy_tree t
+  CROSS JOIN (SELECT unit_id FROM crm_org_units WHERE kind='company') company
+)
+INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,version,created_by,created_at,updated_at)
+SELECT team_id,kind,parent_unit_id,name,version,created_by,created_at,updated_at
+FROM mapped
+ORDER BY depth,team_id;
+
+INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary,created_at,updated_at)
+SELECT leader_user_id,team_id,'leader',true,created_at,updated_at
+FROM crm_teams
+ON CONFLICT DO NOTHING;
+
+INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary,created_at,updated_at)
+SELECT m.user_id,m.team_id,'member',false,m.joined_at,m.joined_at
+FROM crm_team_members m JOIN crm_teams t USING(team_id)
+WHERE m.role='member' AND m.user_id<>t.leader_user_id AND t.unit_type='sales_team'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id,status,version,created_at,expires_at,decided_at)
+SELECT invitation_id,team_id,inviter_user_id,invitee_user_id,status,version,created_at,
+  created_at+(${TEAM_INVITATION_TTL_SECONDS} * interval '1 second'),decided_at
+FROM crm_team_invitations;
+
+INSERT INTO crm_org_idempotency(actor_id,operation,idempotency_key,digest,response,created_at)
+SELECT actor_id,operation,idempotency_key,digest,response,created_at FROM crm_team_idempotency;
+
+INSERT INTO crm_org_member_groups(group_id,unit_id,name,version,created_at,updated_at)
+SELECT g.group_id,g.team_id,g.name,g.version,g.created_at,g.created_at FROM crm_team_member_groups g;
+INSERT INTO crm_org_member_group_members(group_id,unit_id,user_id)
+SELECT gm.group_id,gm.team_id,gm.user_id FROM crm_team_member_group_members gm;
+
+ALTER TABLE crm_contact_assignment_requests
+  ADD COLUMN source_org_unit_id uuid REFERENCES crm_org_units(unit_id);
+UPDATE crm_contact_assignment_requests r
+SET source_org_unit_id=r.source_unit_id
+WHERE r.source_unit_id IS NOT NULL AND EXISTS(SELECT 1 FROM crm_org_units u WHERE u.unit_id=r.source_unit_id);
+CREATE INDEX idx_crm_contact_assignment_source_org
+  ON crm_contact_assignment_requests(source_org_unit_id, status, created_at DESC);
+
+COMMENT ON TABLE crm_teams IS 'Frozen after 055; compatibility source only. Runtime writes crm_org_units.';
+COMMENT ON TABLE crm_team_members IS 'Frozen after 055; compatibility source only. Runtime writes crm_org_assignments.';
+COMMENT ON TABLE crm_team_invitations IS 'Frozen after 055; compatibility source only. Runtime writes crm_org_invitations.';
+COMMENT ON TABLE crm_team_idempotency IS 'Frozen after 055; compatibility source only. Runtime writes crm_org_idempotency.';
+COMMENT ON TABLE crm_team_member_groups IS 'Frozen after 055; compatibility source only. Runtime writes crm_org_member_groups.';
+COMMENT ON TABLE crm_team_member_group_members IS 'Frozen after 055; compatibility source only. Runtime writes crm_org_member_group_members.';
+`;
+var ORGANIZATION_ASSIGNMENT_INTEGRITY_SQL = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM crm_org_assignments
+    GROUP BY user_id
+    HAVING bool_or(role='member') AND bool_or(role='leader')
+  ) THEN
+    RAISE EXCEPTION 'existing organization assignments violate member/leader exclusivity';
+  END IF;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION crm_validate_org_unit_hierarchy() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  parent_kind text;
+  cycle_found boolean;
+BEGIN
+  IF NEW.kind='company' THEN
+    IF NEW.parent_unit_id IS NOT NULL THEN RAISE EXCEPTION 'company root cannot have a parent'; END IF;
+    RETURN NEW;
+  END IF;
+  SELECT kind INTO parent_kind FROM crm_org_units WHERE unit_id=NEW.parent_unit_id;
+  IF parent_kind IS NULL THEN RAISE EXCEPTION 'organization parent does not exist'; END IF;
+  IF parent_kind='sales_team' THEN RAISE EXCEPTION 'sales teams are leaves'; END IF;
+  IF NEW.kind='operations_group' AND parent_kind<>'company' THEN RAISE EXCEPTION 'operations groups must be under the company'; END IF;
+  IF NEW.kind='sales_team' AND parent_kind NOT IN ('company','operations_group') THEN RAISE EXCEPTION 'sales teams must be under the company or an operations group'; END IF;
+  IF TG_OP='UPDATE' AND NEW.parent_unit_id IS DISTINCT FROM OLD.parent_unit_id THEN
+    WITH RECURSIVE ancestors(unit_id,parent_unit_id) AS (
+      SELECT unit_id,parent_unit_id FROM crm_org_units WHERE unit_id=NEW.parent_unit_id
+      UNION ALL SELECT u.unit_id,u.parent_unit_id FROM crm_org_units u JOIN ancestors a ON u.unit_id=a.parent_unit_id
+    ) SELECT EXISTS(SELECT 1 FROM ancestors WHERE unit_id=NEW.unit_id) INTO cycle_found;
+    IF cycle_found THEN RAISE EXCEPTION 'organization cycle'; END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_crm_org_unit_hierarchy ON crm_org_units;
+CREATE TRIGGER trg_crm_org_unit_hierarchy BEFORE INSERT OR UPDATE OF parent_unit_id,kind ON crm_org_units
+FOR EACH ROW EXECUTE FUNCTION crm_validate_org_unit_hierarchy();
+
+CREATE OR REPLACE FUNCTION crm_validate_org_assignment() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE unit_kind text;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.user_id::text, 0));
+  SELECT kind INTO unit_kind FROM crm_org_units WHERE unit_id=NEW.unit_id;
+  IF unit_kind IS NULL OR unit_kind='company' THEN RAISE EXCEPTION 'company root does not accept assignments'; END IF;
+  IF NEW.role='member' THEN
+    IF unit_kind<>'sales_team' THEN RAISE EXCEPTION 'only sales teams accept members'; END IF;
+    IF EXISTS(SELECT 1 FROM crm_org_assignments WHERE user_id=NEW.user_id AND role='leader') THEN
+      RAISE EXCEPTION 'leader cannot also be an ordinary member';
+    END IF;
+  ELSIF NEW.role='leader' THEN
+    IF EXISTS(SELECT 1 FROM crm_org_assignments WHERE user_id=NEW.user_id AND role='member') THEN
+      RAISE EXCEPTION 'ordinary member cannot also be a leader';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_crm_org_assignment_kind ON crm_org_assignments;
+CREATE TRIGGER trg_crm_org_assignment_kind BEFORE INSERT OR UPDATE OF user_id,unit_id,role ON crm_org_assignments
+FOR EACH ROW EXECUTE FUNCTION crm_validate_org_assignment();
+`;
+
+// server/adapters/postgres/organization-dissolution-schema.ts
+var ORGANIZATION_DISSOLUTION_VERSION = "064-organization-dissolution";
+var ORGANIZATION_DISSOLUTION_SQL = `
+ALTER TABLE crm_org_units ADD COLUMN IF NOT EXISTS dissolved_at timestamptz;
+ALTER TABLE crm_org_units ADD COLUMN IF NOT EXISTS dissolved_by uuid REFERENCES public.identity_users(user_id);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname='crm_org_units_dissolution_pair_check'
+  ) THEN
+    ALTER TABLE crm_org_units ADD CONSTRAINT crm_org_units_dissolution_pair_check
+      CHECK ((dissolved_at IS NULL AND dissolved_by IS NULL) OR (dissolved_at IS NOT NULL AND dissolved_by IS NOT NULL));
+  END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_crm_org_units_active_parent
+  ON crm_org_units(parent_unit_id,kind,created_at,unit_id) WHERE dissolved_at IS NULL;
+DROP INDEX IF EXISTS idx_crm_org_units_parent_name_ci;
+CREATE UNIQUE INDEX idx_crm_org_units_parent_name_ci
+  ON crm_org_units(COALESCE(parent_unit_id,'00000000-0000-0000-0000-000000000000'::uuid),lower(btrim(name)))
+  WHERE dissolved_at IS NULL;
+
+ALTER TABLE crm_org_assignments ADD COLUMN IF NOT EXISTS ended_at timestamptz;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname='crm_org_assignments_ended_after_created_check'
+  ) THEN
+    ALTER TABLE crm_org_assignments ADD CONSTRAINT crm_org_assignments_ended_after_created_check
+      CHECK (ended_at IS NULL OR ended_at>=created_at);
+  END IF;
+END
+$$;
+
+DROP INDEX IF EXISTS idx_crm_org_assignments_member_once;
+CREATE UNIQUE INDEX idx_crm_org_assignments_member_once
+  ON crm_org_assignments(user_id) WHERE role='member' AND ended_at IS NULL;
+DROP INDEX IF EXISTS idx_crm_org_assignments_primary_once;
+CREATE UNIQUE INDEX idx_crm_org_assignments_primary_once
+  ON crm_org_assignments(unit_id) WHERE role='leader' AND is_primary AND ended_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_org_assignments_active_unit
+  ON crm_org_assignments(unit_id,role,created_at,user_id) WHERE ended_at IS NULL;
+
+CREATE OR REPLACE FUNCTION crm_validate_org_assignment() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE unit_kind text;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.user_id::text, 0));
+  SELECT kind INTO unit_kind FROM crm_org_units WHERE unit_id=NEW.unit_id AND dissolved_at IS NULL;
+  IF unit_kind IS NULL OR unit_kind='company' THEN RAISE EXCEPTION 'organization unit is not assignable'; END IF;
+  IF NEW.role='member' THEN
+    IF unit_kind<>'sales_team' THEN RAISE EXCEPTION 'only sales teams accept members'; END IF;
+    IF EXISTS(SELECT 1 FROM crm_org_assignments WHERE user_id=NEW.user_id AND role='leader' AND ended_at IS NULL) THEN
+      RAISE EXCEPTION 'leader cannot also be an ordinary member';
+    END IF;
+  ELSIF NEW.role='leader' THEN
+    IF EXISTS(SELECT 1 FROM crm_org_assignments WHERE user_id=NEW.user_id AND role='member' AND ended_at IS NULL) THEN
+      RAISE EXCEPTION 'ordinary member cannot also be a leader';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TABLE IF NOT EXISTS crm_org_dissolution_audits (
+  audit_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  unit_id uuid NOT NULL UNIQUE REFERENCES crm_org_units(unit_id) ON DELETE RESTRICT,
+  actor_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  unit_kind text NOT NULL CHECK (unit_kind IN ('operations_group','sales_team')),
+  unit_name text NOT NULL,
+  unit_version integer NOT NULL CHECK (unit_version>0),
+  ended_assignment_count integer NOT NULL CHECK (ended_assignment_count>=0),
+  cancelled_invitation_count integer NOT NULL CHECK (cancelled_invitation_count>=0),
+  dissolved_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_crm_org_dissolution_audits_actor
+  ON crm_org_dissolution_audits(actor_user_id,dissolved_at DESC,audit_id DESC);
+
+CREATE OR REPLACE FUNCTION crm_reject_org_dissolution_audit_change() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'organization dissolution audits are append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_crm_org_dissolution_audits_immutable ON crm_org_dissolution_audits;
+CREATE TRIGGER trg_crm_org_dissolution_audits_immutable
+BEFORE UPDATE OR DELETE ON crm_org_dissolution_audits
+FOR EACH ROW EXECUTE FUNCTION crm_reject_org_dissolution_audit_change();
+`;
+
+// server/adapters/postgres/team-repository.ts
+var TEAM_SELECT = `
+  SELECT u.unit_id AS "teamId",u.name,u.kind AS "organizationKind",
+    CASE u.kind WHEN 'operations_group' THEN 'operations' ELSE 'sales_team' END AS "unitType",
+    u.parent_unit_id AS "parentTeamId",p.name AS "parentTeamName",
+    leader.user_id AS "leaderUserId",leader.display_name AS "leaderName",u.version,u.created_at AS "createdAt",
+    (SELECT count(*)::int FROM crm_org_assignments a WHERE a.unit_id=u.unit_id AND a.ended_at IS NULL) AS "memberCount"
+  FROM crm_org_units u
+  LEFT JOIN crm_org_units p ON p.unit_id=u.parent_unit_id
+  LEFT JOIN LATERAL (
+    SELECT a.user_id,iu.display_name
+    FROM crm_org_assignments a JOIN public.identity_users iu ON iu.user_id=a.user_id
+    WHERE a.unit_id=u.unit_id AND a.role='leader' AND a.ended_at IS NULL
+    ORDER BY a.is_primary DESC,a.created_at,a.user_id LIMIT 1
+  ) leader ON true`;
+var INVITATION_SELECT = `
+  SELECT i.invitation_id AS "invitationId",i.unit_id AS "teamId",u.name AS "teamName",
+    i.inviter_user_id AS "inviterUserId",iu.display_name AS "inviterName",
+    i.invitee_user_id AS "inviteeUserId",vu.display_name AS "inviteeName",
+    i.status,i.version,i.created_at AS "createdAt",i.expires_at AS "expiresAt",i.decided_at AS "decidedAt"
+  FROM crm_org_invitations i
+  JOIN crm_org_units u ON u.unit_id=i.unit_id AND u.dissolved_at IS NULL
+  JOIN public.identity_users iu ON iu.user_id=i.inviter_user_id
+  JOIN public.identity_users vu ON vu.user_id=i.invitee_user_id`;
+var ADMIN_TEAM_SELECT = `
+  SELECT u.unit_id AS "teamId",u.name,
+    CASE u.kind WHEN 'operations_group' THEN 'operations' ELSE 'sales_team' END AS "unitType",
+    u.kind AS "organizationKind",u.parent_unit_id AS "parentTeamId",p.name AS "parentTeamName",
+    leader.display_name AS "leaderName",u.version,
+    (SELECT count(*)::int FROM crm_org_assignments a WHERE a.unit_id=u.unit_id AND a.ended_at IS NULL) AS "memberCount",
+    (SELECT count(*)::int FROM crm_org_invitations i WHERE i.unit_id=u.unit_id AND i.status='pending') AS "pendingInvitationCount",
+    (SELECT count(*)::int FROM crm_org_units c WHERE c.parent_unit_id=u.unit_id AND c.dissolved_at IS NULL) AS "childCount",
+    u.created_at AS "createdAt"
+  FROM crm_org_units u
+  LEFT JOIN crm_org_units p ON p.unit_id=u.parent_unit_id
+  LEFT JOIN LATERAL (
+    SELECT iu.display_name
+    FROM crm_org_assignments a JOIN public.identity_users iu ON iu.user_id=a.user_id
+    WHERE a.unit_id=u.unit_id AND a.role='leader' AND a.ended_at IS NULL
+    ORDER BY a.is_primary DESC,a.created_at,a.user_id LIMIT 1
+  ) leader ON true`;
+function superAdmin(actor) {
+  return isSuperAdministrator({ userId: actor.userId, identityAdmin: actor.identityAdmin, roles: actor.roles });
+}
+function manager(actor) {
+  return canGovernOrganization({ userId: actor.userId, identityAdmin: actor.identityAdmin, roles: actor.roles });
+}
+function participant(actor) {
+  return superAdmin(actor) || actor.roles.some((role) => role === "operations" || role === "sales");
+}
+function mapInvitation(row2, actor, canCancel) {
+  return {
+    ...row2,
+    createdAt: row2.createdAt.toISOString(),
+    expiresAt: row2.expiresAt.toISOString(),
+    decidedAt: row2.decidedAt?.toISOString() ?? null,
+    canAccept: row2.status === "pending" && row2.inviteeUserId === actor.userId,
+    canDecline: row2.status === "pending" && row2.inviteeUserId === actor.userId,
+    canCancel: row2.status === "pending" && canCancel
+  };
+}
+function treeOrder(rows) {
+  const byId = new Map(rows.map((row2) => [row2.teamId, row2]));
+  const children = /* @__PURE__ */ new Map();
+  for (const row2 of rows) {
+    const parent = row2.parentTeamId && byId.has(row2.parentTeamId) ? row2.parentTeamId : null;
+    children.set(parent, [...children.get(parent) ?? [], row2]);
+  }
+  for (const group of children.values())
+    group.sort((left, right) => left.name.localeCompare(right.name, "zh-CN") || left.teamId.localeCompare(right.teamId));
+  const result2 = [];
+  const seen = /* @__PURE__ */ new Set();
+  const visit = (parent, depth) => {
+    for (const row2 of children.get(parent) ?? []) {
+      if (seen.has(row2.teamId))
+        continue;
+      seen.add(row2.teamId);
+      result2.push({ ...row2, createdAt: row2.createdAt.toISOString(), depth });
+      visit(row2.teamId, depth + 1);
+    }
+  };
+  visit(null, 0);
+  for (const row2 of rows)
+    if (!seen.has(row2.teamId))
+      result2.push({ ...row2, createdAt: row2.createdAt.toISOString(), depth: 0 });
+  return result2;
+}
+var PostgresTeamRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+    assertCenterDatabasePool(pool);
+  }
+  async tx(work) {
+    let client;
+    try {
+      client = await this.pool.connect();
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock($1)", [TEAM_SCHEMA_LOCK]);
+      const result2 = await work(client);
+      await client.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      if (client)
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+        }
+      this.log.write("ERROR", "teams.repository", `\u7EC4\u7EC7\u8FC1\u79FB\u5931\u8D25 (${error instanceof Error ? error.name : "unknown"})`);
+      return failure("DATABASE_ERROR", "\u7EC4\u7EC7\u6570\u636E\u8FC1\u79FB\u5931\u8D25");
+    } finally {
+      client?.release();
+    }
+  }
+  async authorized(tokenHash, work) {
+    let client;
+    try {
+      client = await this.pool.connect();
+      const actor = await this.actor(client, tokenHash);
+      if (!actor)
+        return failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709\u7EC4\u7EC7\u6743\u9650");
+      return await work(client, actor);
+    } catch (error) {
+      const code2 = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown";
+      this.log.write("ERROR", "teams.authorize", `\u7EC4\u7EC7\u9274\u6743\u5931\u8D25 code=${code2} message=${error instanceof Error ? error.message : "unknown"}`);
+      return failure("DATABASE_ERROR", "\u7EC4\u7EC7\u9274\u6743\u5931\u8D25");
+    } finally {
+      client?.release();
+    }
+  }
+  async authorizedTransaction(tokenHash, work) {
+    let client;
+    try {
+      client = await this.pool.connect();
+      await client.query("BEGIN");
+      const actor = await this.actor(client, tokenHash);
+      if (!actor) {
+        await client.query("ROLLBACK");
+        return failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709\u7EC4\u7EC7\u6743\u9650");
+      }
+      const result2 = await work(client, actor);
+      await client.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      if (client)
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+        }
+      const code2 = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown";
+      this.log.write("ERROR", "teams.transaction", `\u7EC4\u7EC7\u5199\u4E8B\u52A1\u5931\u8D25 code=${code2} message=${error instanceof Error ? error.message : "unknown"}`);
+      if (code2 === "23505")
+        return failure("CONFLICT", "\u7EC4\u7EC7\u6570\u636E\u4E0E\u73B0\u6709\u8BB0\u5F55\u51B2\u7A81");
+      if (code2 === "23503" || code2 === "23514" || code2 === "P0001")
+        return failure("INVALID_INPUT", "\u7EC4\u7EC7\u53D8\u66F4\u4E0D\u7B26\u5408\u5C42\u7EA7\u6216\u5173\u7CFB\u89C4\u5219");
+      return failure("DATABASE_ERROR", "\u7EC4\u7EC7\u6570\u636E\u64CD\u4F5C\u5931\u8D25");
+    } finally {
+      client?.release();
+    }
+  }
+  async migrate() {
+    return this.tx(async (client) => {
+      for (const [version4, sql] of [
+        [TEAM_SCHEMA_VERSION, TEAM_SCHEMA_SQL],
+        [TEAM_TREE_VERSION, TEAM_TREE_SQL],
+        [ORG_SUPERVISION_VERSION, ORG_SUPERVISION_SQL],
+        [TEAM_ORGANIZATION_VERSION, TEAM_ORGANIZATION_SQL],
+        [LEGACY_ORGANIZATION_REPAIR_VERSION, LEGACY_ORGANIZATION_REPAIR_SQL],
+        [ORGANIZATION_SCHEMA_VERSION, ORGANIZATION_SCHEMA_SQL],
+        [ORGANIZATION_ASSIGNMENT_INTEGRITY_VERSION, ORGANIZATION_ASSIGNMENT_INTEGRITY_SQL],
+        [ORGANIZATION_DISSOLUTION_VERSION, ORGANIZATION_DISSOLUTION_SQL]
+      ]) {
+        const checksum4 = (0, import_node_crypto26.createHash)("sha256").update(sql).digest("hex");
+        const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [version4]);
+        if (old.rows.length && old.rows[0].checksum !== checksum4)
+          return failure("CONFLICT", `\u7EC4\u7EC7\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4: ${version4}`);
+        if (!old.rows.length) {
+          await client.query(sql);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [version4, checksum4]);
+          this.log.write("INFO", "teams.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${version4}`);
+        }
+      }
+      return success(void 0);
+    });
+  }
+  async actor(client, tokenHash) {
+    const row2 = (await client.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",u.identity_admin AS "identityAdmin",a.scope,a.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role) AS roles FROM public.identity_sessions s JOIN public.identity_users u USING(user_id) LEFT JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active WHERE s.token_hash=$1 AND s.client='api' AND s.revoked_at IS NULL AND s.expires_at>now() AND u.active AND NOT u.must_change_password AND s.security_revision=u.security_revision`, [tokenHash])).rows[0];
+    if (!row2 || !row2.identityAdmin && row2.scope === null)
+      return null;
+    const roles = row2.roles ?? [];
+    const actor = { ...row2, roles, scope: row2.scope ?? "own", capabilities: [] };
+    if (!participant(actor))
+      return null;
+    return { ...actor, capabilities: effectiveCapabilitiesFor(roles, row2.capabilities) };
+  }
+  async members(client, unitId, full, viewerUserId) {
+    return (await client.query(`
+      SELECT a.user_id AS "userId",u.display_name AS "displayName",e.email,a.role,a.created_at AS "joinedAt"
+      FROM crm_org_assignments a
+      JOIN public.identity_users u ON u.user_id=a.user_id
+      LEFT JOIN public.identity_login_emails e ON e.user_id=a.user_id
+      WHERE a.unit_id=$1 AND a.ended_at IS NULL AND ($2::boolean OR a.user_id=$3)
+      ORDER BY CASE a.role WHEN 'leader' THEN 0 ELSE 1 END,a.created_at,a.user_id
+    `, [unitId, full, viewerUserId])).rows.map((member2) => ({ ...member2, joinedAt: member2.joinedAt.toISOString() }));
+  }
+  async memberGroups(client, unitId, full) {
+    if (!full)
+      return [];
+    const groups = (await client.query('SELECT group_id AS "groupId",unit_id AS "teamId",name,version FROM crm_org_member_groups WHERE unit_id=$1 ORDER BY name,group_id', [unitId])).rows;
+    if (!groups.length)
+      return [];
+    const members2 = (await client.query('SELECT group_id AS "groupId",user_id AS "userId" FROM crm_org_member_group_members WHERE unit_id=$1 ORDER BY group_id,user_id', [unitId])).rows;
+    return groups.map((group) => ({ ...group, memberIds: members2.filter((member2) => member2.groupId === group.groupId).map((member2) => member2.userId) }));
+  }
+  async snapshot(client, row2, full, viewerUserId, canDissolve) {
+    return {
+      teamId: row2.teamId,
+      name: row2.name,
+      unitType: row2.unitType,
+      parentTeamId: row2.parentTeamId,
+      parentTeamName: row2.parentTeamName,
+      leaderUserId: row2.leaderUserId ?? "",
+      leaderName: row2.leaderName ?? "",
+      version: row2.version,
+      createdAt: row2.createdAt.toISOString(),
+      members: await this.members(client, row2.teamId, full, viewerUserId),
+      memberCount: row2.memberCount,
+      memberGroups: await this.memberGroups(client, row2.teamId, full),
+      canDissolve
+    };
+  }
+  async unit(client, unitId) {
+    return (await client.query('SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version,dissolved_at AS "dissolvedAt" FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL', [unitId])).rows[0] ?? null;
+  }
+  async assignment(client, userId, unitId) {
+    return (await client.query('SELECT unit_id AS "unitId",role,is_primary AS "isPrimary" FROM crm_org_assignments WHERE user_id=$1 AND unit_id=$2 AND ended_at IS NULL ORDER BY is_primary DESC,created_at LIMIT 1', [userId, unitId])).rows[0] ?? null;
+  }
+  async canManageUnit(client, actor, unitId) {
+    if (manager(actor))
+      return true;
+    const row2 = await this.assignment(client, actor.userId, unitId);
+    return row2?.role === "leader";
+  }
+  async canDissolveUnit(client, actor, unitId) {
+    const unit = await this.unit(client, unitId);
+    if (!unit)
+      return false;
+    const assignment = await this.assignment(client, actor.userId, unitId);
+    const children = await client.query("SELECT count(*)::int AS count FROM crm_org_units WHERE parent_unit_id=$1 AND dissolved_at IS NULL", [unitId]);
+    return canDissolveOrganizationUnit(unit.kind, children.rows[0].count, assignment?.role === "leader" && assignment.isPrimary, manager(actor)).allowed;
+  }
+  async teamById(client, unitId, actor) {
+    const row2 = (await client.query(`${TEAM_SELECT} WHERE u.unit_id=$1 AND u.dissolved_at IS NULL`, [unitId])).rows[0];
+    if (!row2)
+      return null;
+    const full = await this.canManageUnit(client, actor, unitId);
+    return { row: row2, team: await this.snapshot(client, row2, full, actor.userId, await this.canDissolveUnit(client, actor, unitId)) };
+  }
+  async teamForUser(client, actor) {
+    const row2 = (await client.query(`${TEAM_SELECT} JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.kind='sales_team' AND u.dissolved_at IS NULL ORDER BY a.is_primary DESC,a.created_at,a.unit_id LIMIT 1`, [actor.userId])).rows[0];
+    return row2 ? this.snapshot(client, row2, row2.leaderUserId === actor.userId, actor.userId, await this.canDissolveUnit(client, actor, row2.teamId)) : null;
+  }
+  async expireInvitations(client) {
+    await client.query("UPDATE crm_org_invitations SET status='expired',version=version+1,decided_at=now() WHERE status='pending' AND expires_at<=now()");
+  }
+  async canManageInvitation(client, actor, unitId) {
+    if (manager(actor))
+      return true;
+    const row2 = await this.assignment(client, actor.userId, unitId);
+    return row2?.role === "leader" && row2.isPrimary;
+  }
+  async invitations(client, actor, teamId, canManageCurrent) {
+    await this.expireInvitations(client);
+    const incoming = (await client.query(`${INVITATION_SELECT} WHERE i.invitee_user_id=$1 AND i.status IN ('pending','expired') ORDER BY CASE i.status WHEN 'pending' THEN 0 ELSE 1 END,i.created_at DESC`, [actor.userId])).rows;
+    const outgoing = manager(actor) ? (await client.query(`${INVITATION_SELECT} WHERE ($1::uuid IS NULL OR i.unit_id=$1) AND i.status IN ('pending','expired') ORDER BY CASE i.status WHEN 'pending' THEN 0 ELSE 1 END,i.created_at DESC`, [teamId])).rows : teamId && canManageCurrent ? (await client.query(`${INVITATION_SELECT} WHERE i.unit_id=$1 AND i.status IN ('pending','expired') ORDER BY CASE i.status WHEN 'pending' THEN 0 ELSE 1 END,i.created_at DESC`, [teamId])).rows : [];
+    return {
+      incoming: incoming.map((row2) => mapInvitation(row2, actor, manager(actor) || canManageCurrent && row2.teamId === teamId)),
+      outgoing: outgoing.map((row2) => mapInvitation(row2, actor, manager(actor) || canManageCurrent && row2.teamId === teamId))
+    };
+  }
+  async adminTeamRows(client, suffix = "", params = []) {
+    return (await client.query(`${ADMIN_TEAM_SELECT} WHERE u.kind<>'company' AND u.dissolved_at IS NULL ${suffix}`, params)).rows;
+  }
+  async organizationContext(client, actor) {
+    const companyRow = (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE kind='company'`)).rows[0];
+    if (!companyRow)
+      throw new Error("company root missing");
+    const rows = manager(actor) ? (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE kind<>'company' AND dissolved_at IS NULL ORDER BY kind,name,unit_id`)).rows : (await client.query('SELECT u.unit_id AS "unitId",u.kind,u.parent_unit_id AS "parentUnitId",u.name,u.version FROM crm_org_units u JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.dissolved_at IS NULL ORDER BY u.kind,u.name,u.unit_id', [actor.userId])).rows;
+    return { company: companyRow, visibleUnits: rows };
+  }
+  async contextIn(client, actor) {
+    const team = await this.teamForUser(client, actor);
+    const teamManageable = team ? await this.canManageInvitation(client, actor, team.teamId) : false;
+    const invitations = await this.invitations(client, actor, team?.teamId ?? null, teamManageable);
+    const allAdminTeams = manager(actor) ? treeOrder(await this.adminTeamRows(client)) : [];
+    const managedTeams = manager(actor) ? allAdminTeams : actor.roles.includes("sales") ? treeOrder(await this.adminTeamRows(client, "AND EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.unit_id=u.unit_id AND a.user_id=$1 AND a.role='leader' AND a.ended_at IS NULL)", [actor.userId])) : [];
+    return success({
+      team,
+      managedTeams,
+      incomingInvitations: invitations.incoming,
+      outgoingInvitations: invitations.outgoing,
+      canCreate: manager(actor) || !team && actor.roles.includes("sales"),
+      canAdmin: manager(actor),
+      isSuperAdmin: superAdmin(actor),
+      adminTeams: allAdminTeams,
+      organization: await this.organizationContext(client, actor)
+    });
+  }
+  context(tokenHash) {
+    return this.authorized(tokenHash, (client, actor) => this.contextIn(client, actor));
+  }
+  detail(tokenHash, teamId) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const own = await this.assignment(client, actor.userId, teamId);
+      if (!manager(actor) && !own)
+        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
+      const found = await this.teamById(client, teamId, actor);
+      if (!found || found.row.organizationKind === "company")
+        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
+      const full = await this.canManageUnit(client, actor, teamId);
+      const invitations = await this.invitations(client, actor, teamId, await this.canManageInvitation(client, actor, teamId));
+      const children = full ? treeOrder(await this.adminTeamRows(client, "AND u.parent_unit_id=$1", [teamId])).filter((row2) => row2.depth === 0) : [];
+      return success({ team: found.team, outgoingInvitations: invitations.outgoing, children });
+    });
+  }
+  candidates(tokenHash, query2) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const leads = (await client.query("SELECT 1 FROM crm_org_assignments WHERE user_id=$1 AND role='leader' AND ended_at IS NULL LIMIT 1", [actor.userId])).rows.length > 0;
+      const role = query2.role ?? "member";
+      const kind = role === "leader" && query2.unitType === "operations" ? "operations_group" : "sales_team";
+      if (role === "leader" && !manager(actor))
+        return failure("FORBIDDEN", "\u53EA\u6709\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u8C03\u6574\u8D1F\u8D23\u4EBA");
+      if (role === "member" && !manager(actor) && !leads)
+        return failure("FORBIDDEN", "\u53EA\u6709\u56E2\u961F\u8D1F\u8D23\u4EBA\u53EF\u4EE5\u9080\u8BF7\u6210\u5458");
+      const search = `%${query2.search.replace(/[!%_]/g, "!$&")}%`;
+      const access2 = "u.active AND NOT u.must_change_password AND EXISTS(SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND a.active)";
+      const searchable = "(u.display_name ILIKE $1 ESCAPE '!' OR COALESCE(e.email,'') ILIKE $1 ESCAPE '!')";
+      const activeRoles = "(SELECT array_agg(g.role ORDER BY g.role) FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active)";
+      const salesOnly = `NOT u.identity_admin AND ${activeRoles}=ARRAY['sales']::text[]`;
+      const operationsOnly = `NOT u.identity_admin AND ${activeRoles}=ARRAY['operations']::text[]`;
+      const filter = role === "leader" ? kind === "sales_team" ? `WHERE ${access2} AND ${salesOnly} AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.role='member' AND a.ended_at IS NULL) AND ${searchable}` : `WHERE ${access2} AND ${operationsOnly} AND ${searchable}` : `WHERE ${access2} AND u.user_id<>$2 AND ${salesOnly} AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL) AND ${searchable}`;
+      const count2 = await client.query(`SELECT count(*)::int AS count FROM public.identity_users u LEFT JOIN public.identity_login_emails e USING(user_id) ${filter}`, role === "member" ? [search, actor.userId] : [search]);
+      const leaderCount = role === "leader" ? `,(SELECT count(*)::int FROM crm_org_assignments la JOIN crm_org_units lu ON lu.unit_id=la.unit_id WHERE la.user_id=u.user_id AND la.role='leader' AND la.ended_at IS NULL AND lu.kind='${kind}' AND lu.dissolved_at IS NULL) AS "leaderTeamCount"` : "";
+      const items = (await client.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",e.email${leaderCount} FROM public.identity_users u LEFT JOIN public.identity_login_emails e USING(user_id) ${filter} ORDER BY CASE WHEN u.user_id=$2 THEN 0 ELSE 1 END,u.display_name,u.user_id LIMIT $3 OFFSET $4`, [search, actor.userId, query2.limit, query2.offset])).rows;
+      return success({ items, total: count2.rows[0].count });
+    });
+  }
+  async assignmentsForUser(client, userId) {
+    return (await client.query('SELECT unit_id AS "unitId",role,is_primary AS "isPrimary" FROM crm_org_assignments WHERE user_id=$1 AND ended_at IS NULL', [userId])).rows;
+  }
+  async hasPrimary(client, unitId) {
+    return (await client.query("SELECT 1 FROM crm_org_assignments WHERE unit_id=$1 AND role='leader' AND is_primary AND ended_at IS NULL LIMIT 1", [unitId])).rows.length > 0;
+  }
+  async insertAssignment(client, userId, unitId, kind, role) {
+    const existing = await this.assignmentsForUser(client, userId);
+    const rule = canCreateOrganizationAssignment(kind, role, existing, unitId);
+    if (!rule.allowed)
+      return failure("CONFLICT", rule.reason ?? "\u6210\u5458\u5173\u7CFB\u51B2\u7A81");
+    const primary = role === "leader" && !await this.hasPrimary(client, unitId);
+    await client.query("INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,$3,$4)", [userId, unitId, role, primary]);
+    return success(void 0);
+  }
+  async validLeader(client, userId, kind) {
+    const row2 = (await client.query(`SELECT u.identity_admin AS "identityAdmin",ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role) AS roles FROM public.identity_users u WHERE u.user_id=$1 AND u.active AND NOT u.must_change_password AND EXISTS(SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND a.active)`, [userId])).rows[0];
+    if (!row2)
+      return false;
+    const roles = row2.roles;
+    return kind === "sales_team" ? !row2.identityAdmin && roles.length === 1 && roles[0] === "sales" : !row2.identityAdmin && roles.length === 1 && roles[0] === "operations";
+  }
+  async validInvitees(client, userIds2) {
+    if (!userIds2.length)
+      return true;
+    const row2 = (await client.query(`SELECT count(*)::int AS count FROM public.identity_users u WHERE u.user_id=ANY($1::uuid[]) AND u.active AND NOT u.must_change_password AND NOT u.identity_admin AND EXISTS(SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND a.active) AND (SELECT array_agg(g.role ORDER BY g.role) FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active)=ARRAY['sales']::text[] AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL)`, [userIds2])).rows[0];
+    return row2.count === userIds2.length;
+  }
+  async cache(client, actorId, operation, key, input) {
+    const digest2 = (0, import_node_crypto26.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const old = (await client.query("SELECT digest,response FROM crm_org_idempotency WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3 FOR UPDATE", [actorId, operation, key])).rows[0];
+    if (!old)
+      return { state: "new", digest: digest2 };
+    if (old.digest !== digest2)
+      return { state: "conflict", digest: digest2 };
+    return { state: "replay", digest: digest2, response: old.response };
+  }
+  remember(client, actorId, operation, key, digest2, response) {
+    return client.query("INSERT INTO crm_org_idempotency(actor_id,operation,idempotency_key,digest,response) VALUES($1,$2,$3,$4,$5)", [actorId, operation, key, digest2, JSON.stringify(response)]);
+  }
+  create(tokenHash, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      const cached2 = await this.cache(client, actor.userId, "organization.create", input.idempotencyKey, input);
+      if (cached2.state === "replay" && cached2.response)
+        return success(cached2.response);
+      if (cached2.state === "conflict")
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      const kind = (input.unitType ?? DEFAULT_TEAM_UNIT_TYPE) === "operations" ? "operations_group" : "sales_team";
+      const privileged = manager(actor);
+      if (!privileged && (kind !== "sales_team" || input.parentTeamId || input.leaderUserId && input.leaderUserId !== actor.userId))
+        return failure("FORBIDDEN", "\u53EA\u6709\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u521B\u5EFA\u8FD0\u8425\u7EC4\u6216\u6307\u6D3E\u56E2\u961F\u8D1F\u8D23\u4EBA");
+      if (privileged && !input.leaderUserId)
+        return failure("INVALID_INPUT", "\u7BA1\u7406\u89D2\u8272\u521B\u5EFA\u7EC4\u7EC7\u65F6\u5FC5\u987B\u660E\u786E\u6307\u5B9A\u8D1F\u8D23\u4EBA");
+      const leaderUserId = input.leaderUserId ?? actor.userId;
+      if (!privileged && (await this.assignmentsForUser(client, actor.userId)).some((item) => item.role === "member"))
+        return failure("CONFLICT", "\u5F53\u524D\u8D26\u53F7\u5DF2\u7ECF\u52A0\u5165\u9500\u552E\u56E2\u961F");
+      if (input.inviteeUserIds.includes(leaderUserId))
+        return failure("INVALID_INPUT", "\u8D1F\u8D23\u4EBA\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u53D7\u9080\u666E\u901A\u6210\u5458");
+      if (!await this.validLeader(client, leaderUserId, kind))
+        return failure("INVALID_INPUT", kind === "sales_team" ? "\u9500\u552E\u56E2\u961F\u8D1F\u8D23\u4EBA\u5FC5\u987B\u662F\u53EF\u7528\u9500\u552E\u8D26\u53F7" : "\u8FD0\u8425\u7EC4\u8D1F\u8D23\u4EBA\u5FC5\u987B\u662F\u7BA1\u7406\u8D26\u53F7");
+      const company = (await client.query(`SELECT unit_id AS "unitId" FROM crm_org_units WHERE kind='company' AND dissolved_at IS NULL`)).rows[0];
+      if (!company)
+        return failure("DATABASE_ERROR", "\u7EC4\u7EC7\u6839\u4E0D\u5B58\u5728");
+      const parentUnitId = input.parentTeamId ?? company.unitId;
+      const parent = await this.unit(client, parentUnitId);
+      if (!parent)
+        return failure("NOT_FOUND", "\u4E0A\u7EA7\u7EC4\u7EC7\u4E0D\u5B58\u5728");
+      if (!canPlaceOrganizationUnit(parent.kind, kind))
+        return failure("INVALID_INPUT", "\u7EC4\u7EC7\u5C42\u7EA7\u4E0D\u7B26\u5408\u516C\u53F8\u3001\u8FD0\u8425\u7EC4\u3001\u9500\u552E\u56E2\u961F\u89C4\u5219");
+      if (kind !== "sales_team" && input.inviteeUserIds.length)
+        return failure("INVALID_INPUT", "\u8FD0\u8425\u7EC4\u4E0D\u63A5\u53D7\u666E\u901A\u6210\u5458\u9080\u8BF7");
+      const name = input.name.trim();
+      if ((await client.query("SELECT 1 FROM crm_org_units WHERE parent_unit_id=$1 AND lower(btrim(name))=lower(btrim($2)) AND dissolved_at IS NULL", [parentUnitId, name])).rows.length)
+        return failure("CONFLICT", "\u540C\u4E00\u5C42\u7EA7\u5DF2\u5B58\u5728\u540C\u540D\u7EC4\u7EC7");
+      if (!await this.validInvitees(client, input.inviteeUserIds))
+        return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
+      const teamId = (0, import_node_crypto26.randomUUID)();
+      await client.query("INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,created_by) VALUES($1,$2,$3,$4,$5)", [teamId, kind, parentUnitId, name, actor.userId]);
+      const assigned = await this.insertAssignment(client, leaderUserId, teamId, kind, "leader");
+      if (!assigned.ok)
+        return assigned;
+      for (const inviteeUserId of input.inviteeUserIds)
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)", [(0, import_node_crypto26.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+      const context = await this.contextIn(client, actor);
+      if (!context.ok)
+        return context;
+      const receipt = { teamId, context: context.data };
+      await this.remember(client, actor.userId, "organization.create", input.idempotencyKey, cached2.digest, receipt);
+      return success(receipt);
+    });
+  }
+  invite(tokenHash, teamId, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      const operation = `organization.invite:${teamId}`;
+      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached2.state === "replay" && cached2.response)
+        return success(cached2.response);
+      if (cached2.state === "conflict")
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      const team = (await client.query('SELECT unit_id AS "unitId",kind FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
+      if (!team)
+        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
+      if (!teamAcceptsMembers(team.kind === "operations_group" ? "operations" : "sales_team"))
+        return failure("INVALID_INPUT", "\u8FD0\u8425\u7EC4\u4E0D\u63A5\u53D7\u6210\u5458\u9080\u8BF7");
+      if (!await this.canManageUnit(client, actor, teamId))
+        return failure("FORBIDDEN", "\u53EA\u6709\u56E2\u961F\u8D1F\u8D23\u4EBA\u53EF\u4EE5\u9080\u8BF7\u6210\u5458");
+      if (!await this.validInvitees(client, input.userIds))
+        return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
+      for (const inviteeUserId of input.userIds)
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto26.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+      const context = await this.contextIn(client, actor);
+      if (!context.ok)
+        return context;
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      return success(context.data);
+    });
+  }
+  decide(tokenHash, invitationId, action, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      const operation = `organization.invitation.${action}:${invitationId}`;
+      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached2.state === "replay" && cached2.response)
+        return success(cached2.response);
+      if (cached2.state === "conflict")
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      const row2 = (await client.query(`SELECT i.invitation_id AS "invitationId",i.unit_id AS "teamId",i.inviter_user_id AS "inviterUserId",i.invitee_user_id AS "inviteeUserId",i.status,i.version,i.expires_at AS "expiresAt",i.expires_at<=clock_timestamp() AS expired,u.kind FROM crm_org_invitations i JOIN crm_org_units u ON u.unit_id=i.unit_id AND u.dissolved_at IS NULL WHERE i.invitation_id=$1 FOR UPDATE OF i,u`, [invitationId])).rows[0];
+      if (!row2)
+        return failure("NOT_FOUND", "\u9080\u8BF7\u4E0D\u5B58\u5728");
+      const desired = action === "accept" ? "accepted" : action === "decline" ? "declined" : "cancelled";
+      const allowed = action === "cancel" ? await this.canManageInvitation(client, actor, row2.teamId) : row2.inviteeUserId === actor.userId;
+      if (!allowed)
+        return failure("NOT_FOUND", "\u9080\u8BF7\u4E0D\u5B58\u5728\u6216\u65E0\u6743\u5904\u7406");
+      if (row2.status === "pending" && row2.expired) {
+        await client.query("UPDATE crm_org_invitations SET status='expired',version=version+1,decided_at=now() WHERE invitation_id=$1", [invitationId]);
+        const expired = await this.contextIn(client, actor);
+        if (!expired.ok)
+          return expired;
+        await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, expired.data);
+        return success(expired.data);
+      }
+      if (row2.status === desired)
+        return this.contextIn(client, actor);
+      if (row2.status !== "pending")
+        return failure("CONFLICT", "\u9080\u8BF7\u5DF2\u5904\u7406");
+      if (row2.version !== input.expectedVersion)
+        return failure("CONFLICT", "\u9080\u8BF7\u7248\u672C\u5DF2\u53D8\u5316");
+      if (action === "accept") {
+        if (row2.kind !== "sales_team")
+          return failure("INVALID_INPUT", "\u8FD0\u8425\u7EC4\u4E0D\u63A5\u53D7\u666E\u901A\u6210\u5458");
+        if (!await this.validInvitees(client, [actor.userId]))
+          return failure("INVALID_INPUT", "\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u8D26\u53F7\u89D2\u8272\u4E0D\u7B26\u5408\u666E\u901A\u6210\u5458\u8981\u6C42");
+        const assigned = await this.insertAssignment(client, actor.userId, row2.teamId, row2.kind, "member");
+        if (!assigned.ok)
+          return assigned;
+      }
+      await client.query("UPDATE crm_org_invitations SET status=$2,version=version+1,decided_at=now() WHERE invitation_id=$1", [invitationId, desired]);
+      const context = await this.contextIn(client, actor);
+      if (!context.ok)
+        return context;
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      return success(context.data);
+    });
+  }
+  move(tokenHash, teamId, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      const operation = `organization.move:${teamId}`;
+      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached2.state === "replay" && cached2.response)
+        return success(cached2.response);
+      if (cached2.state === "conflict")
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      const current = (await client.query('SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
+      if (!current || current.kind === "company")
+        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
+      if (!await this.canManageUnit(client, actor, teamId))
+        return failure("FORBIDDEN", "\u53EA\u6709\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u79FB\u52A8\u56E2\u961F");
+      if (current.version !== input.expectedVersion)
+        return failure("CONFLICT", "\u56E2\u961F\u7248\u672C\u5DF2\u53D8\u5316");
+      const company = (await client.query(`SELECT unit_id AS "unitId" FROM crm_org_units WHERE kind='company' AND dissolved_at IS NULL`)).rows[0];
+      if (!company)
+        return failure("DATABASE_ERROR", "\u7EC4\u7EC7\u6839\u4E0D\u5B58\u5728");
+      const parentUnitId = input.parentTeamId ?? company.unitId;
+      const parent = await this.unit(client, parentUnitId);
+      if (!parent || !canPlaceOrganizationUnit(parent.kind, current.kind))
+        return failure("INVALID_INPUT", "\u76EE\u6807\u4E0A\u7EA7\u4E0D\u7B26\u5408\u7EC4\u7EC7\u5C42\u7EA7");
+      const ancestors = (await client.query(`WITH RECURSIVE chain AS (
+        SELECT unit_id,parent_unit_id FROM crm_org_units WHERE unit_id=$1
+        UNION ALL SELECT u.unit_id,u.parent_unit_id FROM crm_org_units u JOIN chain c ON u.unit_id=c.parent_unit_id
+      ) SELECT COALESCE(array_agg(unit_id::text),'{}'::text[]) AS ids FROM chain`, [parentUnitId])).rows[0].ids;
+      if (createsOrganizationCycle(teamId, parentUnitId, ancestors))
+        return failure("INVALID_INPUT", "\u4E0D\u80FD\u628A\u7EC4\u7EC7\u79FB\u52A8\u5230\u81EA\u8EAB\u6216\u4E0B\u6E38");
+      if ((await client.query("SELECT 1 FROM crm_org_units WHERE parent_unit_id=$1 AND lower(btrim(name))=lower(btrim($2)) AND unit_id<>$3 AND dissolved_at IS NULL", [parentUnitId, current.name, teamId])).rows.length)
+        return failure("CONFLICT", "\u540C\u4E00\u5C42\u7EA7\u5DF2\u5B58\u5728\u540C\u540D\u7EC4\u7EC7");
+      await client.query("UPDATE crm_org_units SET parent_unit_id=$2,version=version+1,updated_at=now() WHERE unit_id=$1", [teamId, parentUnitId]);
+      const context = await this.contextIn(client, actor);
+      if (!context.ok)
+        return context;
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      return success(context.data);
+    });
+  }
+  dissolve(tokenHash, teamId, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      const operation = `organization.dissolve:${teamId}`;
+      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached2.state === "replay" && cached2.response)
+        return success(cached2.response);
+      if (cached2.state === "conflict")
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      const current = (await client.query('SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version,dissolved_at AS "dissolvedAt" FROM crm_org_units WHERE unit_id=$1 FOR UPDATE', [teamId])).rows[0];
+      if (!current || current.kind === "company")
+        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
+      if (current.dissolvedAt)
+        return failure("CONFLICT", "\u56E2\u961F\u5DF2\u7ECF\u89E3\u6563");
+      if (current.version !== input.expectedVersion)
+        return failure("CONFLICT", "\u56E2\u961F\u7248\u672C\u5DF2\u53D8\u5316");
+      const assignment = await this.assignment(client, actor.userId, teamId);
+      const childCount = Number((await client.query("SELECT count(*)::int AS count FROM crm_org_units WHERE parent_unit_id=$1 AND dissolved_at IS NULL", [teamId])).rows[0].count);
+      const rule = canDissolveOrganizationUnit(current.kind, childCount, assignment?.role === "leader" && assignment.isPrimary, manager(actor));
+      if (!rule.allowed) {
+        if (!manager(actor) && !(assignment?.role === "leader" && assignment.isPrimary))
+          return failure("FORBIDDEN", rule.reason ?? "\u65E0\u6743\u89E3\u6563\u7EC4\u7EC7");
+        return failure("CONFLICT", rule.reason ?? "\u7EC4\u7EC7\u6682\u4E0D\u80FD\u89E3\u6563");
+      }
+      const dissolvedAt = (await client.query("SELECT clock_timestamp() AS at")).rows[0].at;
+      const ended = await client.query("UPDATE crm_org_assignments SET ended_at=$2,version=version+1,updated_at=$2 WHERE unit_id=$1 AND ended_at IS NULL", [teamId, dissolvedAt]);
+      const cancelled = await client.query("UPDATE crm_org_invitations SET status='cancelled',version=version+1,decided_at=$2 WHERE unit_id=$1 AND status='pending'", [teamId, dissolvedAt]);
+      await client.query("DELETE FROM crm_org_member_group_members WHERE unit_id=$1", [teamId]);
+      await client.query("DELETE FROM crm_org_member_groups WHERE unit_id=$1", [teamId]);
+      const updated = await client.query("UPDATE crm_org_units SET dissolved_at=$2,dissolved_by=$3,version=version+1,updated_at=$2 WHERE unit_id=$1 AND dissolved_at IS NULL RETURNING version", [teamId, dissolvedAt, actor.userId]);
+      if (!updated.rowCount)
+        return failure("CONFLICT", "\u56E2\u961F\u5DF2\u7ECF\u89E3\u6563");
+      const nextVersion = Number(updated.rows[0].version);
+      await client.query(`INSERT INTO crm_org_dissolution_audits(
+        unit_id,actor_user_id,unit_kind,unit_name,unit_version,ended_assignment_count,cancelled_invitation_count,dissolved_at
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [teamId, actor.userId, current.kind, current.name, nextVersion, ended.rowCount ?? 0, cancelled.rowCount ?? 0, dissolvedAt]);
+      const context = await this.contextIn(client, actor);
+      if (!context.ok)
+        return context;
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      return success(context.data);
+    });
+  }
+  assignLeader(tokenHash, teamId, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      const operation = `organization.leader:${teamId}`;
+      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached2.state === "replay" && cached2.response)
+        return success(cached2.response);
+      if (cached2.state === "conflict")
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      const team = (await client.query('SELECT unit_id AS "unitId",kind,version FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
+      if (!team || team.kind === "company")
+        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
+      if (!await this.canManageUnit(client, actor, teamId))
+        return failure("FORBIDDEN", "\u53EA\u6709\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u8C03\u6574\u8D1F\u8D23\u4EBA");
+      if (team.version !== input.expectedVersion)
+        return failure("CONFLICT", "\u56E2\u961F\u7248\u672C\u5DF2\u53D8\u5316");
+      if (!await this.validLeader(client, input.leaderUserId, team.kind))
+        return failure("INVALID_INPUT", team.kind === "sales_team" ? "\u9500\u552E\u56E2\u961F\u8D1F\u8D23\u4EBA\u5FC5\u987B\u662F\u53EF\u7528\u9500\u552E\u8D26\u53F7" : "\u8FD0\u8425\u7EC4\u8D1F\u8D23\u4EBA\u5FC5\u987B\u662F\u7BA1\u7406\u8D26\u53F7");
+      const existingTarget = await this.assignment(client, input.leaderUserId, teamId);
+      if (existingTarget?.role === "member") {
+        await client.query("DELETE FROM crm_org_member_group_members WHERE unit_id=$1 AND user_id=$2", [teamId, input.leaderUserId]);
+        await client.query("DELETE FROM crm_org_assignments WHERE unit_id=$1 AND user_id=$2 AND role='member' AND ended_at IS NULL", [teamId, input.leaderUserId]);
+      }
+      if (team.kind === "sales_team")
+        await client.query("DELETE FROM crm_org_assignments WHERE unit_id=$1 AND role='leader' AND user_id<>$2 AND ended_at IS NULL", [teamId, input.leaderUserId]);
+      if (!await this.assignment(client, input.leaderUserId, teamId)) {
+        const inserted = await this.insertAssignment(client, input.leaderUserId, teamId, team.kind, "leader");
+        if (!inserted.ok)
+          return inserted;
+      }
+      await client.query("UPDATE crm_org_assignments SET is_primary=false WHERE unit_id=$1 AND role='leader' AND ended_at IS NULL", [teamId]);
+      await client.query("UPDATE crm_org_assignments SET is_primary=true WHERE unit_id=$1 AND role='leader' AND user_id=$2 AND ended_at IS NULL", [teamId, input.leaderUserId]);
+      await client.query("UPDATE crm_org_units SET version=version+1,updated_at=now() WHERE unit_id=$1", [teamId]);
+      const context = await this.contextIn(client, actor);
+      if (!context.ok)
+        return context;
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      return success(context.data);
+    });
+  }
+  adjustMember(tokenHash, teamId, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      const operation = `organization.member.${input.action}:${teamId}:${input.userId}`;
+      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached2.state === "replay" && cached2.response)
+        return success(cached2.response);
+      if (cached2.state === "conflict")
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      const team = (await client.query('SELECT unit_id AS "unitId",kind,version FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
+      if (!team || team.kind !== "sales_team")
+        return failure("INVALID_INPUT", "\u53EA\u6709\u9500\u552E\u56E2\u961F\u53EF\u4EE5\u8C03\u6574\u666E\u901A\u6210\u5458");
+      if (!await this.canManageUnit(client, actor, teamId))
+        return failure("FORBIDDEN", "\u53EA\u6709\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u8C03\u6574\u6210\u5458");
+      if (team.version !== input.expectedVersion)
+        return failure("CONFLICT", "\u56E2\u961F\u7248\u672C\u5DF2\u53D8\u5316");
+      if (input.action === "add") {
+        if (!await this.validInvitees(client, [input.userId]))
+          return failure("INVALID_INPUT", "\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
+        const assigned = await this.insertAssignment(client, input.userId, teamId, team.kind, "member");
+        if (!assigned.ok)
+          return assigned;
+      } else {
+        const existing = await this.assignment(client, input.userId, teamId);
+        if (existing?.role !== "member")
+          return failure("NOT_FOUND", "\u56E2\u961F\u6210\u5458\u4E0D\u5B58\u5728");
+        await client.query("DELETE FROM crm_org_member_group_members WHERE unit_id=$1 AND user_id=$2", [teamId, input.userId]);
+        await client.query("DELETE FROM crm_org_assignments WHERE unit_id=$1 AND user_id=$2 AND role='member' AND ended_at IS NULL", [teamId, input.userId]);
+      }
+      await client.query("UPDATE crm_org_units SET version=version+1,updated_at=now() WHERE unit_id=$1", [teamId]);
+      const context = await this.contextIn(client, actor);
+      if (!context.ok)
+        return context;
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      return success(context.data);
+    });
+  }
+  saveMemberGroup(tokenHash, teamId, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      const operation = `organization.group.save:${teamId}:${input.groupId ?? "new"}`;
+      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached2.state === "replay" && cached2.response)
+        return success(cached2.response);
+      if (cached2.state === "conflict")
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      const team = (await client.query('SELECT unit_id AS "unitId",kind FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
+      if (!team || team.kind !== "sales_team")
+        return failure("INVALID_INPUT", "\u53EA\u6709\u9500\u552E\u56E2\u961F\u53EF\u4EE5\u7EF4\u62A4\u5C55\u793A\u5206\u7EC4");
+      if (!await this.canManageUnit(client, actor, teamId))
+        return failure("FORBIDDEN", "\u53EA\u6709\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u7EF4\u62A4\u5C55\u793A\u5206\u7EC4");
+      if (input.groupId) {
+        const group = (await client.query("SELECT version FROM crm_org_member_groups WHERE group_id=$1 AND unit_id=$2 FOR UPDATE", [input.groupId, teamId])).rows[0];
+        if (!group)
+          return failure("NOT_FOUND", "\u5C55\u793A\u5206\u7EC4\u4E0D\u5B58\u5728");
+        if (group.version !== input.expectedVersion)
+          return failure("CONFLICT", "\u5C55\u793A\u5206\u7EC4\u7248\u672C\u5DF2\u53D8\u5316");
+        await client.query("UPDATE crm_org_member_groups SET name=$2,version=version+1,updated_at=now() WHERE group_id=$1", [input.groupId, input.name.trim()]);
+      } else if (input.expectedVersion !== 0)
+        return failure("CONFLICT", "\u65B0\u5C55\u793A\u5206\u7EC4\u7248\u672C\u5FC5\u987B\u4E3A 0");
+      if (input.memberIds.length) {
+        const eligible = await client.query("SELECT count(*)::int AS count FROM crm_org_assignments WHERE unit_id=$1 AND role IN ('leader','member') AND user_id=ANY($2::uuid[]) AND ended_at IS NULL", [teamId, input.memberIds]);
+        if (eligible.rows[0].count !== input.memberIds.length)
+          return failure("INVALID_INPUT", "\u5C55\u793A\u5206\u7EC4\u53EA\u80FD\u5305\u542B\u672C\u56E2\u961F\u8D1F\u8D23\u4EBA\u6216\u666E\u901A\u6210\u5458");
+        const occupied = await client.query("SELECT 1 FROM crm_org_member_group_members WHERE unit_id=$1 AND user_id=ANY($2::uuid[]) AND group_id<>$3 LIMIT 1", [teamId, input.memberIds, input.groupId ?? "00000000-0000-0000-0000-000000000000"]);
+        if (occupied.rows.length)
+          return failure("CONFLICT", "\u6210\u5458\u5DF2\u7ECF\u5728\u5176\u4ED6\u5C55\u793A\u5206\u7EC4");
+      }
+      const groupId = input.groupId ?? (0, import_node_crypto26.randomUUID)();
+      if (!input.groupId)
+        await client.query("INSERT INTO crm_org_member_groups(group_id,unit_id,name) VALUES($1,$2,$3)", [groupId, teamId, input.name.trim()]);
+      await client.query("DELETE FROM crm_org_member_group_members WHERE group_id=$1", [groupId]);
+      for (const memberId of input.memberIds)
+        await client.query("INSERT INTO crm_org_member_group_members(group_id,unit_id,user_id) VALUES($1,$2,$3)", [groupId, teamId, memberId]);
+      const context = await this.contextIn(client, actor);
+      if (!context.ok)
+        return context;
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      return success(context.data);
+    });
+  }
+  deleteMemberGroup(tokenHash, teamId, groupId, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      const operation = `organization.group.delete:${teamId}:${groupId}`;
+      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached2.state === "replay" && cached2.response)
+        return success(cached2.response);
+      if (cached2.state === "conflict")
+        return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
+      const group = (await client.query("SELECT version FROM crm_org_member_groups WHERE group_id=$1 AND unit_id=$2 FOR UPDATE", [groupId, teamId])).rows[0];
+      if (!group)
+        return failure("NOT_FOUND", "\u5C55\u793A\u5206\u7EC4\u4E0D\u5B58\u5728");
+      if (!await this.canManageUnit(client, actor, teamId))
+        return failure("FORBIDDEN", "\u53EA\u6709\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u7EF4\u62A4\u5C55\u793A\u5206\u7EC4");
+      if (group.version !== input.expectedVersion)
+        return failure("CONFLICT", "\u5C55\u793A\u5206\u7EC4\u7248\u672C\u5DF2\u53D8\u5316");
+      await client.query("DELETE FROM crm_org_member_groups WHERE group_id=$1", [groupId]);
+      const context = await this.contextIn(client, actor);
+      if (!context.ok)
+        return context;
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      return success(context.data);
+    });
+  }
+};
+
+// server/services/teams.ts
+var UUID13 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function record11(value2) {
+  return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
+}
+function keys7(value2, allowed) {
+  return Object.keys(value2).every((key) => allowed.includes(key));
+}
+function text11(value2, maximum, minimum = 1) {
+  return typeof value2 === "string" && value2.trim().length >= minimum && value2.trim().length <= maximum;
+}
+function userIds(value2, maximum = TEAM_LIMITS.inviteBatch) {
+  return Array.isArray(value2) && value2.length <= maximum && new Set(value2).size === value2.length && value2.every((userId) => typeof userId === "string" && UUID13.test(userId));
+}
+function idempotency(value2) {
+  return text11(value2, TEAM_LIMITS.key);
+}
+function unitType(value2) {
+  return value2 === void 0 || value2 === "operations" || value2 === "sales_team";
+}
+function requiresExplicitLeader(value2) {
+  return value2.unitType === "operations" || value2.parentTeamId !== null;
+}
+function candidateQuery(value2) {
+  if (value2 === void 0)
+    return { search: "", limit: TEAM_LIMITS.page, offset: 0, role: "member", unitType: "sales_team" };
+  if (!record11(value2) || !keys7(value2, ["search", "limit", "offset", "role", "unitType"]))
+    return void 0;
+  const search = value2.search ?? "";
+  const limit = value2.limit ?? TEAM_LIMITS.page;
+  const offset = value2.offset ?? 0;
+  const role = value2.role ?? "member";
+  const type = value2.unitType ?? "sales_team";
+  if (typeof search !== "string" || search.length > TEAM_LIMITS.text || !Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > TEAM_LIMITS.pageMax || !Number.isSafeInteger(offset) || Number(offset) < 0)
+    return void 0;
+  if (!["member", "leader"].includes(String(role)) || !["operations", "sales_team"].includes(String(type)))
+    return void 0;
+  if (role === "member" && type !== "sales_team")
+    return void 0;
+  return { search: search.trim(), limit: Number(limit), offset: Number(offset), role, unitType: type };
+}
+function decision(value2) {
+  if (!record11(value2) || !keys7(value2, ["expectedVersion", "idempotencyKey"]) || !Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !idempotency(value2.idempotencyKey))
+    return void 0;
+  return { expectedVersion: Number(value2.expectedVersion), idempotencyKey: value2.idempotencyKey };
+}
+function dissolveInput(value2) {
+  if (!record11(value2) || !keys7(value2, ["expectedVersion", "idempotencyKey"]) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+    return void 0;
+  return value2;
+}
+function version3(value2, allowZero = false) {
+  return Number.isSafeInteger(value2) && Number(value2) >= (allowZero ? 0 : 1);
+}
+function moveInput(value2) {
+  if (!record11(value2) || !keys7(value2, ["parentTeamId", "expectedVersion", "idempotencyKey"]) || value2.parentTeamId !== null && (typeof value2.parentTeamId !== "string" || !UUID13.test(value2.parentTeamId)) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+    return void 0;
+  return value2;
+}
+function leaderInput(value2) {
+  if (!record11(value2) || !keys7(value2, ["leaderUserId", "expectedVersion", "idempotencyKey"]) || typeof value2.leaderUserId !== "string" || !UUID13.test(value2.leaderUserId) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+    return void 0;
+  return value2;
+}
+function memberInput(value2) {
+  if (!record11(value2) || !keys7(value2, ["userId", "action", "expectedVersion", "idempotencyKey"]) || typeof value2.userId !== "string" || !UUID13.test(value2.userId) || value2.action !== "add" && value2.action !== "remove" || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+    return void 0;
+  return value2;
+}
+function groupInput(value2) {
+  if (!record11(value2) || !keys7(value2, ["groupId", "name", "memberIds", "expectedVersion", "idempotencyKey"]) || value2.groupId !== null && (typeof value2.groupId !== "string" || !UUID13.test(value2.groupId)) || !text11(value2.name, TEAM_LIMITS.groupName, 1) || !userIds(value2.memberIds, TEAM_LIMITS.groupMembers) || !version3(value2.expectedVersion, value2.groupId === null) || !idempotency(value2.idempotencyKey))
+    return void 0;
+  return value2;
+}
+function groupDeleteInput(value2, groupId) {
+  if (!UUID13.test(groupId) || !record11(value2) || !keys7(value2, ["groupId", "expectedVersion", "idempotencyKey"]) || value2.groupId !== groupId || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+    return void 0;
+  return value2;
+}
+function createTeamService(repo, tokens) {
+  return {
+    context(token) {
+      return repo.context(tokens.hash(token));
+    },
+    detail(token, teamId) {
+      return UUID13.test(teamId) ? repo.detail(tokens.hash(token), teamId) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u7F16\u53F7\u65E0\u6548"));
+    },
+    candidates(token, value2) {
+      const query2 = candidateQuery(value2);
+      return query2 ? repo.candidates(tokens.hash(token), query2) : Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u641C\u7D22\u53C2\u6570\u65E0\u6548"));
+    },
+    create(token, value2) {
+      if (!record11(value2) || !keys7(value2, ["name", "parentTeamId", "unitType", "leaderUserId", "inviteeUserIds", "idempotencyKey"]) || !text11(value2.name, TEAM_LIMITS.name, 2) || value2.parentTeamId !== null && (typeof value2.parentTeamId !== "string" || !UUID13.test(value2.parentTeamId)) || !unitType(value2.unitType) || value2.leaderUserId !== void 0 && (typeof value2.leaderUserId !== "string" || !UUID13.test(value2.leaderUserId)) || !userIds(value2.inviteeUserIds) || !idempotency(value2.idempotencyKey))
+        return Promise.resolve(failure("INVALID_INPUT", "\u521B\u5EFA\u56E2\u961F\u53C2\u6570\u65E0\u6548"));
+      if (requiresExplicitLeader(value2) && value2.leaderUserId === void 0)
+        return Promise.resolve(failure("INVALID_INPUT", "\u7BA1\u7406\u89D2\u8272\u521B\u5EFA\u7EC4\u7EC7\u65F6\u5FC5\u987B\u660E\u786E\u6307\u5B9A\u8D1F\u8D23\u4EBA"));
+      return repo.create(tokens.hash(token), value2);
+    },
+    invite(token, teamId, value2) {
+      if (!UUID13.test(teamId) || !record11(value2) || !keys7(value2, ["userIds", "idempotencyKey"]) || !userIds(value2.userIds) || !value2.userIds.length || !idempotency(value2.idempotencyKey))
+        return Promise.resolve(failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u53C2\u6570\u65E0\u6548"));
+      return repo.invite(tokens.hash(token), teamId, value2);
+    },
+    decide(token, invitationId, action, value2) {
+      const input = decision(value2);
+      return UUID13.test(invitationId) && input ? repo.decide(tokens.hash(token), invitationId, action, input) : Promise.resolve(failure("INVALID_INPUT", "\u9080\u8BF7\u5904\u7406\u53C2\u6570\u65E0\u6548"));
+    },
+    move(token, teamId, value2) {
+      const input = moveInput(value2);
+      return UUID13.test(teamId) && input ? repo.move(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u79FB\u52A8\u53C2\u6570\u65E0\u6548"));
+    },
+    dissolve(token, teamId, value2) {
+      const input = dissolveInput(value2);
+      return UUID13.test(teamId) && input ? repo.dissolve(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u89E3\u6563\u53C2\u6570\u65E0\u6548"));
+    },
+    assignLeader(token, teamId, value2) {
+      const input = leaderInput(value2);
+      return UUID13.test(teamId) && input ? repo.assignLeader(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u8D1F\u8D23\u4EBA\u53C2\u6570\u65E0\u6548"));
+    },
+    adjustMember(token, teamId, value2) {
+      const input = memberInput(value2);
+      return UUID13.test(teamId) && input ? repo.adjustMember(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u8C03\u6574\u53C2\u6570\u65E0\u6548"));
+    },
+    saveMemberGroup(token, teamId, value2) {
+      const input = groupInput(value2);
+      return UUID13.test(teamId) && input ? repo.saveMemberGroup(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u5C55\u793A\u5206\u7EC4\u53C2\u6570\u65E0\u6548"));
+    },
+    deleteMemberGroup(token, teamId, groupId, value2) {
+      const input = groupDeleteInput(value2, groupId);
+      return UUID13.test(teamId) && input ? repo.deleteMemberGroup(tokens.hash(token), teamId, groupId, input) : Promise.resolve(failure("INVALID_INPUT", "\u5C55\u793A\u5206\u7EC4\u53C2\u6570\u65E0\u6548"));
+    }
+  };
+}
+
+// server/transport/team-http.ts
+function createTeamHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
+    const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (request2.method === "GET" && url.pathname === TEAM_ROUTES.context) {
+      send(response, await service.context(token));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === TEAM_ROUTES.candidates) {
+      const query2 = {};
+      for (const [key, value2] of url.searchParams) {
+        if (key in query2) {
+          send(response, failure("INVALID_INPUT", "\u67E5\u8BE2\u53C2\u6570\u91CD\u590D"));
+          return;
+        }
+        query2[key] = ["limit", "offset"].includes(key) ? Number(value2) : value2;
+      }
+      send(response, await service.candidates(token, query2));
+      return;
+    }
+    const detail = /^\/api\/crm\/teams\/([^/]+)$/.exec(url.pathname);
+    if (request2.method === "GET" && detail) {
+      send(response, await service.detail(token, detail[1]));
+      return;
+    }
+    if (request2.method !== "POST") {
+      send(response, failure("NOT_FOUND", "\u56E2\u961F\u63A5\u53E3\u4E0D\u5B58\u5728"));
+      return;
+    }
+    const input = await body(request2, TEAM_LIMITS.bodyBytes);
+    if (!input.ok) {
+      send(response, input);
+      return;
+    }
+    if (url.pathname === TEAM_ROUTES.teams) {
+      send(response, await service.create(token, input.data));
+      return;
+    }
+    const invite = /^\/api\/crm\/teams\/([^/]+)\/invitations$/.exec(url.pathname);
+    if (invite) {
+      send(response, await service.invite(token, invite[1], input.data));
+      return;
+    }
+    const move = /^\/api\/crm\/teams\/([^/]+)\/move$/.exec(url.pathname);
+    if (move) {
+      send(response, await service.move(token, move[1], input.data));
+      return;
+    }
+    const dissolve = /^\/api\/crm\/teams\/([^/]+)\/dissolve$/.exec(url.pathname);
+    if (dissolve) {
+      send(response, await service.dissolve(token, dissolve[1], input.data));
+      return;
+    }
+    const leader = /^\/api\/crm\/teams\/([^/]+)\/leader$/.exec(url.pathname);
+    if (leader) {
+      send(response, await service.assignLeader(token, leader[1], input.data));
+      return;
+    }
+    const member2 = /^\/api\/crm\/teams\/([^/]+)\/members$/.exec(url.pathname);
+    if (member2) {
+      send(response, await service.adjustMember(token, member2[1], input.data));
+      return;
+    }
+    const group = /^\/api\/crm\/teams\/([^/]+)\/groups$/.exec(url.pathname);
+    if (group) {
+      send(response, await service.saveMemberGroup(token, group[1], input.data));
+      return;
+    }
+    const deleteGroup = /^\/api\/crm\/teams\/([^/]+)\/groups\/([^/]+)\/delete$/.exec(url.pathname);
+    if (deleteGroup) {
+      send(response, await service.deleteMemberGroup(token, deleteGroup[1], deleteGroup[2], input.data));
+      return;
+    }
+    const decide = /^\/api\/crm\/team-invitations\/([^/]+)\/(accept|decline|cancel)$/.exec(url.pathname);
+    if (decide) {
+      send(response, await service.decide(token, decide[1], decide[2], input.data));
+      return;
+    }
+    send(response, failure("NOT_FOUND", "\u56E2\u961F\u63A5\u53E3\u4E0D\u5B58\u5728"));
+  };
+}
+
+// server/services/contact-mail-analysis.ts
+var UUID14 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var HASH = /^[a-f0-9]{64}$/i;
+var TOKEN3 = /^[A-Za-z0-9_-]{43}$/;
+function record12(value2) {
+  return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
+}
+function keys8(value2, allowed) {
+  return Object.keys(value2).every((key) => allowed.includes(key));
+}
+function text12(value2, max, min = 0) {
+  return typeof value2 === "string" && value2.length <= max && value2.trim().length >= min && !value2.includes("\0");
+}
+function nullableText(value2, max) {
+  return value2 === null || text12(value2, max);
+}
+function confidence(value2) {
+  return typeof value2 === "number" && Number.isFinite(value2) && value2 >= 0 && value2 <= 1;
+}
+function base(value2) {
+  return Number.isSafeInteger(value2.contactId) && Number(value2.contactId) > 0 && typeof value2.customerId === "string" && UUID14.test(value2.customerId) && text12(value2.mailboxKey, 128, 1) && text12(value2.messageKey, 256, 1) && typeof value2.contentHash === "string" && HASH.test(value2.contentHash);
+}
+function signals(value2) {
+  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.signals && value2.every((signal) => record12(signal) && keys8(signal, ["code", "label", "confidence", "evidence"]) && MAIL_INTENT_CODES.includes(signal.code) && text12(signal.label, CONTACT_MAIL_ANALYSIS_LIMITS.label, 1) && confidence(signal.confidence) && text12(signal.evidence, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
+}
+function evidence(value2) {
+  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.evidence && value2.every((item) => text12(item, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
+}
+function conclusion(value2) {
+  return MAIL_CLASSIFICATIONS.includes(value2.classification) && MAIL_RELEVANCE_VALUES.includes(value2.relevance) && text12(value2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) && signals(value2.signals) && typeof value2.requiresAction === "boolean" && nullableText(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction) && MAIL_PRIORITIES.includes(value2.priority) && nullableText(value2.dueHint, CONTACT_MAIL_ANALYSIS_LIMITS.dueHint) && confidence(value2.confidence) && evidence(value2.evidence);
+}
+function contactMailAnalysisQuery(value2) {
+  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "includeHistory", "historyLimit"]) || !base(value2))
+    return failure("INVALID_INPUT", "\u90AE\u4EF6\u5206\u6790\u67E5\u8BE2\u53C2\u6570\u65E0\u6548");
+  const includeHistory = value2.includeHistory === true;
+  const historyLimit = value2.historyLimit ?? 20;
+  if (typeof includeHistory !== "boolean" || !Number.isSafeInteger(historyLimit) || Number(historyLimit) < 1 || Number(historyLimit) > CONTACT_MAIL_ANALYSIS_LIMITS.history)
+    return failure("INVALID_INPUT", "\u90AE\u4EF6\u5206\u6790\u5386\u53F2\u53C2\u6570\u65E0\u6548");
+  return success({ ...value2, includeHistory, historyLimit: Number(historyLimit) });
+}
+function contactMailAnalysisSubmission(value2) {
+  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "inputSequence", "idempotencyKey", "result"]) || !base(value2) || !Number.isSafeInteger(value2.inputSequence) || Number(value2.inputSequence) < 0 || !text12(value2.idempotencyKey, 256, 1) || !record12(value2.result))
+    return failure("INVALID_INPUT", "AI \u90AE\u4EF6\u5206\u6790\u53C2\u6570\u65E0\u6548");
+  const result2 = value2.result;
+  if (!keys8(result2, ["classification", "relevance", "summary", "signals", "actionability", "confidence", "evidence", "analyzerVersion"]) || !MAIL_CLASSIFICATIONS.includes(result2.classification) || !MAIL_RELEVANCE_VALUES.includes(result2.relevance) || !text12(result2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) || !signals(result2.signals) || !record12(result2.actionability) || !confidence(result2.confidence) || !evidence(result2.evidence) || !text12(result2.analyzerVersion, CONTACT_MAIL_ANALYSIS_LIMITS.version, 1))
+    return failure("INVALID_INPUT", "AI \u90AE\u4EF6\u5206\u6790\u7ED3\u8BBA\u65E0\u6548");
+  const actionability = result2.actionability;
+  if (!keys8(actionability, ["requiresAction", "nextAction", "priority", "dueHint"]) || typeof actionability.requiresAction !== "boolean" || !nullableText(actionability.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction) || !MAIL_PRIORITIES.includes(actionability.priority) || !nullableText(actionability.dueHint, CONTACT_MAIL_ANALYSIS_LIMITS.dueHint))
+    return failure("INVALID_INPUT", "AI \u884C\u52A8\u5EFA\u8BAE\u65E0\u6548");
+  if (actionability.requiresAction && !text12(actionability.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
+    return failure("INVALID_INPUT", "\u884C\u52A8\u5EFA\u8BAE\u7F3A\u5C11\u4E0B\u4E00\u6B65");
+  if (result2.relevance !== "customer_business" && actionability.requiresAction)
+    return failure("INVALID_INPUT", "\u975E\u5BA2\u6237\u4E1A\u52A1\u90AE\u4EF6\u4E0D\u80FD\u751F\u6210\u884C\u52A8\u5EFA\u8BAE");
+  return success(value2);
+}
+function contactMailAnalysisCorrection(value2) {
+  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "idempotencyKey", "expectedCurrentId", "classification", "relevance", "summary", "signals", "requiresAction", "nextAction", "priority", "dueHint", "confidence", "evidence"]) || !base(value2) || !text12(value2.idempotencyKey, 256, 1) || !text12(value2.expectedCurrentId, 64, 1) || !conclusion(value2))
+    return failure("INVALID_INPUT", "\u4EBA\u5DE5\u90AE\u4EF6\u5206\u6790\u53C2\u6570\u65E0\u6548");
+  if (value2.requiresAction === true && !text12(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
+    return failure("INVALID_INPUT", "\u884C\u52A8\u5EFA\u8BAE\u7F3A\u5C11\u4E0B\u4E00\u6B65");
+  if (
+    /* Human confirmation may make a matched business mail actionable, but never turns unrelated mail into customer business. */
+    value2.relevance !== "customer_business" && value2.requiresAction
+  )
+    return failure("INVALID_INPUT", "\u975E\u5BA2\u6237\u4E1A\u52A1\u90AE\u4EF6\u4E0D\u80FD\u786E\u8BA4\u884C\u52A8\u5EFA\u8BAE");
+  return success(value2);
+}
+function createContactMailAnalysisService(repo, tokens) {
+  const run2 = (token, value2, parse, action) => {
+    if (!TOKEN3.test(token))
+      return Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+    const parsed = parse(value2);
+    return parsed.ok ? action(tokens.hash(token), parsed.data) : Promise.resolve(parsed);
+  };
+  return {
+    current: (token, value2) => run2(token, value2, contactMailAnalysisQuery, (hash, input) => repo.current(hash, input)),
+    submitAI: (token, value2) => run2(token, value2, contactMailAnalysisSubmission, (hash, input) => repo.submitAI(hash, input)),
+    correct: (token, value2) => run2(token, value2, contactMailAnalysisCorrection, (hash, input) => repo.correct(hash, input))
+  };
+}
+
+// server/transport/contact-mail-analysis-http.ts
+var TOKEN4 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+var QUERY_FIELDS = ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "history", "limit"];
+function bearer(value2) {
+  return TOKEN4.exec(value2 ?? "")?.[1] ?? "";
+}
+function createContactMailAnalysisHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", "http://localhost"), token = bearer(request2.headers.authorization);
+    if (!token) {
+      send(response, failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+      return;
+    }
+    if (url.pathname === CONTACT_MAIL_ANALYSIS_ROUTES.analyses) {
+      if (request2.method !== "GET") {
+        send(response, failure("NOT_FOUND", "\u90AE\u4EF6\u5206\u6790\u63A5\u53E3\u4E0D\u5B58\u5728"));
+        return;
+      }
+      if ([...url.searchParams.keys()].some((key) => !QUERY_FIELDS.includes(key) || url.searchParams.getAll(key).length !== 1)) {
+        send(response, failure("INVALID_INPUT", "\u90AE\u4EF6\u5206\u6790\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      const contactId = Number(url.searchParams.get("contactId")), limit = Number(url.searchParams.get("limit") ?? "20");
+      send(response, await service.current(token, {
+        contactId,
+        customerId: url.searchParams.get("customerId") ?? "",
+        mailboxKey: url.searchParams.get("mailboxKey") ?? "",
+        messageKey: url.searchParams.get("messageKey") ?? "",
+        contentHash: url.searchParams.get("contentHash") ?? "",
+        includeHistory: url.searchParams.get("history") === "true",
+        historyLimit: limit
+      }));
+      return;
+    }
+    if (url.search) {
+      send(response, failure("INVALID_INPUT", "\u90AE\u4EF6\u5206\u6790\u5199\u5165\u4E0D\u63A5\u53D7\u67E5\u8BE2\u53C2\u6570"));
+      return;
+    }
+    if (request2.method !== "POST" || ![CONTACT_MAIL_ANALYSIS_ROUTES.ai, CONTACT_MAIL_ANALYSIS_ROUTES.correct].includes(url.pathname)) {
+      send(response, failure("NOT_FOUND", "\u90AE\u4EF6\u5206\u6790\u63A5\u53E3\u4E0D\u5B58\u5728"));
+      return;
+    }
+    const parsed = await body(request2, CONTACT_MAIL_ANALYSIS_LIMITS.bodyBytes);
+    if (!parsed.ok) {
+      send(response, parsed);
+      return;
+    }
+    send(response, url.pathname === CONTACT_MAIL_ANALYSIS_ROUTES.ai ? await service.submitAI(token, parsed.data) : await service.correct(token, parsed.data));
+  };
+}
+
+// server/adapters/postgres/team-attention-repository.ts
+var import_node_crypto27 = require("node:crypto");
+var ITEM_COLUMNS = `i.item_id AS "itemId",i.target_member_user_id AS "targetMemberUserId",target.display_name AS "targetMemberName",i.source_supervisor_user_id AS "sourceSupervisorUserId",source.display_name AS "sourceSupervisorName",i.customer_id AS "customerId",co.name AS "customerName",i.contact_id AS "contactId",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),NULLIF(ct.email,''),'\u8054\u7CFB\u4EBA') AS "contactName",ct.email AS "contactEmail",i.mail_event_id AS "mailEventId",i.analysis_id AS "analysisId",i.reason,i.priority,i.status,i.note,i.result,i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt",i.acknowledged_at AS "acknowledgedAt",i.resolved_at AS "resolvedAt",i.dismissed_at AS "dismissedAt"`;
+var ITEM_JOINS = `FROM crm_team_attention_items i JOIN public.identity_users target ON target.user_id=i.target_member_user_id JOIN public.identity_users source ON source.user_id=i.source_supervisor_user_id JOIN crm_customers c ON c.customer_id=i.customer_id JOIN companies co ON co.id=c.company_id JOIN contacts ct ON ct.id=i.contact_id`;
+function iso2(value2) {
+  return new Date(value2).toISOString();
+}
+function optionalIso(value2) {
+  return value2 ? new Date(value2).toISOString() : null;
+}
+function digest(value2) {
+  return (0, import_node_crypto27.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+}
+function oversight(actor) {
+  return actor.roles.includes("admin") || actor.roles.includes("operations");
+}
+async function directReport(db, supervisorUserId, targetUserId) {
+  const row2 = await db.query(`SELECT 1 FROM crm_org_assignments target JOIN crm_org_units team ON team.unit_id=target.unit_id AND team.kind='sales_team' JOIN crm_org_assignments leader ON leader.unit_id=target.unit_id AND leader.role='leader' WHERE target.user_id=$1 AND target.role='member' AND leader.user_id=$2 LIMIT 1`, [targetUserId, supervisorUserId]);
+  return row2.rowCount === 1;
+}
+async function hasDirectReports(db, supervisorUserId) {
+  const row2 = await db.query(`SELECT 1 FROM crm_org_assignments leader JOIN crm_org_units team ON team.unit_id=leader.unit_id AND team.kind='sales_team' JOIN crm_org_assignments member ON member.unit_id=leader.unit_id AND member.role='member' WHERE leader.user_id=$1 AND leader.role='leader' LIMIT 1`, [supervisorUserId]);
+  return row2.rowCount === 1;
+}
+async function actorScope(db, actor) {
+  if (oversight(actor))
+    return "oversight";
+  return await hasDirectReports(db, actor.userId) ? "supervisor" : "member";
+}
+function visibilitySql(scope) {
+  if (scope === "oversight")
+    return "$1::uuid IS NOT NULL";
+  if (scope === "member")
+    return "i.target_member_user_id=$1";
+  return `EXISTS(SELECT 1 FROM crm_org_assignments target JOIN crm_org_units team ON team.unit_id=target.unit_id AND team.kind='sales_team' JOIN crm_org_assignments leader ON leader.unit_id=target.unit_id AND leader.role='leader' WHERE target.user_id=i.target_member_user_id AND target.role='member' AND leader.user_id=$1)`;
+}
+function mapped6(row2, scope) {
+  const supervisor = scope === "supervisor";
+  const member2 = scope === "member" && row2.status !== "resolved" && row2.status !== "dismissed";
+  return {
+    ...row2,
+    createdAt: iso2(row2.createdAt),
+    updatedAt: iso2(row2.updatedAt),
+    acknowledgedAt: optionalIso(row2.acknowledgedAt),
+    resolvedAt: optionalIso(row2.resolvedAt),
+    dismissedAt: optionalIso(row2.dismissedAt),
+    canAcknowledge: supervisor && row2.status === "open",
+    canDismiss: supervisor && (row2.status === "open" || row2.status === "acknowledged"),
+    canResolve: member2
+  };
+}
+async function notifyIn(db, eventType, actorId, item, recipients2) {
+  const unique = [...new Set(recipients2)];
+  if (!unique.length)
+    return;
+  const event2 = await db.query(`INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,'crm',$3,$4,$5,$6::uuid[]) RETURNING event_id`, [eventType, actorId, item.version, item.customerId, JSON.stringify({ attentionItemId: item.itemId, attentionVersion: item.version, attentionStatus: item.status, targetMemberUserId: item.targetMemberUserId, sourceSupervisorUserId: item.sourceSupervisorUserId, reason: item.reason }), unique]);
+  await db.query("INSERT INTO crm_team_attention_notifications(item_id,item_version,status,event_id,recipient_user_ids) VALUES($1,$2,$3,$4,$5::uuid[])", [item.itemId, item.version, item.status, event2.rows[0].event_id, unique]);
+}
+var PostgresTeamAttentionRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+    assertCenterDatabasePool(pool);
+  }
+  async tx(work) {
+    let db;
+    try {
+      db = await this.pool.connect();
+      await db.query("BEGIN");
+      const result2 = await work(db);
+      await db.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      if (db)
+        try {
+          await db.query("ROLLBACK");
+        } catch {
+          this.log.write("ERROR", "team-attention.rollback", "\u5173\u6CE8\u9879\u56DE\u6EDA\u5931\u8D25");
+        }
+      const code2 = error && typeof error === "object" && "code" in error ? String(error.code) : "UNKNOWN";
+      this.log.write("ERROR", "team-attention.pg", `\u5173\u6CE8\u9879\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25 code=${code2} message=${error instanceof Error ? error.message : "unknown"}`);
+      return failure("DATABASE_ERROR", "\u56E2\u961F\u5173\u6CE8\u670D\u52A1\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      db?.release();
+    }
+  }
+  async migrate() {
+    return this.tx(async (db) => ensureTeamAttentionSchemaIn(db));
+  }
+  async one(db, actor, scope, itemId) {
+    const row2 = (await db.query(`SELECT ${ITEM_COLUMNS} ${ITEM_JOINS} WHERE i.item_id=$1`, [itemId])).rows[0];
+    if (!row2)
+      return failure("NOT_FOUND", "\u5173\u6CE8\u9879\u4E0D\u5B58\u5728");
+    const allowed = scope === "oversight" || scope === "member" && row2.targetMemberUserId === actor.userId || scope === "supervisor" && await directReport(db, actor.userId, row2.targetMemberUserId);
+    return allowed ? success(mapped6(row2, scope)) : failure("NOT_FOUND", "\u5173\u6CE8\u9879\u4E0D\u5B58\u5728");
+  }
+  async cached(db, actor, operation, input, work) {
+    const requestDigest2 = digest(input), old = await db.query("SELECT digest,response FROM crm_team_attention_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [actor.userId, operation, input.idempotencyKey]);
+    if (old.rows.length)
+      return old.rows[0].digest !== requestDigest2 ? failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42") : success(old.rows[0].response);
+    const result2 = await work();
+    if (result2.ok)
+      await db.query("INSERT INTO crm_team_attention_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)", [actor.userId, operation, input.idempotencyKey, requestDigest2, JSON.stringify(result2.data)]);
+    return result2;
+  }
+  list(tokenHash, query2) {
+    return this.tx(async (db) => {
+      const actor = await authorizeLeadActor(db, tokenHash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM\u4F1A\u8BDD\u6216\u4EA7\u54C1\u51C6\u5165\u5DF2\u5931\u6548");
+      const scope = await actorScope(db, actor), visible2 = visibilitySql(scope);
+      const filters = `${visible2} AND ($2::text IS NULL OR i.reason=$2) AND ($3::uuid IS NULL OR i.target_member_user_id=$3)`;
+      const summary = await db.query(`SELECT count(*) FILTER(WHERE ($4::text IS NULL OR i.status=$4))::int AS total,count(*) FILTER(WHERE i.status='open')::int AS open,count(*) FILTER(WHERE i.status='acknowledged')::int AS acknowledged,count(*) FILTER(WHERE i.status='resolved')::int AS resolved,count(*) FILTER(WHERE i.status='dismissed')::int AS dismissed ${ITEM_JOINS} WHERE ${filters}`, [actor.userId, query2.reason ?? null, query2.targetMemberUserId ?? null, query2.status ?? null]);
+      const rows = await db.query(`SELECT ${ITEM_COLUMNS} ${ITEM_JOINS} WHERE ${filters} AND ($4::text IS NULL OR i.status=$4) ORDER BY CASE i.status WHEN 'open' THEN 0 WHEN 'acknowledged' THEN 1 ELSE 2 END,CASE i.priority WHEN 'urgent' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,i.updated_at DESC,i.item_id LIMIT $5 OFFSET $6`, [actor.userId, query2.reason ?? null, query2.targetMemberUserId ?? null, query2.status ?? null, query2.limit, query2.offset]);
+      const s = summary.rows[0];
+      return success({ scope, total: Number(s.total), counts: { open: Number(s.open), acknowledged: Number(s.acknowledged), resolved: Number(s.resolved), dismissed: Number(s.dismissed) }, items: rows.rows.map((row2) => mapped6(row2, scope)) });
+    });
+  }
+  create(tokenHash, input) {
+    return this.tx(async (db) => {
+      const actor = await authorizeLeadActor(db, tokenHash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM\u4F1A\u8BDD\u6216\u4EA7\u54C1\u51C6\u5165\u5DF2\u5931\u6548");
+      if (oversight(actor) || !actor.roles.includes("sales") || !actor.capabilities.includes("leads.develop"))
+        return failure("FORBIDDEN", "\u53EA\u6709\u76F4\u5C5E\u8D1F\u8D23\u4EBA\u53EF\u4EE5\u521B\u5EFA\u5173\u6CE8\u9879");
+      if (!await directReport(db, actor.userId, input.targetMemberUserId))
+        return failure("FORBIDDEN", "\u53EA\u80FD\u5173\u6CE8\u81EA\u5DF1\u7684\u76F4\u5C5E\u6210\u5458");
+      const target = await db.query(`SELECT 1 FROM public.identity_users u JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active JOIN public.identity_product_grants g ON g.user_id=u.user_id AND g.product_id='crm' AND g.role='sales' AND g.active WHERE u.user_id=$1 AND u.active AND NOT u.must_change_password`, [input.targetMemberUserId]);
+      if (!target.rowCount)
+        return failure("CONFLICT", "\u76EE\u6807\u6210\u5458\u5DF2\u505C\u7528\u6216\u5931\u53BB\u6743\u9650");
+      const contact2 = await db.query(`SELECT 1 FROM crm_customer_contacts cc JOIN contacts ct ON ct.id=cc.contact_id AND ct.crm_deleted_at IS NULL JOIN crm_customers c ON c.customer_id=cc.customer_id JOIN companies co ON co.id=c.company_id AND co.crm_deleted_at IS NULL LEFT JOIN crm_contact_ownership own ON own.contact_id=ct.id AND own.customer_id=c.customer_id AND own.ended_at IS NULL WHERE cc.customer_id=$1 AND cc.contact_id=$2 AND COALESCE(own.owner_user_id,c.owner_user_id,c.created_by)=$3`, [input.customerId, input.contactId, input.targetMemberUserId]);
+      if (!contact2.rowCount)
+        return failure("FORBIDDEN", "\u5BA2\u6237\u6216\u8054\u7CFB\u4EBA\u4E0D\u5728\u76EE\u6807\u6210\u5458\u8303\u56F4\u5185");
+      if (input.mailEventId) {
+        const mail2 = await db.query("SELECT 1 FROM crm_contact_mail_events WHERE event_id=$1 AND actor_id=$2 AND customer_id=$3 AND contact_id=$4", [input.mailEventId, input.targetMemberUserId, input.customerId, input.contactId]);
+        if (!mail2.rowCount)
+          return failure("INVALID_INPUT", "\u90AE\u4EF6\u8BC1\u636E\u4E0D\u5C5E\u4E8E\u76EE\u6807\u6210\u5458\u8054\u7CFB\u4EBA");
+      }
+      if (input.analysisId) {
+        const analysis = await db.query("SELECT 1 FROM crm_contact_mail_analyses WHERE analysis_id=$1 AND actor_id=$2 AND customer_id=$3 AND contact_id=$4", [input.analysisId, input.targetMemberUserId, input.customerId, input.contactId]);
+        if (!analysis.rowCount)
+          return failure("INVALID_INPUT", "\u5206\u6790\u8BC1\u636E\u4E0D\u5C5E\u4E8E\u76EE\u6807\u6210\u5458\u8054\u7CFB\u4EBA");
+      }
+      return this.cached(db, actor, "team-attention:create", input, async () => {
+        const active = await db.query("SELECT 1 FROM crm_team_attention_items WHERE target_member_user_id=$1 AND customer_id=$2 AND contact_id=$3 AND reason=$4 AND status IN ('open','acknowledged')", [input.targetMemberUserId, input.customerId, input.contactId, input.reason]);
+        if (active.rowCount)
+          return failure("CONFLICT", "\u8BE5\u6210\u5458\u5DF2\u6709\u540C\u7C7B\u672A\u5173\u95ED\u5173\u6CE8\u9879");
+        const inserted = await db.query(`INSERT INTO crm_team_attention_items(target_member_user_id,source_supervisor_user_id,customer_id,contact_id,mail_event_id,analysis_id,reason,priority,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING item_id`, [input.targetMemberUserId, actor.userId, input.customerId, input.contactId, input.mailEventId ?? null, input.analysisId ?? null, input.reason, input.priority, input.note?.trim() || null]);
+        const itemId = String(inserted.rows[0].item_id);
+        await db.query("INSERT INTO crm_team_attention_audits(item_id,item_version,actor_id,action,from_status,to_status,note) VALUES($1,1,$2,'created',NULL,'open',$3)", [itemId, actor.userId, input.note?.trim() || null]);
+        const row2 = (await db.query(`SELECT ${ITEM_COLUMNS} ${ITEM_JOINS} WHERE i.item_id=$1`, [itemId])).rows[0];
+        await notifyIn(db, TEAM_ATTENTION_EVENTS.opened, actor.userId, row2, [input.targetMemberUserId, actor.userId]);
+        return success(mapped6(row2, "supervisor"));
+      });
+    });
+  }
+  transition(tokenHash, input) {
+    return this.tx(async (db) => {
+      const actor = await authorizeLeadActor(db, tokenHash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM\u4F1A\u8BDD\u6216\u4EA7\u54C1\u51C6\u5165\u5DF2\u5931\u6548");
+      if (oversight(actor))
+        return failure("FORBIDDEN", "\u7BA1\u7406\u89D2\u8272\u53EA\u80FD\u67E5\u770B\u5173\u6CE8\u9879");
+      const initial = (await db.query("SELECT target_member_user_id FROM crm_team_attention_items WHERE item_id=$1", [input.itemId])).rows[0];
+      if (!initial)
+        return failure("NOT_FOUND", "\u5173\u6CE8\u9879\u4E0D\u5B58\u5728");
+      const isTarget = String(initial.target_member_user_id) === actor.userId;
+      if (input.action === "resolve" ? !isTarget : !await directReport(db, actor.userId, String(initial.target_member_user_id)))
+        return failure("FORBIDDEN", input.action === "resolve" ? "\u53EA\u80FD\u5B8C\u6210\u81EA\u5DF1\u7684\u5173\u6CE8\u9879" : "\u53EA\u80FD\u5904\u7406\u76F4\u5C5E\u6210\u5458\u5173\u6CE8\u9879");
+      return this.cached(db, actor, `team-attention:${input.action}:${input.itemId}`, input, async () => {
+        const row2 = (await db.query(`SELECT ${ITEM_COLUMNS} ${ITEM_JOINS} WHERE i.item_id=$1 FOR UPDATE OF i`, [input.itemId])).rows[0];
+        if (!row2)
+          return failure("NOT_FOUND", "\u5173\u6CE8\u9879\u4E0D\u5B58\u5728");
+        if (row2.version !== input.expectedVersion)
+          return failure("CONFLICT", "\u5173\u6CE8\u9879\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+        if (!canTransitionTeamAttention(row2.status, input.action))
+          return failure("CONFLICT", "\u5173\u6CE8\u9879\u5F53\u524D\u72B6\u6001\u4E0D\u53EF\u64CD\u4F5C");
+        if (input.action === "resolve" && !input.result?.trim())
+          return failure("INVALID_INPUT", "\u8BF7\u586B\u5199\u5904\u7406\u7ED3\u679C");
+        const next = input.action === "acknowledge" ? "acknowledged" : input.action === "dismiss" ? "dismissed" : "resolved";
+        const updated = await db.query(`UPDATE crm_team_attention_items SET status=$2,result=$3,version=version+1,updated_at=clock_timestamp(),acknowledged_at=CASE WHEN $2='acknowledged' THEN clock_timestamp() ELSE acknowledged_at END,resolved_at=CASE WHEN $2='resolved' THEN clock_timestamp() ELSE resolved_at END,dismissed_at=CASE WHEN $2='dismissed' THEN clock_timestamp() ELSE dismissed_at END WHERE item_id=$1 AND version=$4 RETURNING item_id`, [input.itemId, next, input.action === "acknowledge" ? null : input.result?.trim() || null, input.expectedVersion]);
+        if (!updated.rowCount)
+          return failure("CONFLICT", "\u5173\u6CE8\u9879\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+        const current = (await db.query(`SELECT ${ITEM_COLUMNS} ${ITEM_JOINS} WHERE i.item_id=$1`, [input.itemId])).rows[0];
+        await db.query(`INSERT INTO crm_team_attention_audits(item_id,item_version,actor_id,action,from_status,to_status,result) VALUES($1,$2,$3,$4,$5,$6,$7)`, [input.itemId, current.version, actor.userId, next, row2.status, next, input.result?.trim() || null]);
+        const leader = (await db.query(`SELECT leader.user_id FROM crm_org_assignments target JOIN crm_org_units team ON team.unit_id=target.unit_id AND team.kind='sales_team' JOIN crm_org_assignments leader ON leader.unit_id=target.unit_id AND leader.role='leader' WHERE target.user_id=$1 AND target.role='member'`, [current.targetMemberUserId])).rows.map((value2) => String(value2.user_id));
+        const recipients2 = input.action === "resolve" ? [...leader, current.sourceSupervisorUserId] : [current.targetMemberUserId];
+        await notifyIn(db, next === "acknowledged" ? TEAM_ATTENTION_EVENTS.acknowledged : next === "resolved" ? TEAM_ATTENTION_EVENTS.resolved : TEAM_ATTENTION_EVENTS.dismissed, actor.userId, current, recipients2);
+        return success(mapped6(current, isTarget ? "member" : "supervisor"));
+      });
+    });
+  }
+};
+
+// server/services/team-attention.ts
+var UUID15 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var TOKEN5 = /^[A-Za-z0-9_-]{43}$/;
+function record13(value2) {
+  return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
+}
+function keys9(value2, allowed) {
+  return Object.keys(value2).every((key) => allowed.includes(key));
+}
+function text13(value2, maximum, minimum = 1) {
+  return typeof value2 === "string" && value2.trim().length >= minimum && value2.trim().length <= maximum && !value2.includes("\0");
+}
+function optionalText(value2, maximum) {
+  return value2 === void 0 || text13(value2, maximum);
+}
+function uuid4(value2) {
+  return typeof value2 === "string" && UUID15.test(value2);
+}
+function query(value2) {
+  if (!record13(value2) || !keys9(value2, ["status", "reason", "targetMemberUserId", "limit", "offset"]))
+    return void 0;
+  if (value2.status !== void 0 && !TEAM_ATTENTION_STATUSES.includes(value2.status))
+    return void 0;
+  if (value2.reason !== void 0 && !TEAM_ATTENTION_REASONS.includes(value2.reason))
+    return void 0;
+  if (value2.targetMemberUserId !== void 0 && !uuid4(value2.targetMemberUserId))
+    return void 0;
+  if (!Number.isSafeInteger(value2.limit) || Number(value2.limit) < 1 || Number(value2.limit) > TEAM_ATTENTION_LIMITS.pageMax)
+    return void 0;
+  if (!Number.isSafeInteger(value2.offset) || Number(value2.offset) < 0)
+    return void 0;
+  return value2;
+}
+function createInput(value2) {
+  if (!record13(value2) || !keys9(value2, ["targetMemberUserId", "customerId", "contactId", "mailEventId", "analysisId", "reason", "priority", "note", "idempotencyKey"]))
+    return void 0;
+  if (!uuid4(value2.targetMemberUserId) || !uuid4(value2.customerId) || !Number.isSafeInteger(value2.contactId) || Number(value2.contactId) < 1)
+    return void 0;
+  if (value2.mailEventId !== void 0 && !uuid4(value2.mailEventId) || value2.analysisId !== void 0 && !uuid4(value2.analysisId))
+    return void 0;
+  if (!TEAM_ATTENTION_REASONS.includes(value2.reason) || !MAIL_PRIORITIES.includes(value2.priority))
+    return void 0;
+  if (!optionalText(value2.note, TEAM_ATTENTION_LIMITS.note) || !text13(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
+    return void 0;
+  return value2;
+}
+function transition(value2) {
+  if (!record13(value2) || !keys9(value2, ["action", "expectedVersion", "idempotencyKey", "result"]) || !["acknowledge", "dismiss", "resolve"].includes(String(value2.action)))
+    return void 0;
+  if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !text13(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
+    return void 0;
+  if (!optionalText(value2.result, TEAM_ATTENTION_LIMITS.result))
+    return void 0;
+  if (value2.action === "resolve" && !text13(value2.result, TEAM_ATTENTION_LIMITS.result))
+    return void 0;
+  return value2;
+}
+function createTeamAttentionService(repo, tokens) {
+  const run2 = (token, action) => TOKEN5.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+  return {
+    list(token, value2) {
+      const parsed = query(value2);
+      return parsed ? run2(token, (hash) => repo.list(hash, parsed)) : Promise.resolve(failure("INVALID_INPUT", "\u5173\u6CE8\u9879\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+    },
+    create(token, value2) {
+      const parsed = createInput(value2);
+      return parsed ? run2(token, (hash) => repo.create(hash, parsed)) : Promise.resolve(failure("INVALID_INPUT", "\u5173\u6CE8\u9879\u53C2\u6570\u65E0\u6548"));
+    },
+    transition(token, itemId, action, value2) {
+      const parsed = transition(value2);
+      if (!parsed || !UUID15.test(itemId) || parsed.action !== action)
+        return Promise.resolve(failure("INVALID_INPUT", "\u5173\u6CE8\u9879\u72B6\u6001\u53C2\u6570\u65E0\u6548"));
+      return run2(token, (hash) => repo.transition(hash, { ...parsed, itemId }));
+    }
+  };
+}
+
+// server/transport/team-attention-http.ts
+var TOKEN6 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+var QUERY_FIELDS2 = ["status", "reason", "targetMemberUserId", "limit", "offset"];
+function createTeamAttentionHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
+    const token = TOKEN6.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (!token) {
+      send(response, failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+      return;
+    }
+    if (url.pathname === TEAM_ATTENTION_ROUTES.items) {
+      if (request2.method === "GET") {
+        if ([...url.searchParams.keys()].some((key) => !QUERY_FIELDS2.includes(key) || url.searchParams.getAll(key).length !== 1)) {
+          send(response, failure("INVALID_INPUT", "\u5173\u6CE8\u9879\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+          return;
+        }
+        const status = url.searchParams.get("status") ?? void 0, reason = url.searchParams.get("reason") ?? void 0;
+        send(response, await service.list(token, {
+          ...status ? { status } : {},
+          ...reason ? { reason } : {},
+          ...url.searchParams.has("targetMemberUserId") ? { targetMemberUserId: url.searchParams.get("targetMemberUserId") } : {},
+          limit: Number(url.searchParams.get("limit") ?? TEAM_ATTENTION_LIMITS.page),
+          offset: Number(url.searchParams.get("offset") ?? 0)
+        }));
+        return;
+      }
+      if (request2.method === "POST") {
+        if (url.search) {
+          send(response, failure("INVALID_INPUT", "\u521B\u5EFA\u5173\u6CE8\u9879\u4E0D\u63A5\u53D7\u67E5\u8BE2\u53C2\u6570"));
+          return;
+        }
+        const input = await body(request2, TEAM_ATTENTION_LIMITS.bodyBytes);
+        send(response, input.ok ? await service.create(token, input.data) : input);
+        return;
+      }
+      send(response, failure("NOT_FOUND", "\u5173\u6CE8\u9879\u63A5\u53E3\u4E0D\u5B58\u5728"));
+      return;
+    }
+    const action = /^\/api\/crm\/team-attention\/([^/]+)\/(acknowledge|dismiss|resolve)$/.exec(url.pathname);
+    if (action && request2.method === "POST") {
+      if (url.search) {
+        send(response, failure("INVALID_INPUT", "\u5173\u6CE8\u9879\u72B6\u6001\u8BF7\u6C42\u4E0D\u63A5\u53D7\u67E5\u8BE2\u53C2\u6570"));
+        return;
+      }
+      const input = await body(request2, TEAM_ATTENTION_LIMITS.bodyBytes);
+      send(response, input.ok ? await service.transition(token, action[1], action[2], input.data) : input);
+      return;
+    }
+    send(response, failure("NOT_FOUND", "\u5173\u6CE8\u9879\u63A5\u53E3\u4E0D\u5B58\u5728"));
+  };
+}
+
+// server/core/team-monitoring.ts
+var TEAM_MONITORING_ROUTES = {
+  overview: "/api/crm/team-monitoring",
+  members: "/api/crm/team-monitoring/members",
+  contacts: "/api/crm/team-monitoring/contacts",
+  mail: "/api/crm/team-monitoring/mail"
+};
+var TEAM_MONITORING_LIMITS = {
+  page: 25,
+  pageMax: 100,
+  unitPage: 25,
+  actionPage: 20,
+  mailPage: 20,
+  text: 500
+};
+function teamMonitoringScopeFor(input) {
+  if (input.identityAdmin || input.roles.includes("admin"))
+    return "superadmin";
+  if (input.roles.includes("operations"))
+    return "operations";
+  if (input.roles.includes("sales"))
+    return "leader";
+  return null;
+}
+
+// server/adapters/postgres/team-monitoring-schema.ts
+var import_node_crypto28 = require("node:crypto");
+var TEAM_MONITORING_SCHEMA_VERSION = "061-team-monitoring";
+var TEAM_MONITORING_LOCK = 610061;
+var TEAM_MONITORING_SQL = `
+DO $$
+BEGIN
+  IF to_regclass('crm_org_units') IS NULL OR to_regclass('crm_org_assignments') IS NULL THEN
+    RAISE EXCEPTION '061 requires canonical organization tables';
+  END IF;
+  IF to_regclass('crm_contact_ownership') IS NULL OR to_regclass('crm_team_attention_items') IS NULL THEN
+    RAISE EXCEPTION '061 requires assignment and attention tables';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM crm_schema_migrations WHERE version='060-team-attention-task-gating') THEN
+    RAISE EXCEPTION '061 requires 060-team-attention-task-gating';
+  END IF;
+END
+$$;
+
+CREATE TABLE crm_team_monitoring_audits (
+  audit_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  scope text NOT NULL CHECK(scope IN ('leader','operations','superadmin')),
+  target_kind text NOT NULL CHECK(target_kind IN ('contact','mail')),
+  target_id text NOT NULL CHECK(btrim(target_id)<>''),
+  contact_id integer NOT NULL REFERENCES contacts(id),
+  customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+  mail_event_id uuid REFERENCES crm_contact_mail_events(event_id),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CHECK((target_kind='contact' AND mail_event_id IS NULL) OR (target_kind='mail' AND mail_event_id IS NOT NULL)),
+  FOREIGN KEY(customer_id,contact_id) REFERENCES crm_customer_contacts(customer_id,contact_id)
+);
+CREATE INDEX idx_crm_team_monitoring_audits_actor
+  ON crm_team_monitoring_audits(actor_id,created_at DESC,audit_id DESC);
+CREATE INDEX idx_crm_team_monitoring_audits_contact
+  ON crm_team_monitoring_audits(contact_id,created_at DESC,audit_id DESC);
+
+CREATE OR REPLACE FUNCTION crm_reject_team_monitoring_audit_change() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'team monitoring audits are append-only';
+END
+$$;
+CREATE TRIGGER trg_crm_team_monitoring_audits_immutable
+BEFORE UPDATE OR DELETE ON crm_team_monitoring_audits
+FOR EACH ROW EXECUTE FUNCTION crm_reject_team_monitoring_audit_change();
+
+CREATE INDEX idx_crm_team_monitoring_mail_actor
+  ON crm_contact_mail_events(actor_id,occurred_at DESC,event_id);
+CREATE INDEX idx_crm_team_monitoring_analysis_actor
+  ON crm_contact_mail_analyses(actor_id,classification,priority,created_at DESC)
+  WHERE is_current;
+CREATE INDEX idx_crm_team_monitoring_tasks_responsible
+  ON crm_followup_tasks(source_responsible_user_id,due_at,task_id)
+  WHERE status='open' AND source_responsible_user_id IS NOT NULL;
+`;
+function checksum2() {
+  return (0, import_node_crypto28.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
+}
+async function migrateTeamMonitoringSchema(client) {
+  const digest2 = checksum2();
+  const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TEAM_MONITORING_SCHEMA_VERSION]);
+  if (existing.rows.length) {
+    return existing.rows[0].checksum === digest2 ? success(void 0) : failure("CONFLICT", "\u56E2\u961F\u76D1\u63A7\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  }
+  await client.query("SELECT pg_advisory_xact_lock($1)", [TEAM_MONITORING_LOCK]);
+  const locked = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TEAM_MONITORING_SCHEMA_VERSION]);
+  if (locked.rows.length) {
+    return locked.rows[0].checksum === digest2 ? success(void 0) : failure("CONFLICT", "\u56E2\u961F\u76D1\u63A7\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  }
+  await client.query(TEAM_MONITORING_SQL);
+  await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [TEAM_MONITORING_SCHEMA_VERSION, digest2]);
+  return success(void 0);
+}
+
+// server/adapters/postgres/team-monitoring-repository.ts
+var COUNT_SELECT = `
+  COALESCE(cs.contacts,0)::int AS contacts,
+  COALESCE(cs.uncontacted,0)::int AS uncontacted,
+  COALESCE(cs.contacted,0)::int AS contacted,
+  COALESCE(cs.replied,0)::int AS replied,
+  COALESCE(cs.bounced,0)::int AS bounced,
+  COALESCE(cs.autoreply,0)::int AS autoreply,
+  COALESCE(ts.open_actions,0)::int AS "openActions",
+  COALESCE(ts.overdue_actions,0)::int AS "overdueActions",
+  COALESCE(ms.important_replies,0)::int AS "importantReplies",
+  COALESCE(ats.open_attention,0)::int AS "openAttention",
+  COALESCE(ass.pending_assignments,0)::int AS "pendingAssignments",
+  COALESCE(ass.pending_transfers,0)::int AS "pendingTransfers"
+`;
+function visibleUnitsCte(scope) {
+  if (scope !== "leader") {
+    return `visible_units AS (
+      SELECT unit_id,parent_unit_id,name,kind FROM crm_org_units
+      WHERE kind<>'company' AND dissolved_at IS NULL AND $1::uuid IS NOT NULL
+    )`;
+  }
+  return `visible_units AS (
+      SELECT u.unit_id,u.parent_unit_id,u.name,u.kind
+      FROM crm_org_units u
+      JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.role='leader' AND a.ended_at IS NULL
+      WHERE a.user_id=$1 AND u.kind<>'company' AND u.dissolved_at IS NULL
+      UNION
+      SELECT child.unit_id,child.parent_unit_id,child.name,child.kind
+      FROM crm_org_units child JOIN visible_units parent ON child.parent_unit_id=parent.unit_id
+      WHERE child.dissolved_at IS NULL
+    )`;
+}
+function statsCtes(scope) {
+  const originFilter = scope === "operations" ? "AND c.origin='operations'" : "";
+  const leaderContactFilter = scope === "leader" ? `AND COALESCE(own.owner_user_id,c.owner_user_id) IN (SELECT "userId" FROM visible_members)` : "";
+  const leaderTaskFilter = scope === "leader" ? `AND COALESCE(task.source_responsible_user_id,c.owner_user_id,c.created_by) IN (SELECT "userId" FROM visible_members)` : "";
+  const assignmentScopeFilter = scope === "operations" ? "AND customer.origin='operations'" : scope === "leader" ? `AND EXISTS(SELECT 1 FROM visible_members member_scope WHERE member_scope."userId"=request.target_user_id)` : "";
+  return `WITH RECURSIVE
+    ${visibleUnitsCte(scope)},
+    visible_members AS (
+      SELECT a.user_id AS "userId",u.display_name AS "displayName",e.email,
+        unit.unit_id AS "teamId",unit.name AS "teamName",unit.kind AS "organizationKind"
+      FROM visible_units unit
+      JOIN crm_org_assignments a ON a.unit_id=unit.unit_id AND a.role='member' AND a.ended_at IS NULL
+      JOIN public.identity_users u ON u.user_id=a.user_id
+      LEFT JOIN LATERAL (
+        SELECT email FROM public.identity_login_emails mail
+        WHERE mail.user_id=a.user_id ORDER BY mail.verified_at DESC NULLS LAST,mail.email LIMIT 1
+      ) e ON true
+    ),
+    contact_facts AS (
+      SELECT cc.contact_id AS "contactId",cc.customer_id AS "customerId",
+        COALESCE(own.owner_user_id,c.owner_user_id) AS "ownerUserId",
+        ct.crm_touch_status AS "touchStatus",c.relationship_stage AS stage,c.origin,
+        co.name AS "companyName",
+        COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),NULLIF(ct.email,''),'') AS "contactName",
+        ct.created_at AS "createdAt",ct.updated_at AS "updatedAt"
+      FROM crm_customer_contacts cc
+      JOIN contacts ct ON ct.id=cc.contact_id AND ct.crm_deleted_at IS NULL
+      JOIN crm_customers c ON c.customer_id=cc.customer_id
+      JOIN companies co ON co.id=c.company_id AND co.crm_deleted_at IS NULL
+      LEFT JOIN crm_contact_ownership own ON own.contact_id=cc.contact_id
+        AND own.customer_id=cc.customer_id AND own.ended_at IS NULL
+      WHERE 1=1 ${originFilter} ${leaderContactFilter}
+    ),
+    contact_stats AS (
+      SELECT "ownerUserId" AS user_id,
+        count(*) AS contacts,
+        count(*) FILTER(WHERE "touchStatus"='uncontacted') AS uncontacted,
+        count(*) FILTER(WHERE "touchStatus"='contacted') AS contacted,
+        count(*) FILTER(WHERE "touchStatus"='replied') AS replied,
+        count(*) FILTER(WHERE "touchStatus"='bounced') AS bounced,
+        count(*) FILTER(WHERE "touchStatus"='autoreply') AS autoreply
+      FROM contact_facts WHERE "ownerUserId" IS NOT NULL GROUP BY "ownerUserId"
+    ),
+    stage_stats AS (
+      SELECT "ownerUserId" AS user_id,jsonb_object_agg(stage,total) AS stages
+      FROM (
+        SELECT "ownerUserId",stage,count(DISTINCT "customerId")::int AS total
+        FROM contact_facts WHERE "ownerUserId" IS NOT NULL GROUP BY "ownerUserId",stage
+      ) grouped GROUP BY "ownerUserId"
+    ),
+    mail_stats AS (
+      SELECT analysis.actor_id AS user_id,
+        count(DISTINCT event.event_id) FILTER(WHERE analysis.classification='replied'
+          AND analysis.relevance='customer_business' AND analysis.priority IN ('important','urgent')) AS important_replies,
+        max(event.occurred_at) FILTER(WHERE analysis.classification='replied'
+          AND analysis.relevance='customer_business' AND analysis.priority IN ('important','urgent')) AS latest_important_reply
+      FROM crm_contact_mail_analyses analysis
+      JOIN contact_facts contact ON contact."contactId"=analysis.contact_id
+        AND contact."customerId"=analysis.customer_id AND contact."ownerUserId"=analysis.actor_id
+      JOIN crm_contact_mail_events event ON event.event_id=analysis.event_id
+      WHERE analysis.is_current GROUP BY analysis.actor_id
+    ),
+    task_stats AS (
+      SELECT COALESCE(task.source_responsible_user_id,c.owner_user_id,c.created_by) AS user_id,
+        count(*) FILTER(WHERE task.status='open') AS open_actions,
+        count(*) FILTER(WHERE task.status='open' AND task.due_at<clock_timestamp()) AS overdue_actions
+      FROM crm_followup_tasks task JOIN crm_customers c USING(customer_id)
+      WHERE 1=1 ${scope === "operations" ? "AND c.origin='operations'" : ""} ${leaderTaskFilter}
+      GROUP BY COALESCE(task.source_responsible_user_id,c.owner_user_id,c.created_by)
+    ),
+    attention_stats AS (
+      SELECT item.target_member_user_id AS user_id,
+        count(*) FILTER(WHERE item.status IN ('open','acknowledged')) AS open_attention
+      FROM crm_team_attention_items item
+      JOIN contact_facts contact ON contact."contactId"=item.contact_id AND contact."customerId"=item.customer_id
+      GROUP BY item.target_member_user_id
+    ),
+    assignment_stats AS (
+      SELECT request.target_user_id AS user_id,
+        count(*) FILTER(WHERE request.status='pending') AS pending_assignments,
+        count(*) FILTER(WHERE request.status='pending_transfer') AS pending_transfers
+      FROM crm_contact_assignment_requests request
+      JOIN crm_customers customer ON customer.customer_id=request.customer_id
+      WHERE 1=1 ${assignmentScopeFilter}
+      GROUP BY request.target_user_id
+    ),
+    activity_stats AS (
+      SELECT contact."ownerUserId" AS user_id,max(activity.occurred_at) AS last_activity
+      FROM crm_shared_activities activity
+      JOIN contact_facts contact ON contact."customerId"=activity.customer_id
+        AND (activity.contact_id IS NULL OR activity.contact_id=contact."contactId")
+      WHERE activity.method NOT IN ('legacy','note') AND contact."ownerUserId" IS NOT NULL
+      GROUP BY contact."ownerUserId"
+    ),
+    member_stats AS (
+      SELECT member.*,
+        ${COUNT_SELECT},
+        COALESCE(stage.stages,'{}'::jsonb) AS stages,
+        activity.last_activity AS "lastActivityAt",
+        ms.latest_important_reply AS "latestImportantReplyAt"
+      FROM visible_members member
+      LEFT JOIN contact_stats cs ON cs.user_id=member."userId"
+      LEFT JOIN stage_stats stage ON stage.user_id=member."userId"
+      LEFT JOIN task_stats ts ON ts.user_id=member."userId"
+      LEFT JOIN mail_stats ms ON ms.user_id=member."userId"
+      LEFT JOIN attention_stats ats ON ats.user_id=member."userId"
+      LEFT JOIN assignment_stats ass ON ass.user_id=member."userId"
+      LEFT JOIN activity_stats activity ON activity.user_id=member."userId"
+    )`;
+}
+var MAIL_SUMMARY_SELECT = `
+  event.event_id AS "eventId",event.contact_id AS "contactId",event.customer_id AS "customerId",
+  event.subject,event.kind,event.direction,event.occurred_at AS "occurredAt",
+  analysis.analysis_id AS "analysisId",analysis.classification,analysis.relevance,analysis.summary,
+  analysis.signals,analysis.requires_action AS "requiresAction",analysis.next_action AS "nextAction",
+  analysis.priority,analysis.confidence,analysis.source,analysis.analyzer_version AS "analyzerVersion"`;
+function number(value2) {
+  return Number(value2 ?? 0);
+}
+function iso3(value2) {
+  return value2 === null || value2 === void 0 ? null : new Date(value2).toISOString();
+}
+function jsonSignals(value2) {
+  if (Array.isArray(value2))
+    return value2;
+  if (!value2)
+    return [];
+  try {
+    const parsed = JSON.parse(value2);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function counts(row2) {
+  return {
+    contacts: number(row2.contacts),
+    uncontacted: number(row2.uncontacted),
+    contacted: number(row2.contacted),
+    replied: number(row2.replied),
+    bounced: number(row2.bounced),
+    autoreply: number(row2.autoreply),
+    openActions: number(row2.openActions),
+    overdueActions: number(row2.overdueActions),
+    importantReplies: number(row2.importantReplies),
+    openAttention: number(row2.openAttention),
+    pendingAssignments: number(row2.pendingAssignments),
+    pendingTransfers: number(row2.pendingTransfers)
+  };
+}
+function rates(value2) {
+  const touched = Math.max(0, value2.contacts - value2.uncontacted);
+  const ratio = (part, whole) => whole > 0 ? Math.round(part / whole * 1e4) / 1e4 : 0;
+  return {
+    contactRate: ratio(touched, value2.contacts),
+    replyRate: ratio(value2.replied, touched),
+    bounceRate: ratio(value2.bounced, touched),
+    actionRate: ratio(value2.openActions, value2.contacts)
+  };
+}
+function stages2(value2) {
+  return {
+    cold: number(value2?.cold),
+    reaching: number(value2?.reaching),
+    quoting: number(value2?.quoting),
+    trial: number(value2?.trial),
+    cooperating: number(value2?.cooperating),
+    lost: number(value2?.lost),
+    other: number(value2?.other)
+  };
+}
+function member(row2) {
+  const value2 = counts(row2);
+  return {
+    userId: row2.userId,
+    displayName: row2.displayName,
+    email: row2.email,
+    teamId: row2.teamId,
+    teamName: row2.teamName,
+    organizationKind: row2.organizationKind,
+    counts: value2,
+    rates: rates(value2),
+    stages: stages2(row2.stages),
+    lastActivityAt: iso3(row2.lastActivityAt),
+    latestImportantReplyAt: iso3(row2.latestImportantReplyAt)
+  };
+}
+function mail(row2) {
+  const signals2 = jsonSignals(row2.signals);
+  return {
+    eventId: row2.eventId,
+    contactId: number(row2.contactId),
+    customerId: row2.customerId,
+    subject: row2.subject,
+    kind: row2.kind,
+    direction: row2.direction,
+    occurredAt: new Date(row2.occurredAt).toISOString(),
+    analysisId: row2.analysisId,
+    classification: row2.classification,
+    relevance: row2.relevance,
+    summary: row2.summary,
+    signals: signals2,
+    intent: signals2[0]?.code ?? null,
+    requiresAction: row2.requiresAction ?? false,
+    nextAction: row2.nextAction,
+    priority: row2.priority,
+    confidence: row2.confidence === null ? null : number(row2.confidence),
+    source: row2.source,
+    analyzerVersion: row2.analyzerVersion
+  };
+}
+var PostgresTeamMonitoringRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+    assertCenterDatabasePool(pool);
+  }
+  async migrate() {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result2 = await migrateTeamMonitoringSchema(client);
+      await client.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+      }
+      this.log.write("ERROR", "team-monitoring.migrate", error instanceof Error ? error.message : "monitoring migration failed");
+      return failure("DATABASE_ERROR", "\u56E2\u961F\u76D1\u63A7\u8FC1\u79FB\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+  async actor(client, tokenHash) {
+    const row2 = (await client.query(`SELECT actor_user.user_id AS "userId",actor_user.display_name AS "displayName",
+      actor_user.identity_admin AS "identityAdmin",
+      ARRAY(SELECT grant_row.role FROM public.identity_product_grants grant_row
+        WHERE grant_row.user_id=actor_user.user_id AND grant_row.product_id='crm' AND grant_row.active ORDER BY grant_row.role) AS roles
+      FROM public.identity_sessions session
+      JOIN public.identity_users actor_user USING(user_id)
+      LEFT JOIN public.identity_product_access access_row ON access_row.user_id=actor_user.user_id
+        AND access_row.product_id='crm' AND access_row.active
+      WHERE session.token_hash=$1 AND session.client='api' AND session.revoked_at IS NULL
+        AND session.expires_at>now() AND actor_user.active AND NOT actor_user.must_change_password
+        AND session.security_revision=actor_user.security_revision
+        AND (actor_user.identity_admin OR access_row.user_id IS NOT NULL)`, [tokenHash])).rows[0];
+    if (!row2)
+      return null;
+    const roles = row2.roles ?? [];
+    const scope = teamMonitoringScopeFor({ identityAdmin: !!row2.identityAdmin, roles });
+    if (!scope)
+      return null;
+    if (scope === "leader") {
+      const leader = await client.query("SELECT 1 FROM crm_org_assignments assignment JOIN crm_org_units unit ON unit.unit_id=assignment.unit_id AND unit.dissolved_at IS NULL WHERE assignment.user_id=$1 AND assignment.role='leader' AND assignment.ended_at IS NULL LIMIT 1", [row2.userId]);
+      if (!leader.rowCount)
+        return null;
+    }
+    return { userId: String(row2.userId), displayName: String(row2.displayName), identityAdmin: !!row2.identityAdmin, roles, scope };
+  }
+  async read(tokenHash, work) {
+    let client;
+    try {
+      client = await this.pool.connect();
+      const actor = await this.actor(client, tokenHash);
+      if (!actor)
+        return failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709\u56E2\u961F\u76D1\u63A7\u6743\u9650");
+      return await work(client, actor);
+    } catch (error) {
+      const detail = error && typeof error === "object" && "position" in error ? ` position=${String(error.position)}` : "";
+      this.log.write("ERROR", "team-monitoring.read", `${error instanceof Error ? error.message : "team monitoring read failed"}${detail}`);
+      return failure("DATABASE_ERROR", "\u56E2\u961F\u76D1\u63A7\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client?.release();
+    }
+  }
+  async audited(tokenHash, work) {
+    let client;
+    try {
+      client = await this.pool.connect();
+      await client.query("BEGIN");
+      const actor = await this.actor(client, tokenHash);
+      if (!actor) {
+        await client.query("ROLLBACK");
+        return failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709\u56E2\u961F\u76D1\u63A7\u6743\u9650");
+      }
+      const result2 = await work(client, actor);
+      await client.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      if (client)
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+        }
+      this.log.write("ERROR", "team-monitoring.audit", error instanceof Error ? error.message : "team monitoring audit failed");
+      return failure("DATABASE_ERROR", "\u56E2\u961F\u76D1\u63A7\u8BFB\u53D6\u5931\u8D25");
+    } finally {
+      client?.release();
+    }
+  }
+  async accessibleContact(client, actor, contactId, customerId) {
+    const access2 = actor.scope === "superadmin" ? "TRUE" : actor.scope === "operations" ? "c.origin='operations'" : `EXISTS(SELECT 1 FROM crm_org_assignments member_scope
+            JOIN crm_org_units unit_scope ON unit_scope.unit_id=member_scope.unit_id AND unit_scope.dissolved_at IS NULL
+            JOIN crm_org_assignments leader_scope ON leader_scope.unit_id=member_scope.unit_id
+              AND leader_scope.role='leader' AND leader_scope.user_id=$3 AND leader_scope.ended_at IS NULL
+            WHERE member_scope.user_id=COALESCE(own.owner_user_id,c.owner_user_id) AND member_scope.role='member' AND member_scope.ended_at IS NULL)`;
+    const params = actor.scope === "leader" ? [contactId, customerId, actor.userId] : [contactId, customerId];
+    const row2 = await client.query(`SELECT 1 FROM crm_customer_contacts cc
+      JOIN contacts ct ON ct.id=cc.contact_id AND ct.crm_deleted_at IS NULL
+      JOIN crm_customers c ON c.customer_id=cc.customer_id
+      JOIN companies company ON company.id=c.company_id AND company.crm_deleted_at IS NULL
+      LEFT JOIN crm_contact_ownership own ON own.contact_id=cc.contact_id
+        AND own.customer_id=cc.customer_id AND own.ended_at IS NULL
+      WHERE cc.contact_id=$1 AND cc.customer_id=$2 AND ${access2} LIMIT 1`, params);
+    return row2.rowCount === 1;
+  }
+  async audit(client, actor, targetKind, targetId, contactId, customerId, mailEventId) {
+    return String((await client.query(`INSERT INTO crm_team_monitoring_audits(
+      actor_id,scope,target_kind,target_id,contact_id,customer_id,mail_event_id
+    ) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING audit_id`, [actor.userId, actor.scope, targetKind, targetId, contactId, customerId, mailEventId])).rows[0].audit_id);
+  }
+  async visibleSelection(client, scope, actorId, query2) {
+    const ctes = statsCtes(scope);
+    if (query2.teamId) {
+      const team = await client.query(`${ctes} SELECT 1 FROM visible_units WHERE unit_id=$2 LIMIT 1`, [actorId, query2.teamId]);
+      if (!team.rowCount)
+        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u76D1\u63A7\u8303\u56F4");
+    }
+    if (query2.memberUserId) {
+      const member2 = await client.query(`${ctes} SELECT 1 FROM visible_members WHERE "userId"=$2
+        AND ($3::uuid IS NULL OR "teamId"=$3) LIMIT 1`, [actorId, query2.memberUserId, query2.teamId ?? null]);
+      if (!member2.rowCount)
+        return failure("NOT_FOUND", "\u6210\u5458\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u76D1\u63A7\u8303\u56F4");
+    }
+    return success(void 0);
+  }
+  overview(tokenHash, query2) {
+    return this.read(tokenHash, async (client, actor) => {
+      const visible2 = await this.visibleSelection(client, actor.scope, actor.userId, query2);
+      if (!visible2.ok)
+        return visible2;
+      const ctes = statsCtes(actor.scope);
+      const filter = `WHERE ($2::uuid IS NULL OR "teamId"=$2) AND ($3::uuid IS NULL OR "userId"=$3)`;
+      const memberRows = await client.query(
+        `${ctes}
+        SELECT * FROM member_stats ${filter}
+        ORDER BY "displayName","userId" LIMIT $4 OFFSET $5`,
+        [actor.userId, query2.teamId ?? null, query2.memberUserId ?? null, query2.limit, query2.offset]
+      );
+      const totalMembers = await client.query(
+        `${ctes} SELECT count(*)::int AS total FROM member_stats ${filter}`,
+        [actor.userId, query2.teamId ?? null, query2.memberUserId ?? null]
+      );
+      const totals = await client.query(
+        `${ctes}
+        SELECT COALESCE(sum("contacts"),0)::int AS contacts,
+          COALESCE(sum("uncontacted"),0)::int AS uncontacted,
+          COALESCE(sum("contacted"),0)::int AS contacted,
+          COALESCE(sum("replied"),0)::int AS replied,
+          COALESCE(sum("bounced"),0)::int AS bounced,
+          COALESCE(sum("autoreply"),0)::int AS autoreply,
+          COALESCE(sum("openActions"),0)::int AS "openActions",
+          COALESCE(sum("overdueActions"),0)::int AS "overdueActions",
+          COALESCE(sum("importantReplies"),0)::int AS "importantReplies",
+          COALESCE(sum("openAttention"),0)::int AS "openAttention",
+          COALESCE(sum("pendingAssignments"),0)::int AS "pendingAssignments",
+          COALESCE(sum("pendingTransfers"),0)::int AS "pendingTransfers"
+        FROM member_stats ${filter}`,
+        [actor.userId, query2.teamId ?? null, query2.memberUserId ?? null]
+      );
+      const unitRows = await client.query(
+        `${ctes}
+        SELECT unit.unit_id AS "unitId",unit.name,unit.kind,unit.parent_unit_id AS "parentUnitId",
+          count(DISTINCT member."userId")::int AS "memberCount",
+          COALESCE(sum(member."contacts"),0)::int AS contacts,
+          COALESCE(sum(member."uncontacted"),0)::int AS uncontacted,
+          COALESCE(sum(member."contacted"),0)::int AS contacted,
+          COALESCE(sum(member."replied"),0)::int AS replied,
+          COALESCE(sum(member."bounced"),0)::int AS bounced,
+          COALESCE(sum(member."autoreply"),0)::int AS autoreply,
+          COALESCE(sum(member."openActions"),0)::int AS "openActions",
+          COALESCE(sum(member."overdueActions"),0)::int AS "overdueActions",
+          COALESCE(sum(member."importantReplies"),0)::int AS "importantReplies",
+          COALESCE(sum(member."openAttention"),0)::int AS "openAttention",
+          COALESCE(sum(member."pendingAssignments"),0)::int AS "pendingAssignments",
+          COALESCE(sum(member."pendingTransfers"),0)::int AS "pendingTransfers"
+        FROM visible_units unit
+        LEFT JOIN member_stats member ON member."teamId"=unit.unit_id
+        WHERE ($2::uuid IS NULL OR unit.unit_id=$2) AND ($3::uuid IS NULL OR member."userId"=$3)
+        GROUP BY unit.unit_id,unit.name,unit.kind,unit.parent_unit_id
+        ORDER BY unit.name,unit.unit_id LIMIT $4 OFFSET $5`,
+        [actor.userId, query2.teamId ?? null, query2.memberUserId ?? null, query2.unitLimit, query2.unitOffset]
+      );
+      const totalUnits = await client.query(
+        `${ctes}
+        SELECT count(DISTINCT unit.unit_id)::int AS total FROM visible_units unit
+        LEFT JOIN member_stats member ON member."teamId"=unit.unit_id
+        WHERE ($2::uuid IS NULL OR unit.unit_id=$2) AND ($3::uuid IS NULL OR member."userId"=$3)`,
+        [actor.userId, query2.teamId ?? null, query2.memberUserId ?? null]
+      );
+      const important = await client.query(
+        `${ctes}
+        SELECT ${MAIL_SUMMARY_SELECT}
+        FROM contact_facts contact
+        JOIN member_stats owner ON owner."userId"=contact."ownerUserId"
+        JOIN crm_contact_mail_events event ON event.contact_id=contact."contactId" AND event.customer_id=contact."customerId"
+        JOIN LATERAL (
+          SELECT analysis.* FROM crm_contact_mail_analyses analysis
+          WHERE analysis.event_id=event.event_id AND analysis.is_current
+            AND analysis.actor_id=contact."ownerUserId" AND analysis.classification='replied'
+            AND analysis.relevance='customer_business' AND analysis.priority IN ('important','urgent')
+          ORDER BY analysis.created_at DESC,analysis.analysis_id DESC LIMIT 1
+        ) analysis ON true
+        WHERE ($2::uuid IS NULL OR owner."teamId"=$2) AND ($3::uuid IS NULL OR owner."userId"=$3)
+        ORDER BY event.occurred_at DESC,event.event_id LIMIT 10`,
+        [actor.userId, query2.teamId ?? null, query2.memberUserId ?? null]
+      );
+      const pool = actor.scope === "leader" ? null : await client.query(
+        `${ctes}
+        SELECT
+          count(*) FILTER(WHERE contact.origin='operations' AND contact."ownerUserId" IS NULL)::int AS "unassignedOperationsContacts",
+          count(*) FILTER(WHERE contact.origin='operations' AND contact."ownerUserId" IS NOT NULL)::int AS "assignedOperationsContacts",
+          count(*) FILTER(WHERE request.status='pending' AND c.origin='operations')::int AS "pendingAssignmentRequests",
+          count(*) FILTER(WHERE request.status='pending_transfer' AND c.origin='operations')::int AS "pendingTransferRequests"
+        FROM contact_facts contact
+        LEFT JOIN crm_customers c ON c.customer_id=contact."customerId"
+        LEFT JOIN crm_contact_assignment_requests request ON request.contact_id=contact."contactId"
+          AND request.customer_id=contact."customerId" AND request.status IN ('pending','pending_transfer')`,
+        [actor.userId]
+      );
+      const total = counts(totals.rows[0]);
+      const unitItems = unitRows.rows.map((row2) => {
+        const value2 = counts(row2);
+        return {
+          unitId: row2.unitId,
+          name: row2.name,
+          kind: row2.kind,
+          parentUnitId: row2.parentUnitId,
+          memberCount: number(row2.memberCount),
+          counts: value2,
+          rates: rates(value2)
+        };
+      });
+      return success({
+        scope: actor.scope,
+        generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        units: { items: unitItems, total: number(totalUnits.rows[0].total) },
+        members: { items: memberRows.rows.map(member), total: number(totalMembers.rows[0].total) },
+        counts: total,
+        rates: rates(total),
+        pool: pool ? {
+          unassignedOperationsContacts: number(pool.rows[0].unassignedOperationsContacts),
+          assignedOperationsContacts: number(pool.rows[0].assignedOperationsContacts),
+          pendingAssignmentRequests: number(pool.rows[0].pendingAssignmentRequests),
+          pendingTransferRequests: number(pool.rows[0].pendingTransferRequests)
+        } : null,
+        importantReplies: important.rows.map(mail)
+      });
+    });
+  }
+  member(tokenHash, userId, limit, offset) {
+    return this.read(tokenHash, async (client, actor) => {
+      const visible2 = await this.visibleSelection(client, actor.scope, actor.userId, {
+        memberUserId: userId,
+        limit,
+        offset,
+        unitLimit: 1,
+        unitOffset: 0
+      });
+      if (!visible2.ok)
+        return visible2;
+      const ctes = statsCtes(actor.scope);
+      const summary = (await client.query(`${ctes} SELECT * FROM member_stats WHERE "userId"=$2 LIMIT 1`, [actor.userId, userId])).rows[0];
+      if (!summary)
+        return failure("NOT_FOUND", "\u6210\u5458\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u76D1\u63A7\u8303\u56F4");
+      const recentActions = await client.query(`${ctes}
+        SELECT task.task_id::text AS "actionId",'task'::text AS kind,task.title,
+          customer.customer_id AS "customerId",company.name AS "customerName",
+          task.source_contact_id AS "contactId",
+          COALESCE(NULLIF(concat_ws(' ',contact.first_name,contact.last_name),''),contact.email) AS "contactName",
+          task.due_at AS "dueAt",task.created_at AS "occurredAt",'normal'::text AS priority
+        FROM crm_followup_tasks task
+        JOIN crm_customers customer USING(customer_id)
+        JOIN companies company ON company.id=customer.company_id
+        LEFT JOIN contacts contact ON contact.id=task.source_contact_id
+        WHERE task.status='open' AND COALESCE(task.source_responsible_user_id,customer.owner_user_id,customer.created_by)=$2
+          ${actor.scope === "operations" ? "AND customer.origin='operations'" : ""}
+        UNION ALL
+        SELECT item.item_id::text,'attention',item.reason,customer.customer_id,company.name,item.contact_id,
+          COALESCE(NULLIF(concat_ws(' ',contact.first_name,contact.last_name),''),contact.email),
+          NULL,item.created_at,item.priority
+        FROM crm_team_attention_items item
+        JOIN crm_customers customer USING(customer_id)
+        JOIN companies company ON company.id=customer.company_id
+        JOIN contacts contact ON contact.id=item.contact_id
+        WHERE item.target_member_user_id=$2 AND item.status IN ('open','acknowledged')
+        ORDER BY "occurredAt" DESC LIMIT 20`, [actor.userId, userId]);
+      const attention = await client.query(`${ctes}
+        SELECT item.item_id AS "itemId",item.target_member_user_id AS "memberUserId",member."displayName" AS "memberName",
+          item.customer_id AS "customerId",company.name AS "customerName",item.contact_id AS "contactId",
+          COALESCE(NULLIF(concat_ws(' ',contact.first_name,contact.last_name),''),contact.email) AS "contactName",
+          item.reason,item.priority,item.status,item.note,item.updated_at AS "updatedAt"
+        FROM crm_team_attention_items item
+        JOIN member_stats member ON member."userId"=item.target_member_user_id
+        JOIN contact_facts scoped_contact ON scoped_contact."contactId"=item.contact_id
+          AND scoped_contact."customerId"=item.customer_id
+        JOIN crm_customers customer ON customer.customer_id=item.customer_id
+        JOIN companies company ON company.id=customer.company_id
+        JOIN contacts contact ON contact.id=item.contact_id
+        WHERE item.target_member_user_id=$2 AND item.status IN ('open','acknowledged')
+        ORDER BY CASE item.priority WHEN 'urgent' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,item.updated_at DESC,item.item_id
+        LIMIT 20`, [actor.userId, userId]);
+      const recentMail = await client.query(`${ctes}
+        SELECT ${MAIL_SUMMARY_SELECT}
+        FROM contact_facts contact
+        JOIN member_stats owner ON owner."userId"=contact."ownerUserId"
+        JOIN crm_contact_mail_events event ON event.contact_id=contact."contactId" AND event.customer_id=contact."customerId"
+        LEFT JOIN LATERAL (
+          SELECT analysis.* FROM crm_contact_mail_analyses analysis
+          WHERE analysis.event_id=event.event_id AND analysis.is_current
+          ORDER BY analysis.created_at DESC,analysis.analysis_id DESC LIMIT 1
+        ) analysis ON true
+        WHERE owner."userId"=$2
+        ORDER BY event.occurred_at DESC,event.event_id DESC LIMIT $3 OFFSET $4`, [actor.userId, userId, limit, offset]);
+      return success({
+        scope: actor.scope,
+        generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        member: member(summary),
+        recentActions: recentActions.rows.map((row2) => ({
+          actionId: String(row2.actionId),
+          kind: row2.kind,
+          title: String(row2.title),
+          customerId: String(row2.customerId),
+          customerName: String(row2.customerName),
+          contactId: row2.contactId === null ? null : number(row2.contactId),
+          contactName: row2.contactName ? String(row2.contactName) : null,
+          dueAt: iso3(row2.dueAt),
+          occurredAt: new Date(row2.occurredAt).toISOString(),
+          priority: row2.priority
+        })),
+        attention: attention.rows.map((row2) => ({
+          itemId: String(row2.itemId),
+          memberUserId: String(row2.memberUserId),
+          memberName: String(row2.memberName),
+          customerId: String(row2.customerId),
+          customerName: String(row2.customerName),
+          contactId: number(row2.contactId),
+          contactName: String(row2.contactName ?? ""),
+          reason: String(row2.reason),
+          priority: row2.priority,
+          status: String(row2.status),
+          note: row2.note ? String(row2.note) : null,
+          updatedAt: new Date(row2.updatedAt).toISOString()
+        })),
+        recentMail: recentMail.rows.map(mail)
+      });
+    });
+  }
+  contact(tokenHash, contactId, customerId, limit, offset) {
+    return this.audited(tokenHash, async (client, actor) => {
+      if (!await this.accessibleContact(client, actor, contactId, customerId))
+        return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u76D1\u63A7\u8303\u56F4");
+      const row2 = (await client.query(`SELECT cc.contact_id AS "contactId",cc.customer_id AS "customerId",
+        company.id AS "companyId",company.name AS "companyName",
+        COALESCE(NULLIF(concat_ws(' ',contact.first_name,contact.last_name),''),contact.email,'') AS name,
+        contact.email,COALESCE(company.country,contact.country) AS country,contact.title,
+        customer.relationship_stage AS stage,contact.crm_touch_status AS "touchStatus",
+        COALESCE(own.owner_user_id,customer.owner_user_id) AS "ownerUserId",
+        owner.display_name AS "ownerName",customer.origin,
+        contact.created_at AS "createdAt",contact.updated_at AS "updatedAt"
+        FROM crm_customer_contacts cc
+        JOIN contacts contact ON contact.id=cc.contact_id AND contact.crm_deleted_at IS NULL
+        JOIN crm_customers customer ON customer.customer_id=cc.customer_id
+        JOIN companies company ON company.id=customer.company_id AND company.crm_deleted_at IS NULL
+        LEFT JOIN crm_contact_ownership own ON own.contact_id=cc.contact_id
+          AND own.customer_id=cc.customer_id AND own.ended_at IS NULL
+        LEFT JOIN public.identity_users owner ON owner.user_id=COALESCE(own.owner_user_id,customer.owner_user_id)
+        WHERE cc.contact_id=$1 AND cc.customer_id=$2 LIMIT 1`, [contactId, customerId])).rows[0];
+      if (!row2)
+        return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u76D1\u63A7\u8303\u56F4");
+      const auditId = await this.audit(client, actor, "contact", String(contactId), contactId, customerId, null);
+      const total = await client.query("SELECT count(*)::int AS total FROM crm_contact_mail_events WHERE contact_id=$1 AND customer_id=$2", [contactId, customerId]);
+      const mailRows = await client.query(`SELECT ${MAIL_SUMMARY_SELECT}
+        FROM crm_contact_mail_events event
+        LEFT JOIN LATERAL (
+          SELECT analysis.* FROM crm_contact_mail_analyses analysis
+          WHERE analysis.event_id=event.event_id AND analysis.is_current
+          ORDER BY analysis.created_at DESC,analysis.analysis_id DESC LIMIT 1
+        ) analysis ON true
+        WHERE event.contact_id=$1 AND event.customer_id=$2
+        ORDER BY event.occurred_at DESC,event.event_id DESC LIMIT $3 OFFSET $4`, [contactId, customerId, limit, offset]);
+      return success({
+        auditId,
+        scope: actor.scope,
+        contactId: number(row2.contactId),
+        customerId: String(row2.customerId),
+        companyId: number(row2.companyId),
+        companyName: String(row2.companyName),
+        name: String(row2.name),
+        email: row2.email ? String(row2.email) : null,
+        country: row2.country ? String(row2.country) : null,
+        title: row2.title ? String(row2.title) : null,
+        stage: row2.stage,
+        touchStatus: row2.touchStatus,
+        ownerUserId: row2.ownerUserId ? String(row2.ownerUserId) : null,
+        ownerName: row2.ownerName ? String(row2.ownerName) : null,
+        origin: row2.origin,
+        createdAt: new Date(row2.createdAt).toISOString(),
+        updatedAt: new Date(row2.updatedAt).toISOString(),
+        mail: { items: mailRows.rows.map(mail), total: number(total.rows[0].total) }
+      });
+    });
+  }
+  mail(tokenHash, eventId, contactId, customerId) {
+    return this.audited(tokenHash, async (client, actor) => {
+      if (!await this.accessibleContact(client, actor, contactId, customerId))
+        return failure("NOT_FOUND", "\u90AE\u4EF6\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u76D1\u63A7\u8303\u56F4");
+      const row2 = (await client.query(
+        `SELECT ${MAIL_SUMMARY_SELECT}
+        FROM crm_contact_mail_events event
+        LEFT JOIN LATERAL (
+          SELECT analysis.* FROM crm_contact_mail_analyses analysis
+          WHERE analysis.event_id=event.event_id AND analysis.is_current
+          ORDER BY analysis.created_at DESC,analysis.analysis_id DESC LIMIT 1
+        ) analysis ON true
+        WHERE event.event_id=$1 AND event.contact_id=$2 AND event.customer_id=$3 LIMIT 1`,
+        [eventId, contactId, customerId]
+      )).rows[0];
+      if (!row2)
+        return failure("NOT_FOUND", "\u90AE\u4EF6\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u76D1\u63A7\u8303\u56F4");
+      const auditId = await this.audit(client, actor, "mail", eventId, contactId, customerId, eventId);
+      return success({ auditId, scope: actor.scope, mail: mail(row2) });
+    });
+  }
+};
+
+// server/services/team-monitoring.ts
+var TOKEN7 = /^[A-Za-z0-9_-]{43}$/;
+var UUID16 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function record14(value2) {
+  return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
+}
+function keys10(value2, allowed) {
+  return Object.keys(value2).every((key) => allowed.includes(key));
+}
+function page(value2) {
+  if (!record14(value2) || !keys10(value2, ["limit", "offset"]))
+    return void 0;
+  const limit = value2.limit ?? TEAM_MONITORING_LIMITS.mailPage;
+  const offset = value2.offset ?? 0;
+  if (!Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > TEAM_MONITORING_LIMITS.pageMax || !Number.isSafeInteger(offset) || Number(offset) < 0)
+    return void 0;
+  return { limit: Number(limit), offset: Number(offset) };
+}
+function overviewQuery(value2) {
+  if (!record14(value2) || !keys10(value2, ["teamId", "memberUserId", "limit", "offset", "unitLimit", "unitOffset"]))
+    return void 0;
+  if (value2.teamId !== void 0 && (typeof value2.teamId !== "string" || !UUID16.test(value2.teamId)))
+    return void 0;
+  if (value2.memberUserId !== void 0 && (typeof value2.memberUserId !== "string" || !UUID16.test(value2.memberUserId)))
+    return void 0;
+  const limit = value2.limit ?? TEAM_MONITORING_LIMITS.page;
+  const offset = value2.offset ?? 0;
+  const unitLimit = value2.unitLimit ?? TEAM_MONITORING_LIMITS.unitPage;
+  const unitOffset = value2.unitOffset ?? 0;
+  if (!Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > TEAM_MONITORING_LIMITS.pageMax || !Number.isSafeInteger(unitLimit) || Number(unitLimit) < 1 || Number(unitLimit) > TEAM_MONITORING_LIMITS.pageMax || !Number.isSafeInteger(offset) || Number(offset) < 0 || !Number.isSafeInteger(unitOffset) || Number(unitOffset) < 0)
+    return void 0;
+  return {
+    ...value2.teamId ? { teamId: value2.teamId } : {},
+    ...value2.memberUserId ? { memberUserId: value2.memberUserId } : {},
+    limit: Number(limit),
+    offset: Number(offset),
+    unitLimit: Number(unitLimit),
+    unitOffset: Number(unitOffset)
+  };
+}
+function contactQuery(value2) {
+  if (!record14(value2) || !keys10(value2, ["customerId", "limit", "offset"]) || typeof value2.customerId !== "string" || !UUID16.test(value2.customerId))
+    return void 0;
+  const paging = page({ limit: value2.limit, offset: value2.offset });
+  return paging ? { customerId: value2.customerId, ...paging } : void 0;
+}
+function mailQuery(value2) {
+  if (!record14(value2) || !keys10(value2, ["contactId", "customerId"]) || typeof value2.customerId !== "string" || !UUID16.test(value2.customerId))
+    return void 0;
+  if (!Number.isSafeInteger(value2.contactId) || Number(value2.contactId) < 1)
+    return void 0;
+  return { contactId: Number(value2.contactId), customerId: value2.customerId };
+}
+function createTeamMonitoringService(repo, tokens) {
+  const run2 = (token, action) => TOKEN7.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+  return {
+    overview(token, value2) {
+      const parsed = overviewQuery(value2);
+      return parsed ? run2(token, (hash) => repo.overview(hash, parsed)) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+    },
+    member(token, userId, value2) {
+      const parsed = page(value2);
+      if (!UUID16.test(userId) || !parsed)
+        return Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+      return run2(token, (hash) => repo.member(hash, userId, parsed.limit, parsed.offset));
+    },
+    contact(token, contactId, value2) {
+      const parsed = contactQuery(value2);
+      if (!/^\d+$/.test(contactId) || !Number.isSafeInteger(Number(contactId)) || Number(contactId) < 1 || !parsed) {
+        return Promise.resolve(failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+      }
+      return run2(token, (hash) => repo.contact(hash, Number(contactId), parsed.customerId, parsed.limit, parsed.offset));
+    },
+    mail(token, eventId, value2) {
+      const parsed = mailQuery(value2);
+      if (!UUID16.test(eventId) || !parsed)
+        return Promise.resolve(failure("INVALID_INPUT", "\u90AE\u4EF6\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+      return run2(token, (hash) => repo.mail(hash, eventId, parsed.contactId, parsed.customerId));
+    }
+  };
+}
+
+// server/transport/team-monitoring-http.ts
+var TOKEN8 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+var MEMBER_PATH = /^\/api\/crm\/team-monitoring\/members\/([a-f0-9-]{36})$/i;
+var CONTACT_PATH = /^\/api\/crm\/team-monitoring\/contacts\/(\d+)$/;
+var MAIL_PATH = /^\/api\/crm\/team-monitoring\/mail\/([a-f0-9-]{36})$/i;
+function validQuery(url, allowed) {
+  return [...url.searchParams.keys()].every((key) => allowed.includes(key) && url.searchParams.getAll(key).length === 1);
+}
+function optional2(url, key) {
+  return url.searchParams.has(key) ? url.searchParams.get(key) : void 0;
+}
+function createTeamMonitoringHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
+    const token = TOKEN8.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (!token) {
+      send(response, failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+      return;
+    }
+    if (request2.method !== "GET") {
+      send(response, failure("NOT_FOUND", "\u76D1\u63A7\u63A5\u53E3\u4E0D\u5B58\u5728"));
+      return;
+    }
+    if (url.pathname === TEAM_MONITORING_ROUTES.overview) {
+      if (!validQuery(url, ["teamId", "memberUserId", "limit", "offset", "unitLimit", "unitOffset"])) {
+        send(response, failure("INVALID_INPUT", "\u56E2\u961F\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      send(response, await service.overview(token, {
+        ...optional2(url, "teamId") ? { teamId: optional2(url, "teamId") } : {},
+        ...optional2(url, "memberUserId") ? { memberUserId: optional2(url, "memberUserId") } : {},
+        limit: Number(url.searchParams.get("limit") ?? TEAM_MONITORING_LIMITS.page),
+        offset: Number(url.searchParams.get("offset") ?? 0),
+        unitLimit: Number(url.searchParams.get("unitLimit") ?? TEAM_MONITORING_LIMITS.unitPage),
+        unitOffset: Number(url.searchParams.get("unitOffset") ?? 0)
+      }));
+      return;
+    }
+    const member2 = MEMBER_PATH.exec(url.pathname);
+    if (member2) {
+      if (!validQuery(url, ["limit", "offset"])) {
+        send(response, failure("INVALID_INPUT", "\u6210\u5458\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      send(response, await service.member(token, member2[1], {
+        limit: Number(url.searchParams.get("limit") ?? TEAM_MONITORING_LIMITS.mailPage),
+        offset: Number(url.searchParams.get("offset") ?? 0)
+      }));
+      return;
+    }
+    const contact2 = CONTACT_PATH.exec(url.pathname);
+    if (contact2) {
+      if (!validQuery(url, ["customerId", "limit", "offset"])) {
+        send(response, failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      send(response, await service.contact(token, contact2[1], {
+        customerId: optional2(url, "customerId"),
+        limit: Number(url.searchParams.get("limit") ?? TEAM_MONITORING_LIMITS.mailPage),
+        offset: Number(url.searchParams.get("offset") ?? 0)
+      }));
+      return;
+    }
+    const mail2 = MAIL_PATH.exec(url.pathname);
+    if (mail2) {
+      if (!validQuery(url, ["contactId", "customerId"])) {
+        send(response, failure("INVALID_INPUT", "\u90AE\u4EF6\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      send(response, await service.mail(token, mail2[1], {
+        contactId: Number(url.searchParams.get("contactId")),
+        customerId: optional2(url, "customerId")
+      }));
+      return;
+    }
+    send(response, failure("NOT_FOUND", "\u76D1\u63A7\u63A5\u53E3\u4E0D\u5B58\u5728"));
+  };
+}
+
+// server/adapters/postgres/sales-performance-repository.ts
+var import_node_crypto30 = require("node:crypto");
+
+// server/core/sales-performance.ts
+var SALES_PERFORMANCE_ROUTES = {
+  performance: "/api/crm/sales-performance",
+  customerGrades: "/api/crm/sales-performance/customer-grades"
+};
+var SALES_PERFORMANCE_LIMITS = {
+  page: 25,
+  pageMax: 100,
+  defaultWindowDays: 90,
+  maximumWindowDays: 730,
+  text: 200,
+  reason: 1e3,
+  key: 128,
+  bodyBytes: 8192
+};
+var SALES_PERFORMANCE_MIN_SAMPLES = {
+  duration: 5,
+  repeatRate: 5
+};
+var SALES_PERFORMANCE_STRATA = ["lead", "source", "batch", "country"];
+var CUSTOMER_GRADES = ["A", "B", "C"];
+var CUSTOMER_GRADE_THRESHOLDS = {
+  gradeAWonOpportunities: 1,
+  gradeAValidReplies: 3,
+  gradeBValidReplies: 1,
+  gradeBOpenOpportunities: 1
+};
+function customerGradeScopeFor(input) {
+  if (input.identityAdmin || input.roles.includes("admin"))
+    return "superadmin";
+  if (input.roles.includes("operations"))
+    return "operations";
+  if (input.roles.includes("sales"))
+    return input.isLeader ? "leader" : "self";
+  return null;
+}
+function salesPerformanceScopeFor(input) {
+  const scope = customerGradeScopeFor(input);
+  return scope === "superadmin" || scope === "operations" ? scope : null;
+}
+function customerGradeFor(signals2) {
+  if (signals2.wonOpportunityCount >= CUSTOMER_GRADE_THRESHOLDS.gradeAWonOpportunities) {
+    return { grade: "A", reasons: ["won_opportunity"] };
+  }
+  if (signals2.validReplyCount >= CUSTOMER_GRADE_THRESHOLDS.gradeAValidReplies) {
+    return { grade: "A", reasons: ["three_valid_replies"] };
+  }
+  if (signals2.validReplyCount >= CUSTOMER_GRADE_THRESHOLDS.gradeBValidReplies) {
+    return { grade: "B", reasons: ["valid_reply"] };
+  }
+  if (signals2.openOpportunityCount >= CUSTOMER_GRADE_THRESHOLDS.gradeBOpenOpportunities) {
+    return { grade: "B", reasons: ["open_opportunity"] };
+  }
+  return { grade: "C", reasons: ["insufficient_customer_signal"] };
+}
+
+// server/adapters/postgres/sales-performance-schema.ts
+var import_node_crypto29 = require("node:crypto");
+var SALES_PERFORMANCE_SCHEMA_VERSION = "062-sales-performance-customer-grade";
+var SALES_PERFORMANCE_SCHEMA_LOCK = 620062;
+var SALES_PERFORMANCE_SQL = `
+DO $$
+BEGIN
+  IF to_regclass('crm_contact_ownership') IS NULL
+     OR to_regclass('crm_contact_mail_analyses') IS NULL
+     OR to_regclass('crm_opportunity_stage_history') IS NULL
+     OR to_regclass('crm_followup_tasks') IS NULL THEN
+    RAISE EXCEPTION '062 requires ownership, mail analysis, opportunity and task facts';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM crm_schema_migrations WHERE version='061-team-monitoring') THEN
+    RAISE EXCEPTION '062 requires 061-team-monitoring';
+  END IF;
+END
+$$;
+
+CREATE TABLE crm_customer_grade_overrides (
+  customer_id uuid PRIMARY KEY REFERENCES crm_customers(customer_id),
+  grade text NOT NULL CHECK(grade IN ('A','B','C')),
+  reason text NOT NULL CHECK(btrim(reason)<>'' AND char_length(reason)<=1000),
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  version integer NOT NULL DEFAULT 1 CHECK(version>0),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX idx_crm_customer_grade_overrides_actor
+  ON crm_customer_grade_overrides(actor_id,updated_at DESC,customer_id);
+
+CREATE TABLE crm_customer_grade_override_audits (
+  audit_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+  action text NOT NULL CHECK(action IN ('set','clear')),
+  from_grade text CHECK(from_grade IS NULL OR from_grade IN ('A','B','C')),
+  to_grade text CHECK(to_grade IS NULL OR to_grade IN ('A','B','C')),
+  reason text NOT NULL CHECK(btrim(reason)<>'' AND char_length(reason)<=1000),
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  override_version integer NOT NULL CHECK(override_version>0),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CHECK((action='set' AND to_grade IS NOT NULL) OR (action='clear' AND to_grade IS NULL))
+);
+CREATE INDEX idx_crm_customer_grade_override_audits_customer
+  ON crm_customer_grade_override_audits(customer_id,created_at DESC,audit_id DESC);
+CREATE INDEX idx_crm_customer_grade_override_audits_actor
+  ON crm_customer_grade_override_audits(actor_id,created_at DESC,audit_id DESC);
+
+CREATE OR REPLACE FUNCTION crm_reject_customer_grade_audit_change() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'customer grade audit is append only';
+END
+$$;
+CREATE TRIGGER trg_crm_customer_grade_audit_immutable
+BEFORE UPDATE OR DELETE ON crm_customer_grade_override_audits
+FOR EACH ROW EXECUTE FUNCTION crm_reject_customer_grade_audit_change();
+
+CREATE TABLE crm_customer_grade_override_idempotency (
+  actor_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  operation text NOT NULL,
+  idempotency_key text NOT NULL,
+  digest text NOT NULL CHECK(digest ~ '^[a-f0-9]{64}$'),
+  response jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY(actor_id,operation,idempotency_key)
+);
+
+-- Query-time metric indexes only; no score, grade snapshot or conclusion is stored.
+CREATE INDEX idx_crm_sales_perf_ownership_start
+  ON crm_contact_ownership(owner_user_id,started_at,ended_at,customer_id,contact_id);
+CREATE INDEX idx_crm_sales_perf_activity_actor
+  ON crm_shared_activities(actor_id,occurred_at,customer_id,contact_id)
+  WHERE contact_id IS NOT NULL;
+CREATE INDEX idx_crm_sales_perf_tasks_completed
+  ON crm_followup_tasks(customer_id,completed_at,completed_by)
+  WHERE status='completed';
+CREATE INDEX idx_crm_sales_perf_mail_current_reply
+  ON crm_contact_mail_analyses(event_id,contact_id,customer_id)
+  WHERE is_current AND classification='replied' AND relevance='customer_business';
+CREATE INDEX idx_crm_sales_perf_won_history
+  ON crm_opportunity_stage_history(occurred_at,opportunity_id)
+  WHERE to_stage='closed_won';
+CREATE INDEX idx_crm_sales_perf_import_customer
+  ON crm_import_rows(customer_id,batch_id)
+  WHERE customer_id IS NOT NULL;
+CREATE INDEX idx_crm_sales_perf_customer_origin_source
+  ON crm_customers(origin,source,customer_id);
+`;
+function checksum3() {
+  return (0, import_node_crypto29.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
+}
+async function migrateSalesPerformanceSchema(client) {
+  const digest2 = checksum3();
+  const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [SALES_PERFORMANCE_SCHEMA_VERSION]);
+  if (existing.rows.length) {
+    return existing.rows[0].checksum === digest2 ? success(void 0) : failure("CONFLICT", "\u9500\u552E\u7EE9\u6548\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  }
+  await client.query("SELECT pg_advisory_xact_lock($1)", [SALES_PERFORMANCE_SCHEMA_LOCK]);
+  const locked = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [SALES_PERFORMANCE_SCHEMA_VERSION]);
+  if (locked.rows.length) {
+    return locked.rows[0].checksum === digest2 ? success(void 0) : failure("CONFLICT", "\u9500\u552E\u7EE9\u6548\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  }
+  await client.query(SALES_PERFORMANCE_SQL);
+  await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [SALES_PERFORMANCE_SCHEMA_VERSION, digest2]);
+  return success(void 0);
+}
+
+// server/adapters/postgres/sales-performance-repository.ts
+var OVERRIDE_OPERATION = "customer-grade-override";
+var CLEAR_OPERATION = "customer-grade-clear";
+function count(value2) {
+  return Number(value2 ?? 0);
+}
+function metricNumber(value2) {
+  return value2 === null ? null : Number(value2);
+}
+function iso4(value2) {
+  return value2 === null ? null : new Date(value2).toISOString();
+}
+function visibleOrganizationCtes(scope) {
+  const leaderPredicate = scope === "leader" ? "assignment.user_id=$1" : "FALSE";
+  return `visible_units AS (
+      SELECT unit.unit_id,unit.parent_unit_id,unit.name
+      FROM crm_org_units unit
+      JOIN crm_org_assignments assignment ON assignment.unit_id=unit.unit_id
+        AND assignment.role='leader' AND assignment.ended_at IS NULL AND ${leaderPredicate}
+      WHERE unit.kind='sales_team' AND unit.dissolved_at IS NULL
+      UNION
+      SELECT child.unit_id,child.parent_unit_id,child.name
+      FROM crm_org_units child JOIN visible_units parent ON child.parent_unit_id=parent.unit_id
+      WHERE child.kind='sales_team' AND child.dissolved_at IS NULL
+    ), managed_people AS (
+      SELECT $1::uuid AS user_id WHERE $1::uuid IS NOT NULL
+      UNION
+      SELECT assignment.user_id
+      FROM visible_units unit JOIN crm_org_assignments assignment ON assignment.unit_id=unit.unit_id AND assignment.ended_at IS NULL
+    )`;
+}
+function grouping(stratum) {
+  if (stratum === "source")
+    return {
+      key: `'source:'||COALESCE(NULLIF(btrim(c.source),''),'unattributed')`,
+      label: `COALESCE(NULLIF(btrim(c.source),''),'unattributed')`,
+      memberUserId: "NULL::uuid",
+      memberName: "NULL::text",
+      teamId: "NULL::uuid",
+      teamName: "NULL::text"
+    };
+  if (stratum === "batch")
+    return {
+      key: `COALESCE(c.batch_id::text,'unattributed')`,
+      label: `COALESCE(c.batch_label,c.batch_id::text,'unattributed')`,
+      memberUserId: "NULL::uuid",
+      memberName: "NULL::text",
+      teamId: "NULL::uuid",
+      teamName: "NULL::text"
+    };
+  if (stratum === "country")
+    return {
+      key: `'country:'||COALESCE(NULLIF(btrim(c.country),''),'unattributed')`,
+      label: `COALESCE(NULLIF(btrim(c.country),''),'unattributed')`,
+      memberUserId: "NULL::uuid",
+      memberName: "NULL::text",
+      teamId: "NULL::uuid",
+      teamName: "NULL::text"
+    };
+  return {
+    key: "c.owner_user_id::text",
+    label: "c.owner_name",
+    memberUserId: "c.owner_user_id",
+    memberName: "c.owner_name",
+    teamId: "c.team_id",
+    teamName: "c.team_name"
+  };
+}
+function claimCtes(scope, stratum) {
+  const group = grouping(stratum);
+  const scopeFilter = scope === "operations" ? "AND c.origin='operations'" : scope === "leader" ? `AND c.owner_user_id IN (SELECT user_id FROM managed_people)` : scope === "self" ? "AND c.owner_user_id=$1" : "";
+  return `WITH RECURSIVE
+    ${visibleOrganizationCtes(scope)},
+    claim_candidates AS (
+      SELECT 'ownership:'||ownership.ownership_id AS claim_id,
+        ownership.contact_id,ownership.customer_id,ownership.owner_user_id,
+        ownership.started_at,ownership.ended_at,customer.origin,customer.source,
+        customer.owner_user_id AS customer_owner_user_id,company.name AS company_name,
+        COALESCE(NULLIF(company.country,''),NULLIF(contact.country,'')) AS country,
+        imported.batch_id,imported.batch_label,
+        owner.display_name AS owner_name,team.unit_id AS team_id,team.name AS team_name
+      FROM crm_contact_ownership ownership
+      JOIN crm_customers customer ON customer.customer_id=ownership.customer_id
+      JOIN companies company ON company.id=customer.company_id
+      JOIN contacts contact ON contact.id=ownership.contact_id
+      JOIN public.identity_users owner ON owner.user_id=ownership.owner_user_id
+      LEFT JOIN LATERAL (
+        SELECT row.batch_id,batch.source_detail AS batch_label
+        FROM crm_import_rows row JOIN crm_import_batches batch USING(batch_id)
+        WHERE row.customer_id=ownership.customer_id
+        ORDER BY batch.created_at,row.row_index LIMIT 1
+      ) imported ON true
+      LEFT JOIN LATERAL (
+        SELECT unit.unit_id,unit.name
+        FROM crm_org_assignments assignment JOIN crm_org_units unit ON unit.unit_id=assignment.unit_id
+        WHERE assignment.user_id=ownership.owner_user_id AND assignment.role IN ('leader','member') AND assignment.ended_at IS NULL AND unit.dissolved_at IS NULL
+        ORDER BY assignment.is_primary DESC,assignment.created_at,assignment.unit_id LIMIT 1
+      ) team ON true
+      UNION ALL
+      SELECT 'initial:'||link.contact_id AS claim_id,
+        link.contact_id,link.customer_id,customer.owner_user_id,
+        contact.created_at,NULL::timestamptz,customer.origin,customer.source,
+        customer.owner_user_id,company.name AS company_name,
+        COALESCE(NULLIF(company.country,''),NULLIF(contact.country,'')) AS country,
+        imported.batch_id,imported.batch_label,
+        owner.display_name AS owner_name,team.unit_id AS team_id,team.name AS team_name
+      FROM crm_customer_contacts link
+      JOIN crm_customers customer ON customer.customer_id=link.customer_id
+      JOIN companies company ON company.id=customer.company_id
+      JOIN contacts contact ON contact.id=link.contact_id
+      JOIN public.identity_users owner ON owner.user_id=customer.owner_user_id
+      LEFT JOIN LATERAL (
+        SELECT row.batch_id,batch.source_detail AS batch_label
+        FROM crm_import_rows row JOIN crm_import_batches batch USING(batch_id)
+        WHERE row.customer_id=link.customer_id
+        ORDER BY batch.created_at,row.row_index LIMIT 1
+      ) imported ON true
+      LEFT JOIN LATERAL (
+        SELECT unit.unit_id,unit.name
+        FROM crm_org_assignments assignment JOIN crm_org_units unit ON unit.unit_id=assignment.unit_id
+        WHERE assignment.user_id=customer.owner_user_id AND assignment.role IN ('leader','member') AND assignment.ended_at IS NULL AND unit.dissolved_at IS NULL
+        ORDER BY assignment.is_primary DESC,assignment.created_at,assignment.unit_id LIMIT 1
+      ) team ON true
+      WHERE customer.owner_user_id IS NOT NULL
+        AND NOT EXISTS(SELECT 1 FROM crm_contact_ownership history WHERE history.contact_id=link.contact_id)
+    ), base_claims AS (
+      SELECT c.claim_id,c.contact_id,c.customer_id,c.owner_user_id,c.started_at,
+        LEAST(COALESCE(c.ended_at,'infinity'::timestamptz),$3::timestamptz) AS ended_at,
+        c.origin,c.source,c.customer_owner_user_id,c.company_name,c.country,c.batch_id,c.batch_label,
+        c.owner_name,c.team_id,c.team_name,
+        ${group.key} AS group_key,${group.label} AS group_label,
+        ${group.memberUserId} AS member_user_id,${group.memberName} AS member_name,
+        ${group.teamId} AS output_team_id,${group.teamName} AS output_team_name
+      FROM claim_candidates c
+      WHERE c.started_at >= $2::timestamptz AND c.started_at < $3::timestamptz
+        ${scopeFilter}
+        AND ($4::uuid IS NULL OR EXISTS(
+          SELECT 1 FROM crm_org_assignments team_assignment
+          JOIN crm_org_units team_unit ON team_unit.unit_id=team_assignment.unit_id AND team_unit.dissolved_at IS NULL
+          WHERE team_assignment.user_id=c.owner_user_id AND team_assignment.unit_id=$4 AND team_assignment.ended_at IS NULL
+        ))
+        AND ($5::uuid IS NULL OR c.owner_user_id=$5)
+        AND ($6::text IS NULL OR c.source=$6)
+        AND ($7::uuid IS NULL OR c.batch_id=$7)
+        AND ($8::text IS NULL OR COALESCE(NULLIF(btrim(c.country),''),'unattributed')=$8)
+    )`;
+}
+function performanceSql(scope, stratum) {
+  return `${claimCtes(scope, stratum)},
+    first_action_candidates AS (
+      SELECT c.group_key,c.claim_id,activity.occurred_at AS action_at
+      FROM base_claims c
+      JOIN crm_shared_activities activity ON activity.customer_id=c.customer_id
+        AND activity.contact_id=c.contact_id AND activity.actor_id=c.owner_user_id
+        AND activity.occurred_at>=c.started_at AND activity.occurred_at<c.ended_at
+      WHERE activity.method NOT IN ('legacy','note')
+        AND (activity.contact_status IS NULL OR activity.contact_status='contacted')
+      UNION ALL
+      SELECT c.group_key,c.claim_id,task.completed_at
+      FROM base_claims c
+      JOIN crm_followup_tasks task ON task.customer_id=c.customer_id
+        AND task.status='completed' AND task.completed_at>=c.started_at AND task.completed_at<c.ended_at
+      WHERE COALESCE(task.source_responsible_user_id,c.customer_owner_user_id,task.completed_by)=c.owner_user_id
+    ),
+    first_action_events AS (
+      SELECT group_key,claim_id,min(action_at) AS action_at
+      FROM first_action_candidates GROUP BY group_key,claim_id
+    ),
+    first_action_samples AS (
+      SELECT c.group_key,
+        extract(epoch FROM (event.action_at-c.started_at))::double precision AS seconds
+      FROM first_action_events event JOIN base_claims c USING(group_key,claim_id)
+    ),
+    first_action_metrics AS (
+      SELECT group_key,count(*)::int AS sample_count,
+        percentile_cont(0.5) WITHIN GROUP(ORDER BY seconds) AS median_seconds,
+        percentile_cont(0.9) WITHIN GROUP(ORDER BY seconds) AS p90_seconds
+      FROM first_action_samples GROUP BY group_key
+    ),
+    valid_reply_events AS (
+      SELECT c.group_key,c.claim_id,event.event_id,event.occurred_at
+      FROM base_claims c
+      JOIN crm_contact_mail_analyses analysis ON analysis.contact_id=c.contact_id
+        AND analysis.customer_id=c.customer_id AND analysis.is_current
+        AND analysis.classification='replied' AND analysis.relevance='customer_business'
+      JOIN crm_contact_mail_events event ON event.event_id=analysis.event_id
+        AND event.kind='replied' AND event.direction='inbound'
+        AND event.occurred_at>=c.started_at AND event.occurred_at<c.ended_at
+    ),
+    valid_reply_first AS (
+      SELECT group_key,claim_id,event_id,min(occurred_at) AS replied_at
+      FROM valid_reply_events GROUP BY group_key,claim_id,event_id
+    ),
+    valid_reply_samples AS (
+      SELECT c.group_key,reply.event_id,
+        extract(epoch FROM (reply.replied_at-c.started_at))::double precision AS seconds
+      FROM valid_reply_first reply JOIN base_claims c USING(group_key,claim_id)
+    ),
+    valid_reply_metrics AS (
+      SELECT group_key,count(*)::int AS sample_count,
+        percentile_cont(0.5) WITHIN GROUP(ORDER BY seconds) AS median_seconds,
+        percentile_cont(0.9) WITHIN GROUP(ORDER BY seconds) AS p90_seconds,
+        count(DISTINCT event_id)::int AS reply_count
+      FROM valid_reply_samples GROUP BY group_key
+    ),
+    won_events AS (
+      SELECT c.group_key,history.opportunity_id,c.customer_id,
+        min(c.started_at) AS claim_started_at,min(history.occurred_at) AS won_at
+      FROM base_claims c
+      JOIN crm_opportunity_stage_history history ON history.to_stage='closed_won'
+        AND history.occurred_at>=c.started_at AND history.occurred_at<c.ended_at
+      JOIN crm_opportunities opportunity ON opportunity.opportunity_id=history.opportunity_id
+        AND opportunity.customer_id=c.customer_id
+      GROUP BY c.group_key,history.opportunity_id,c.customer_id
+    ),
+    won_samples AS (
+      SELECT group_key,extract(epoch FROM (won_at-claim_started_at))::double precision AS seconds
+      FROM won_events
+    ),
+    won_metrics AS (
+      SELECT group_key,count(*)::int AS sample_count,
+        percentile_cont(0.5) WITHIN GROUP(ORDER BY seconds) AS median_seconds,
+        percentile_cont(0.9) WITHIN GROUP(ORDER BY seconds) AS p90_seconds,
+        count(*)::int AS won_count
+      FROM won_samples GROUP BY group_key
+    ),
+    won_customer_stats AS (
+      SELECT group_key,customer_id,count(DISTINCT opportunity_id)::int AS wins
+      FROM won_events GROUP BY group_key,customer_id
+    ),
+    repeat_stats AS (
+      SELECT group_key,count(*)::int AS won_customers,
+        count(*) FILTER(WHERE wins>1)::int AS repeat_customers,
+        COALESCE(sum(GREATEST(wins-1,0)),0)::int AS repeat_purchases
+      FROM won_customer_stats GROUP BY group_key
+    ),
+    completed_task_stats AS (
+      SELECT c.group_key,count(DISTINCT task.task_id)::int AS completed_tasks
+      FROM base_claims c
+      JOIN crm_followup_tasks task ON task.customer_id=c.customer_id
+        AND task.status='completed' AND task.completed_at>=c.started_at AND task.completed_at<c.ended_at
+      WHERE COALESCE(task.source_responsible_user_id,c.customer_owner_user_id,task.completed_by)=c.owner_user_id
+      GROUP BY c.group_key
+    ),
+    claim_stats AS (
+      SELECT group_key,max(group_label) AS group_label,
+        (array_agg(DISTINCT member_user_id) FILTER(WHERE member_user_id IS NOT NULL))[1] AS member_user_id,
+        max(member_name) AS member_name,
+        (array_agg(DISTINCT output_team_id) FILTER(WHERE output_team_id IS NOT NULL))[1] AS team_id,
+        max(output_team_name) AS team_name,
+        count(DISTINCT claim_id)::int AS claim_count,
+        count(DISTINCT customer_id)::int AS customer_count
+      FROM base_claims GROUP BY group_key
+    )
+    SELECT stats.group_key AS "groupKey",stats.group_label AS "groupLabel",
+      stats.member_user_id AS "memberUserId",stats.member_name AS "memberName",
+      stats.team_id AS "teamId",stats.team_name AS "teamName",
+      stats.claim_count AS "claimCount",stats.customer_count AS "customerCount",
+      COALESCE(tasks.completed_tasks,0)::int AS "completedTaskCount",
+      COALESCE(replies.reply_count,0)::int AS "validReplyCount",
+      COALESCE(won.won_count,0)::int AS "wonOpportunityCount",
+      actions.median_seconds AS "actionMedian",actions.p90_seconds AS "actionP90",COALESCE(actions.sample_count,0)::int AS "actionSamples",
+      replies.median_seconds AS "replyMedian",replies.p90_seconds AS "replyP90",COALESCE(replies.sample_count,0)::int AS "replySamples",
+      won.median_seconds AS "wonMedian",won.p90_seconds AS "wonP90",COALESCE(won.sample_count,0)::int AS "wonSamples",
+      COALESCE(repeat.repeat_purchases,0)::int AS "repeatPurchaseCount",
+      COALESCE(repeat.repeat_customers,0)::int AS "repeatPurchaseCustomers",
+      COALESCE(repeat.won_customers,0)::int AS "wonCustomers",
+      count(*) OVER()::int AS total
+    FROM claim_stats stats
+    LEFT JOIN first_action_metrics actions USING(group_key)
+    LEFT JOIN valid_reply_metrics replies USING(group_key)
+    LEFT JOIN won_metrics won USING(group_key)
+    LEFT JOIN repeat_stats repeat USING(group_key)
+    LEFT JOIN completed_task_stats tasks USING(group_key)
+    ORDER BY stats.claim_count DESC,stats.group_label,stats.group_key
+    LIMIT $9 OFFSET $10`;
+}
+function performanceTotalSql(scope, stratum) {
+  return `${claimCtes(scope, stratum)}
+    SELECT count(DISTINCT group_key)::int AS total FROM base_claims`;
+}
+function customerGradeSql(scope) {
+  return `${claimCtes(scope, "lead")},
+    customer_base AS (
+      SELECT DISTINCT ON (customer_id)
+        customer_id,origin,company_name,owner_user_id,owner_name,team_id,team_name
+      FROM base_claims
+      ORDER BY customer_id,started_at DESC,claim_id DESC
+    ),
+    reply_counts AS (
+      SELECT c.customer_id,count(DISTINCT event.event_id)::int AS valid_replies
+      FROM base_claims c
+      JOIN crm_contact_mail_analyses analysis ON analysis.contact_id=c.contact_id
+        AND analysis.customer_id=c.customer_id AND analysis.is_current
+        AND analysis.classification='replied' AND analysis.relevance='customer_business'
+      JOIN crm_contact_mail_events event ON event.event_id=analysis.event_id
+        AND event.kind='replied' AND event.direction='inbound'
+        AND event.occurred_at>=c.started_at AND event.occurred_at<c.ended_at
+      GROUP BY c.customer_id
+    ),
+    won_counts AS (
+      SELECT c.customer_id,count(DISTINCT history.opportunity_id)::int AS won_opportunities
+      FROM base_claims c
+      JOIN crm_opportunity_stage_history history ON history.to_stage='closed_won'
+        AND history.occurred_at>=c.started_at AND history.occurred_at<c.ended_at
+      JOIN crm_opportunities opportunity ON opportunity.opportunity_id=history.opportunity_id
+        AND opportunity.customer_id=c.customer_id
+      GROUP BY c.customer_id
+    ),
+    open_counts AS (
+      SELECT customer.customer_id,count(*)::int AS open_opportunities
+      FROM customer_base customer
+      JOIN crm_opportunities opportunity ON opportunity.customer_id=customer.customer_id
+        AND opportunity.stage NOT IN ('closed_won','closed_lost')
+      GROUP BY customer.customer_id
+    ),
+    grade_rows AS (
+      SELECT customer.customer_id AS "customerId",customer.company_name AS "companyName",
+        customer.owner_user_id AS "ownerUserId",customer.owner_name AS "ownerName",
+        customer.team_id AS "teamId",customer.team_name AS "teamName",customer.origin,
+        COALESCE(reply.valid_replies,0)::int AS "validReplyCount",
+        COALESCE(won.won_opportunities,0)::int AS "wonOpportunityCount",
+        COALESCE(open.open_opportunities,0)::int AS "openOpportunityCount",
+        override.grade AS "overrideGrade",override.reason AS "overrideReason",
+        override.actor_id AS "overrideActorId",actor.display_name AS "overrideActorName",
+        override.version AS "overrideVersion",override.created_at AS "overrideCreatedAt",override.updated_at AS "overrideUpdatedAt",
+        count(*) OVER()::int AS total
+      FROM customer_base customer
+      LEFT JOIN reply_counts reply USING(customer_id)
+      LEFT JOIN won_counts won USING(customer_id)
+      LEFT JOIN open_counts open USING(customer_id)
+      LEFT JOIN crm_customer_grade_overrides override USING(customer_id)
+      LEFT JOIN public.identity_users actor ON actor.user_id=override.actor_id
+      WHERE ($9::uuid IS NULL OR customer.customer_id=$9)
+      ORDER BY customer.company_name,customer.customer_id
+      LIMIT $10 OFFSET $11
+    )
+    SELECT * FROM grade_rows`;
+}
+function customerGradeTotalSql(scope) {
+  return `${claimCtes(scope, "lead")}
+    SELECT count(DISTINCT customer_id)::int AS total FROM base_claims WHERE ($9::uuid IS NULL OR customer_id=$9)`;
+}
+var PostgresSalesPerformanceRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+    assertCenterDatabasePool(pool);
+  }
+  async migrate() {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result2 = await migrateSalesPerformanceSchema(client);
+      await client.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+      }
+      this.log.write("ERROR", "sales-performance.migrate", error instanceof Error ? error.message : "sales performance migration failed");
+      return failure("DATABASE_ERROR", "\u9500\u552E\u7EE9\u6548\u8FC1\u79FB\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+  async tx(action, readOnly = false) {
+    const client = await this.pool.connect();
+    try {
+      await client.query(readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN");
+      const result2 = await action(client);
+      await client.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+      }
+      this.log.write("ERROR", "sales-performance.pg", error instanceof Error ? error.message : "sales performance database operation failed");
+      return failure("DATABASE_ERROR", "\u9500\u552E\u7EE9\u6548\u670D\u52A1\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  async actor(client, tokenHash) {
+    const row2 = (await client.query(`SELECT actor_user.user_id AS "userId",actor_user.display_name AS "displayName",
+      actor_user.identity_admin AS "identityAdmin",
+      EXISTS(SELECT 1 FROM crm_org_assignments assignment
+        JOIN crm_org_units unit ON unit.unit_id=assignment.unit_id AND unit.dissolved_at IS NULL
+        WHERE assignment.user_id=actor_user.user_id AND assignment.role='leader' AND assignment.ended_at IS NULL) AS "isLeader",
+      ARRAY(SELECT grant_row.role FROM public.identity_product_grants grant_row
+        WHERE grant_row.user_id=actor_user.user_id AND grant_row.product_id='crm' AND grant_row.active ORDER BY grant_row.role) AS roles
+      FROM public.identity_sessions session
+      JOIN public.identity_users actor_user USING(user_id)
+      LEFT JOIN public.identity_product_access access_row ON access_row.user_id=actor_user.user_id
+        AND access_row.product_id='crm' AND access_row.active
+      WHERE session.token_hash=$1 AND session.client='api' AND session.revoked_at IS NULL
+        AND session.expires_at>now() AND actor_user.active AND NOT actor_user.must_change_password
+        AND session.security_revision=actor_user.security_revision
+        AND (actor_user.identity_admin OR access_row.user_id IS NOT NULL)`, [tokenHash])).rows[0];
+    if (!row2)
+      return null;
+    const roles = row2.roles ?? [];
+    const access2 = { identityAdmin: !!row2.identityAdmin, roles, isLeader: !!row2.isLeader };
+    const scope = customerGradeScopeFor(access2);
+    return scope ? { ...row2, roles, scope, performanceScope: salesPerformanceScopeFor(access2) } : null;
+  }
+  performance(tokenHash, query2) {
+    return this.tx(async (client) => {
+      const actor = await this.actor(client, tokenHash);
+      if (!actor?.performanceScope)
+        return failure("FORBIDDEN", "\u6CA1\u6709\u9500\u552E\u7EE9\u6548\u8BBF\u95EE\u6743\u9650");
+      const values = [
+        actor.userId,
+        query2.from,
+        query2.to,
+        query2.teamId ?? null,
+        query2.memberUserId ?? null,
+        query2.source ?? null,
+        query2.batchId ?? null,
+        query2.country ?? null,
+        query2.limit,
+        query2.offset
+      ];
+      const rows = await client.query(performanceSql(actor.performanceScope, query2.groupBy), values);
+      const total = rows.rows.length ? count(rows.rows[0].total) : count((await client.query(performanceTotalSql(actor.performanceScope, query2.groupBy), values.slice(0, 8))).rows[0]?.total);
+      return success({
+        scope: actor.performanceScope,
+        generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        window: { from: query2.from, to: query2.to },
+        groupBy: query2.groupBy,
+        items: rows.rows.map((row2) => ({
+          key: row2.groupKey,
+          label: row2.groupLabel,
+          memberUserId: row2.memberUserId,
+          memberName: row2.memberName,
+          teamId: row2.teamId,
+          teamName: row2.teamName,
+          claimCount: count(row2.claimCount),
+          customerCount: count(row2.customerCount),
+          completedTaskCount: count(row2.completedTaskCount),
+          validReplyCount: count(row2.validReplyCount),
+          wonOpportunityCount: count(row2.wonOpportunityCount),
+          metrics: {
+            claimToFirstAction: {
+              sampleCount: count(row2.actionSamples),
+              minimumSampleSize: SALES_PERFORMANCE_MIN_SAMPLES.duration,
+              sufficient: count(row2.actionSamples) >= SALES_PERFORMANCE_MIN_SAMPLES.duration,
+              medianSeconds: metricNumber(row2.actionMedian),
+              p90Seconds: metricNumber(row2.actionP90)
+            },
+            claimToValidReply: {
+              sampleCount: count(row2.replySamples),
+              minimumSampleSize: SALES_PERFORMANCE_MIN_SAMPLES.duration,
+              sufficient: count(row2.replySamples) >= SALES_PERFORMANCE_MIN_SAMPLES.duration,
+              medianSeconds: metricNumber(row2.replyMedian),
+              p90Seconds: metricNumber(row2.replyP90)
+            },
+            claimToWon: {
+              sampleCount: count(row2.wonSamples),
+              minimumSampleSize: SALES_PERFORMANCE_MIN_SAMPLES.duration,
+              sufficient: count(row2.wonSamples) >= SALES_PERFORMANCE_MIN_SAMPLES.duration,
+              medianSeconds: metricNumber(row2.wonMedian),
+              p90Seconds: metricNumber(row2.wonP90)
+            },
+            repeatPurchase: {
+              repeatPurchaseCount: count(row2.repeatPurchaseCount),
+              repeatPurchaseCustomers: count(row2.repeatPurchaseCustomers),
+              wonCustomers: count(row2.wonCustomers),
+              rate: {
+                count: count(row2.repeatPurchaseCustomers),
+                total: count(row2.wonCustomers),
+                rate: count(row2.wonCustomers) ? Math.round(count(row2.repeatPurchaseCustomers) / count(row2.wonCustomers) * 1e3) / 1e3 : null,
+                sampleCount: count(row2.wonCustomers),
+                minimumSampleSize: SALES_PERFORMANCE_MIN_SAMPLES.repeatRate,
+                sufficient: count(row2.wonCustomers) >= SALES_PERFORMANCE_MIN_SAMPLES.repeatRate
+              }
+            }
+          }
+        })),
+        total
+      });
+    }, true);
+  }
+  customerGrades(tokenHash, query2) {
+    return this.tx(async (client) => {
+      const actor = await this.actor(client, tokenHash);
+      if (!actor)
+        return failure("FORBIDDEN", "\u6CA1\u6709\u5BA2\u6237\u5206\u7EA7\u8BBF\u95EE\u6743\u9650");
+      const values = [
+        actor.userId,
+        query2.from,
+        query2.to,
+        query2.teamId ?? null,
+        query2.memberUserId ?? null,
+        null,
+        null,
+        null,
+        query2.customerId ?? null,
+        query2.limit,
+        query2.offset
+      ];
+      const rows = await client.query(customerGradeSql(actor.scope), values);
+      const total = rows.rows.length ? count(rows.rows[0].total) : count((await client.query(customerGradeTotalSql(actor.scope), values.slice(0, 9))).rows[0]?.total);
+      return success({
+        scope: actor.scope,
+        generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        window: { from: query2.from, to: query2.to },
+        thresholds: CUSTOMER_GRADE_THRESHOLDS,
+        items: rows.rows.map((row2) => {
+          const signals2 = {
+            validReplyCount: count(row2.validReplyCount),
+            wonOpportunityCount: count(row2.wonOpportunityCount),
+            repeatPurchaseCount: Math.max(0, count(row2.wonOpportunityCount) - 1),
+            openOpportunityCount: count(row2.openOpportunityCount)
+          };
+          const computed = customerGradeFor(signals2);
+          const override = row2.overrideGrade ? {
+            customerId: row2.customerId,
+            grade: row2.overrideGrade,
+            reason: row2.overrideReason ?? "",
+            actorId: row2.overrideActorId ?? "",
+            actorName: row2.overrideActorName,
+            version: count(row2.overrideVersion),
+            createdAt: iso4(row2.overrideCreatedAt) ?? (/* @__PURE__ */ new Date(0)).toISOString(),
+            updatedAt: iso4(row2.overrideUpdatedAt) ?? (/* @__PURE__ */ new Date(0)).toISOString()
+          } : null;
+          return {
+            customerId: row2.customerId,
+            companyName: row2.companyName,
+            ownerUserId: row2.ownerUserId,
+            ownerName: row2.ownerName,
+            teamId: row2.teamId,
+            teamName: row2.teamName,
+            origin: row2.origin,
+            computedGrade: computed.grade,
+            effectiveGrade: override?.grade ?? computed.grade,
+            source: override ? "manual" : "computed",
+            reasons: computed.reasons,
+            signals: signals2,
+            override
+          };
+        }),
+        total
+      });
+    }, true);
+  }
+  async accessibleCustomer(client, actor, customerId) {
+    const access2 = actor.scope === "superadmin" ? "TRUE" : actor.scope === "operations" ? "customer.origin='operations'" : actor.scope === "leader" ? `COALESCE(ownership.owner_user_id,customer.owner_user_id) IN (SELECT user_id FROM managed_people)` : "FALSE";
+    const row2 = (await client.query(`WITH RECURSIVE
+      ${visibleOrganizationCtes(actor.scope)}
+      SELECT customer.origin,COALESCE(ownership.owner_user_id,customer.owner_user_id) AS "ownerUserId"
+      FROM crm_customers customer
+      LEFT JOIN LATERAL (
+        SELECT owner_user_id FROM crm_contact_ownership
+        WHERE customer_id=customer.customer_id AND ended_at IS NULL
+        ORDER BY started_at DESC,ownership_id DESC LIMIT 1
+      ) ownership ON true
+      WHERE customer.customer_id=$2 AND (${access2})
+      LIMIT 1`, [actor.userId, customerId])).rows[0];
+    return row2 ?? null;
+  }
+  async override(client, customerId) {
+    const row2 = (await client.query(`SELECT override.customer_id AS "customerId",override.grade,override.reason,
+      override.actor_id AS "actorId",actor.display_name AS "actorName",override.version,
+      override.created_at AS "createdAt",override.updated_at AS "updatedAt"
+      FROM crm_customer_grade_overrides override
+      LEFT JOIN public.identity_users actor ON actor.user_id=override.actor_id
+      WHERE override.customer_id=$1`, [customerId])).rows[0];
+    return row2 ? {
+      customerId: row2.customerId,
+      grade: row2.grade,
+      reason: row2.reason,
+      actorId: row2.actorId,
+      actorName: row2.actorName,
+      version: count(row2.version),
+      createdAt: new Date(row2.createdAt).toISOString(),
+      updatedAt: new Date(row2.updatedAt).toISOString()
+    } : null;
+  }
+  setCustomerGradeOverride(tokenHash, input) {
+    return this.tx(async (client) => {
+      const actor = await this.actor(client, tokenHash);
+      if (!actor)
+        return failure("FORBIDDEN", "\u6CA1\u6709\u5BA2\u6237\u7B49\u7EA7\u8986\u76D6\u6743\u9650");
+      const access2 = await this.accessibleCustomer(client, actor, input.customerId);
+      if (!access2)
+        return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
+      const digest2 = (0, import_node_crypto30.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
+        WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, OVERRIDE_OPERATION, input.idempotencyKey])).rows[0];
+      if (replay)
+        return replay.digest !== digest2 ? failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42") : success(replay.response);
+      await client.query("SELECT 1 FROM crm_customers WHERE customer_id=$1 FOR SHARE", [input.customerId]);
+      const current = (await client.query(`SELECT grade,version FROM crm_customer_grade_overrides
+        WHERE customer_id=$1 FOR UPDATE`, [input.customerId])).rows[0];
+      const currentVersion = current ? count(current.version) : 0;
+      if (currentVersion !== input.expectedVersion)
+        return failure("CONFLICT", "\u5BA2\u6237\u7B49\u7EA7\u8986\u76D6\u7248\u672C\u5DF2\u53D8\u5316");
+      const version4 = currentVersion + 1;
+      if (current) {
+        await client.query(`UPDATE crm_customer_grade_overrides SET grade=$2,reason=$3,actor_id=$4,
+          version=$5,updated_at=clock_timestamp() WHERE customer_id=$1`, [input.customerId, input.grade, input.reason, actor.userId, version4]);
+      } else {
+        await client.query(`INSERT INTO crm_customer_grade_overrides(customer_id,grade,reason,actor_id,version)
+          VALUES($1,$2,$3,$4,$5)`, [input.customerId, input.grade, input.reason, actor.userId, version4]);
+      }
+      await client.query(`INSERT INTO crm_customer_grade_override_audits(
+        customer_id,action,from_grade,to_grade,reason,actor_id,override_version
+      ) VALUES($1,'set',$2,$3,$4,$5,$6)`, [input.customerId, current?.grade ?? null, input.grade, input.reason, actor.userId, version4]);
+      const receipt = { customerId: input.customerId, override: await this.override(client, input.customerId) };
+      await client.query(`INSERT INTO crm_customer_grade_override_idempotency(actor_id,operation,idempotency_key,digest,response)
+        VALUES($1,$2,$3,$4,$5)`, [actor.userId, OVERRIDE_OPERATION, input.idempotencyKey, digest2, JSON.stringify(receipt)]);
+      return success(receipt);
+    });
+  }
+  clearCustomerGradeOverride(tokenHash, input) {
+    return this.tx(async (client) => {
+      const actor = await this.actor(client, tokenHash);
+      if (!actor)
+        return failure("FORBIDDEN", "\u6CA1\u6709\u5BA2\u6237\u7B49\u7EA7\u8986\u76D6\u6743\u9650");
+      const access2 = await this.accessibleCustomer(client, actor, input.customerId);
+      if (!access2)
+        return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
+      const digest2 = (0, import_node_crypto30.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
+        WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, CLEAR_OPERATION, input.idempotencyKey])).rows[0];
+      if (replay)
+        return replay.digest !== digest2 ? failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42") : success(replay.response);
+      await client.query("SELECT 1 FROM crm_customers WHERE customer_id=$1 FOR SHARE", [input.customerId]);
+      const current = (await client.query(`SELECT grade,version FROM crm_customer_grade_overrides
+        WHERE customer_id=$1 FOR UPDATE`, [input.customerId])).rows[0];
+      if (!current)
+        return failure("CONFLICT", "\u5BA2\u6237\u6CA1\u6709\u53EF\u6E05\u9664\u7684\u4EBA\u5DE5\u7B49\u7EA7");
+      const currentVersion = count(current.version);
+      if (currentVersion !== input.expectedVersion)
+        return failure("CONFLICT", "\u5BA2\u6237\u7B49\u7EA7\u8986\u76D6\u7248\u672C\u5DF2\u53D8\u5316");
+      const version4 = currentVersion + 1;
+      await client.query(`INSERT INTO crm_customer_grade_override_audits(
+        customer_id,action,from_grade,to_grade,reason,actor_id,override_version
+      ) VALUES($1,'clear',$2,NULL,$3,$4,$5)`, [input.customerId, current.grade, input.reason, actor.userId, version4]);
+      await client.query("DELETE FROM crm_customer_grade_overrides WHERE customer_id=$1 AND version=$2", [input.customerId, current.version]);
+      const receipt = { customerId: input.customerId, override: null };
+      await client.query(`INSERT INTO crm_customer_grade_override_idempotency(actor_id,operation,idempotency_key,digest,response)
+        VALUES($1,$2,$3,$4,$5)`, [actor.userId, CLEAR_OPERATION, input.idempotencyKey, digest2, JSON.stringify(receipt)]);
+      return success(receipt);
+    });
+  }
+};
+
+// server/services/sales-performance.ts
+var TOKEN9 = /^[A-Za-z0-9_-]{43}$/;
+var UUID17 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var MILLISECONDS_PER_DAY = 864e5;
+function record15(value2) {
+  return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
+}
+function keys11(value2, allowed) {
+  return Object.keys(value2).every((key) => allowed.includes(key));
+}
+function text14(value2, maximum, minimum = 1) {
+  return typeof value2 === "string" && value2.trim().length >= minimum && value2.trim().length <= maximum && !value2.includes("\0");
+}
+function optionalText2(value2, maximum) {
+  return value2 === void 0 || text14(value2, maximum);
+}
+function uuid5(value2) {
+  return typeof value2 === "string" && UUID17.test(value2);
+}
+function page2(value2) {
+  const limit = value2.limit ?? SALES_PERFORMANCE_LIMITS.page;
+  const offset = value2.offset ?? 0;
+  if (!Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > SALES_PERFORMANCE_LIMITS.pageMax || !Number.isSafeInteger(offset) || Number(offset) < 0)
+    return void 0;
+  return { limit: Number(limit), offset: Number(offset) };
+}
+function timestamp(value2) {
+  if (typeof value2 !== "string" || value2.length > 40)
+    return void 0;
+  const parsed = Date.parse(value2);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : void 0;
+}
+function window(value2, now) {
+  const suppliedTo = value2.to === void 0 ? void 0 : timestamp(value2.to);
+  const suppliedFrom = value2.from === void 0 ? void 0 : timestamp(value2.from);
+  if (value2.to !== void 0 && !suppliedTo || value2.from !== void 0 && !suppliedFrom)
+    return void 0;
+  const to = suppliedTo ?? new Date(now).toISOString();
+  const from = suppliedFrom ?? new Date(Date.parse(to) - SALES_PERFORMANCE_LIMITS.defaultWindowDays * MILLISECONDS_PER_DAY).toISOString();
+  const span = Date.parse(to) - Date.parse(from);
+  if (span <= 0 || span > SALES_PERFORMANCE_LIMITS.maximumWindowDays * MILLISECONDS_PER_DAY)
+    return void 0;
+  return { from, to };
+}
+function performanceQuery(value2, now) {
+  if (!record15(value2) || !keys11(value2, ["from", "to", "groupBy", "teamId", "memberUserId", "source", "batchId", "country", "limit", "offset"]))
+    return void 0;
+  const range = window(value2, now), paging = page2(value2);
+  const groupBy = value2.groupBy ?? "lead";
+  if (!range || !paging || !SALES_PERFORMANCE_STRATA.includes(groupBy))
+    return void 0;
+  if (value2.teamId !== void 0 && !uuid5(value2.teamId) || value2.memberUserId !== void 0 && !uuid5(value2.memberUserId) || value2.batchId !== void 0 && !uuid5(value2.batchId))
+    return void 0;
+  if (!optionalText2(value2.source, SALES_PERFORMANCE_LIMITS.text) || !optionalText2(value2.country, SALES_PERFORMANCE_LIMITS.text))
+    return void 0;
+  return {
+    ...range,
+    groupBy,
+    ...value2.teamId ? { teamId: value2.teamId } : {},
+    ...value2.memberUserId ? { memberUserId: value2.memberUserId } : {},
+    ...value2.source ? { source: value2.source.trim() } : {},
+    ...value2.batchId ? { batchId: value2.batchId } : {},
+    ...value2.country ? { country: value2.country.trim() } : {},
+    ...paging
+  };
+}
+function gradeQuery(value2, now) {
+  if (!record15(value2) || !keys11(value2, ["from", "to", "customerId", "teamId", "memberUserId", "limit", "offset"]))
+    return void 0;
+  const range = window(value2, now), paging = page2(value2);
+  if (!range || !paging)
+    return void 0;
+  if (value2.customerId !== void 0 && !uuid5(value2.customerId) || value2.teamId !== void 0 && !uuid5(value2.teamId) || value2.memberUserId !== void 0 && !uuid5(value2.memberUserId))
+    return void 0;
+  return {
+    ...range,
+    ...value2.customerId ? { customerId: value2.customerId } : {},
+    ...value2.teamId ? { teamId: value2.teamId } : {},
+    ...value2.memberUserId ? { memberUserId: value2.memberUserId } : {},
+    ...paging
+  };
+}
+function setBody(value2) {
+  if (!record15(value2) || !keys11(value2, ["expectedVersion", "grade", "reason", "idempotencyKey"]))
+    return void 0;
+  if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 0)
+    return void 0;
+  if (!CUSTOMER_GRADES.includes(value2.grade) || !text14(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text14(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
+    return void 0;
+  return { expectedVersion: Number(value2.expectedVersion), grade: value2.grade, reason: value2.reason.trim(), idempotencyKey: value2.idempotencyKey };
+}
+function clearBody(value2) {
+  if (!record15(value2) || !keys11(value2, ["expectedVersion", "reason", "idempotencyKey"]))
+    return void 0;
+  if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1)
+    return void 0;
+  if (!text14(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text14(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
+    return void 0;
+  return { expectedVersion: Number(value2.expectedVersion), reason: value2.reason.trim(), idempotencyKey: value2.idempotencyKey };
+}
+function createSalesPerformanceService(repo, tokens, clock) {
+  const run2 = (token, action) => TOKEN9.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+  return {
+    performance(token, value2) {
+      const parsed = performanceQuery(value2, clock.now());
+      return parsed ? run2(token, (hash) => repo.performance(hash, parsed)) : Promise.resolve(failure("INVALID_INPUT", "\u9500\u552E\u7EE9\u6548\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+    },
+    customerGrades(token, value2) {
+      const parsed = gradeQuery(value2, clock.now());
+      return parsed ? run2(token, (hash) => repo.customerGrades(hash, parsed)) : Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u5206\u7EA7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+    },
+    setCustomerGradeOverride(token, customerId, value2) {
+      const parsed = setBody(value2);
+      if (!UUID17.test(customerId) || !parsed)
+        return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u7B49\u7EA7\u8986\u76D6\u53C2\u6570\u65E0\u6548"));
+      return run2(token, (hash) => repo.setCustomerGradeOverride(hash, { customerId, ...parsed, grade: parsed.grade }));
+    },
+    clearCustomerGradeOverride(token, customerId, value2) {
+      const parsed = clearBody(value2);
+      if (!UUID17.test(customerId) || !parsed)
+        return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u7B49\u7EA7\u6E05\u9664\u53C2\u6570\u65E0\u6548"));
+      return run2(token, (hash) => repo.clearCustomerGradeOverride(hash, { customerId, ...parsed }));
+    }
+  };
+}
+
+// server/transport/sales-performance-http.ts
+var TOKEN10 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+var OVERRIDE_PATH = /^\/api\/crm\/sales-performance\/customer-grades\/([a-f0-9-]{36})\/override$/i;
+function validQuery2(url, allowed) {
+  return [...url.searchParams.keys()].every((key) => allowed.includes(key) && url.searchParams.getAll(key).length === 1);
+}
+function optional3(url, key) {
+  return url.searchParams.has(key) ? url.searchParams.get(key) : void 0;
+}
+function createSalesPerformanceHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
+    const token = TOKEN10.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (!token) {
+      send(response, failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === SALES_PERFORMANCE_ROUTES.performance) {
+      if (!validQuery2(url, ["from", "to", "groupBy", "teamId", "memberUserId", "source", "batchId", "country", "limit", "offset"])) {
+        send(response, failure("INVALID_INPUT", "\u9500\u552E\u7EE9\u6548\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      send(response, await service.performance(token, {
+        ...optional3(url, "from") ? { from: optional3(url, "from") } : {},
+        ...optional3(url, "to") ? { to: optional3(url, "to") } : {},
+        ...optional3(url, "groupBy") ? { groupBy: optional3(url, "groupBy") } : {},
+        ...optional3(url, "teamId") ? { teamId: optional3(url, "teamId") } : {},
+        ...optional3(url, "memberUserId") ? { memberUserId: optional3(url, "memberUserId") } : {},
+        ...optional3(url, "source") ? { source: optional3(url, "source") } : {},
+        ...optional3(url, "batchId") ? { batchId: optional3(url, "batchId") } : {},
+        ...optional3(url, "country") ? { country: optional3(url, "country") } : {},
+        limit: Number(url.searchParams.get("limit") ?? SALES_PERFORMANCE_LIMITS.page),
+        offset: Number(url.searchParams.get("offset") ?? 0)
+      }));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === SALES_PERFORMANCE_ROUTES.customerGrades) {
+      if (!validQuery2(url, ["from", "to", "customerId", "teamId", "memberUserId", "limit", "offset"])) {
+        send(response, failure("INVALID_INPUT", "\u5BA2\u6237\u5206\u7EA7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      send(response, await service.customerGrades(token, {
+        ...optional3(url, "from") ? { from: optional3(url, "from") } : {},
+        ...optional3(url, "to") ? { to: optional3(url, "to") } : {},
+        ...optional3(url, "customerId") ? { customerId: optional3(url, "customerId") } : {},
+        ...optional3(url, "teamId") ? { teamId: optional3(url, "teamId") } : {},
+        ...optional3(url, "memberUserId") ? { memberUserId: optional3(url, "memberUserId") } : {},
+        limit: Number(url.searchParams.get("limit") ?? SALES_PERFORMANCE_LIMITS.page),
+        offset: Number(url.searchParams.get("offset") ?? 0)
+      }));
+      return;
+    }
+    const override = OVERRIDE_PATH.exec(url.pathname);
+    if (override && ["POST", "DELETE"].includes(request2.method ?? "")) {
+      if (url.search) {
+        send(response, failure("INVALID_INPUT", "\u5BA2\u6237\u7B49\u7EA7\u8986\u76D6\u4E0D\u63A5\u53D7\u67E5\u8BE2\u53C2\u6570"));
+        return;
+      }
+      const input = await body(request2, SALES_PERFORMANCE_LIMITS.bodyBytes);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      send(response, request2.method === "POST" ? await service.setCustomerGradeOverride(token, override[1], input.data) : await service.clearCustomerGradeOverride(token, override[1], input.data));
+      return;
+    }
+    send(response, failure("NOT_FOUND", "\u9500\u552E\u7EE9\u6548\u63A5\u53E3\u4E0D\u5B58\u5728"));
+  };
+}
+
 // server/online.ts
 var EXIT_FAILED = 1;
 var SHUTDOWN_TIMEOUT_MS = 5e3;
@@ -12997,9 +19107,28 @@ async function main() {
     const taskRepo = new PostgresTaskRepository(pool, serverLog);
     if (!(await taskRepo.migrate()).ok)
       throw new Error("\u4EFB\u52A1\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const teamRepo = new PostgresTeamRepository(pool, serverLog);
+    if (!(await teamRepo.migrate()).ok)
+      throw new Error("\u56E2\u961F\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    if (!(await leadRepo.migrateAssignmentState()).ok)
+      throw new Error("\u5206\u914D\u72B6\u6001\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    if (!(await leadRepo.migrateLeadMatch()).ok)
+      throw new Error("\u7EBF\u7D22\u51B2\u7A81\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const contactMailAnalysisRepo = new PostgresContactMailAnalysisRepository(pool, serverLog);
+    if (!(await contactMailAnalysisRepo.migrate()).ok)
+      throw new Error("\u90AE\u4EF6\u5206\u6790\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const teamAttentionRepo = new PostgresTeamAttentionRepository(pool, serverLog);
+    if (!(await teamAttentionRepo.migrate()).ok)
+      throw new Error("\u56E2\u961F\u5173\u6CE8\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const teamMonitoringRepo = new PostgresTeamMonitoringRepository(pool, serverLog);
+    if (!(await teamMonitoringRepo.migrate()).ok)
+      throw new Error("\u56E2\u961F\u76D1\u63A7\u8FC1\u79FB\u88AB\u62D2\u7EDD");
     const opportunityRepo = new PostgresOpportunityRepository(pool, serverLog);
     if (!(await opportunityRepo.migrate()).ok)
       throw new Error("\u5546\u673A\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const salesPerformanceRepo = new PostgresSalesPerformanceRepository(pool, serverLog);
+    if (!(await salesPerformanceRepo.migrate()).ok)
+      throw new Error("\u9500\u552E\u7EE9\u6548\u8FC1\u79FB\u88AB\u62D2\u7EDD");
     const contactChangeRepo = new PostgresContactChangeRepository(pool, serverLog);
     if (!(await contactChangeRepo.migrate()).ok)
       throw new Error("\u8054\u7CFB\u4EBA\u53D8\u5316\u8FC1\u79FB\u88AB\u62D2\u7EDD");
@@ -13009,16 +19138,29 @@ async function main() {
     const opportunities = createOpportunityHandler(createOpportunityService(opportunityRepo, tokenAdapter));
     const taskService = createTaskService(taskRepo, tokenAdapter);
     const tasks = createTaskHandler(taskService);
+    const teams = createTeamHandler(createTeamService(teamRepo, tokenAdapter));
     const contactShares = createContactSharingHandler(createContactSharingService(leadRepo, tokenAdapter));
     const contactAssignments = createContactAssignmentHandler(createContactAssignmentService(leadRepo, tokenAdapter));
     const sendAcceptance2 = createSendAcceptanceHandler(createSendAcceptanceService(leadRepo, tokenAdapter));
     const contactMail = createContactMailHandler(createContactMailService(leadRepo, tokenAdapter));
-    const leads = createCrmHandler(createLeadService(leadRepo, tokenAdapter));
+    const contactMailAnalysis = createContactMailAnalysisHandler(createContactMailAnalysisService(contactMailAnalysisRepo, tokenAdapter));
+    const teamAttention = createTeamAttentionHandler(createTeamAttentionService(teamAttentionRepo, tokenAdapter));
+    const teamMonitoring = createTeamMonitoringHandler(createTeamMonitoringService(teamMonitoringRepo, tokenAdapter));
+    const salesPerformance = createSalesPerformanceHandler(createSalesPerformanceService(salesPerformanceRepo, tokenAdapter, clock));
+    const leadService = createLeadService(leadRepo, tokenAdapter), leads = createCrmHandler(leadService), leadIngress = createLeadIngressHandler(leadService);
     const notifications = createEventsHandler(createNotificationService(notificationRepo, tokenAdapter));
     const contactChanges = createContactChangeHandler(createContactChangeService(contactChangeRepo, tokenAdapter));
     const campaigns = createCampaignHandler(createCampaignService(campaignRepo, tokenAdapter));
     const collaboration = async (request2, response) => {
       const route = new URL(request2.url ?? "/", "http://localhost").pathname;
+      if (route === LEAD_INGRESS_ROUTES.decision || route === LEAD_INGRESS_ROUTES.resolve) {
+        await leadIngress(request2, response);
+        return;
+      }
+      if (route === TEAM_ROUTES.context || route === TEAM_ROUTES.candidates || route === TEAM_ROUTES.teams || route.startsWith(`${TEAM_ROUTES.teams}/`) || route.startsWith(`${TEAM_ROUTES.invitations}/`)) {
+        await teams(request2, response);
+        return;
+      }
       if (Object.values(SEND_ACCEPTANCE_ROUTES).some((path4) => path4 === route)) {
         await sendAcceptance2(request2, response);
         return;
@@ -13027,11 +19169,27 @@ async function main() {
         await contactMail(request2, response);
         return;
       }
+      if (route === CONTACT_MAIL_ANALYSIS_ROUTES.analyses || route === CONTACT_MAIL_ANALYSIS_ROUTES.ai || route === CONTACT_MAIL_ANALYSIS_ROUTES.correct) {
+        await contactMailAnalysis(request2, response);
+        return;
+      }
+      if (route === TEAM_ATTENTION_ROUTES.items || route.startsWith(`${TEAM_ATTENTION_ROUTES.items}/`)) {
+        await teamAttention(request2, response);
+        return;
+      }
+      if (route === TEAM_MONITORING_ROUTES.overview || route.startsWith(`${TEAM_MONITORING_ROUTES.members}/`) || route.startsWith(`${TEAM_MONITORING_ROUTES.contacts}/`) || route.startsWith(`${TEAM_MONITORING_ROUTES.mail}/`)) {
+        await teamMonitoring(request2, response);
+        return;
+      }
+      if (route === SALES_PERFORMANCE_ROUTES.performance || route === SALES_PERFORMANCE_ROUTES.customerGrades || route.startsWith(`${SALES_PERFORMANCE_ROUTES.customerGrades}/`)) {
+        await salesPerformance(request2, response);
+        return;
+      }
       if (route === "/api/crm/contact-shares" || route.startsWith("/api/crm/contact-shares/")) {
         await contactShares(request2, response);
         return;
       }
-      if (route === "/api/crm/companies" || route.startsWith("/api/crm/companies/") || route === "/api/crm/contacts/delete" || route === CONTACT_ASSIGNMENT_ROUTES.assignments || route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.assignments}/`) || route === CONTACT_ASSIGNMENT_ROUTES.groups || route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.groups}/`) || route.startsWith("/api/crm/contacts/")) {
+      if (/^\/api\/crm\/leads\/[^/]+\/assign$/.test(route) || route === "/api/crm/companies" || route.startsWith("/api/crm/companies/") || route === "/api/crm/contacts/delete" || route === CONTACT_ASSIGNMENT_ROUTES.assignments || route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.assignments}/`) || route === CONTACT_ASSIGNMENT_ROUTES.groups || route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.groups}/`) || route === CONTACT_ASSIGNMENT_ROUTES.expire || route === CONTACT_ASSIGNMENT_ROUTES.monitor || route.startsWith(`${CONTACT_ASSIGNMENT_ROUTES.monitor}/`) || route.startsWith("/api/crm/contacts/")) {
         await contactAssignments(request2, response);
         return;
       }
@@ -13063,6 +19221,7 @@ async function main() {
     started = true;
     const dispatcher = startNotificationDispatcher(notificationRepo, serverLog);
     const taskDispatcher = startTaskDispatcher(taskService, serverLog);
+    const assignmentExpiryScheduler = startAssignmentExpiryScheduler(pool, serverLog);
     serverLog.write("INFO", "identity.runtime", `\u4E2D\u5FC3\u670D\u52A1\u5C31\u7EEA ${config.host}:${config.port}`);
     let closing = false;
     const stop = () => {
@@ -13074,7 +19233,7 @@ async function main() {
       }, SHUTDOWN_TIMEOUT_MS);
       server.close(() => {
         clearTimeout(timer);
-        void Promise.all([taskDispatcher.stop(), dispatcher.stop()]).then(() => pool.end()).catch(() => {
+        void Promise.all([taskDispatcher.stop(), dispatcher.stop(), assignmentExpiryScheduler.stop()]).then(() => pool.end()).catch(() => {
           serverLog.write("ERROR", "identity.runtime", "\u8FDE\u63A5\u6C60\u5173\u95ED\u5931\u8D25");
           process.exitCode = EXIT_FAILED;
         });

@@ -2,9 +2,9 @@ import { LEAD_LIMITS, type ImportFileContent, type ImportPreview, type ImportRow
 const FNV_OFFSET = 2166136261;
 const FNV_PRIME = 16777619;
 /** A deterministic local guard so a partially retried batch cannot use a changed file or mapping. */
-export function importFingerprint(input: ImportFileContent, mapping: Record<string, string>): string {
+export function importFingerprint(input: ImportFileContent, mapping: Record<string, string>, rows?: Array<Record<string,string>>): string {
  let hash = FNV_OFFSET;
- const value = `${input.type}\u0000${input.encoding ?? ''}\u0000${input.data}\u0000${JSON.stringify(Object.entries(mapping).sort(([a], [b]) => a.localeCompare(b)))}`;
+ const value = `${input.type}\u0000${input.encoding ?? ''}\u0000${input.data}\u0000${JSON.stringify(Object.entries(mapping).sort(([a], [b]) => a.localeCompare(b)))}\u0000${JSON.stringify(rows ?? null)}`;
  for (let index = 0; index < value.length; index++) { hash ^= value.charCodeAt(index); hash = Math.imul(hash, FNV_PRIME); }
  return (hash >>> 0).toString(16);
 }

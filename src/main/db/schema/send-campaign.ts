@@ -34,7 +34,7 @@ export type SendCampaignRow = typeof sendCampaigns.$inferSelect;
 
 /**
  * 任务名单（创建时定格，所见即所发；事后新入库的人不自动混入）。
- * status: pending(待发) | queued(已入队未发) | sent(计划走完) | replied | bounced
+ * status: pending(待发) | queued(已入队未发) | sent(计划走完) | replied | bounced | autoreply
  *       | unsubscribed | skipped(止损/资格不符跳过)
  */
 export const sendCampaignTargets = sqliteTable("send_campaign_targets", {

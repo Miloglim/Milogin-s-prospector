@@ -331,18 +331,11 @@ export function onCampaignSendFailed(contactId: number, centerReference?: Center
   } catch { /* 失败回退不阻塞发送主流程 */ }
 }
 
-/** 联系人信号止损（inbox 分类钩子）：回复/退订/bounce 止损，OOO 顺延 3 天 */
+/** 联系人信号止损（inbox 分类钩子）：回复、退信、自动回复都停止该联系人后续发送。 */
 export function onContactSignal(contactId: number, kind: "replied" | "bounce" | "autoreply", centerReference?: CenterContactRef, centerScope?: string): void {
   try {
     const db = getDb();
-    if (kind === "autoreply") {
-      // OOO 不止损：待发触点顺延 3 天（"暂缓"语义落进调度）
-      db.update(sendCampaignTargets)
-        .set({ nextTouchAt: plusDays(3), updatedAt: nowIso() })
-        .where(and(eq(sendCampaignTargets.contactId, contactId), signalIdentity(centerReference, centerScope), eq(sendCampaignTargets.status, "pending"))).run();
-      return;
-    }
-    const to = kind === "replied" ? "replied" : "bounced";
+    const to = kind === "replied" ? "replied" : kind === "bounce" ? "bounced" : "autoreply";
     db.update(sendCampaignTargets)
       .set({ status: to, nextTouchAt: null, updatedAt: nowIso() })
       .where(and(
@@ -351,7 +344,7 @@ export function onContactSignal(contactId: number, kind: "replied" | "bounce" | 
         inArray(sendCampaignTargets.status, ["pending", "queued", "sent"]),
       )).run();
     refreshCampaignDone(contactId, centerReference, undefined, centerScope);
-    if (kind === "replied") Log.info("campaign.stoploss", `联系人 ${contactId} 已收到来信 → 名单内待发跟进全部止损`);
+    Log.info("campaign.stoploss", `联系人 ${contactId} 收到 ${kind} → 名单内待发跟进全部止损`);
   } catch (error) {
     Log.error("campaign.stoploss", "联系人信号止损失败", error instanceof Error ? error.stack : undefined);
     if (centerReference || centerScope) throw error;
@@ -549,7 +542,7 @@ export function stopCampaignScheduler(): void {
 export interface CampaignOverviewItem {
   id: string; name: string; status: string; autoSend: boolean;
   total: number; pending: number; queued: number; sent: number;
-  replied: number; bounced: number; unsubscribed: number; skipped: number;
+  replied: number; bounced: number; autoreply: number; unsubscribed: number; skipped: number;
   planRounds: number;
   /** 触点（封数）口径进度（规范 §0.7-1）：分子=Σ已发轮次，分母=终态触点已完成轮数 + 未终态触点×计划轮数 */
   touchesSent: number; touchesPlanned: number;
@@ -558,7 +551,7 @@ export interface CampaignOverviewItem {
   createdAt: string;
 }
 /** 触点终态：不再排新触点。进度分母对它们只计「已发出的轮数」——止损一个，分母收缩一个 */
-const TERMINAL_TARGET_SQL = sql`${sendCampaignTargets.status} IN ('sent','replied','bounced','unsubscribed','skipped')`;
+const TERMINAL_TARGET_SQL = sql`${sendCampaignTargets.status} IN ('sent','replied','bounced','autoreply','unsubscribed','skipped')`;
 const asNum = (v: unknown): number => (typeof v === "number" ? v : Number(v) || 0);
 
 export function getCampaignOverview(): CampaignOverviewItem[] {
@@ -598,7 +591,7 @@ export function getCampaignOverview(): CampaignOverviewItem[] {
       id: c.id, name: c.name, status: c.status, autoSend: c.autoSend === 1, planRounds,
       total: Object.values(m).reduce((a, b) => a + b, 0),
       pending: g("pending"), queued: g("queued"), sent: g("sent"),
-      replied: g("replied"), bounced: g("bounced"), unsubscribed: g("unsubscribed"), skipped: g("skipped"),
+      replied: g("replied"), bounced: g("bounced"), autoreply: g("autoreply"), unsubscribed: g("unsubscribed"), skipped: g("skipped"),
       touchesSent: t.sent, touchesPlanned: t.stopped + t.open * Math.max(1, planRounds),
       queuedGroups: qMap.get(c.id) ?? 0,
       createdAt: c.createdAt,
@@ -741,7 +734,7 @@ function refreshCampaignDone(contactId: number, centerReference?: CenterContactR
   for (const cid of ids) {
     const remaining = db.select({ n: sql<number>`count(*)` }).from(sendCampaignTargets)
       .where(and(eq(sendCampaignTargets.campaignId, cid), ne(sendCampaignTargets.status, "done"),
-        sql`${sendCampaignTargets.status} NOT IN ('sent','replied','bounced','unsubscribed','skipped')`))
+        sql`${sendCampaignTargets.status} NOT IN ('sent','replied','bounced','autoreply','unsubscribed','skipped')`))
       .get()?.n ?? 0;
     if (remaining === 0) {
       const c = db.select().from(sendCampaigns).where(and(eq(sendCampaigns.id, cid), eq(sendCampaigns.status, "running"))).get();
@@ -764,7 +757,7 @@ function clearFixedContent(json: string): string | null {
 }
 
 // ── 再启动（done → 新周期）────────────────────────────────────────
-/** 完结任务再启动新周期：退信/退订保持终态（再发只会再退），其余触点重置待发（round 0、立即到期）。
+/** 完结任务再启动新周期：退信/自动回复/退订保持终态，其余触点重置待发（round 0、立即到期）。
  *  fixed 轮快照已随上周期完结清空 → 转回草稿让用户先补新内容，绝不盲发旧内容。 */
 export function restartCampaign(id: string): Result<{ reset: number }> {
   if (!campaignNetworkAllowed()) return failResult('当前离线，无法再启动发送任务。');
@@ -787,7 +780,7 @@ export function restartCampaign(id: string): Result<{ reset: number }> {
     .where(and(eq(sendCampaignTargets.campaignId, id), inArray(sendCampaignTargets.status, ["sent", "replied", "skipped"]))).run();
   db.update(sendCampaigns).set({ status: "running", updatedAt: nowIso() }).where(eq(sendCampaigns.id, id)).run();
   automaticSchedulingAllowed = true;
-  Log.info("campaign.restart", `任务 ${id}「${c.name}」再启动新周期：重置 ${resetN} 触点（退信/退订保持终态）`);
+  Log.info("campaign.restart", `任务 ${id}「${c.name}」再启动新周期：重置 ${resetN} 触点（退信/自动回复/退订保持终态）`);
   return okResult({ reset: resetN });
 }
 

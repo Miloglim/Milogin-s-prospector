@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContactPicker } from "./ContactPicker";
 import { takeDevLetterPreset } from "../../lib/homeCards";
 import { nextCampaignName } from "../../../shared/campaign-name";
+import { RichTextEditor } from "../../components/RichTextEditor";
 
 /**
  * 开发任务创建向导（定时器式任务组营销）：子窗口内完成 5 步 —— 选人 → 发送模式 → 触点计划 → 定时与账号 → 确认。
@@ -351,8 +352,12 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
                   <div className="mt-2 space-y-2">
                     <Input size="small" placeholder="邮件主题（支持 {{firstName}} {{company}} 变量）"
                       value={r.subject} onChange={e => setRound(i, { subject: e.target.value })} />
-                    <Input.TextArea size="small" rows={6} placeholder="邮件正文…（变量：{{firstName}} {{lastName}} {{company}} {{title}} {{email}}）"
-                      value={r.body} onChange={e => setRound(i, { body: e.target.value })} />
+                    <RichTextEditor
+                      placeholder="粘贴正文、HTML 或图片（变量：{{firstName}} {{lastName}} {{company}} {{title}} {{email}}）"
+                      value={r.body}
+                      onChange={body => setRound(i, { body })}
+                      style={{ minHeight: 110, maxHeight: 260, overflowY: "auto", border: "1px solid #d9d9d9", borderRadius: 6, padding: 8 }}
+                    />
                     <Input size="small" placeholder="抄送（可选，多个用逗号分隔；抄送方对客户可见）"
                       value={r.cc ?? ""} onChange={e => setRound(i, { cc: e.target.value })} />
                   </div>

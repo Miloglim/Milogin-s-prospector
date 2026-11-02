@@ -481,6 +481,36 @@ describe("发信管线沙箱演练（生产前逐环节验证）", () => {
     });
   }, 15000);
 
+  it("发送前最终检查：联系人自动回复时也阻止任务队列进入 SMTP", async () => {
+    const db = await newSandbox();
+    seedAccounts(db);
+    const cid = companyId(db, (seedCompany(db, "Auto Reply Guard"), "Auto Reply Guard"));
+    addContact(db, "autoreply@guard.test", "Auto Reply", cid);
+    const contactId = db.select().from(schema.contacts).where(eq(schema.contacts.email, "autoreply@guard.test")).get()!.id;
+    const campaignId = "campaign-autoreply-gate";
+    db.insert(schema.sendCampaigns).values({
+      id: campaignId, name: "Auto reply gate", status: "running", touchPlanJson: JSON.stringify([{ stage: "initial", delayDays: 0 }]),
+    }).run();
+    db.insert(schema.sendCampaignTargets).values({
+      campaignId, contactId, status: "queued", round: 0, updatedAt: new Date().toISOString(),
+    }).run();
+    CampaignService.onContactSignal(contactId, "autoreply");
+
+    const item = {
+      id: "queued-after-autoreply", companyName: "Auto Reply Guard", companyId: cid,
+      recipients: [{ contactId, email: "autoreply@guard.test", name: "Auto Reply" }],
+      accountId: db.select().from(schema.emailAccounts).get()!.id,
+      subject: TPL.subject, tplBody: TPL.body, contactVars: {}, status: "pending" as const, campaignId,
+    };
+    const started = await SendService.startQueue([item], true);
+    expect(started.success).toBe(true);
+    await waitForDone();
+    expect(sendCalls).toHaveLength(0);
+    expect(db.select().from(schema.sendQueue).where(eq(schema.sendQueue.id, item.id)).get()).toMatchObject({
+      status: "failed", errorKind: "blocked",
+    });
+  }, 15000);
+
   it("S5 动态发信：自定义正文渲染 + CC 落库", async () => {
     const db = await newSandbox();
     seedAccounts(db);

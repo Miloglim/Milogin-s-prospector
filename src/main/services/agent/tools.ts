@@ -187,7 +187,7 @@ export function buildHarnessTools(ctx: ToolCtx) {
   });
   const campaignCreate = tool({
     name: "campaign_create",
-    description: "创建发信任务：对一批联系人按触点计划自动跟进——首信发出后隔 N 天自动发下一轮，客户回复/退订/bounce 自动止损，计划走完自动收尾。流程：先 search_contacts 按结构化筛选圈人 → 把命中 id 传给 contactIds → 本工具出预览与确认卡，用户点确认才建档。中心联系人任务先保存为草稿，由用户到发送中心核对并启动，创建成功不代表已入队或外发。内容来源：默认用户模板库（机械变量替换），也可 mode=adaptive 同阶段模板随机轮换、mode=system 用内置句库、mode=fixed 传定死内容。schedule 可设发送时段与单日上限（定时器式周期发送，超出顺延次日）。单封/临时批量发信不要用本工具（那是 send_queue_add）。",
+    description: "创建发信任务：对一批联系人按触点计划自动跟进——首信发出后隔 N 天自动发下一轮，客户回复/自动回复/退订/bounce 自动止损，计划走完自动收尾。流程：先 search_contacts 按结构化筛选圈人 → 把命中 id 传给 contactIds → 本工具出预览与确认卡，用户点确认才建档。中心联系人任务先保存为草稿，由用户到发送中心核对并启动，创建成功不代表已入队或外发。内容来源：默认用户模板库（机械变量替换），也可 mode=adaptive 同阶段模板随机轮换、mode=system 用内置句库、mode=fixed 传定死内容。schedule 可设发送时段与单日上限（定时器式周期发送，超出顺延次日）。单封/临时批量发信不要用本工具（那是 send_queue_add）。",
     parameters: campaignCreateSchema,
     execute: (args) => execCampaignCreate(ctx, args),
   });

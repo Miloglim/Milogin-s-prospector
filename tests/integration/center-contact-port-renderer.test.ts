@@ -21,6 +21,17 @@ describe('center data port for original contact table', () => {
     for(const field of LEAD_IMPORT_FIELDS)for(const alias of field.aliases)expect(leadImportMapping([alias])[field.key]).toBe(alias);
     expect(leadImportMapping(['电话','phone']).phone).toBeUndefined();
   });
+  it('imports corrected preview cells instead of the original invalid row values',async()=>{
+    const calls:ImportRequest[]=[];
+    const port=createCenterImportPort(async(channel,input)=>{
+      if(channel===ONLINE_CHANNELS.PREVIEW)return {ok:true,data:{headers:['公司','邮箱'],rows:[{'公司':'Good','邮箱':'good@example.invalid'},{'公司':'Fixed','邮箱':'bad'}],fileName:'test.csv'}} as never;
+      calls.push(input as ImportRequest);return {ok:true,data:{batchId:'b',version:1,rows:[{rowId:'r1',index:0,status:'created',customerId:contact.customerId},{rowId:'r2',index:1,status:'created',customerId:contact.customerId}]}} as never;
+    },true,()=>{});
+    const file={type:'csv' as const,data:'fixture'};
+    const preview=await port.preview(file);
+    expect(await port.execute({...file,mapping:preview.data!.suggestedMapping,rows:[{'公司':'Good','邮箱':'good@example.invalid'},{'公司':'Fixed','邮箱':'fixed@example.invalid'}]})).toMatchObject({success:true,data:{imported:2}});
+    expect(calls[0]!.rows[1]).toMatchObject({companyName:'Fixed',email:'fixed@example.invalid'});
+  });
   it('rejects conflicting company fields before writing any batch',async()=>{
     let writes=0;
     const port=createCenterImportPort(async(channel)=>{
