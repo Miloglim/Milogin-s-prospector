@@ -22,7 +22,8 @@ describe('restored original customer view switch', () => {
     await mount(); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
     await select('跟进看板'); expect(host.querySelector('[data-view="board"]')).not.toBeNull();
     await select('公司'); expect(host.querySelector('[data-view="company"]')).not.toBeNull();
-    await select('联系人'); expect(host.querySelector('[data-view="groups"]')).not.toBeNull();
+    await select('联系人'); expect(host.querySelector('[data-view="groups"]')).not.toBeNull(); await waitForDeferredTable();
+    expect(host.querySelector('[data-view="table"]')).not.toBeNull(); expect(host.querySelector('[aria-label="联系人列表加载中"]')).toBeNull();
     await act(async()=>{host.querySelector<HTMLButtonElement>('[data-view="groups"]')!.click();}); await waitForDeferredTable(); expect(host.querySelector('[data-view="table"]')).not.toBeNull();
   });
   it('keeps the board selected after its child consumes the detail deep link', async () => {

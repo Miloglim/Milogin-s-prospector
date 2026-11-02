@@ -177,7 +177,7 @@ export function LegacyCustomersPage() {
       <div className="contact-group-split">
         <ContactGroups scope="all" canAssign={operations} selectedGroup={contactGroup} onSelect={selectGroup} onAssign={selection=>assignGroups(selection.dimension,selection.groups)} />
         <div className="contact-group-members">
-          {tableReady && contactGroup ? <ContactList dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} /> : <ContactTableSkeleton />}
+          {tableReady ? <ContactList dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} /> : <ContactTableSkeleton />}
         </div>
       </div>
     </div>}
