@@ -506,7 +506,7 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
   const reached = detail && ['contacted','replied','bounced','autoreply'].includes(detail.contact.touchStatus);
   const history = useMemo(() => {
     if (!detail) return [];
-    const labels: Record<string, string> = { received: '收到邮件', sent: '已发送', replied: '已回复', autoreply: '自动回复', bounced: '退信', cc: '抄送' };
+    const labels: Record<string, string> = { received: '收到邮件', sent: '已发送', replied: '已收到', autoreply: '自动回复', bounced: '退信', cc: '抄送' };
     const colors: Record<string, string> = { received: '#2563eb', sent: '#2563eb', replied: '#22a644', autoreply: '#ff9800', bounced: '#d93025', cc: '#0891b2' };
     const item = (key: string, time: string, color: string, label: string, title: string | null, preview: string | null) => ({
       key,
@@ -598,7 +598,7 @@ export function ContactMonitorDetail({ reference, onClose }: { reference: Center
   const error = query.data && !query.data.ok ? query.data.error.message : query.error?.message;
   const history = useMemo(() => {
     if (!detail) return [];
-    const labels: Record<string, string> = { received: '收到邮件', sent: '已发送', replied: '已回复', autoreply: '自动回复', bounced: '退信', cc: '抄送' };
+    const labels: Record<string, string> = { received: '收到邮件', sent: '已发送', replied: '已收到', autoreply: '自动回复', bounced: '退信', cc: '抄送' };
     const colors: Record<string, string> = { received: '#2563eb', sent: '#2563eb', replied: '#22a644', autoreply: '#ff9800', bounced: '#d93025', cc: '#0891b2' };
     const timelineItem = (key: string, time: string, color: string, label: string, title: string | null, preview: string | null, meta?: string) => ({
       key,

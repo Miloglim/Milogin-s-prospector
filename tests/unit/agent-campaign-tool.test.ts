@@ -95,7 +95,7 @@ describe("campaign_create 工具入参对齐（mode / schedule → service 透�
     expect(r.eligible).toBe(2);           // #2 已回复照常入队（资格闸已解除）
     expect(r.excluded).toBe(0);
     const card = r.actions![0]!;
-    expect(card.confirm).toContain("其中 1 位已触达/已回复，将照常入队");   // rrNote 括号计数提示
+    expect(card.confirm).toContain("其中 1 位已触达/已收到，将照常入队");   // rrNote 括号计数提示
     expect(card.confirm).toContain("系统句库");
     expect(card.confirm).toContain("9:00-18:00");
     expect(card.confirm).toContain("单日上限 50 组/天");

@@ -351,7 +351,7 @@ export function onContactSignal(contactId: number, kind: "replied" | "bounce" | 
         inArray(sendCampaignTargets.status, ["pending", "queued", "sent"]),
       )).run();
     refreshCampaignDone(contactId, centerReference, undefined, centerScope);
-    if (kind === "replied") Log.info("campaign.stoploss", `联系人 ${contactId} 已回复 → 名单内待发跟进全部止损`);
+    if (kind === "replied") Log.info("campaign.stoploss", `联系人 ${contactId} 已收到来信 → 名单内待发跟进全部止损`);
   } catch (error) {
     Log.error("campaign.stoploss", "联系人信号止损失败", error instanceof Error ? error.stack : undefined);
     if (centerReference || centerScope) throw error;

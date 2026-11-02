@@ -48,7 +48,7 @@ const STAGES = [
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   sent: { label: "已发送", color: "#2563eb" },
-  replied: { label: "已回复", color: "#22a644" },
+  replied: { label: "已收到", color: "#22a644" },
   bounced: { label: "退信", color: "#d93025" },
   autoreply: { label: "自动回复", color: "#ff9800" },
   cc: { label: "抄送", color: "#0891b2" },
@@ -58,7 +58,7 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
 
 const EMAIL_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   sent: { label: "发件", color: "#2563eb" },
-  replied: { label: "回复", color: "#22a644" },
+  replied: { label: "已收到", color: "#22a644" },
   cc: { label: "抄送", color: "#ff9800" },
 };
 

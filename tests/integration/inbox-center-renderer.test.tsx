@@ -201,7 +201,7 @@ describe('center contact mailbox renderer boundary', () => {
     await mount(<InboxList />);
     await act(async () => { Array.from(host.querySelectorAll('span')).find(el => el.textContent === 'Fixture mail')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     await act(flush);
-    expect(host.querySelector('[title="点击修改状态"]')!.textContent).toBe('已回复');
+    expect(host.querySelector('[title="点击修改状态"]')!.textContent).toBe('已收到');
     await act(async () => { host.querySelector('[title="点击修改状态"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     await act(async () => { Array.from(document.querySelectorAll('.ant-dropdown-menu-item')).find(el => el.textContent === '清除状态')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     await act(flush);

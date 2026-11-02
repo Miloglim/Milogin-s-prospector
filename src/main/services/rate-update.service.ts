@@ -79,7 +79,7 @@ export interface RateUpdatePlan {
   id: string;
   createdAt: string;
   scope: {
-    /** board=跟进看板（已触达 ∪ 已回复）；contacts=联系人库全量（含冷客户） */
+    /** board=跟进看板（已触达 ∪ 已收到）；contacts=联系人库全量（含冷客户） */
     scope: "board" | "contacts";
     stages: string[]; country: string | null; includeReplied: boolean;
     port: string | null; days: number; quotesPerGroup: number;
@@ -105,7 +105,7 @@ export interface RateUpdateOpts {
   contactIds?: number[];
   /** 只看某个港（中英文/别名均可，内部归一后比对） */
   port?: string;
-  /** 已回复客户是否一起推，默认真 */
+  /** 已收到客户是否一起推，默认真 */
   includeReplied?: boolean;
   /** 每组最多几条报价，默认 12（钳 1..30） */
   quotesPerGroup?: number;
@@ -457,7 +457,7 @@ export async function buildRateUpdatePlan(opts: RateUpdateOpts = {}): Promise<Re
     country: o.country, ids: opts.contactIds, maxContacts: o.maxContacts, center:snapshot?.ok ? snapshot.data.contacts : undefined,
   });
   const scopeLabel = o.scope === "contacts"
-    ? `联系人库${o.country ? `里的「${o.country}」客户` : ""}` : `跟进看板（已触达${o.includeReplied ? "/已回复" : ""}）${o.country ? `里的「${o.country}」客户` : ""}`;
+    ? `联系人库${o.country ? `里的「${o.country}」客户` : ""}` : `跟进看板（已触达${o.includeReplied ? "/已收到" : ""}）${o.country ? `里的「${o.country}」客户` : ""}`;
   const emptyPlan = (reason: string, suggest: "board" | "contacts" | null): Result<RateUpdatePlan> => okResult({
     id: newId(), createdAt: now.toISOString(),
     scope: {

@@ -51,13 +51,13 @@ export const sendQueueAddSchema = z.object({
   contact: optStr(80).describe("单个收件人的邮箱/姓名/公司名（本工具会自己定位人，无需先调 search_contacts）"),
   subject: z.string().max(150).nullable().optional().describe("邮件主题（可含 {{company}}/{{firstName}} 变量；用素材库模板时原样传模板主题）。usePreset=true 时省略"),
   body: z.string().max(8000).nullable().optional().describe("邮件正文（纯文本/简单 HTML，可含联系人变量；用素材库模板时原样传模板正文）。usePreset=true 时省略"),
-  usePreset: optBool().describe("用程序内置句库组装（无需模板，按每个联系人的阶段/语言/客户类型自动拼装；已回复/已触达照常入队，由用户圈名单决定发不发）。素材库没有启用模板、用户说「用系统内置/程序自带的内容」时传 true，此时 subject/body 省略"),
+  usePreset: optBool().describe("用程序内置句库组装（无需模板，按每个联系人的阶段/语言/客户类型自动拼装；已收到/已触达照常入队，由用户圈名单决定发不发）。素材库没有启用模板、用户说「用系统内置/程序自带的内容」时传 true，此时 subject/body 省略"),
 });
 
 export const campaignCreateSchema = z.object({
   name: optStr(60).describe("任务名，如「巴西冷客户·4 触点」；不传按「筛选条件·N 触点」自动生成"),
   contactIds: z.preprocess((v: unknown) => toIds(v), z.array(z.number().int().positive()).min(1).max(2000))
-    .describe("收件联系人 id 列表（来自 search_contacts 的结构化筛选结果）。已回复/已触达不再被拦截——发不发由用户圈定名单决定，确认卡会如实报数"),
+    .describe("收件联系人 id 列表（来自 search_contacts 的结构化筛选结果）。已收到/已触达不再被拦截——发不发由用户圈定名单决定，确认卡会如实报数"),
   touches: z.array(z.object({
     stage: z.string().max(20).describe("该轮用的模板阶段：initial(首信)/followup1/followup2/closing/reactivate"),
     delayDays: z.number().int().min(0).max(60).describe("距上一封发出的天数；首轮（首信）填 0"),
@@ -597,7 +597,7 @@ export async function execCampaignCreate(ctx: ToolCtx, args: z.infer<typeof camp
   const winNote = schedule?.windowStartHour !== undefined && schedule?.windowEndHour !== undefined
     ? `，时段 ${schedule.windowStartHour}:00-${schedule.windowEndHour}:00` : "";
   const capNote = schedule?.dailyGroupCap ? `，单日上限 ${schedule.dailyGroupCap} 组/天` : "";
-  const rrNote = reachedReplied > 0 ? `（其中 ${reachedReplied} 位已触达/已回复，将照常入队）` : "";
+  const rrNote = reachedReplied > 0 ? `（其中 ${reachedReplied} 位已触达/已收到，将照常入队）` : "";
   audit(ctx, "campaign_create", "write", args, { eligible, excluded, rounds: args.touches.length }, "auto");
   return okOut({
     eligible, excluded, total, reachedReplied, planSummary, autoSend,

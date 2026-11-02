@@ -53,7 +53,7 @@ function stageLabel(value: string): string {
 }
 
 function touchLabel(value: string): string {
-  return ({ uncontacted: '未触达', contacted: '已触达', replied: '已回复', bounced: '退信', autoreply: '自动回复' } as Record<string, string>)[value] ?? value;
+  return ({ uncontacted: '未触达', contacted: '已触达', replied: '已收到', bounced: '退信', autoreply: '自动回复' } as Record<string, string>)[value] ?? value;
 }
 
 function teamOptions(teams: readonly TeamAdminSummary[]): TeamAdminSummary[] {

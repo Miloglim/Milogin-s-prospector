@@ -19,13 +19,13 @@ export function normStage(raw: string | null | undefined): string | null | undef
 const STATUS_VALUES = ["reached", "replied", "bounced", "autoreply", "none"];
 const STATUS_ALIAS: Record<string, string> = {
   reached: "reached", 已触达: "reached", 触达: "reached", 触达过: "reached",
-  replied: "replied", 已回复: "replied", 回复: "replied", 回复过: "replied",
+  replied: "replied", 已收到: "replied", 收到: "replied", 收到过: "replied", 已回复: "replied", 回复: "replied", 回复过: "replied",
   bounced: "bounced", 已退信: "bounced", 退信: "bounced",
   autoreply: "autoreply", 自动回复: "autoreply",
   none: "none", 未触达: "none", 无状态: "none", 未发送: "none", 没发过: "none",
 };
 export const STATUS_LABEL: Record<string, string> = {
-  reached: "已触达", replied: "已回复", bounced: "退信", autoreply: "自动回复", none: "未触达",
+  reached: "已触达", replied: "已收到", bounced: "退信", autoreply: "自动回复", none: "未触达",
 };
 /** 归一发送状态：空→null（不过滤）；合法/别名→标准值（none=空状态哨兵，筛未触达用）；非法→undefined（当面纠错） */
 export function normStatus(raw: string | null | undefined): string | null | undefined {

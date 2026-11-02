@@ -117,7 +117,7 @@ export const searchContactsSchema = z.object({
   hasPhone: optBool().describe("传 true = 只返回有电话号码的联系人（适合「有电话的客户」「要打电话的名单」类问题）"),
   country: optStr(60).describe("按国家/地区筛选（模糊匹配联系人或公司的国家字段，如 巴西/Brazil/Mexico）；冷开发按国别圈人时用"),
   stage: optStr(16).describe("按发送阶段筛选，只认 cold/f1/f2/f3/f4（cold=还没开发过的冷客户）；也认中文别名 冷开发/跟进1..4。传别的值会当面报错并列出有效值"),
-  status: optStr(16).describe("按发送状态筛选：reached=已触达 / replied=已回复 / bounced=退信 / autoreply=自动回复 / none=未触达(没发过或没触达过)。也认中文别名(已触达/已回复/退信/自动回复/未触达)。注意与 stage 是两个维度：stage=开发漏斗步骤(cold/f1-f4)，status=邮件发送结果。「跟进中的客户」= status:reached 或 replied。传别的值会当面报错"),
+  status: optStr(16).describe("按发送状态筛选：reached=已触达 / replied=已收到 / bounced=退信 / autoreply=自动回复 / none=未触达(没发过或没触达过)。也认中文别名(已触达/已收到/退信/自动回复/未触达；旧叫法已回复仍兼容)。注意与 stage 是两个维度：stage=开发漏斗步骤(cold/f1-f4)，status=邮件发送结果。「跟进中的客户」= status:reached 或 replied。传别的值会当面报错"),
   industry: optStr(60).describe("按公司主营品类筛选（模糊匹配公司行业字段，如 家具/家具制造/furniture）"),
   silenceDays: optInt().describe("只要最近跟进早于 N 天的（含从未跟进过的）；冷开发挑沉默客户用，如 30=一个月没动静的"),
   validEmail: optBool().describe("传 true = 排除占位/无效邮箱（如 xxx@no.email 这类导入占位），只留能真发出去的"),
@@ -255,7 +255,7 @@ export async function execSearchContacts(ctx: ToolCtx, args: z.infer<typeof sear
   const statusNorm = normStatus(args.status);
   if ((args.status ?? "").trim() && statusNorm === undefined) {
     return finishRead(ctx, "search_contacts", args, failOut("bad_filter",
-      `status 值「${args.status}」不存在。有效值：reached(已触达) / replied(已回复) / bounced(退信) / autoreply(自动回复) / none(未触达，即还没发过或没触达过)。「跟进中的客户」= reached 和 replied，两个都要就分两次查。不确定就去掉本过滤直接查。`));
+      `status 值「${args.status}」不存在。有效值：reached(已触达) / replied(已收到) / bounced(退信) / autoreply(自动回复) / none(未触达，即还没发过或没触达过)。「跟进中的客户」= reached 和 replied，两个都要就分两次查。不确定就去掉本过滤直接查。`));
   }
   // 按词切分匹配（live 评测实锤：模型常传全名 "Juan Garcia"，整串 LIKE 匹配不上单列 → 误判查无此人）
   const tokens = (args.query ?? "").split(/\s+/).filter(Boolean).slice(0, 4);

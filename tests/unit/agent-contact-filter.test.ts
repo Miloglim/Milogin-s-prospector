@@ -228,10 +228,10 @@ describe("search_contacts 国家别名与发送状态（2026-09-08 数据归一�
     expect(r.filtersApplied).toContain("状态=已触达");
   });
 
-  it("status 认中文别名：已回复", async () => {
+  it("status 认新文案已收到，并兼容旧别名已回复", async () => {
     h.raw.run("UPDATE contacts SET status='replied' WHERE id=2");
-    const r = await run({ status: "已回复" });
-    expect(r.results!.map(c => c.id)).toEqual([2]);
+    expect((await run({ status: "已收到" })).results!.map(c => c.id)).toEqual([2]);
+    expect((await run({ status: "已回复" })).results!.map(c => c.id)).toEqual([2]);
   });
 
   it("status:none 哨兵筛空状态（未触达 = 空串或 NULL）", async () => {

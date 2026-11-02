@@ -71,7 +71,7 @@ export function Dashboard() {
         <Col span={6}>
           <Card size="small">
             <Statistic
-              title="已回复"
+              title="已收到"
               value={stats?.totalReplied || 0}
               prefix={<MessageOutlined />}
               loading={isLoading}

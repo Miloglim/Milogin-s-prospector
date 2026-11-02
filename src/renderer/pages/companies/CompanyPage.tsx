@@ -251,7 +251,7 @@ export function CompanyPage({ dataPort }: { dataPort?: CompanyDataPort } = {}) {
                 </div>
                 <div className="bg-green-50 rounded-lg px-4 py-2 text-center">
                   <div className="text-lg font-bold text-green-700">{detail.repliedCount ?? '—'}</div>
-                  <div className="text-[10px] text-gray-400">已回复</div>
+                  <div className="text-[10px] text-gray-400">已收到</div>
                 </div>
               </div>
 

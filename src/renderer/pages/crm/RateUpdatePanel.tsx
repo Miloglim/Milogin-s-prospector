@@ -159,7 +159,7 @@ export function RateUpdatePanel({ open, onClose, defaultStages, contactIds }: {
         <div className="p-6">
           <Alert type="warning" showIcon
             message="没能生成方案"
-            description={planError || "跟进看板里没有符合条件的客户（范围：已触达 / 已回复，且除已流失外的阶段）"}
+            description={planError || "跟进看板里没有符合条件的客户（范围：已触达 / 已收到，且除已流失外的阶段）"}
             action={<Button size="small" icon={<ReloadOutlined />} onClick={() => setNonce(n => n + 1)}>重试</Button>} />
         </div>
       ) : (

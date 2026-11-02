@@ -49,7 +49,7 @@ export function buildHarnessTools(ctx: ToolCtx) {
 
   const searchContacts = tool({
     name: "search_contacts",
-    description: "在本地联系人库检索/筛选联系人，返回结构化记录（含 id/姓名/邮箱/公司/国家/阶段/发送状态）。两种用法：①按关键词（姓名/邮箱/公司名）找人；②按结构化条件圈人——country 国家(中英文都认，如 巴西/Brazil)、stage 阶段(cold/f1-f4)、status 发送状态(reached=已触达/replied=已回复/bounced=退信/none=未触达)、industry 行业、silenceDays 沉默天数、validEmail 仅有效邮箱、hasPhone 仅有电话，可组合。冷开发/批量跟进要用②按前置条件精确圈人（如「巴西的冷客户」=country:巴西 + stage:cold），别用单字母关键词全库扫。涉及客户的事实性回答必须且只能基于本工具返回的数据。绝对不要用本工具查运价、邮件或公司公开背景（那是 quote_search / inbox_search / company_backcheck）。",
+    description: "在本地联系人库检索/筛选联系人，返回结构化记录（含 id/姓名/邮箱/公司/国家/阶段/发送状态）。两种用法：①按关键词（姓名/邮箱/公司名）找人；②按结构化条件圈人——country 国家(中英文都认，如 巴西/Brazil)、stage 阶段(cold/f1-f4)、status 发送状态(reached=已触达/replied=已收到/bounced=退信/none=未触达)、industry 行业、silenceDays 沉默天数、validEmail 仅有效邮箱、hasPhone 仅有电话，可组合。冷开发/批量跟进要用②按前置条件精确圈人（如「巴西的冷客户」=country:巴西 + stage:cold），别用单字母关键词全库扫。涉及客户的事实性回答必须且只能基于本工具返回的数据。绝对不要用本工具查运价、邮件或公司公开背景（那是 quote_search / inbox_search / company_backcheck）。",
     parameters: searchContactsSchema,
     execute: (args) => execSearchContacts(ctx, args),
   });
@@ -205,7 +205,7 @@ export function buildHarnessTools(ctx: ToolCtx) {
   });
   const rateUpdatePlan = tool({
     name: "rate_update_plan",
-    description: "给客户做定向运价更新：一次调用算完「圈了谁、各自走哪个港、该港当期真价、邮件长什么样」，返回按目的港+语言分好的方案（每组=一封将要发出去的邮件）。用户说「给跟进的客户更新运价」「把新价同步给客户」时用；范围有两层：默认=跟进看板的客户（已触达+已回复）；用户说「所有巴西客户」「冷客户也一起发」时传 scope=contacts + country，**不要**改用 search_contacts 自己拼名单再逐家 quote_search（必漏人、价格也会拼错）。客户没登记港口偏好时，工具会按他所在国家当期报价最多的港兜底；再不行才列入未覆盖。参数什么都不传是最稳的用法（除非用户明确缩小范围）。本工具只读：不写库、不入队、不发送；出方案后把数字讲给用户听，等他点头再调 rate_update_enqueue。价格全部来自本地运价镜像台账，无当期有效价的港口自动不入选，绝不编价、不拿别的港凑数。",
+    description: "给客户做定向运价更新：一次调用算完「圈了谁、各自走哪个港、该港当期真价、邮件长什么样」，返回按目的港+语言分好的方案（每组=一封将要发出去的邮件）。用户说「给跟进的客户更新运价」「把新价同步给客户」时用；范围有两层：默认=跟进看板的客户（已触达+已收到）；用户说「所有巴西客户」「冷客户也一起发」时传 scope=contacts + country，**不要**改用 search_contacts 自己拼名单再逐家 quote_search（必漏人、价格也会拼错）。客户没登记港口偏好时，工具会按他所在国家当期报价最多的港兜底；再不行才列入未覆盖。参数什么都不传是最稳的用法（除非用户明确缩小范围）。本工具只读：不写库、不入队、不发送；出方案后把数字讲给用户听，等他点头再调 rate_update_enqueue。价格全部来自本地运价镜像台账，无当期有效价的港口自动不入选，绝不编价、不拿别的港凑数。",
     parameters: rateUpdatePlanSchema,
     execute: (args) => execRateUpdatePlan(ctx, args),
   });

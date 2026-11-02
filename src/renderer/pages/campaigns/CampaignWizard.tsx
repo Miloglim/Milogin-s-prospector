@@ -479,7 +479,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
             <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
               <div className="text-[12px] text-gray-700 mb-1">
                 资格预览：命中 <strong className="text-teal-600">{preview?.eligible ?? "…"}</strong> 人
-                {preview && preview.reachedReplied > 0 && <span className="text-amber-600">（含 {preview.reachedReplied} 位已触达/已回复）</span>}
+                {preview && preview.reachedReplied > 0 && <span className="text-amber-600">（含 {preview.reachedReplied} 位已触达/已收到）</span>}
                 {preview && preview.excluded > 0 && <span className="text-gray-400">（{preview.excluded} 人不在库，已剔除）</span>}
               </div>
               {preview?.sample?.length ? (

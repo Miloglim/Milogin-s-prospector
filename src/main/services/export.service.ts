@@ -22,7 +22,7 @@ export async function exportContactsToExcel(filter?: { search?: string }): Promi
 
   // 值 → 中文标签
   const CLIENT_TYPE: Record<string, string> = { agent: "代理", direct: "直客" };
-  const STATUS: Record<string, string> = { reached: "已触达", replied: "已回复", bounced: "退信", autoreply: "自动回复" };
+  const STATUS: Record<string, string> = { reached: "已触达", replied: "已收到", bounced: "退信", autoreply: "自动回复" };
   // 与界面一致（renderer STAGE_META / send STAGE_BUCKET_DEFS），导出的表格才对得上界面
   const STAGE: Record<string, string> = { cold: "Cold", f1: "F1", f2: "F2", f3: "F3", f4: "F4" };
   const CRM_TAGS: Record<string, string> = { reaching: "触达中", quoting: "报价中", trial: "试单", cooperating: "合作中", lost: "已流失", other: "其他" };

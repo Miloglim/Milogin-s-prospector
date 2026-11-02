@@ -15,7 +15,7 @@ export const CLIENT_TYPE: Record<string, { label: string; color: string }> = {
 };
 export const STATUS_META: Record<string, { label: string; color: string }> = {
   reached: { label: "已触达", color: "blue" },
-  replied: { label: "已回复", color: "green" },
+  replied: { label: "已收到", color: "green" },
   bounced: { label: "退信", color: "red" },
   autoreply: { label: "自动回复", color: "orange" },
 };
@@ -79,7 +79,7 @@ const INTERACTION_COLORS: Record<string, string> = {
   sent: "#2563eb", replied: "#22a644", bounced: "#d93025", autoreply: "#ff9800", cc: "#0891b2",
 };
 const INTERACTION_LABELS: Record<string, string> = {
-  sent: "已发送", replied: "已回复", bounced: "退信", autoreply: "自动回复", cc: "抄送", note: "跟进",
+  sent: "已发送", replied: "已收到", bounced: "退信", autoreply: "自动回复", cc: "抄送", note: "跟进",
 };
 
 /* ---------- 小工具 ---------- */

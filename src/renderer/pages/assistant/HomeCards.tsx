@@ -275,7 +275,7 @@ function MailBriefModal({ open, onClose, onSend }: {
           <div className="grid grid-cols-4 gap-2 rounded-lg border border-gray-100 px-3 py-2.5">
             {stat("今日来信", b.inbound)}
             {stat("未读", b.unread, b.unread ? "text-teal-600" : "")}
-            {stat("客户回复", b.byClass.replied ?? 0)}
+            {stat("已收到", b.byClass.replied ?? 0)}
             {stat("询价", b.priceInquiry)}
             {stat("退信", b.byClass.bounce ?? 0, (b.byClass.bounce ?? 0) ? "text-red-500" : "")}
             {stat("自动回复", b.byClass.autoreply ?? 0)}

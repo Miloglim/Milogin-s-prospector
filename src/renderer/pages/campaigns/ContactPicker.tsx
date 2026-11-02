@@ -38,7 +38,7 @@ const STAGE_LABELS: Record<string, string> = { cold: "Cold", f1: "F1", f2: "F2",
 const TYPE_LABELS: Record<string, string> = { direct: "直客", agent: "代理", peer: "同行", general: "通用" };
 const STATUS_META: Record<string, { label: string; color: string }> = {
   reached: { label: "已触达", color: "green" },
-  replied: { label: "已回复", color: "blue" },
+  replied: { label: "已收到", color: "blue" },
   autoreply: { label: "自动回复", color: "orange" },
   bounced: { label: "退信", color: "red" },
 };
@@ -149,7 +149,7 @@ export function ContactPicker({ value, onChange: notifyChange, onNext, resolvePr
   const dropInCampaign = () => onChange(value.filter(id => !campaignMap.has(id)));
   // 已选里「不该再收开发信」的：已触达/已回复（已在跟进，不该收冷启动信）、退信与自动回复（地址无效或人不在）
   // —— 汇总条上给一个快捷移除，按状态分类计数，点一下全部剔出勾选
-  const UNSUITABLE_LABELS: Record<string, string> = { reached: "已触达", replied: "已回复", bounced: "退信", autoreply: "自动回复" };
+  const UNSUITABLE_LABELS: Record<string, string> = { reached: "已触达", replied: "已收到", bounced: "退信", autoreply: "自动回复" };
   const unsuitable = useMemo(() => {
     const byStatus = new Map<string, number[]>();
     for (const r of selectedRows) {
@@ -232,7 +232,7 @@ export function ContactPicker({ value, onChange: notifyChange, onNext, resolvePr
           options={[
             { value: "never", label: "从未发送" },
             { value: "reached", label: "已触达" },
-            { value: "replied", label: "已回复" },
+            { value: "replied", label: "已收到" },
             { value: "autoreply", label: "自动回复" },
             { value: "bounced", label: "退信" },
           ]} />
@@ -247,7 +247,7 @@ export function ContactPicker({ value, onChange: notifyChange, onNext, resolvePr
         <Space size={4}>
           <span className="text-[10px] text-gray-400 mr-1">快捷:</span>
           <Tag className="cursor-pointer text-[10px] m-0" onClick={() => applyPreset("never")}>从未发送</Tag>
-          <Tag color="blue" className="cursor-pointer text-[10px] m-0" onClick={() => applyPreset("replied")}>已回复</Tag>
+          <Tag color="blue" className="cursor-pointer text-[10px] m-0" onClick={() => applyPreset("replied")}>已收到</Tag>
           <Tag color="orange" className="cursor-pointer text-[10px] m-0" onClick={() => applyPreset("autoreply")}>自动回复</Tag>
           <Tag color="red" className="cursor-pointer text-[10px] m-0" onClick={() => applyPreset("bounced")}>退信</Tag>
           {campaignMap.size > 0 && (

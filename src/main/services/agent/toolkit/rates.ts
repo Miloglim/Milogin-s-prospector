@@ -34,7 +34,7 @@ export const quoteSearchSchema = z.object({
 
 // ── 定向运价更新推送（规范 docs/rate-update-push-spec.md §5）─────────────
 export const rateUpdatePlanSchema = z.object({
-  scope: optStr(12).describe("圈人范围：不传/board=跟进看板（已触达+已回复，默认）；contacts=联系人库全量（含没开发过的冷客户）。"
+  scope: optStr(12).describe("圈人范围：不传/board=跟进看板（已触达+已收到，默认）；contacts=联系人库全量（含没开发过的冷客户）。"
     + "用户说「所有巴西客户」「冷客户也一起发」这类才传 contacts"),
   country: optStr(40).describe("按国家/地区收窄（中英文都认，如 巴西/Brazil）。用户点名某个国家/地区时传它；不传=不限国家。"
     + "**国家名一律传这里，不要塞进 port**（port 只放目的港，如 Santos/BRSSZ）"),
@@ -45,7 +45,7 @@ export const rateUpdatePlanSchema = z.object({
   port: optStr(60).describe("只推某个目的港（英文港名或 UN/LOCODE，如 Santos/BRSSZ）；省略=按每位客户自己的港口偏好分组"),
   contactIds: z.preprocess((v: unknown) => toIds(v), z.array(z.number().int().positive()).max(50).nullable().optional())
     .describe("只给指定的这几位客户推（来自 search_contacts 的 id）；省略=按范围圈定"),
-  includeReplied: optBool().describe("已回复的客户是否一起推，默认真；传 false 只推还没回的"),
+  includeReplied: optBool().describe("已收到的客户是否一起推，默认真；传 false 只推还没收到来信的"),
   quotesPerGroup: optInt().describe("每组邮件最多放几条报价，默认 12（最多 30）"),
   days: optInt().describe("港口偏好回溯多少天的来信，默认 90"),
 });

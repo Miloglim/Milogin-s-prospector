@@ -578,7 +578,7 @@ export async function importContacts(params: {
         "f1": "f1", "f2": "f2", "f3": "f3", "f4": "f4",
       };
       const STATUS_XLATE: Record<string, string> = {
-        "未触达": "", "已触达": "reached", "有回复": "replied", "已回复": "replied",
+        "未触达": "", "已触达": "reached", "有回复": "replied", "已回复": "replied", "已收到": "replied", "收到": "replied",
         "退信": "bounced", "自动回复": "autoreply",
       };
       const CTYPE_XLATE: Record<string, string> = { "代理": "agent", "直客": "direct", "同行": "agent" };

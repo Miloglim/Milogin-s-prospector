@@ -48,7 +48,7 @@ export function customerBoardStage(customer: Pick<LeadPreview,'stage'|'hasContac
  return customer.hasContacted ? customer.stage && customer.stage !== 'cold' ? customer.stage : 'reaching' : undefined;
 }
 export const FOLLOWUP_METHOD_LABELS: Record<FollowupMethod | 'legacy',string> = {email:'邮件',phone:'电话',visit:'拜访',other:'其他联系',note:'备注',legacy:'历史记录'};
-export const CONTACT_TOUCH_LABELS: Record<ContactTouchStatus,string> = {uncontacted:'未触达',contacted:'已触达',replied:'已回复',bounced:'退信',autoreply:'自动回复'};
+export const CONTACT_TOUCH_LABELS: Record<ContactTouchStatus,string> = {uncontacted:'未触达',contacted:'已触达',replied:'已收到',bounced:'退信',autoreply:'自动回复'};
 export type CustomerStage = CrmStage | 'cold';
 export const FOLLOWUP_TIME_LIMITS = {future_skew_seconds:60} as const;
 export interface FollowupRequest extends LeadCommand {opportunityId?:string;note:string;stage?:CustomerStage;method?:FollowupMethod;occurredAt?:string;contactId?:number;contactStatus?:ContactTouchStatus;}

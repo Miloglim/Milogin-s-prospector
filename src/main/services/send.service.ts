@@ -106,7 +106,7 @@ export interface SendStatus {
 const BUCKET_DEFS = [
   { key: "never", label: "从未发送", desc: "新联系人，无发送记录" },
   { key: "reached", label: "已触达", desc: "已发送，等待回复" },
-  { key: "replied", label: "已回复", desc: "对方已回复，可跟进" },
+  { key: "replied", label: "已收到", desc: "已收到对方来信，可跟进" },
   { key: "autoreply", label: "自动回复", desc: "收到 OOO，暂缓发送" },
   { key: "bounced", label: "退信", desc: "邮箱无效或退回" },
 ] as const;

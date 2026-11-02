@@ -64,7 +64,7 @@ export function TeamMonitoringMemberDetail({ userId, online, onClose, onOpenMail
     {detail && <>
       <div className="team-monitoring-member-stats">
         <span><strong>{detail.member.counts.contacts}</strong><small>联系人</small></span>
-        <span><strong>{detail.member.counts.replied}</strong><small>已回复</small></span>
+        <span><strong>{detail.member.counts.replied}</strong><small>已收到</small></span>
         <span><strong>{detail.member.counts.openActions}</strong><small>待办</small></span>
         <span><strong>{detail.member.counts.openAttention}</strong><small>关注</small></span>
       </div>

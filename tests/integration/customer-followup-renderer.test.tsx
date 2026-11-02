@@ -69,15 +69,15 @@ describe('B2 customer followup renderer', () => {
   it('submits an explicit local historical time, selected contact, touch result and optional cold stage', async () => {
     await mount(); await choose('联系方法', '拜访'); await fill('发生时间', '2026-01-02T09:35'); await choose('跟进联系人', 'Second'); await choose('触达结果', '已触达'); await choose('跟进阶段', '未联系'); await fill('跟进记录', 'Historical visit'); await click('保存跟进');
     expect(writes()[0]).toMatchObject({ method: 'visit', occurredAt: new Date('2026-01-02T09:35').toISOString(), contactId: 12, contactStatus: 'contacted', stage: 'cold' });
-    expect(document.body.textContent).toContain('未触达'); expect(document.body.textContent).toContain('已回复');
+    expect(document.body.textContent).toContain('未触达'); expect(document.body.textContent).toContain('已收到');
   });
   it('clears the touch result when switching to note while retaining an optional contact', async () => {
-    await mount(); await choose('跟进联系人', 'First'); await choose('触达结果', '已回复'); await choose('联系方法', '备注');
+    await mount(); await choose('跟进联系人', 'First'); await choose('触达结果', '已收到'); await choose('联系方法', '备注');
     expect(document.querySelector('[aria-label="触达结果"]')!.closest('.ant-select')!.classList.contains('ant-select-disabled')).toBe(true);
     await fill('跟进记录', 'Internal note'); await click('保存跟进'); expect(writes()[0]).toMatchObject({ method: 'note', contactId: 11 }); expect(writes()[0].contactStatus).toBeUndefined();
   });
   it('freezes all draft fields and version across a lost response and polling, then retries the whole input', async () => {
-    await mount(); await choose('联系方法', '邮件'); await fill('发生时间', '2026-01-02T09:35'); await choose('跟进联系人', 'Second'); await choose('触达结果', '已回复'); await choose('跟进阶段', '报价中'); await fill('跟进记录', 'Lost response');
+    await mount(); await choose('联系方法', '邮件'); await fill('发生时间', '2026-01-02T09:35'); await choose('跟进联系人', 'Second'); await choose('触达结果', '已收到'); await choose('跟进阶段', '报价中'); await fill('跟进记录', 'Lost response');
     const normal = invoke.getMockImplementation()!;
     invoke.mockImplementation(async (channel, ...args) => channel === CHANNEL.FOLLOWUP ? { ok: false, error: { code: 'UNAVAILABLE', message: 'Unknown result' } } : normal(channel, ...args));
     await click('保存跟进'); customer.version = 2; await poll();
@@ -136,7 +136,7 @@ describe('B2 customer followup renderer', () => {
     expect(document.querySelector<HTMLTextAreaElement>('[aria-label="跟进记录"]')!.value).toBe('');
   });
   it('resets selected contact and draft fields on customer and account change', async () => {
-    await mount(); await choose('跟进联系人', 'Second'); await choose('触达结果', '已回复'); await fill('跟进记录', 'Old customer');
+    await mount(); await choose('跟进联系人', 'Second'); await choose('触达结果', '已收到'); await fill('跟进记录', 'Old customer');
     customer = { ...structuredClone(fixture), customerId: 'customer-b', contacts: [] };
     await act(async () => { window.history.replaceState(null, '', '#/customers?customerId=customer-b'); window.dispatchEvent(new Event('hashchange')); await flush(); });
     expect(document.querySelector<HTMLTextAreaElement>('[aria-label="跟进记录"]')!.value).toBe('');
