@@ -12,14 +12,14 @@ import type { CenterContactRef } from "../../../shared/online-crm";
 const CONTAINERS = ["40HQ", "40GP", "20GP", "40NOR"];
 
 /** 两张卡片（空态居中） */
-export function HomeCards({ onSend, autoDevelopmentOnly = false }: { onSend: (text: string) => void; autoDevelopmentOnly?: boolean }) {
+export function HomeCards({ onSend }: { onSend: (text: string) => void }) {
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [devOpen, setDevOpen] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
   return (
     <>
-      <div className={`grid grid-cols-1 ${autoDevelopmentOnly ? 'max-w-[420px]' : 'sm:grid-cols-3'} gap-3 w-full max-w-[860px] mx-auto`}>
-        {!autoDevelopmentOnly && <button type="button" onClick={() => setQuoteOpen(true)}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[860px] mx-auto">
+        <button type="button" onClick={() => setQuoteOpen(true)}
           className="group text-left rounded-xl border border-gray-200 bg-white px-4 py-3.5 cursor-pointer transition-all hover:border-teal-300 hover:shadow-[0_2px_8px_rgba(20,184,166,0.10)]">
           <span className="inline-flex items-center gap-2.5">
             <span className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center group-hover:bg-teal-100 transition-colors">
@@ -30,7 +30,7 @@ export function HomeCards({ onSend, autoDevelopmentOnly = false }: { onSend: (te
               <span className="block text-[11px] text-gray-400 mt-0.5">起运港 · 目的港 · 柜型，填完一键标准化查价</span>
             </span>
           </span>
-        </button>}
+        </button>
         <button type="button" onClick={() => setDevOpen(true)}
           className="group text-left rounded-xl border border-gray-200 bg-white px-4 py-3.5 cursor-pointer transition-all hover:border-teal-300 hover:shadow-[0_2px_8px_rgba(20,184,166,0.10)]">
           <span className="inline-flex items-center gap-2.5">
@@ -43,7 +43,7 @@ export function HomeCards({ onSend, autoDevelopmentOnly = false }: { onSend: (te
             </span>
           </span>
         </button>
-        {!autoDevelopmentOnly && <button type="button" onClick={() => setBriefOpen(true)}
+        <button type="button" onClick={() => setBriefOpen(true)}
           className="group text-left rounded-xl border border-gray-200 bg-white px-4 py-3.5 cursor-pointer transition-all hover:border-teal-300 hover:shadow-[0_2px_8px_rgba(20,184,166,0.10)]">
           <span className="inline-flex items-center gap-2.5">
             <span className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center group-hover:bg-teal-100 transition-colors">
@@ -54,15 +54,13 @@ export function HomeCards({ onSend, autoDevelopmentOnly = false }: { onSend: (te
               <span className="block text-[11px] text-gray-400 mt-0.5">今天收了多少、谁在等你回，一眼看清</span>
             </span>
           </span>
-        </button>}
+        </button>
       </div>
-      {!autoDevelopmentOnly && <QuoteModal open={quoteOpen} onClose={() => setQuoteOpen(false)}
+      <QuoteModal open={quoteOpen} onClose={() => setQuoteOpen(false)}
         onSend={(text) => { setQuoteOpen(false); onSend(text); }} />
-      }
       <DevLetterModal open={devOpen} onClose={() => setDevOpen(false)} />
-      {!autoDevelopmentOnly && <MailBriefModal open={briefOpen} onClose={() => setBriefOpen(false)}
+      <MailBriefModal open={briefOpen} onClose={() => setBriefOpen(false)}
         onSend={(text) => { setBriefOpen(false); onSend(text); }} />
-      }
     </>
   );
 }

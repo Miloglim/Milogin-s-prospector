@@ -1,6 +1,6 @@
 export type ProductEdition = 'full' | 'contact-autodev';
 
-const CONTACT_AUTODEV_PATHS = new Set(['/customers', '/assistant', '/campaigns', '/settings', '/account']);
+const CONTACT_AUTODEV_PATHS = new Set(['/customers', '/campaigns', '/templates', '/settings', '/account']);
 
 export function productEdition(value: string | undefined): ProductEdition {
   return value === 'contact-autodev' ? 'contact-autodev' : 'full';

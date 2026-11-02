@@ -9,8 +9,8 @@ describe('contact auto-development edition', () => {
   });
 
   it('allows only contacts, auto-development and required support routes in the focused edition', () => {
-    for (const path of ['/customers', '/assistant', '/campaigns', '/settings', '/account']) expect(productEditionAllowsPath('contact-autodev', path)).toBe(true);
-    for (const path of ['/inbox', '/team', '/rates', '/templates', '/messages', '/']) expect(productEditionAllowsPath('contact-autodev', path)).toBe(false);
+    for (const path of ['/customers', '/campaigns', '/templates', '/settings', '/account']) expect(productEditionAllowsPath('contact-autodev', path)).toBe(true);
+    for (const path of ['/inbox', '/team', '/rates', '/assistant', '/messages', '/']) expect(productEditionAllowsPath('contact-autodev', path)).toBe(false);
     expect(productEditionAllowsPath('full', '/inbox')).toBe(true);
   });
 });

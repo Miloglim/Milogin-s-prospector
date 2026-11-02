@@ -10,8 +10,7 @@ import { TemplateList } from "./pages/templates/TemplateList";
 import { SettingsPage } from "./pages/settings/SettingsPage";
 import { AccountProfilePage } from './pages/settings/AccountProfilePage';
 import { TeamWorkspace } from './pages/team/TeamWorkspace';
-import { AutoDevelopmentPage } from './pages/auto-development/AutoDevelopmentPage';
-import { CONTACT_AUTODEV_EDITION, PRODUCT_EDITION, productEditionAllowsPath } from './lib/product-edition';
+import { PRODUCT_EDITION, productEditionAllowsPath } from './lib/product-edition';
 
 import { MessagesPage } from './pages/messages/MessagesPage';
 
@@ -31,7 +30,7 @@ const dashboardRoute = createRoute({
 const assistantRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/assistant",
-  component: CONTACT_AUTODEV_EDITION ? AutoDevelopmentPage : AssistantPage,
+  component: AssistantPage,
 });
 
 const customersRoute = createRoute({

@@ -3,7 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   DashboardOutlined, UserOutlined, SendOutlined,
   InboxOutlined, FileTextOutlined,
-  SettingOutlined, SearchOutlined, MoreOutlined, DollarOutlined, UpOutlined, BellOutlined, ApartmentOutlined, MailOutlined,
+  SettingOutlined, SearchOutlined, MoreOutlined, DollarOutlined, UpOutlined, BellOutlined, ApartmentOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined,
 } from "@ant-design/icons";
 import { App as AntApp, ConfigProvider, Dropdown, Input, Modal, Popover } from "antd";
@@ -34,23 +34,27 @@ const fullNavItems: NavItem[] = [
   { key: "/team", icon: <ApartmentOutlined />, label: "团队" },
 ];
 const contactAutoDevNavItems: NavItem[] = [
-  { key: "/customers", icon: <UserOutlined />, label: "联系人" },
-  { key: "/assistant", icon: <MailOutlined />, label: "自动开发信" },
+  { key: "/customers", icon: <UserOutlined />, label: "客户" },
 ];
 const navItems = CONTACT_AUTODEV_EDITION ? contactAutoDevNavItems : fullNavItems;
 
 // 公司大模型正式接入前，先隐藏尚未开放的产品入口；路由和实现保留，后续只需打开开关。
 const SHOW_DASHBOARD_NAV = false;
 const SHOW_RATES_NAV = false;
-const SHOW_NEW_CONVERSATION_NAV = CONTACT_AUTODEV_EDITION;
+const SHOW_NEW_CONVERSATION_NAV = false;
 const SHOW_CONVERSATIONS_PANEL = false;
 
 // 豆包式空间让位：会话历史溢出时，这三行折叠进底栏图标，列表向上增高
-const collapsibleItems: NavItem[] = CONTACT_AUTODEV_EDITION ? [] : [
+const fullCollapsibleItems: NavItem[] = [
   { key: "/rates", icon: <DollarOutlined />, label: "运价库" },
   { key: "/campaigns", icon: <SendOutlined />, label: "发送中心" },
   { key: "/templates", icon: <FileTextOutlined />, label: "素材库" },
 ];
+const contactAutoDevCollapsibleItems: NavItem[] = [
+  { key: "/campaigns", icon: <SendOutlined />, label: "发送中心" },
+  { key: "/templates", icon: <FileTextOutlined />, label: "素材库" },
+];
+const collapsibleItems = CONTACT_AUTODEV_EDITION ? contactAutoDevCollapsibleItems : fullCollapsibleItems;
 const NAV_ROWS_H = 138; // 三行导航 ≈46px/行，折叠↔恢复的滞回阈值
 
 // ── 会话历史面板（豆包式：嵌在全局导航栏内，仅 AI 助手页显示） ──
@@ -349,7 +353,7 @@ export function Sidebar() {
         flexShrink: 0, display: "inline-flex",
         alignItems: "center", justifyContent: "center",
       }}>
-        {item.key === "/assistant" && !CONTACT_AUTODEV_EDITION
+        {item.key === "/assistant"
           ? <DiamondLogo size={15} state={agentBusy ? "running" : "idle"} />
           : item.icon}
       </span>
