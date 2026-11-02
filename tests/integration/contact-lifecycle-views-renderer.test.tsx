@@ -2,6 +2,7 @@
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Modal } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContactList } from '../../src/renderer/pages/contacts/ContactList';
 import { CompanyPage, type CompanyDataPort } from '../../src/renderer/pages/companies/CompanyPage';
@@ -18,7 +19,7 @@ describe('existing contact and company views after remote lifecycle changes', ()
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   });
-  afterEach(async () => { vi.useRealTimers(); await act(async () => root.unmount()); client.clear(); host.remove(); });
+  afterEach(async () => { vi.useRealTimers(); vi.restoreAllMocks(); await act(async () => root.unmount()); client.clear(); host.remove(); });
   it('places search and a labeled more menu beside the customer tabs without a count', async () => {
     const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }) } as unknown as ContactDataPort;
     function WithHeader() {
@@ -62,6 +63,23 @@ describe('existing contact and company views after remote lifecycle changes', ()
     expect(host.textContent).not.toContain('删除选中 (1)');
     await act(async () => { Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '取消选择')!.click(); await flush(); });
     expect(host.textContent).not.toContain('已选择 1 项');
+  });
+  it('hides center contacts immediately after confirmed delete and restores them if the center fails', async () => {
+    let finish!: (result: { success: boolean; error?: string }) => void;
+    const deleteBatch = vi.fn(() => new Promise<{ success: boolean; error?: string }>(resolve => { finish = resolve; }));
+    const confirm = vi.spyOn(Modal, 'confirm').mockReturnValue({ destroy: vi.fn(), update: vi.fn() } as never);
+    const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }), canDelete: () => true, deleteBatch } as unknown as ContactDataPort;
+    await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} /></QueryClientProvider>));
+    await act(flush);
+    await act(async () => { (host.querySelectorAll('input[type="checkbox"]')[1] as HTMLInputElement).click(); await flush(); });
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[title="删除选中的 1 个联系人"]')!.click(); await flush(); });
+    const onOk = (confirm.mock.calls[0]![0] as { onOk: () => Promise<void> }).onOk;
+    let pending!: Promise<void>;
+    await act(async () => { pending = onOk(); await flush(); });
+    expect(deleteBatch).toHaveBeenCalledWith([42]);
+    expect(host.textContent).not.toContain(contact.email);
+    await act(async () => { finish({ success: false, error: '中心不可用' }); await pending; await flush(); });
+    expect(host.textContent).toContain(contact.email);
   });
   it('keeps import and column controls in more operations with the existing offline limits', async () => {
     const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }), export: async () => ({ success: true, data: '' }) } as unknown as ContactDataPort;

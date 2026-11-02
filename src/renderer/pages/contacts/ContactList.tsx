@@ -275,14 +275,35 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
       content: dataPort ? "删除后不再参与匹配和新发送任务，历史记录保留。" : "将同时清除其跟进/发送记录并解除邮件关联，空壳公司一并回收。此操作不可撤销，建议先导出。",
       okText: "删除", okType: "danger", cancelText: "取消",
       onOk: async () => {
-        const r = await (dataPort ? dataPort.deleteBatch!(ids) : window.api.invoke("contacts:deleteBatch", ids)) as
-          { success: boolean; data?: { deleted: number; companiesRemoved: number }; error?: string };
-        r?.success
-          ? message.success(`已删除 ${r.data?.deleted ?? ids.length} 个联系人`)
-          : message.error(r?.error || "删除失败");
-        if(r.success)setSelectedRowKeys([]);
-        if(dataPort)for(const key of ["center-contacts","center-companies","center-company-detail","center-contact-detail","dashboard","search","center-assignment","inbox"])void qc.invalidateQueries({queryKey:[key]});
-        else invalidateDomain(qc, "contacts");
+        const previousSelection = selectedRowKeys;
+        const snapshots = dataPort ? qc.getQueriesData<{ success: boolean; data?: { items: Contact[]; total: number }; error?: string }>({ queryKey: ["center-contacts"] }) : [];
+        if (dataPort) {
+          const selected = new Set(ids);
+          for (const [key, previous] of snapshots) qc.setQueryData(key, previous && previous.success && previous.data ? (() => {
+            const items = previous.data.items.filter(item => !selected.has(item.id));
+            const clearsQuery = previous.data.items.every(item => selected.has(item.id)) && ids.length >= previous.data.total;
+            return { ...previous, data: { ...previous.data, items, total: clearsQuery ? 0 : Math.max(0, previous.data.total - (previous.data.items.length - items.length)) } };
+          })() : previous);
+          setSelectedRowKeys([]);
+        }
+        try {
+          const r = await (dataPort ? dataPort.deleteBatch!(ids) : window.api.invoke("contacts:deleteBatch", ids)) as
+            { success: boolean; data?: { deleted: number; companiesRemoved: number }; error?: string };
+          if (!r?.success) {
+            for (const [key, previous] of snapshots) qc.setQueryData(key, previous);
+            if (dataPort) setSelectedRowKeys(previousSelection);
+            message.error(r?.error || "删除失败");
+          } else {
+            message.success(`已删除 ${r.data?.deleted ?? ids.length} 个联系人`);
+            setSelectedRowKeys([]);
+          }
+          if(dataPort)for(const key of ["center-contacts","center-companies","center-company-detail","center-contact-detail","dashboard","search","center-assignment","inbox"])void qc.invalidateQueries({queryKey:[key]});
+          else invalidateDomain(qc, "contacts");
+        } catch {
+          for (const [key, previous] of snapshots) qc.setQueryData(key, previous);
+          if (dataPort) setSelectedRowKeys(previousSelection);
+          message.error("删除失败");
+        }
       },
     });
   };

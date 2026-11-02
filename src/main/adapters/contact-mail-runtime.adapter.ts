@@ -5,6 +5,7 @@ import { createContactMirrorStore } from './contact-mirror-store.adapter';
 import { createLegacyContactMapStore } from './legacy-contact-map-store.adapter';
 import { createLegacyContactSyncStore } from './legacy-contact-sync-store.adapter';
 import { getRawDb } from '../db';
+import { deleteContactsBatch } from '../services/contact.service';
 import { createContactMailSyncService } from '../services/contact-mail-sync.service';
 import { setInboxCenterContactPort, reconcileInboxCenterContacts, replayInboxCenterClassificationChanges } from '../services/inbox.service';
 import { readMailboxSnapshot } from './inbox-center-contact.adapter';
@@ -312,7 +313,14 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
       if(!commandReceipt&&currentAccess&&data&&typeof data==='object'&&'company' in data&&'activities' in data)saveDetail(current,data as CenterContactDetail);
       if(path==='/api/crm/contacts/delete'&&data&&typeof data==='object'&&'deleted' in data){
         sync.invalidate(current);
-        for(const ref of (data as import('../../../server/core/crm-lifecycle').ContactDeleteReceipt).deleted){mirror.store.forgetContact(current,ref);invalidateContact(current,ref);}
+        const deleted=(data as import('../../../server/core/crm-lifecycle').ContactDeleteReceipt).deleted;
+        for(const ref of deleted){mirror.store.forgetContact(current,ref);invalidateContact(current,ref);}
+        if(adapter.localPersonalDeleteAllowed())legacyContactMap.purgeMappedContacts(deleted,ids=>{
+          const result=deleteContactsBatch(ids);
+          if(result.success)return true;
+          Log.error('contact.localDelete',`本地个人联系人物理删除失败: ${result.error}`);
+          return false;
+        });
         changed();
       }
       if(!commandReceipt&&currentAccess)sync.observe(current,data);

@@ -76,6 +76,8 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   contactReadContext():OfflineCrmContext|null { return this.crmContext(); }
   /** Legacy SQLite migration is limited to ordinary sales identities. */
   legacyPersonalImportAllowed(): boolean { return !!this.identity && !this.identity.identityAdmin && this.identity.crmRoles.includes('sales'); }
+  /** Only an ordinary sales workspace may physically remove its own legacy SQLite records. */
+  localPersonalDeleteAllowed(): boolean { return this.legacyPersonalImportAllowed() && !this.identity?.crmRoles.some(role=>role==='admin'||role==='operations'); }
   private readonly responseObservers=new Set<(context:{baseUrl:string;userId:string},method:string,path:string,data:unknown)=>void>();
   onResponse(observer:(context:{baseUrl:string;userId:string},method:string,path:string,data:unknown)=>void):()=>void {this.responseObservers.add(observer);return()=>{this.responseObservers.delete(observer);};}
   /** A complete mirror scan must never substitute an old cached page for a center response. */

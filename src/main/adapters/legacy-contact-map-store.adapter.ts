@@ -1,5 +1,6 @@
 import type { Database as RawDb } from 'better-sqlite3';
 import type { CenterContact } from '../../../server/core/center-contacts';
+import type { CenterContactRef } from '../../../server/core/contact-assignments';
 import { LEGACY_CONTACT_MAP_DDL, mapLegacyContacts, type LegacyContactMapRow } from '../core/legacy-contact-map';
 
 export function createLegacyContactMapStore(raw: RawDb) {
@@ -19,5 +20,23 @@ export function createLegacyContactMapStore(raw: RawDb) {
     const row = raw.prepare('SELECT local_contact_id AS localContactId,center_customer_id AS centerCustomerId,center_contact_id AS centerContactId,state,reason,matched_at AS matchedAt FROM crm_legacy_contact_map WHERE local_contact_id=?').get(localContactId) as LegacyContactMapRow | undefined;
     return row;
   };
-  return { reconcile, get };
+  const localContactIds = (references: CenterContactRef[]): number[] => {
+    const select = raw.prepare("SELECT local_contact_id AS localContactId FROM crm_legacy_contact_map WHERE state='mapped' AND center_contact_id=? AND center_customer_id=?");
+    return [...new Set(references.flatMap(reference => {
+      const row = select.get(reference.contactId, reference.customerId) as { localContactId: number } | undefined;
+      return row ? [row.localContactId] : [];
+    }))];
+  };
+  const forgetLocalContacts = (ids: number[]): void => {
+    if (!ids.length) return;
+    const remove = raw.prepare('DELETE FROM crm_legacy_contact_map WHERE local_contact_id=?');
+    raw.transaction(() => { for (const id of ids) remove.run(id); })();
+  };
+  const purgeMappedContacts = (references: CenterContactRef[], remove: (ids: number[]) => boolean): number[] => {
+    const ids = localContactIds(references);
+    if (!ids.length || !remove(ids)) return [];
+    forgetLocalContacts(ids);
+    return ids;
+  };
+  return { reconcile, get, localContactIds, forgetLocalContacts, purgeMappedContacts };
 }
