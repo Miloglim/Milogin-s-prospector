@@ -1,7 +1,7 @@
 import { describe,it,expect,vi } from 'vitest';
 import {createCenterContactPort} from '../../src/renderer/pages/customers/centerContactPort';
 import {createCenterCompanyPort} from '../../src/renderer/pages/customers/centerCompanyPort';
-import {ONLINE_CHANNELS,type CenterContact} from '../../src/shared/online-crm';
+import {LIFECYCLE_LIMITS,ONLINE_CHANNELS,type CenterContact} from '../../src/shared/online-crm';
 const row={contactId:42,customerId:'12345678-1234-1234-1234-123456789abc',customerVersion:3,contactVersion:7,canDelete:true,tags:[],email:'test@example.invalid'} as unknown as CenterContact;
 describe('original CRM lifecycle adapters',()=>{
  it('keeps the same delete command after an unknown result and never calls legacy IDs',async()=>{
@@ -19,6 +19,37 @@ describe('original CRM lifecycle adapters',()=>{
   await port.list();
   expect(await port.delete(42)).toMatchObject({success:false,error:'联系人缺少中心编号或版本，请刷新后重试'});
   expect(invoke).toHaveBeenCalledTimes(1);
+ });
+ it('splits delete-all into bounded center batches and removes records only after all succeed',async()=>{
+  const total=LIFECYCLE_LIMITS.batch*2+1;
+  const rows=Array.from({length:total},(_,index)=>({...row,contactId:index+1,customerId:`${String(index+1).padStart(8,'0')}-1234-1234-1234-123456789abc`} as CenterContact));
+  const calls:Array<{contacts:unknown[]}>=[];
+  const invoke=vi.fn(async(channel,input)=>{
+    if(channel===ONLINE_CHANNELS.CONTACT_LIST)return {ok:true,data:{items:rows,total}};
+    calls.push(input as {contacts:unknown[]});
+    return {ok:true,data:{deleted:(input as {contacts:Array<{contactId:number;customerId:string}>}).contacts.map(contact=>({contactId:contact.contactId,customerId:contact.customerId,contactVersion:8}))}};
+  });
+  const port=createCenterContactPort({key:'k',invoke:invoke as never});
+  await port.list({pageSize:total});
+  expect(await port.deleteBatch!(rows.map(item=>item.contactId))).toMatchObject({success:true});
+  expect(calls.map(call=>call.contacts.length)).toEqual([LIFECYCLE_LIMITS.batch,LIFECYCLE_LIMITS.batch,1]);
+  expect(port.records.size).toBe(0);
+ });
+ it('keeps completed delete batches retry-safe when a later batch fails',async()=>{
+  const total=LIFECYCLE_LIMITS.batch*2+1;
+  const rows=Array.from({length:total},(_,index)=>({...row,contactId:index+1,customerId:`${String(index+1).padStart(8,'0')}-1234-1234-1234-123456789abc`} as CenterContact));
+  const calls:Array<{contacts:Array<{contactId:number}>;idempotencyKey:string}>=[];let failSecondBatch=true;
+  const invoke=vi.fn(async(channel,input)=>{
+    if(channel===ONLINE_CHANNELS.CONTACT_LIST)return {ok:true,data:{items:rows,total}};
+    const request=input as {contacts:Array<{contactId:number;customerId:string}>;idempotencyKey:string};calls.push(request);
+    if(failSecondBatch&&request.contacts[0]?.contactId===LIFECYCLE_LIMITS.batch+1){failSecondBatch=false;return {ok:false,error:{code:'UNAVAILABLE',message:'unknown'}};}
+    return {ok:true,data:{deleted:request.contacts.map(contact=>({contactId:contact.contactId,customerId:contact.customerId,contactVersion:8}))}};
+  });
+  const port=createCenterContactPort({key:'k',invoke:invoke as never});await port.list();const ids=rows.map(item=>item.contactId);
+  expect(await port.deleteBatch!(ids)).toMatchObject({success:false,error:`已删除 ${LIFECYCLE_LIMITS.batch} 个联系人，后续批次失败：unknown`});
+  expect(port.records.size).toBe(total);expect(await port.deleteBatch!(ids)).toMatchObject({success:true});
+  expect(calls.map(call=>call.contacts.length)).toEqual([LIFECYCLE_LIMITS.batch,LIFECYCLE_LIMITS.batch,LIFECYCLE_LIMITS.batch,LIFECYCLE_LIMITS.batch,1]);
+  expect(calls[0]!.idempotencyKey).toBe(calls[2]!.idempotencyKey);expect(calls[1]!.idempotencyKey).toBe(calls[3]!.idempotencyKey);expect(port.records.size).toBe(0);
  });
  it('starts a fresh add request after a terminal duplicate receipt',async()=>{
   let attempt=0;const calls:Array<Record<string,unknown>>=[];

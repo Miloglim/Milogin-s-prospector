@@ -1,6 +1,6 @@
 import {LEAD_IMPORT_FIELDS, leadImportMapping} from '../../../../server/core/lead-import-fields';
 import { importRowIssue } from '../../../../server/core/leads';
-import { ONLINE_CHANNELS, CENTER_CONTACT_LIMITS, centerContactDisplayStatus, centerContactRemark, type CenterContact, type CenterContactQuery, type CenterContactPage, type CenterContactDetail, type ContactDelete, type ContactDeleteReceipt, type Result, type ImportPreview, type ImportReceipt, type ImportRequest } from '../../../shared/online-crm';
+import { ONLINE_CHANNELS, CENTER_CONTACT_LIMITS, LIFECYCLE_LIMITS, centerContactDisplayStatus, centerContactRemark, type CenterContact, type CenterContactQuery, type CenterContactPage, type CenterContactDetail, type ContactDelete, type ContactDeleteReceipt, type Result, type ImportPreview, type ImportReceipt, type ImportRequest } from '../../../shared/online-crm';
 import type { Contact, ContactDataPort, ContactFilters } from '../../hooks/useContacts';
 import type { ImportDrawerPort, ImportExecutionResult } from '../../components/ImportDrawer';
 import { importFingerprint, prepareImportRequests } from './customerImport';
@@ -48,11 +48,22 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
     if(rows.some(row=>!row?.canDelete))return {success:false,error:"所选联系人不可删除"};
     if(rows.some(row=>!row||!UUID_PATTERN.test(row.customerId)||!Number.isSafeInteger(row.contactVersion??row.customerVersion)||(row.contactVersion??row.customerVersion)<1))return {success:false,error:"联系人缺少中心编号或版本，请刷新后重试"};
     const contacts=rows.map(row=>({contactId:row!.contactId,customerId:row!.customerId,expectedVersion:row!.contactVersion??row!.customerVersion}));
-    const signature=JSON.stringify(contacts);let request=deleteRequests.get(signature);if(!request){request={contacts,idempotencyKey:crypto.randomUUID()};deleteRequests.set(signature,request);}
-    const result=await invoke<ContactDeleteReceipt>(ONLINE_CHANNELS.CONTACT_DELETE,request);
-    if(!isCurrent())return {success:false,error:"账号或权限已变化"};
-    if(!result.ok){if(result.error.code==="CONFLICT")deleteRequests.delete(signature);return {success:false,error:result.error.message};}
-    result.data.deleted.forEach(row=>records.delete(row.contactId));deleteRequests.delete(signature);return {success:true};
+    const chunks: Array<typeof contacts>=[];
+    for(let offset=0;offset<contacts.length;offset+=LIFECYCLE_LIMITS.batch)chunks.push(contacts.slice(offset,offset+LIFECYCLE_LIMITS.batch));
+    let processed=0;
+    for(const chunk of chunks){
+      const signature=JSON.stringify(chunk);let request=deleteRequests.get(signature);if(!request){request={contacts:chunk,idempotencyKey:crypto.randomUUID()};deleteRequests.set(signature,request);}
+      const result=await invoke<ContactDeleteReceipt>(ONLINE_CHANNELS.CONTACT_DELETE,request);
+      if(!isCurrent())return {success:false,error:"账号或权限已变化"};
+      if(!result.ok){
+        if(result.error.code==="CONFLICT")deleteRequests.delete(signature);
+        return {success:false,error:processed?`已删除 ${processed} 个联系人，后续批次失败：${result.error.message}`:result.error.message};
+      }
+      processed+=result.data.deleted.length;
+    }
+    contacts.forEach(row=>records.delete(row.contactId));
+    for(const chunk of chunks)deleteRequests.delete(JSON.stringify(chunk));
+    return {success:true};
   }
   let creation: { signature: string; payload: ImportRequest } | null = null;
   const scans = new Map<string, ReturnType<CenterContactPort['readAll']>>();

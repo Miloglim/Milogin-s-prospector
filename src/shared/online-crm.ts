@@ -64,6 +64,7 @@ export interface CrmSyncIssue { id:string; customerId?:string; status:'failed'|'
 export interface CrmSyncStatus { connection:'online'|'offline'; syncing:boolean; pending:number; failed:number; conflicts:number; lastSyncedAt?:string; lastError?:string; issues:CrmSyncIssue[]; }
 export interface CrmSyncResolve { id:string; action:'retry'|'use-central'; }
 export type {ContactDelete,ContactDeleteReceipt,CompanyCreate,CompanyDelete,CompanyQuery,CompanyPage as CenterCompanyPage,CompanyDetail as CenterCompanyDetail,CenterCompany} from '../../server/core/crm-lifecycle';
+export { LIFECYCLE_LIMITS } from '../../server/core/crm-lifecycle';
 export const ONLINE_CHANNELS = {
   ACCOUNT_PROFILE:'online:account-profile',
   CONTACT_SHARES:'online:contact-shares', CONTACT_SHARE_CREATE:'online:contact-share-create', CONTACT_SHARE_DECIDE:'online:contact-share-decide', CONTACT_SHARE_UPDATE:'online:contact-share-update', CONTACT_SHARE_MEMBERS:'online:contact-share-members',
