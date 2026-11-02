@@ -96,6 +96,7 @@ npm test           # 单元与集成测试（vitest）
 npm run typecheck  # tsc --noEmit
 npm run build      # 三段构建（main / preload / renderer）
 npm run pack       # 打 Windows 安装包 → ../dist-release
+npm run package:contact-autodev -- -DownloadsRoot <目录> -CenterUrl <https-origin> -NavigatorUrl <https-origin> # 联系人+自动开发信定向包
 npm run eval:agent # AI 能力回归评测（需真实端点与 API key）
 ```
 
@@ -108,6 +109,7 @@ npm run eval:agent # AI 能力回归评测（需真实端点与 API key）
 | `EXA_API_KEY` / `TAVILY_API_KEY` | 联网检索源：公司背调与航线行情调研共用（都不配则这两类能力会明确报「未配置」） |
 | `KB_BASE_URL` / `KB_TOKEN` / `KB_APPLICATION_ID` | 公司内网 KB 中转（可选） |
 | `GH_TOKEN` / `GITHUB_TOKEN` | 读取 releases 与自动更新检查用（私有仓库或限流时需要） |
+| `VITE_PROSPECTOR_EDITION` | 构建期产品入口，`contact-autodev` 只开放联系人管理与自动开发信；默认完整版 |
 
 数据落在 `data/`、运行设置与端点档案在 `send/config.json`、`ai/providers.json`（均不入库）。
 

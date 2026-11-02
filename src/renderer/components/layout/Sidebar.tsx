@@ -3,7 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   DashboardOutlined, UserOutlined, SendOutlined,
   InboxOutlined, FileTextOutlined,
-  SettingOutlined, SearchOutlined, MoreOutlined, DollarOutlined, UpOutlined, BellOutlined, ApartmentOutlined,
+  SettingOutlined, SearchOutlined, MoreOutlined, DollarOutlined, UpOutlined, BellOutlined, ApartmentOutlined, MailOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined,
 } from "@ant-design/icons";
 import { App as AntApp, ConfigProvider, Dropdown, Input, Modal, Popover } from "antd";
@@ -18,6 +18,7 @@ import { drop as dropConv, useRunningConvIds } from "../../hooks/useAgentTranscr
 import { useOptionalNotifications } from '../../NotificationContext';
 import { useOptionalIdentity } from '../../IdentityContext';
 import { identityRoleLabel } from '../../../shared/online-crm';
+import { CONTACT_AUTODEV_EDITION } from '../../lib/product-edition';
 
 interface NavItem {
   key: string;
@@ -25,22 +26,27 @@ interface NavItem {
   label: string;
 }
 
-const navItems: NavItem[] = [
+const fullNavItems: NavItem[] = [
   { key: "/assistant", icon: <DiamondLogo size={15} state="idle" />, label: "新对话" },
   { key: "/", icon: <DashboardOutlined />, label: "仪表盘" },
   { key: "/inbox", icon: <InboxOutlined />, label: "收件箱" },
   { key: "/customers", icon: <UserOutlined />, label: "客户" },
   { key: "/team", icon: <ApartmentOutlined />, label: "团队" },
 ];
+const contactAutoDevNavItems: NavItem[] = [
+  { key: "/customers", icon: <UserOutlined />, label: "联系人" },
+  { key: "/assistant", icon: <MailOutlined />, label: "自动开发信" },
+];
+const navItems = CONTACT_AUTODEV_EDITION ? contactAutoDevNavItems : fullNavItems;
 
 // 公司大模型正式接入前，先隐藏尚未开放的产品入口；路由和实现保留，后续只需打开开关。
 const SHOW_DASHBOARD_NAV = false;
 const SHOW_RATES_NAV = false;
-const SHOW_NEW_CONVERSATION_NAV = false;
+const SHOW_NEW_CONVERSATION_NAV = CONTACT_AUTODEV_EDITION;
 const SHOW_CONVERSATIONS_PANEL = false;
 
 // 豆包式空间让位：会话历史溢出时，这三行折叠进底栏图标，列表向上增高
-const collapsibleItems: NavItem[] = [
+const collapsibleItems: NavItem[] = CONTACT_AUTODEV_EDITION ? [] : [
   { key: "/rates", icon: <DollarOutlined />, label: "运价库" },
   { key: "/campaigns", icon: <SendOutlined />, label: "发送中心" },
   { key: "/templates", icon: <FileTextOutlined />, label: "素材库" },
@@ -343,7 +349,7 @@ export function Sidebar() {
         flexShrink: 0, display: "inline-flex",
         alignItems: "center", justifyContent: "center",
       }}>
-        {item.key === "/assistant"
+        {item.key === "/assistant" && !CONTACT_AUTODEV_EDITION
           ? <DiamondLogo size={15} state={agentBusy ? "running" : "idle"} />
           : item.icon}
       </span>
@@ -427,8 +433,8 @@ export function Sidebar() {
           </button>
         </Dropdown></ConfigProvider>}
         <div className="sidebar-footer-actions">
-          {localAvailable && <GlobalSearch trigger={(onClick, active) => <FootIcon icon={<SearchOutlined />} label="全局搜索" active={active} onClick={onClick} />} />}
-          {session?.identity && <Popover
+          {localAvailable && !CONTACT_AUTODEV_EDITION && <GlobalSearch trigger={(onClick, active) => <FootIcon icon={<SearchOutlined />} label="全局搜索" active={active} onClick={onClick} />} />}
+          {session?.identity && !CONTACT_AUTODEV_EDITION && <Popover
             trigger="click"
             placement="rightBottom"
             open={messagesOpen}

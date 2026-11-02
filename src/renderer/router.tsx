@@ -10,11 +10,16 @@ import { TemplateList } from "./pages/templates/TemplateList";
 import { SettingsPage } from "./pages/settings/SettingsPage";
 import { AccountProfilePage } from './pages/settings/AccountProfilePage';
 import { TeamWorkspace } from './pages/team/TeamWorkspace';
+import { AutoDevelopmentPage } from './pages/auto-development/AutoDevelopmentPage';
+import { CONTACT_AUTODEV_EDITION, PRODUCT_EDITION, productEditionAllowsPath } from './lib/product-edition';
 
 import { MessagesPage } from './pages/messages/MessagesPage';
 
 const rootRoute = createRootRoute({
   component: () => <AppLayout />,
+  beforeLoad: ({ location }) => {
+    if (!productEditionAllowsPath(PRODUCT_EDITION, location.pathname)) throw redirect({ to: '/customers' });
+  },
 });
 
 const dashboardRoute = createRoute({
@@ -26,7 +31,7 @@ const dashboardRoute = createRoute({
 const assistantRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/assistant",
-  component: AssistantPage,
+  component: CONTACT_AUTODEV_EDITION ? AutoDevelopmentPage : AssistantPage,
 });
 
 const customersRoute = createRoute({

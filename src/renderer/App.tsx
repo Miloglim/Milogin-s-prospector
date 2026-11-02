@@ -11,6 +11,7 @@ import { NotificationProvider } from './NotificationContext';
 import { ProductLogin } from './components/ProductLogin';
 import { DiamondLogo } from './components/DiamondLogo';
 import { subscribeWorkspaceDark, workspaceDarkEnabled } from './lib/workspace-preferences';
+import { CONTACT_AUTODEV_EDITION } from './lib/product-edition';
 import './components/ProductLogin.css';
 
 function AppEmptyState() {
@@ -71,7 +72,7 @@ function IdentityGate() {
   const [pathname, setPathname] = useState(() => router.state.location.pathname);
   const enteredUser = useRef<string | null>(null);
   const [initialRoutePending, setInitialRoutePending] = useState(true);
-  const targetPath = session.localAvailable && session.status === 'offline' ? '/inbox' : '/customers';
+  const targetPath = !CONTACT_AUTODEV_EDITION && session.localAvailable && session.status === 'offline' ? '/inbox' : '/customers';
   useEffect(() => {
     setPathname(router.state.location.pathname);
     return router.subscribe('onResolved', () => setPathname(router.state.location.pathname));
@@ -79,7 +80,7 @@ function IdentityGate() {
   useEffect(() => {
     if (!session.identity) { enteredUser.current = null; setInitialRoutePending(true); return; }
     if (enteredUser.current !== session.identity.userId) setInitialRoutePending(true);
-    if (session.localAvailable && session.status === 'offline' && enteredUser.current !== session.identity.userId) void router.navigate({ to: '/inbox', replace: true });
+    if (!CONTACT_AUTODEV_EDITION && session.localAvailable && session.status === 'offline' && enteredUser.current !== session.identity.userId) void router.navigate({ to: '/inbox', replace: true });
     if (session.localAvailable) enteredUser.current = session.identity.userId;
     if (session.identity && !session.localAvailable && !session.identity.mustChangePassword) void router.navigate({ to: '/customers', replace: true });
   }, [session.identity?.userId, session.localAvailable, session.identity?.mustChangePassword, session.status]);
