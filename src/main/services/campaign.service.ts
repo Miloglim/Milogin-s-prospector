@@ -845,21 +845,22 @@ function signalIdentity(reference?: CenterContactRef, scope?: string) {
 }
 
 /** Recheck the campaign ledger after live authorization, immediately before SMTP. Manual sends bypass campaign stoploss. */
-export function canSendCenterCampaignItem(item: CenterSendItem): Result<void> {
+export function canSendCampaignItem(item: Pick<SendItem, "campaignId" | "centerScope" | "recipients">): Result<void> {
   if (!item.campaignId) return okResult(undefined);
   const db = getDb();
   const campaign = db.select().from(sendCampaigns).where(eq(sendCampaigns.id, item.campaignId)).get();
   if (!campaign || campaign.status !== "running") return failResult("发送任务已暂停或结束");
-  if (!item.centerScope || !item.recipients.length) return failResult("中心发送任务引用缺失");
+  if (!item.recipients.length) return failResult("发送任务收件人缺失");
   for (const recipient of item.recipients) {
-    if (!recipient.centerReference || recipient.contactId !== recipient.centerReference.contactId) return failResult("中心发送任务引用不一致");
+    if (recipient.centerReference && (!item.centerScope || recipient.contactId !== recipient.centerReference.contactId)) return failResult("中心发送任务引用不一致");
     const target = db.select({ id: sendCampaignTargets.id }).from(sendCampaignTargets).where(and(
       eq(sendCampaignTargets.campaignId, item.campaignId),
       eq(sendCampaignTargets.contactId, recipient.contactId),
       eq(sendCampaignTargets.status, "queued"),
-      signalIdentity(recipient.centerReference, item.centerScope),
+      recipient.centerReference ? signalIdentity(recipient.centerReference, item.centerScope) : targetIdentity(undefined, item.campaignId),
     )).get();
     if (!target) return failResult("联系人已停止本轮任务发送");
   }
   return okResult(undefined);
 }
+export function canSendCenterCampaignItem(item: CenterSendItem): Result<void> { return canSendCampaignItem(item); }

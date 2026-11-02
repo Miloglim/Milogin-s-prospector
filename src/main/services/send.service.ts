@@ -30,6 +30,17 @@ function notifyCampaign(action: 'sent' | 'failed', contactId: number, centerRefe
   }).catch(error => Log.error('send.campaignHook', error instanceof Error ? error.stack ?? error.message ?? String(error) : String(error)));
 }
 
+async function canStartCampaignSmtp(item: SendItem): Promise<Result<void>> {
+  if (!item.campaignId) return okResult(undefined);
+  try {
+    const campaign = await import('./campaign.service');
+    return campaign.canSendCampaignItem(item);
+  } catch (error) {
+    Log.error('send.campaignGate', '发送前任务状态检查失败', error instanceof Error ? error.stack : String(error));
+    return failResult('发送前任务状态无法确认，已停止本封发送');
+  }
+}
+
 
 // ── 类型 ──
 
@@ -1580,6 +1591,14 @@ async function runBatchLoop(): Promise<void> {
             sendingDb.update(sendQueue).set({ status: 'failed', errorKind: 'blocked', error: item.error }).where(eq(sendQueue.id, item.id)).run();
             if (loopGen === myGen) { saveDatabase(); pauseSend(); } continue;
           }
+        }
+        const campaignGate = await canStartCampaignSmtp(item);
+        if (!campaignGate.success || loopGen !== myGen) {
+          item.status = 'failed'; item.errorKind = 'blocked'; item.error = campaignGate.success ? '账号状态已变化，发送已暂停' : campaignGate.error;
+          sendingDb.update(sendQueue).set({ status: 'failed', errorKind: 'blocked', error: item.error }).where(eq(sendQueue.id, item.id)).run();
+          for (const recipient of item.recipients) notifyCampaign('failed', recipient.contactId, recipient.centerReference, item.campaignId);
+          if (loopGen === myGen) saveDatabase();
+          continue;
         }
         // Durable in-flight marker must precede SMTP; a crash cannot imply safe retry.
         sendingDb.update(sendQueue).set({ status: 'sending' }).where(eq(sendQueue.id, item.id)).run();

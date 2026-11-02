@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/sql-js";
 import * as path from "path";
 import * as schema from "../../src/main/db/schema";
 import * as SendService from "../../src/main/services/send.service";
+import * as CampaignService from "../../src/main/services/campaign.service";
 import { okResult, failResult, type Result } from "../../src/main/errors";
 import { eq } from "drizzle-orm";
 
@@ -84,6 +85,19 @@ CREATE TABLE templates (
   name text NOT NULL, language text NOT NULL, subject text NOT NULL, body text NOT NULL,
   category text, stage text, version integer DEFAULT 1 NOT NULL, is_active integer DEFAULT 1 NOT NULL,
   created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE TABLE send_campaigns (
+  id text PRIMARY KEY NOT NULL, name text NOT NULL, status text DEFAULT 'running' NOT NULL,
+  auto_send integer DEFAULT 1 NOT NULL, target_filter_json text DEFAULT '{}' NOT NULL,
+  touch_plan_json text NOT NULL, created_by text DEFAULT 'agent' NOT NULL,
+  account_policy text DEFAULT 'rotate' NOT NULL, account_ids_json text, schedule_json text,
+  send_mode text DEFAULT 'individual' NOT NULL,
+  created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE TABLE send_campaign_targets (
+  id integer PRIMARY KEY AUTOINCREMENT NOT NULL, campaign_id text NOT NULL, contact_id integer NOT NULL,
+  center_reference_json text, status text DEFAULT 'pending' NOT NULL, round integer DEFAULT 0 NOT NULL,
+  next_touch_at text, last_sent_at text, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 CREATE TABLE send_queue (
   id text PRIMARY KEY NOT NULL, batch_id text NOT NULL, campaign_id text,
@@ -395,6 +409,10 @@ describe("发信管线沙箱演练（生产前逐环节验证）", () => {
     }
     const idsA = ids.slice(0, 4);
     const idsB = ids.slice(4, 8);
+    for (const [tag, campaignIds] of [["a", idsA], ["b", idsB]] as const) {
+      db.insert(schema.sendCampaigns).values({ id: `cam-${tag}`, name: `Campaign ${tag}`, status: "running", touchPlanJson: JSON.stringify([{ stage: "initial", delayDays: 0 }]) }).run();
+      for (const contactId of campaignIds) db.insert(schema.sendCampaignTargets).values({ campaignId: `cam-${tag}`, contactId, status: "queued", round: 0, updatedAt: new Date().toISOString() }).run();
+    }
     const mk = (tag: string, ids: number[]) => ids.map((cid, i) => ({
       id: `s8-${tag}-${i}`, companyName: tag.toUpperCase() + i, companyId: 0,
       recipients: [{ contactId: cid, email: `${tag}${i}@t.com`, name: tag.toUpperCase() + i }],
@@ -432,6 +450,36 @@ describe("发信管线沙箱演练（生产前逐环节验证）", () => {
     expect(rows.every(x => x.status === "sent")).toBe(true);
     expect(new Set(rows.map(x => x.batchId)).size).toBe(1); // 追加不产生新批次
   }, 25000);
+
+  it("发送前最终检查：联系人已回复时阻止任务队列中的下一封进入 SMTP", async () => {
+    const db = await newSandbox();
+    seedAccounts(db);
+    const cid = companyId(db, (seedCompany(db, "Reply Guard"), "Reply Guard"));
+    addContact(db, "replied@reply.test", "Replied", cid);
+    const contactId = db.select().from(schema.contacts).where(eq(schema.contacts.email, "replied@reply.test")).get()!.id;
+    const campaignId = "campaign-reply-gate";
+    db.insert(schema.sendCampaigns).values({
+      id: campaignId, name: "Reply gate", status: "running", touchPlanJson: JSON.stringify([{ stage: "initial", delayDays: 0 }]),
+    }).run();
+    db.insert(schema.sendCampaignTargets).values({
+      campaignId, contactId, status: "queued", round: 0, updatedAt: new Date().toISOString(),
+    }).run();
+    CampaignService.onContactSignal(contactId, "replied");
+
+    const item = {
+      id: "queued-after-reply", companyName: "Reply Guard", companyId: cid,
+      recipients: [{ contactId, email: "replied@reply.test", name: "Replied" }],
+      accountId: db.select().from(schema.emailAccounts).get()!.id,
+      subject: TPL.subject, tplBody: TPL.body, contactVars: {}, status: "pending" as const, campaignId,
+    };
+    const started = await SendService.startQueue([item], true);
+    expect(started.success).toBe(true);
+    await waitForDone();
+    expect(sendCalls).toHaveLength(0);
+    expect(db.select().from(schema.sendQueue).where(eq(schema.sendQueue.id, item.id)).get()).toMatchObject({
+      status: "failed", errorKind: "blocked",
+    });
+  }, 15000);
 
   it("S5 动态发信：自定义正文渲染 + CC 落库", async () => {
     const db = await newSandbox();

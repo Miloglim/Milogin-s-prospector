@@ -879,5 +879,14 @@ describe("center campaign identity", () => {
     expect(campaign.canSendCenterCampaignItem(item).success).toBe(false);
     expect(campaign.canSendCenterCampaignItem({...item,campaignId:undefined}).success).toBe(true);
   });
+  it('blocks a queued legacy campaign item after a reply and leaves manual sends untouched', () => {
+    const created=campaign.createCampaign({name:'legacy-stop',contactIds:[1],touches:[{stage:'initial',delayDays:0}]});
+    const item={id:'legacy-queued',campaignId:created.data!.id,recipients:[{contactId:1,email:'a@x.com',name:'A'}],accountId:1,subject:'Hi',companyName:'Co'};
+    h.db.update(schema.sendCampaignTargets).set({status:'queued'}).where(eq(schema.sendCampaignTargets.campaignId,created.data!.id)).run();
+    expect(campaign.canSendCampaignItem(item).success).toBe(true);
+    campaign.onContactSignal(1,'replied');
+    expect(campaign.canSendCampaignItem(item).success).toBe(false);
+    expect(campaign.canSendCampaignItem({...item,campaignId:undefined}).success).toBe(true);
+  });
 
 });

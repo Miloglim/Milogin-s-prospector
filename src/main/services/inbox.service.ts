@@ -797,7 +797,9 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
               try {
                 const kind = m.classification === "bounce" ? "bounce"
                   : m.classification === "autoreply" ? "autoreply" : "replied";
-                void import("./campaign.service").then(cm => cm.onContactSignal(cid, kind));
+                void import("./campaign.service")
+                  .then(cm => cm.onContactSignal(cid, kind))
+                  .catch(error => Log.error("campaign.stoploss", "收信止损联动失败", error instanceof Error ? error.stack : String(error)));
               } catch { /* 止损联动失败不影响收信 */ }
             }
           }
