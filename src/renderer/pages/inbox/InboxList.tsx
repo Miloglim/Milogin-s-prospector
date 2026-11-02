@@ -75,11 +75,11 @@ const TYPE: Record<string, MailTypeMeta> = {
 
 const FILTERS = [
   { key: "all", label: "全部" },
-  { key: "sent", label: "已发送", dot: "#2563eb" },
-  { key: "replied", label: "回复", dot: "#22a644" },
-  { key: "autoreply", label: "自动回复", dot: "#e6a817" },
-  { key: "bounce", label: "退信", dot: "#e5484d" },
-  { key: "other", label: "其他", dot: "#8b8b8b" },
+  { key: "sent", label: "已发送" },
+  { key: "replied", label: "回复" },
+  { key: "autoreply", label: "自动回复" },
+  { key: "bounce", label: "退信" },
+  { key: "other", label: "其他" },
 ];
 
 const INTENT_LABELS: Record<string, string> = {
@@ -908,7 +908,6 @@ export function InboxList() {
         <div className="inbox-filter-bar">
           {FILTERS.map(f => <button key={f.key} type="button" onClick={() => setFilter(f.key)}
             className={`inbox-filter-tab${filter === f.key ? " is-active" : ""}`}>
-            {"dot" in f && <span style={{ color: f.dot }}>●</span>}
             {f.label}
             {f.key !== "all" && (nCounts[f.key] ?? 0) > 0 && <span className="inbox-filter-unread">●</span>}
           </button>)}

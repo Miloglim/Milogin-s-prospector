@@ -54,6 +54,7 @@ describe('inbox full-screen layout', () => {
     expect(inbox).toContain('<Segmented');
     expect(inbox).toContain('block');
     expect(inbox).toContain('className={`inbox-filter-tab${filter === f.key ? " is-active" : ""}`}');
+    expect(inbox).not.toContain('{"dot" in f');
     expect(inbox).toContain('onClick={syncRunning ? () => setFetchProgressOpen(true) : doFetch}');
     expect(inbox).toContain('已拉取 ${row.current} / 共需拉取 ${row.required}');
     expect(inbox).toContain('<Button onClick={() => setFetchProgressOpen(false)}>转入后台</Button>');
