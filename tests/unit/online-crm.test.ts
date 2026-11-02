@@ -1,8 +1,9 @@
 import {describe,it,expect,vi} from 'vitest';
 import {randomBytes} from 'node:crypto';
 vi.mock('electron',()=>({dialog:{showOpenDialog:vi.fn()}}));
-vi.mock('../../src/main/logger',()=>({Log:{error:vi.fn()}}));
+vi.mock('../../src/main/logger',()=>({Log:{error:vi.fn(),warn:vi.fn()}}));
 import {OnlineCrmAdapter} from '../../src/main/adapters/online-crm.adapter';
+import {Log} from '../../src/main/logger';
 import {validateCenterBase} from '../../src/main/core/center-endpoint';
 import {createOnlineCrmService} from '../../src/main/services/online-crm.service';
 import {failure,success} from '../../server/core/crm';
@@ -36,6 +37,25 @@ describe('desktop center isolation',()=>{
     expect(JSON.parse(fetcher.mock.calls[0]![1].body as string)).toMatchObject({desktop:{...desktop,replaceActiveDevice:true}});
     expect(await client.status()).toMatchObject({ok:false,error:{code:'DEVICE_REPLACED'}});
     expect(client.currentIdentity()).toBeNull();expect(clear).toHaveBeenCalledOnce();
+  });
+  it('retries without device fields when an older center rejects the new login contract',async()=>{
+    const token=randomBytes(32).toString('base64url');
+    const fetcher=vi.fn(async(url:string,init:RequestInit)=>{
+      if(url.endsWith('/login')){
+        const body=JSON.parse(init.body as string) as Record<string,unknown>;
+        return body.desktop?new Response(JSON.stringify(failure('INVALID_INPUT','登录参数无效'))):json({token,identity});
+      }
+      if(url.endsWith('/me'))return json(identity);
+      return json(undefined);
+    });
+    const desktop={product:'crm' as const,deviceId:'legacy-center-device',deviceName:'Office PC',platform:'win32',appVersion:'0.71.0'};
+    const client=new OnlineCrmAdapter(fetcher as unknown as typeof fetch,undefined,undefined,undefined,'http://127.0.0.1:55844',desktop);
+    const logged=await client.login({baseUrl:'http://127.0.0.1:55844',email:identity.email,password:'synthetic-password'});
+    expect(Log.error).not.toHaveBeenCalled();
+    expect(Log.warn).toHaveBeenCalledWith('online.login','中心不支持设备登录契约，改用旧版兼容登录');
+    expect(logged).toEqual(success(identity));
+    const loginBodies=fetcher.mock.calls.filter(([url])=>String(url).endsWith('/login')).map(([,init])=>JSON.parse(String(init?.body)) as Record<string,unknown>);
+    expect(loginBodies).toHaveLength(2);expect(loginBodies[0]).toHaveProperty('desktop');expect(loginBodies[1]).not.toHaveProperty('desktop');
   });
   it('keeps bearer out of renderer login result and invalidates in-flight old identity reads',async()=>{
     const token=randomBytes(32).toString('base64url');let finish:((value:Response)=>void)|undefined;

@@ -336,14 +336,20 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
       if(generation!==this.generation)return failure('UNAUTHORIZED','登录已取消');
       this.changed();
       const desktop=this.desktopDevice?{...this.desktopDevice,...(input.replaceActiveDevice?{replaceActiveDevice:true}:{})}:undefined;
-      const result=await this.raw<DesktopLoginResponse>('POST',DESKTOP_AUTH_ROUTES.login,{email:input.email,password:input.password,...(desktop?{desktop}:{})});
+      const credentials={email:input.email,password:input.password};
+      let result=await this.raw<DesktopLoginResponse>('POST',DESKTOP_AUTH_ROUTES.login,{...credentials,...(desktop?{desktop}:{})});
+      if(!result.ok&&desktop&&result.error.code==='INVALID_INPUT'&&result.error.message==='登录参数无效'){
+        // Older centers predate the desktop-device contract and reject the extra field before password verification.
+        Log.warn?.('online.login','中心不支持设备登录契约，改用旧版兼容登录');
+        result=await this.raw<DesktopLoginResponse>('POST',DESKTOP_AUTH_ROUTES.login,credentials);
+      }
       if(generation!==this.generation) return failure('UNAUTHORIZED','登录已取消');
       if(!result.ok) return result;
       const accepted=await this.accept(result.data,generation);if(!accepted.ok)return accepted;
       const me=await this.request<Identity>('GET',DESKTOP_AUTH_ROUTES.me);
       if(me.ok && generation===this.generation){this.identity=me.data;this.changed();}
       return me;
-    } catch(error) { Log.error('online.login',`登录状态保存失败 (${error instanceof Error?error.name:'unknown'})`);if(generation===this.generation)await this.forget();return failure('UNAVAILABLE','登录状态无法安全保存，请重试'); }
+    } catch(error) { const message=error instanceof Error?`${error.name}: ${error.message}`:'unknown';Log.error('online.login',`登录状态保存失败 (${message})`,error instanceof Error?error.stack:undefined);if(generation===this.generation)await this.forget();return failure('UNAVAILABLE','登录状态无法安全保存，请重试'); }
   }
   accountProfile():Promise<Result<AccountProfile>> { return this.request<AccountProfile>('GET',API_ROUTES.accountProfile); }
   async logout(input?:OnlineLogout):Promise<Result<void>> {
