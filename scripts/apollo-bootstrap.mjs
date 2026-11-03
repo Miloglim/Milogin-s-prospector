@@ -5,7 +5,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_METADATA = "http://apollo.qa4.yqn.corp:8080";
 const DEFAULT_CLUSTER = "qa4";
 const DEFAULT_NAMESPACE = "application";
-const DEFAULT_APP_NAME = "yqn_prospector";
+const DEFAULT_APP_ID = "22124";
 
 function enabled(name) {
   return ["1", "true", "yes", "on"].includes(String(process.env[name] || "").trim().toLowerCase());
@@ -32,7 +32,7 @@ async function fetchJson(url, context = "") {
 async function applyApolloEnvironment() {
   if (enabled("APOLLO_DISABLE")) return;
 
-  const appId = required("APP_NAME", DEFAULT_APP_NAME);
+  const appId = required("APP_ID", required("APP_PORT", DEFAULT_APP_ID));
   const cluster = required("YQN_APOLLO_CLUSTER", DEFAULT_CLUSTER);
   const namespace = required("APOLLO_NAMESPACE", DEFAULT_NAMESPACE);
   const metadata = required("YQN_APOLLO_METADATA", DEFAULT_METADATA).replace(/\/+$/, "");

@@ -13,6 +13,7 @@ ENV APP_PORT=${APP_PORT} \
     ENV=${ENV} \
     IMAGE_TAG=${IMAGE_TAG} \
     CODE_VERSION=${GIT_COMMIT} \
+    APP_ID=22124 \
     APP_NAME=yqn_prospector \
     YQN_APOLLO_CLUSTER=qa4 \
     YQN_APOLLO_METADATA=http://apollo.qa4.yqn.corp:8080 \
