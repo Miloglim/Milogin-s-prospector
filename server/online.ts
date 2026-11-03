@@ -4,7 +4,7 @@ import {SEND_ACCEPTANCE_ROUTES} from './core/send-acceptance';
 import {createContactSharingService} from './services/contact-sharing';
 import {createContactSharingHandler} from './transport/contact-sharing-http';
 import { Pool } from "pg";
-import { readOnlineDatabaseConfig } from "./adapters/postgres/config";
+import { resolveOnlineDatabaseConfig } from "./adapters/postgres/config";
 import { PostgresCrmRepository } from "./adapters/postgres/repository";
 import { PostgresAuthRepository } from "./adapters/postgres/auth-repository";
 import { PasswordAdapter,tokenAdapter } from "./adapters/password";
@@ -83,7 +83,7 @@ import { SALES_PERFORMANCE_ROUTES } from './core/sales-performance';
 const EXIT_FAILED = 1;
 const SHUTDOWN_TIMEOUT_MS = 5000;
 async function main() {
-  const config=readOnlineConfig(), pool=new Pool(readOnlineDatabaseConfig());
+  const config=readOnlineConfig(), pool=new Pool(await resolveOnlineDatabaseConfig());
   let started=false;
   try {
     const crm=new PostgresCrmRepository(pool,serverLog), repo=new PostgresAuthRepository(pool,serverLog);

@@ -5959,6 +5959,70 @@ var MAX_PORT = 65535;
 var PRODUCTION_SEARCH_PATH = "prospector,public";
 var PRODUCTION_OPTIONS = `-c search_path=${PRODUCTION_SEARCH_PATH}`;
 var CRM_CONFIG_RELATIVE_PATH = ".work/pg-crm/config.json";
+var import_node_crypto31 = require("node:crypto");
+var KMS_SALT = "default_salt";
+var KMS_RANDOM_ALPHABET = "1234567890!@#$%^&*()_+=-";
+var KMS_RANDOM_LENGTH = 6;
+function kmsText(value2) {
+  return typeof value2 === "string" ? value2.trim() : "";
+}
+function postgresKmsSecretName(env) {
+  return kmsText(env.PROSPECTOR_CENTER_PG_KMS_SECRET) || kmsText(env["postgres.password"]);
+}
+function kmsRandomNonce() {
+  let value2 = "";
+  for (let index = 0; index < KMS_RANDOM_LENGTH; index += 1) {
+    value2 += KMS_RANDOM_ALPHABET[(0, import_node_crypto31.randomInt)(KMS_RANDOM_ALPHABET.length)];
+  }
+  return value2;
+}
+function kmsCredentialFromSecret(raw) {
+  let value2;
+  try {
+    value2 = JSON.parse(raw);
+  } catch {
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
+  }
+  if (!value2 || typeof value2 !== "object" || Array.isArray(value2))
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
+  const username = kmsText(value2.AccountName) || kmsText(value2.username);
+  const password = kmsText(value2.AccountPassword) || kmsText(value2.password);
+  if (!username || !password)
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
+  return { username, password };
+}
+async function resolvePostgresKmsCredential(env = process.env, request2 = (input, init) => fetch(input, init)) {
+  const secretName = postgresKmsSecretName(env);
+  const cluster = kmsText(env.YQN_APOLLO_CLUSTER);
+  const appId = kmsText(env.YQN_APOLLO_APP_ID) || kmsText(env.APP_PORT);
+  if (!secretName || !/^[a-z0-9][a-z0-9-]{0,62}$/i.test(cluster) || !/^\d{1,10}$/.test(appId))
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u914D\u7F6E\u4E0D\u5B8C\u6574");
+  const timestamp = String(Date.now());
+  const random = kmsRandomNonce();
+  const sign = (0, import_node_crypto31.createHash)("sha256").update([appId, cluster, timestamp, random, KMS_SALT].join("|")).digest("base64");
+  const endpoint = `http://42069.${cluster}.yqn.corp:42069/aliyun/kms/secret`;
+  let response;
+  let responseBody;
+  try {
+    response = await request2(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ header: {}, model: { secretName, env: cluster, appId, timestamp, random, sign } })
+    });
+    responseBody = await response.json();
+  } catch {
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u8BF7\u6C42\u5931\u8D25");
+  }
+  if (!response.ok || !responseBody || typeof responseBody !== "object" || Array.isArray(responseBody))
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u8BF7\u6C42\u5931\u8D25");
+  const data = responseBody.data;
+  if (responseBody.code !== 200 || !data || typeof data !== "object" || Array.isArray(data))
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u8BF7\u6C42\u5931\u8D25");
+  const secretValue = kmsText(data.secretValue);
+  if (!secretValue)
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
+  return kmsCredentialFromSecret(secretValue);
+}
 function productionHost(env) {
   const host = (env.PROSPECTOR_CENTER_PG_HOST || LOCAL_HOST).trim();
   if (!/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/i.test(host))
@@ -6031,8 +6095,29 @@ function readOnlineDatabaseConfig(env = process.env) {
     return readProductionDatabaseConfig(env);
   throw new Error("\u672A\u77E5\u4E2D\u5FC3\u8FD0\u884C\u6A21\u5F0F");
 }
+async function resolveOnlineDatabaseConfig(env = process.env, loadCredential = resolvePostgresKmsCredential) {
+  if (env.PROSPECTOR_CENTER_MODE !== "production" || !postgresKmsSecretName(env))
+    return readOnlineDatabaseConfig(env);
+  const credential = await loadCredential(env);
+  const resolved = {
+    ...env,
+    PROSPECTOR_CENTER_PG_USER: credential.username,
+    PROSPECTOR_CENTER_PG_PASSWORD: credential.password
+  };
+  delete resolved.PROSPECTOR_CENTER_PG_DSN;
+  return readProductionDatabaseConfig(resolved);
+}
 function assertCenterDatabasePool(pool, env = process.env) {
-  const expected = readOnlineDatabaseConfig(env);
+  let expectedEnv = env;
+  if (env.PROSPECTOR_CENTER_MODE === "production" && postgresKmsSecretName(env)) {
+    expectedEnv = {
+      ...env,
+      PROSPECTOR_CENTER_PG_USER: String(pool.options.user || ""),
+      PROSPECTOR_CENTER_PG_PASSWORD: "kms-resolved"
+    };
+    delete expectedEnv.PROSPECTOR_CENTER_PG_DSN;
+  }
+  const expected = readOnlineDatabaseConfig(expectedEnv);
   if (pool.options.host !== expected.host || pool.options.port !== expected.port || pool.options.database !== expected.database || pool.options.user !== expected.user) {
     throw new Error(env.PROSPECTOR_CENTER_MODE === "production" ? "\u4E2D\u5FC3\u6570\u636E\u5E93\u8FDE\u63A5\u4E0E\u8FD0\u884C\u6A21\u5F0F\u4E0D\u5339\u914D" : "\u4E2D\u5FC3\u4EC5\u5141\u8BB8\u9694\u79BB\u6D4B\u8BD5\u6570\u636E\u5E93");
   }
@@ -19076,7 +19161,7 @@ function createSalesPerformanceHandler(service) {
 var EXIT_FAILED = 1;
 var SHUTDOWN_TIMEOUT_MS = 5e3;
 async function main() {
-  const config = readOnlineConfig(), pool = new Pool(readOnlineDatabaseConfig());
+  const config = readOnlineConfig(), pool = new Pool(await resolveOnlineDatabaseConfig());
   let started = false;
   try {
     const crm = new PostgresCrmRepository(pool, serverLog), repo = new PostgresAuthRepository(pool, serverLog);

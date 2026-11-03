@@ -647,3 +647,11 @@
 - 修改：前端增加只存在于渲染层的“超级管理员 → 公司 → 运营组/直属团队”结构。超级管理员卡片的成员列表只使用当前已认证超管身份，未把 `YQN Admin` 等混合团队当超管组；所有真实团队保留在公司下游。团队卡明确显示“群主”，点击展开成员，再点击成员复用 `online:team-monitoring-member` 查看近期动作、关注项和邮件摘要。
 - 验证：团队布局与渲染 29 项通过；真实 Electron 验证虚拟超管根、公司层、群主标签、卡片展开、成员监控抽屉、滚动缩放和 1440/1040/824 布局，页面错误 0。
 - 边界：现有后端没有“全部超级管理员名单”接口，因此虚拟超管团队只能列出当前登录的超管身份；其他超管账号不会由前端猜测。未新增 HTTP、IPC、数据库字段或迁移。
+
+### QA4 中心因数据库 KMS 密钥名被当作明文密码而启动失败
+
+- 现象：QA4 中心启动时报“缺少正式中心数据库连接配置”；补入数据库变量后又因认证失败而无法就绪。
+- 原因：Apollo 的 `postgres.password` 保存的是 KMS 密钥名，旧中心只读取明文 `PROSPECTOR_CENTER_PG_PASSWORD`，没有在创建 PostgreSQL 连接池前解析公司 KMS 凭据。首轮适配上线后又确认 QA4 注入层会过滤带点号的键，实例只加载 7 项配置并回退旧明文路径，PostgreSQL 返回 `28P01`。
+- 修改：新增签名 KMS 凭据适配器；生产模式优先解析可注入的 `PROSPECTOR_CENTER_PG_KMS_SECRET`，并保留 `postgres.password` 兼容路径，用返回的账号和密码构造固定 `milogin_center`、`prospector,public` 搜索路径的连接池。仓储层连接边界也支持已解析的 KMS 连接池，不再依赖旧明文密码变量。QA4 Apollo 已发布两个 KMS 密钥名配置和 `PROSPECTOR_CENTER_PG_USER=yqnroot`。
+- 验证：KMS 解析、优先级、Apollo 点号键过滤、错误脱敏、路由元数据和无旧明文密码连接池校验共 6 项单元测试通过；服务端入口 esbuild 解析、预构建包 Node 语法和 `git diff --check` 通过；只读数据库连通性此前已验证。
+- 边界：代码尚未部署到 QA4，现有实例仍运行旧镜像；旧 `PROSPECTOR_CENTER_PG_PASSWORD` 配置暂未删除，但新适配器会忽略它。部署后仍需核对 Apollo 实例版本与 `/health/live`、`/health/ready`。
