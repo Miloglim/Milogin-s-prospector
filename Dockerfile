@@ -13,6 +13,11 @@ ENV APP_PORT=${APP_PORT} \
     ENV=${ENV} \
     IMAGE_TAG=${IMAGE_TAG} \
     CODE_VERSION=${GIT_COMMIT} \
+    APP_NAME=yqn_prospector \
+    YQN_APOLLO_CLUSTER=qa4 \
+    YQN_APOLLO_METADATA=http://apollo.qa4.yqn.corp:8080 \
+    APOLLO_NAMESPACE=application \
+    APOLLO_REQUIRED=1 \
     UV_THREADPOOL_SIZE=1 \
     PROSPECTOR_CENTER_MODE=production \
     PROSPECTOR_CENTER_BIND_HOST=0.0.0.0 \
@@ -28,6 +33,7 @@ WORKDIR /opt/web/ws-${APP_PORT}
 
 COPY deploy/prospector-prebuilt/dist-server ./dist-server
 COPY deploy/prospector-prebuilt/dist-admin ./dist-admin
+COPY scripts/apollo-bootstrap.mjs ./apollo-bootstrap.mjs
 
 RUN chown -R node:node /opt/web/ws-${APP_PORT} /var/lib/prospector-center
 
@@ -39,4 +45,4 @@ EXPOSE ${APP_PORT}
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node --single-threaded --v8-pool-size=0 -e "fetch('http://127.0.0.1:'+process.env.APP_PORT+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "--single-threaded", "--v8-pool-size=0", "dist-server/adapters/online.cjs"]
+CMD ["node", "--single-threaded", "--v8-pool-size=0", "apollo-bootstrap.mjs", "dist-server/adapters/online.cjs"]
