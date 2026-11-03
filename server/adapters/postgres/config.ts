@@ -92,7 +92,7 @@ export async function resolveOnlineDatabaseConfig(
     return readOnlineDatabaseConfig(env);
   }
   const credential = await loadCredential(env);
-  const resolved = {
+  const resolved: NodeJS.ProcessEnv = {
     ...env,
     PROSPECTOR_CENTER_PG_USER: credential.username,
     PROSPECTOR_CENTER_PG_PASSWORD: credential.password,
