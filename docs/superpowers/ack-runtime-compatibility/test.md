@@ -10,16 +10,21 @@ Date: 2026-11-03
 - `npx vitest run tests/unit/docker-runtime-contract.test.ts`
   - RED: 1 failed because the Dockerfile did not install `curl` or create the standard log directory.
   - GREEN: 1 passed after updating the Dockerfile.
+  - Release regression: Jenkins build `460057` failed before deployment because the internal Node image's Debian metadata could not verify archive signatures (`NO_PUBKEY`, exit 100).
+  - RED: 1 failed and 1 passed after changing the contract to require a pinned internal curl tool stage with no apt commands.
+  - GREEN: 2 passed after exporting curl and its non-system shared libraries from the pinned tool image.
 
 ## Final focused verification
 
 - `npm run typecheck`: passed.
 - `npm run crm:pg:build`: passed after adding the missing `ProcessEnv` type annotation to the existing KMS resolution code.
-- `npx vitest run tests/unit/online-http-actuator.test.ts tests/unit/docker-runtime-contract.test.ts tests/unit/center-kms-credential.test.ts`: 3 files passed, 11 tests passed.
+- `npx vitest run tests/unit/online-http-actuator.test.ts tests/unit/docker-runtime-contract.test.ts tests/unit/center-kms-credential.test.ts`: 3 files passed, 12 tests passed.
 - `node scripts/build-prospector-prebuilt.mjs`: passed after first generating the worktree-local `dist-admin` with `npm run crm:admin:build`.
 - `node --check deploy/prospector-prebuilt/dist-server/adapters/online.cjs`: passed.
 - Bundle search confirmed `/actuator/info`, `/actuator/prometheus`, and `prospector_center_up` are present.
 - `git diff --check d30e3cf..HEAD`: passed.
+- `python3 -m py_compile deploy/export_curl_runtime.py`: passed.
+- Curl dependency parser sample check: passed and excluded the final image's system C runtime.
 
 ## Full-suite result
 
@@ -27,5 +32,5 @@ Date: 2026-11-03
 
 ## Remaining environment verification
 
-- Docker image build was not run because this host has no `docker` command.
+- Docker image build was not run because this host has no `docker` command. The next Jenkins release must prove the pinned tool image contains curl and that its exported runtime starts in the Node image.
 - QA4 Pod readiness is not proven locally. After release, acceptance requires no lifecycle-hook failures, `Ready 1/1`, zero restart growth, and successful actuator probe/scrape responses.
