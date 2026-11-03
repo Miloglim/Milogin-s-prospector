@@ -654,4 +654,12 @@
 - 原因：Apollo 的 `postgres.password` 保存的是 KMS 密钥名，旧中心只读取明文 `PROSPECTOR_CENTER_PG_PASSWORD`，没有在创建 PostgreSQL 连接池前解析公司 KMS 凭据。首轮适配上线后又确认 QA4 注入层会过滤带点号的键，实例只加载 7 项配置并回退旧明文路径，PostgreSQL 返回 `28P01`。
 - 修改：新增签名 KMS 凭据适配器；生产模式优先解析可注入的 `PROSPECTOR_CENTER_PG_KMS_SECRET`，并保留 `postgres.password` 兼容路径，用返回的账号和密码构造固定 `milogin_center`、`prospector,public` 搜索路径的连接池。仓储层连接边界也支持已解析的 KMS 连接池，不再依赖旧明文密码变量。QA4 Apollo 已发布两个 KMS 密钥名配置和 `PROSPECTOR_CENTER_PG_USER=yqnroot`。
 - 验证：KMS 解析、优先级、Apollo 点号键过滤、错误脱敏、路由元数据和无旧明文密码连接池校验共 6 项单元测试通过；服务端入口 esbuild 解析、预构建包 Node 语法和 `git diff --check` 通过；只读数据库连通性此前已验证。
-- 边界：代码尚未部署到 QA4，现有实例仍运行旧镜像；旧 `PROSPECTOR_CENTER_PG_PASSWORD` 配置暂未删除，但新适配器会忽略它。部署后仍需核对 Apollo 实例版本与 `/health/live`、`/health/ready`。
+- 边界：KMS 修复镜像已进入 QA4，数据库认证不再是最新 Pod 的阻断点；旧 `PROSPECTOR_CENTER_PG_PASSWORD` 配置暂未删除，但新适配器会忽略它。服务整体就绪仍取决于后续启动边界通过。
+
+### QA4 容器通过数据库迁移后因缺少启动标识退出
+
+- 现象：KMS 修复镜像加载 8 项 Apollo 配置并通过数据库认证后，启动继续报“缺少本节点启动标识”，Pod 进入 CrashLoopBackOff。
+- 原因：本机 `production-server.mjs` 启动器会生成 `PROSPECTOR_ONLINE_INSTANCE`，但 Dockerfile 直接执行预构建 `online.cjs`，K8s 没有经过该启动器，也没有注入这个本机进程管理字段。
+- 修改：在线服务在未配置时为当前进程生成随机 32 字节启动标识；启动器显式提供的合法标识继续原样使用，显式非法值仍拒绝启动。预构建部署包同步同一逻辑。
+- 验证：启动器传值、容器缺省生成和非法配置拒绝共 3 项单元测试通过；QA4 最新 Pod 日志已证明 KMS 数据库认证不再是当前阻断点。
+- 边界：新启动标识修复仍需构建部署；部署后继续检查剩余迁移、`/health/live` 和 `/health/ready`，不能仅以 CrashLoop 错误变化宣称服务就绪。

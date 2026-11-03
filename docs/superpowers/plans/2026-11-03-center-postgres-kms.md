@@ -49,3 +49,18 @@
 - [x] Publish the environment-safe `PROSPECTOR_CENTER_PG_KMS_SECRET=pg-data.qax.root` key after confirming QA4 filters dotted keys.
 - [x] Ensure the obsolete literal password key is not selected by the new resolver.
 - [ ] Verify an instance loads the latest release and both `/health/live` and `/health/ready` succeed.
+
+### Task 4: Container direct-start identity
+
+**Files:**
+- Create: `server/adapters/online-instance.ts`
+- Create: `tests/unit/online-instance.test.ts`
+- Modify: `server/online.ts`
+- Modify: `deploy/prospector-prebuilt/dist-server/adapters/online.cjs`
+
+- [x] Confirm the latest KMS-enabled Pod passes database authentication and fails at the missing instance identifier boundary.
+- [x] Add a failing test for direct container startup without `PROSPECTOR_ONLINE_INSTANCE`.
+- [x] Generate a per-process 64-character identifier only when the variable is absent.
+- [x] Keep explicit valid identifiers and reject explicit invalid values.
+- [x] Synchronize the prebuilt deployment bundle.
+- [ ] Deploy and verify the QA4 Pod becomes ready.

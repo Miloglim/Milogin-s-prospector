@@ -19158,6 +19158,22 @@ function createSalesPerformanceHandler(service) {
   };
 }
 
+// server/adapters/online-instance.ts
+var import_node_crypto32 = require("node:crypto");
+var INSTANCE_ID_PATTERN = /^[a-f0-9]{64}$/;
+function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto32.randomBytes)(32).toString("hex")) {
+  const configured = env.PROSPECTOR_ONLINE_INSTANCE?.trim();
+  if (configured) {
+    if (!INSTANCE_ID_PATTERN.test(configured))
+      throw new Error("\u672C\u8282\u70B9\u542F\u52A8\u6807\u8BC6\u65E0\u6548");
+    return configured;
+  }
+  const generated = generate();
+  if (!INSTANCE_ID_PATTERN.test(generated))
+    throw new Error("\u672C\u8282\u70B9\u542F\u52A8\u6807\u8BC6\u751F\u6210\u5931\u8D25");
+  return generated;
+}
+
 // server/online.ts
 var EXIT_FAILED = 1;
 var SHUTDOWN_TIMEOUT_MS = 5e3;
@@ -19171,9 +19187,7 @@ async function main() {
     const passwords = new PasswordAdapter(config.password_concurrency);
     await passwords.initialize();
     await initializeFixtures(repo, passwords, config.test_mode);
-    const clock = { now: () => Date.now() }, instanceId = process.env.PROSPECTOR_ONLINE_INSTANCE;
-    if (!instanceId || !/^[a-f0-9]{64}$/.test(instanceId))
-      throw new Error("\u7F3A\u5C11\u672C\u8282\u70B9\u542F\u52A8\u6807\u8BC6");
+    const clock = { now: () => Date.now() }, instanceId = resolveOnlineInstanceId();
     const auth = createAuthService(repo, passwords, tokenAdapter, clock, config.session_ttl_seconds);
     const adminRepository = new PostgresAdminRepository(pool, serverLog);
     const admin = createAdminService(adminRepository, repo, passwords, tokenAdapter, clock, auth);
