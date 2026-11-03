@@ -171,7 +171,7 @@ Expected: only the approved migration compatibility fix, regression test, synchr
 Execution note: independent review reported no actionable findings. It confirmed
 source/bundle parity and both current and historical checksum behavior.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 ```bash
 git add server/adapters/postgres/contact-change-schema.ts tests/unit/contact-change-schema.test.ts deploy/prospector-prebuilt/dist-server/adapters/online.cjs docs/prospector-issue-log.md docs/superpowers/plans/2026-11-03-contact-change-schema-repair.md
@@ -179,7 +179,9 @@ git commit -m "[运行时] 修复联系人迁移多模式兼容"
 git push origin codex/center-postgres-kms
 ```
 
+Execution note: implementation commit `e6de880` was pushed to
+`origin/codex/center-postgres-kms`.
+
 - [ ] **Step 5: Verify QA4 after a new image is deployed**
 
 Confirm the new Pod records migration `063-public-outbox-fk-repair`, no longer logs `contact-change.pg`, and reaches Ready. Do not claim the runtime fix is complete before this deployment evidence exists.
-
