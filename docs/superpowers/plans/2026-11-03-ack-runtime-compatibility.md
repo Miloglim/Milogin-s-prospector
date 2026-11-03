@@ -138,7 +138,41 @@ git add Dockerfile tests/unit/docker-runtime-contract.test.ts
 git commit -m '[部署] 补齐ACK生命周期依赖'
 ```
 
-### Task 3: Full verification and delivery evidence
+### Task 3: Synchronize the prebuilt server bundle
+
+**Files:**
+- Modify: `deploy/prospector-prebuilt/dist-server/adapters/online.cjs`
+- Modify: `deploy/prospector-prebuilt/SOURCE_COMMIT.txt`
+
+- [ ] **Step 1: Rebuild the tracked deployment bundle**
+
+Run:
+
+```bash
+node scripts/build-prospector-prebuilt.mjs
+```
+
+Expected: the command exits 0 and rewrites the tracked server bundle from `server/online.ts` and its dependencies.
+
+- [ ] **Step 2: Verify the generated contract**
+
+Run:
+
+```bash
+rg -n 'actuator/info|actuator/prometheus|prospector_center_up' deploy/prospector-prebuilt/dist-server/adapters/online.cjs
+node --check deploy/prospector-prebuilt/dist-server/adapters/online.cjs
+```
+
+Expected: all three compatibility strings are present and Node reports no syntax error.
+
+- [ ] **Step 3: Commit the synchronized bundle**
+
+```bash
+git add deploy/prospector-prebuilt/dist-server/adapters/online.cjs deploy/prospector-prebuilt/SOURCE_COMMIT.txt docs/superpowers/plans/2026-11-03-ack-runtime-compatibility.md
+git commit -m '[部署] 同步ACK兼容预构建包'
+```
+
+### Task 4: Full verification and delivery evidence
 
 **Files:**
 - Create: `docs/superpowers/ack-runtime-compatibility/test.md`
