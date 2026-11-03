@@ -26,7 +26,10 @@ ENV APP_PORT=${APP_PORT} \
 
 USER root
 
-RUN mkdir -p /opt/web/ws-${APP_PORT} /var/lib/prospector-center \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/web/ws-${APP_PORT}/logs /var/lib/prospector-center \
     && chmod -R 755 /opt/web \
     && chmod 1777 /tmp
 
