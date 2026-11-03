@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 
-const REQUEST_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 20_000;
 const DEFAULT_METADATA = "http://apollo.qa4.yqn.corp:8080";
 const DEFAULT_CLUSTER = "qa4";
 const DEFAULT_NAMESPACE = "application";
@@ -37,14 +37,7 @@ async function applyApolloEnvironment() {
   const namespace = required("APOLLO_NAMESPACE", DEFAULT_NAMESPACE);
   const metadata = required("YQN_APOLLO_METADATA", DEFAULT_METADATA).replace(/\/+$/, "");
 
-  let configService = required("YQN_APOLLO_CONFIG_SERVICE").replace(/\/+$/, "");
-  if (!configService) {
-    const services = await fetchJson(`${metadata}/services/config`, "config service");
-    if (!Array.isArray(services) || !services[0]?.homepageUrl) {
-      throw new Error("Apollo metadata returned no config service URL");
-    }
-    configService = String(services[0].homepageUrl).replace(/\/+$/, "");
-  }
+  const configService = required("YQN_APOLLO_CONFIG_SERVICE", metadata).replace(/\/+$/, "");
 
   const url = `${configService}/configs/${encodeURIComponent(appId)}/${encodeURIComponent(cluster)}/${encodeURIComponent(namespace)}`;
   const payload = await fetchJson(url, `${appId}/${cluster}/${namespace}`);
