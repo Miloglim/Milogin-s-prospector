@@ -14776,19 +14776,28 @@ DROP TRIGGER IF EXISTS crm_contact_change_capture ON public.identity_outbox;
 CREATE TRIGGER crm_contact_change_capture AFTER INSERT ON public.identity_outbox FOR EACH ROW EXECUTE FUNCTION crm_contact_change_capture();
 `;
 var PUBLIC_OUTBOX_FK_REPAIR_SQL = `
-ALTER TABLE public.crm_contact_changes DROP CONSTRAINT IF EXISTS crm_contact_changes_event_id_fkey;
-ALTER TABLE public.crm_contact_changes ADD CONSTRAINT crm_contact_changes_event_id_fkey
+ALTER TABLE crm_contact_changes DROP CONSTRAINT IF EXISTS crm_contact_changes_event_id_fkey;
+ALTER TABLE crm_contact_changes ADD CONSTRAINT crm_contact_changes_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
-ALTER TABLE public.crm_event_deliveries DROP CONSTRAINT IF EXISTS crm_event_deliveries_event_id_fkey;
-ALTER TABLE public.crm_event_deliveries ADD CONSTRAINT crm_event_deliveries_event_id_fkey
+ALTER TABLE crm_event_deliveries DROP CONSTRAINT IF EXISTS crm_event_deliveries_event_id_fkey;
+ALTER TABLE crm_event_deliveries ADD CONSTRAINT crm_event_deliveries_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
-ALTER TABLE public.crm_notification_consumed DROP CONSTRAINT IF EXISTS crm_notification_consumed_event_id_fkey;
-ALTER TABLE public.crm_notification_consumed ADD CONSTRAINT crm_notification_consumed_event_id_fkey
+ALTER TABLE crm_notification_consumed DROP CONSTRAINT IF EXISTS crm_notification_consumed_event_id_fkey;
+ALTER TABLE crm_notification_consumed ADD CONSTRAINT crm_notification_consumed_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
-ALTER TABLE public.crm_task_due_receipts DROP CONSTRAINT IF EXISTS crm_task_due_receipts_event_id_fkey;
-ALTER TABLE public.crm_task_due_receipts ADD CONSTRAINT crm_task_due_receipts_event_id_fkey
+ALTER TABLE crm_task_due_receipts DROP CONSTRAINT IF EXISTS crm_task_due_receipts_event_id_fkey;
+ALTER TABLE crm_task_due_receipts ADD CONSTRAINT crm_task_due_receipts_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
 `;
+var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL = PUBLIC_OUTBOX_FK_REPAIR_SQL.replaceAll(
+  "ALTER TABLE crm_",
+  "ALTER TABLE public.crm_"
+);
+var PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM = (0, import_node_crypto24.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest("hex");
+var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM = (0, import_node_crypto24.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL).digest("hex");
+function acceptsPublicOutboxFkRepairChecksum(checksum4) {
+  return checksum4 === PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM || checksum4 === PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM;
+}
 
 // server/adapters/postgres/contact-change-repository.ts
 var TOMBSTONE_EVENTS = /* @__PURE__ */ new Set(["crm.contact.deleted", "crm.contact.share.revoked"]);
@@ -14828,13 +14837,12 @@ var PostgresContactChangeRepository = class {
         await db.query(CONTACT_CHANGE_SQL);
         await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_CHANGE_VERSION, checksum4]);
       }
-      const repairChecksum = (0, import_node_crypto24.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest("hex");
       const repaired = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [PUBLIC_OUTBOX_FK_REPAIR_VERSION]);
-      if (repaired.rows.length && repaired.rows[0].checksum !== repairChecksum)
+      if (repaired.rows.length && !acceptsPublicOutboxFkRepairChecksum(repaired.rows[0].checksum))
         return failure("CONFLICT", "\u516C\u5171 outbox \u5916\u952E\u4FEE\u590D\u6821\u9A8C\u4E0D\u4E00\u81F4");
       if (!repaired.rows.length) {
         await db.query(PUBLIC_OUTBOX_FK_REPAIR_SQL);
-        await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [PUBLIC_OUTBOX_FK_REPAIR_VERSION, repairChecksum]);
+        await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [PUBLIC_OUTBOX_FK_REPAIR_VERSION, PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM]);
       }
       return success(void 0);
     });

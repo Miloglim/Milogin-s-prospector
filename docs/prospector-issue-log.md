@@ -663,3 +663,11 @@
 - 修改：在线服务在未配置时为当前进程生成随机 32 字节启动标识；启动器显式提供的合法标识继续原样使用，显式非法值仍拒绝启动。预构建部署包同步同一逻辑。
 - 验证：启动器传值、容器缺省生成和非法配置拒绝共 3 项单元测试通过；QA4 最新 Pod 日志已证明 KMS 数据库认证不再是当前阻断点。
 - 边界：新启动标识修复仍需构建部署；部署后继续检查剩余迁移、`/health/live` 和 `/health/ready`，不能仅以 CrashLoop 错误变化宣称服务就绪。
+
+### QA4 联系人变化迁移错误定位到 public schema
+
+- 现象：容器生成启动标识并继续迁移后，日志报 `contact-change.pg`，随后以“联系人变化迁移被拒绝”退出。
+- 原因：公司 QA4 使用 `search_path=prospector,public`，四张 CRM 表都位于 `prospector`；迁移 `063-public-outbox-fk-repair` 却将它们硬编码为 `public.crm_*`。只读数据库核验确认联系人变化迁移 `008` 已完成，而 `063` 尚未记录。
+- 修改：四张 CRM 表改为通过既有 `search_path` 解析，外键目标继续显式指向共享的 `public.identity_outbox`；旧本地单 schema 中的 `public` 表仍可兼容。已执行旧 `063` 的中心可继续使用原 SQL checksum，其他 checksum 漂移仍拒绝。预构建在线服务同步同一逻辑。
+- 验证：schema 回归断言先在旧 SQL 下按预期失败，历史 checksum 回归断言先因兼容接口缺失而失败，修改后均通过；源码与预构建 SQL 对比一致，预构建 bundle 通过 Node 语法检查。隔离工作树缺少 Vitest 和 esbuild 依赖，未安装依赖，正式 Vitest 与重新打包命令未执行成功。
+- 边界：需发布新镜像后确认迁移 `063` 落库、日志不再出现 `contact-change.pg`，并检查 Pod Ready；本次未手工修改 QA4 数据库。

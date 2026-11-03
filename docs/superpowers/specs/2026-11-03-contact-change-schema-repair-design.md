@@ -33,8 +33,9 @@ adds ambiguity when both schemas contain a stale table.
 
 The migration version remains `063-public-outbox-fk-repair`. QA4 has not
 recorded that version, so it can execute the corrected SQL normally. Existing
-databases that already recorded `063` skip it and are not exposed to checksum
-drift.
+databases that already recorded `063` keep the original SQL checksum; the
+repository accepts that exact historical checksum as well as the corrected SQL
+checksum, while continuing to reject every other drift value.
 
 ## Failure Handling
 
@@ -47,6 +48,8 @@ credentials or row data.
 
 - A focused test must fail while the repair SQL hard-codes `public.crm_*` and
   pass when CRM table names are resolved by `search_path`.
+- The same test must accept the exact historical `063` checksum and the current
+  checksum, while rejecting an unrelated checksum.
 - Existing single-schema integration behavior must remain valid.
 - The prebuilt online server bundle must contain the same corrected SQL and pass
   `node --check`.
