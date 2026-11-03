@@ -40,7 +40,8 @@ export function readOnlineConfig(env: NodeJS.ProcessEnv = process.env): OnlineCo
     try { parsed = new URL(origin); }
     catch { throw new Error('正式中心公开访问地址无效'); }
     const localHttp = env.PROSPECTOR_CENTER_LOCAL_HTTP === '1' && origin === 'http://127.0.0.1:55847';
-    if ((parsed.protocol !== 'https:' && !localHttp) || parsed.origin !== origin || parsed.username || parsed.password) {
+    const internalHttp = parsed.protocol === 'http:' && parsed.hostname.endsWith('.yqn.corp');
+    if ((parsed.protocol !== 'https:' && !localHttp && !internalHttp) || parsed.origin !== origin || parsed.username || parsed.password) {
       throw new Error('正式中心只接受 HTTPS，或显式开启的本机回环 HTTP');
     }
     const navigatorUrl = env.PROSPECTOR_NAVIGATOR_URL || ONLINE_DEFAULTS.navigator_url;

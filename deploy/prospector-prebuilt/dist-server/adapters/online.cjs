@@ -7866,7 +7866,8 @@ function readOnlineConfig(env = process.env) {
       throw new Error("\u6B63\u5F0F\u4E2D\u5FC3\u516C\u5F00\u8BBF\u95EE\u5730\u5740\u65E0\u6548");
     }
     const localHttp = env.PROSPECTOR_CENTER_LOCAL_HTTP === "1" && origin === "http://127.0.0.1:55847";
-    if (parsed.protocol !== "https:" && !localHttp || parsed.origin !== origin || parsed.username || parsed.password) {
+    const internalHttp = parsed.protocol === "http:" && parsed.hostname.endsWith(".yqn.corp");
+    if (parsed.protocol !== "https:" && !localHttp && !internalHttp || parsed.origin !== origin || parsed.username || parsed.password) {
       throw new Error("\u6B63\u5F0F\u4E2D\u5FC3\u53EA\u63A5\u53D7 HTTPS\uFF0C\u6216\u663E\u5F0F\u5F00\u542F\u7684\u672C\u673A\u56DE\u73AF HTTP");
     }
     const navigatorUrl = env.PROSPECTOR_NAVIGATOR_URL || ONLINE_DEFAULTS.navigator_url;
