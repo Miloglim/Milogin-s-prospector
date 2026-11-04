@@ -1,5 +1,5 @@
 // ── 自动更新模块 ────────────────────────────────────────────────────────────
-// 使用 electron-updater + GitHub Releases
+// 使用 electron-updater + 公司 Navigator 内部更新源
 // main/index.ts 启动时调用 init(mainWindow) 即可
 
 import { autoUpdater } from "electron-updater";
@@ -7,22 +7,50 @@ import { app, net } from "electron";
 import type { BrowserWindow } from "electron";
 import { IPC } from "./contract";
 import { Log } from "./logger";
-import { compareReleaseVersions, latestReleaseForChannel, parseReleaseFeed, type UpdateRelease } from "./services/update-metadata.service";
+import { compareReleaseVersions, latestReleaseForChannel, type UpdateRelease } from "./services/update-metadata.service";
+import { loadConfig } from "./config";
+import { readConfiguredRatesBase } from "./adapters/center-endpoint.adapter";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 小时
-const RELEASE_FEED = "https://github.com/Miloglim/Milogin-s-prospector/releases.atom";
+const UPDATE_MANIFEST_PATH = "/api/downloads/prospector/latest";
+const UPDATE_FILE_PATH = "/downloads/prospector";
 
 let _win: BrowserWindow | null = null;
 let _checkTimer: ReturnType<typeof setInterval> | null = null;
 let _channel: "stable" | "prerelease" = "stable";
 
 async function fetchReleases(): Promise<UpdateRelease[]> {
-  const response = await net.fetch(RELEASE_FEED, {
-    headers: { "User-Agent": "prospecting-email", Accept: "application/atom+xml, application/xml, text/xml" },
+  const base = updateBaseUrl();
+  const response = await net.fetch(base + UPDATE_MANIFEST_PATH, {
+    headers: { "User-Agent": "prospecting-email", Accept: "application/json" },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}: ${(await response.text().catch(() => "")).slice(0, 200)}`);
-  return parseReleaseFeed(await response.text());
+  const payload = await response.json().catch(() => null) as any;
+  if (!response.ok || payload?.ok !== true || !payload?.data) {
+    throw new Error(`HTTP ${response.status}: ${String(payload?.error || "内部更新清单不可用").slice(0, 200)}`);
+  }
+  const data = payload.data;
+  return [{
+    version: String(data.version || "").replace(/^v/i, ""),
+    name: `v${String(data.version || "").replace(/^v/i, "")}`,
+    publishedAt: String(data.publishedAt || ""),
+    prerelease: false,
+    htmlUrl: `${base}${UPDATE_FILE_PATH}/${encodeURIComponent(String(data.fileName || ""))}`,
+    body: Array.isArray(data.notes) ? data.notes.join(" ").slice(0, 500) : "",
+  }];
+}
+
+function updateBaseUrl(): string {
+  const configured = process.env.RATES_REMOTE_URL?.trim()
+    || loadConfig().rates?.url?.trim()
+    || readConfiguredRatesBase()
+    || "";
+  if (!configured) throw new Error("尚未配置 Navigator 内部更新地址");
+  return configured.replace(/\/$/, "");
+}
+
+function configureAutoUpdaterFeed(): void {
+  autoUpdater.setFeedURL({ provider: "generic", url: `${updateBaseUrl()}${UPDATE_FILE_PATH}` });
 }
 
 /** 轮询用：比对最新发布与运行版本，更新则推送 update:available（dev/内网都能检测，不依赖 app-update.yml） */
@@ -83,7 +111,8 @@ let _download: Promise<void> | null = null;
  * fire-and-forget，缓存常常还没落位，于是首点没反应、要点几次。下载自己把前置条件补齐。
  */
 async function runDownload(): Promise<void> {
-  autoUpdater.allowPrerelease = _channel === "prerelease";
+  configureAutoUpdaterFeed();
+  autoUpdater.allowPrerelease = app.getVersion().includes("-") || _channel === "prerelease";
   autoUpdater.autoDownload = false;
   const res = await autoUpdater.checkForUpdates().catch((e: Error) => {
     Log.warn("updater", `下载前检查失败: ${e.message}`);
@@ -117,7 +146,7 @@ export async function listVersions(): Promise<{ success: true; data: { currentVe
 }
 
 export async function checkForUpdate(): Promise<{ success: true; data: { version: string; available: boolean } | null } | { success: false; error: string }> {
-  // 同步检查只读公开 Release Atom，不消耗 GitHub REST API 配额；下载前 runDownload 再让 electron-updater缓存 updateInfo。
+  // 同步检查只读 Navigator 内部清单；下载前 runDownload 再让 electron-updater 缓存 updateInfo。
   try {
     const releases = await fetchReleases();
     const cur = app.getVersion();
@@ -171,14 +200,16 @@ export function getUpdateChannel(): { success: true; data: string } {
 export function initUpdater(mainWindow: BrowserWindow) {
   _win = mainWindow;
 
+  try { configureAutoUpdaterFeed(); }
+  catch (error) { Log.warn("updater", `内部更新源未配置: ${(error as Error).message}`); }
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.allowPrerelease = false;
+  autoUpdater.allowPrerelease = app.getVersion().includes("-");
 
   bindAutoUpdaterEvents();
   // IPC 注册已归位到 transport/update.ipc.ts，由 main/index.ts registerAllIPC 统一调用
 
-  // 启动后 10 秒自动检查（公开 Release Atom，不依赖 GitHub REST API 配额）
+  // 启动后 10 秒自动检查公司内部 Navigator 更新清单
   setTimeout(() => { void pollForUpdate(); }, 10_000);
 
   // 每 4 小时轮询
