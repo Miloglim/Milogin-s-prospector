@@ -7889,7 +7889,8 @@ function readOnlineConfig(env = process.env) {
       navigator_entry_url: navigatorEntryUrl,
       test_mode: false,
       public_origin: origin,
-      ...localHttp ? { local_http: true } : {}
+      ...localHttp ? { local_http: true } : {},
+      ...localHttp || internalHttp ? { insecure_http: true } : {}
     };
   }
   if (env.PROSPECTOR_CENTER_MODE && env.PROSPECTOR_CENTER_MODE !== "test")
@@ -8343,7 +8344,7 @@ async function navigatorHealth(config) {
   }
 }
 function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, passwordChange, dashboard, dataBrowser) {
-  const cookieFlags = `HttpOnly; SameSite=Strict; Path=/` + (config.test_mode || config.local_http ? "" : "; Secure");
+  const cookieFlags = `HttpOnly; SameSite=Strict; Path=/` + (config.test_mode || config.local_http || config.insecure_http ? "" : "; Secure");
   return async (request2, response) => {
     response.setHeader("Referrer-Policy", "no-referrer");
     response.setHeader("X-Frame-Options", "DENY");

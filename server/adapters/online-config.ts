@@ -51,7 +51,7 @@ export function readOnlineConfig(env: NodeJS.ProcessEnv = process.env): OnlineCo
       catch { throw new Error('Navigator 服务地址无效'); }
     }
     return { ...ONLINE_DEFAULTS, host: productionBindHost(env), port: productionPort(env), navigator_url: navigatorUrl, navigator_entry_url: navigatorEntryUrl,
-      test_mode: false, public_origin: origin, ...(localHttp ? { local_http: true } : {}) };
+      test_mode: false, public_origin: origin, ...(localHttp ? { local_http: true } : {}), ...(localHttp || internalHttp ? { insecure_http: true } : {}) };
   }
   if (env.PROSPECTOR_CENTER_MODE && env.PROSPECTOR_CENTER_MODE !== 'test') throw new Error('未知中心运行模式');
   const input = JSON.parse(readFileSync(ONLINE_CONFIG_PATH,"utf8")) as Record<string,unknown>;
