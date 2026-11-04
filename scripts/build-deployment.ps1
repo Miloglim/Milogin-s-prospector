@@ -13,16 +13,17 @@ $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
 $assetsRoot = Join-Path $root ".work\deployment-assets-$stamp"
 $builderConfig = Join-Path $root ".work\electron-builder-deployment-$stamp.json"
 
-function Get-HttpsOrigin([string]$value, [string]$name) {
+function Get-AllowedOrigin([string]$value, [string]$name) {
     $uri = [Uri]$value
     $origin = $uri.GetLeftPart([UriPartial]::Authority)
-    if ($uri.Scheme -ne 'https' -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne '/' -or $origin -ne $value.TrimEnd('/')) {
-        throw "$name 必须是不带路径、参数或凭据的 HTTPS Origin"
+    $internalHttp = $uri.Scheme -eq 'http' -and $uri.Host.EndsWith('.yqn.corp', [StringComparison]::OrdinalIgnoreCase)
+    if (($uri.Scheme -ne 'https' -and -not $internalHttp) -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne '/' -or $origin -ne $value.TrimEnd('/')) {
+        throw "$name 必须是 HTTPS Origin，或公司内网 *.yqn.corp HTTP Origin"
     }
     return $origin
 }
-$centerOrigin = Get-HttpsOrigin $CenterUrl 'CenterUrl'
-$navigatorOrigin = Get-HttpsOrigin $NavigatorUrl 'NavigatorUrl'
+$centerOrigin = Get-AllowedOrigin $CenterUrl 'CenterUrl'
+$navigatorOrigin = Get-AllowedOrigin $NavigatorUrl 'NavigatorUrl'
 if ($centerOrigin -eq $navigatorOrigin) { throw 'CenterUrl 与 NavigatorUrl 必须使用不同 Origin' }
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $assetsRoot) | Out-Null

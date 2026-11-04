@@ -21,6 +21,7 @@ describe('desktop center isolation',()=>{
   });
   it('allows HTTPS centers and explicit loopback HTTP without accepting unsafe URLs',()=>{
     expect(validateCenterBase('http://127.0.0.1:55844')).toBe('http://127.0.0.1:55844');
+    expect(validateCenterBase('http://22124.qa4.yqn.corp:22124')).toBe('http://22124.qa4.yqn.corp:22124');
     expect(validateCenterBase('https://crm.company.internal')).toBe('https://crm.company.internal');
     for(const url of ['http://localhost:55844','http://example.invalid','http://user@127.0.0.1','https://crm.company.internal/api','https://crm.company.internal?x=1'])expect(validateCenterBase(url)).toBeNull();
   });

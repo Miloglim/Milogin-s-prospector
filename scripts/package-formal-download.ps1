@@ -16,18 +16,19 @@ $CenterUrl = if ($CenterUrl) { $CenterUrl } else { $env:PROSPECTOR_CENTER_URL }
 $NavigatorUrl = if ($NavigatorUrl) { $NavigatorUrl } else { $env:PROSPECTOR_NAVIGATOR_URL }
 $DownloadsRoot = if ($DownloadsRoot) { $DownloadsRoot } else { $env:PROSPECTOR_DOWNLOADS_ROOT }
 
-function Get-HttpsOrigin([string]$value, [string]$name) {
+function Get-AllowedOrigin([string]$value, [string]$name) {
   $uri = [Uri]$value
   $origin = $uri.GetLeftPart([UriPartial]::Authority)
-  if ($uri.Scheme -ne "https" -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne "/" -or $origin -ne $value.TrimEnd("/")) {
-    throw "$name 必须是不带路径、参数或凭据的 HTTPS Origin"
+  $internalHttp = $uri.Scheme -eq "http" -and $uri.Host.EndsWith(".yqn.corp", [StringComparison]::OrdinalIgnoreCase)
+  if (($uri.Scheme -ne "https" -and -not $internalHttp) -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne "/" -or $origin -ne $value.TrimEnd("/")) {
+    throw "$name 必须是 HTTPS Origin，或公司内网 *.yqn.corp HTTP Origin"
   }
   return $origin
 }
 
 if (-not $DownloadsRoot) { throw "缺少 DownloadsRoot 或 PROSPECTOR_DOWNLOADS_ROOT" }
-$centerOrigin = Get-HttpsOrigin $CenterUrl "CenterUrl"
-$navigatorOrigin = Get-HttpsOrigin $NavigatorUrl "NavigatorUrl"
+$centerOrigin = Get-AllowedOrigin $CenterUrl "CenterUrl"
+$navigatorOrigin = Get-AllowedOrigin $NavigatorUrl "NavigatorUrl"
 if ($centerOrigin -eq $navigatorOrigin) { throw "CenterUrl 与 NavigatorUrl 必须使用不同 Origin" }
 
 if (-not $SkipPack) {

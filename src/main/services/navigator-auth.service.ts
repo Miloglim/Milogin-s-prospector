@@ -27,9 +27,10 @@ export function validateNavigatorBase(value: string, _packaged: boolean): string
     octets[0] === 127 || octets[0] === 10 ||
     (octets[0] === 172 && octets[1]! >= 16 && octets[1]! <= 31) ||
     (octets[0] === 192 && octets[1] === 168)));
+  const companyInternalHttp = url.protocol === 'http:' && url.hostname.endsWith('.yqn.corp');
   if (url.username || url.password || url.search || url.hash || url.pathname !== '/')
     throw new NavigatorConfigurationError('CONFIG_INVALID', 'Navigator 地址仅填写服务网址，不含账号、密码、查询参数或页面路径');
-  if (!(url.protocol === 'https:' || (privateHost && url.protocol === 'http:')))
+  if (!(url.protocol === 'https:' || ((privateHost || companyInternalHttp) && url.protocol === 'http:')))
     throw new NavigatorConfigurationError('HTTPS_REQUIRED', '公网 Navigator 地址必须使用 HTTPS；HTTP 仅支持私有局域网 IP 或本机地址');
   return url.origin;
 }
