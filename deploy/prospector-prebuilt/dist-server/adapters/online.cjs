@@ -1215,7 +1215,7 @@ var require_utils2 = __commonJS({
     var nodeCrypto = require("crypto");
     module2.exports = {
       postgresMd5PasswordHash,
-      randomBytes: randomBytes3,
+      randomBytes: randomBytes4,
       deriveKey,
       sha256,
       hashByName,
@@ -1225,7 +1225,7 @@ var require_utils2 = __commonJS({
     var webCrypto = nodeCrypto.webcrypto || globalThis.crypto;
     var subtleCrypto = webCrypto.subtle;
     var textEncoder = new TextEncoder();
-    function randomBytes3(length) {
+    function randomBytes4(length) {
       return webCrypto.getRandomValues(Buffer.alloc(length));
     }
     async function md5(string2) {
@@ -1242,11 +1242,11 @@ var require_utils2 = __commonJS({
       const outer = await md5(Buffer.concat([Buffer.from(inner), salt]));
       return "md5" + outer;
     }
-    async function sha256(text15) {
-      return await subtleCrypto.digest("SHA-256", text15);
+    async function sha256(text16) {
+      return await subtleCrypto.digest("SHA-256", text16);
     }
-    async function hashByName(hashName, text15) {
-      return await subtleCrypto.digest(hashName, text15);
+    async function hashByName(hashName, text16) {
+      return await subtleCrypto.digest(hashName, text16);
     }
     async function hmacSha256(keyBuffer, msg) {
       const key = await subtleCrypto.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -1470,21 +1470,21 @@ var require_sasl = __commonJS({
         throw new Error("SASL: SCRAM-SERVER-FINAL-MESSAGE: server signature does not match");
       }
     }
-    function isPrintableChars(text15) {
-      if (typeof text15 !== "string") {
+    function isPrintableChars(text16) {
+      if (typeof text16 !== "string") {
         throw new TypeError("SASL: text must be a string");
       }
-      return text15.split("").map((_, i) => text15.charCodeAt(i)).every((c) => c >= 33 && c <= 43 || c >= 45 && c <= 126);
+      return text16.split("").map((_, i) => text16.charCodeAt(i)).every((c) => c >= 33 && c <= 43 || c >= 45 && c <= 126);
     }
-    function isBase64(text15) {
-      return /^(?:[a-zA-Z0-9+/]{4})*(?:[a-zA-Z0-9+/]{2}==|[a-zA-Z0-9+/]{3}=)?$/.test(text15);
+    function isBase64(text16) {
+      return /^(?:[a-zA-Z0-9+/]{4})*(?:[a-zA-Z0-9+/]{2}==|[a-zA-Z0-9+/]{3}=)?$/.test(text16);
     }
-    function parseAttributePairs(text15) {
-      if (typeof text15 !== "string") {
+    function parseAttributePairs(text16) {
+      if (typeof text16 !== "string") {
         throw new TypeError("SASL: attribute pairs text must be a string");
       }
       return new Map(
-        text15.split(",").map((attrValue) => {
+        text16.split(",").map((attrValue) => {
           if (!/^.=/.test(attrValue)) {
             throw new Error("SASL: Invalid attribute pair entry");
           }
@@ -2367,9 +2367,9 @@ var require_messages = __commonJS({
     };
     exports2.ReadyForQueryMessage = ReadyForQueryMessage;
     var CommandCompleteMessage = class {
-      constructor(length, text15) {
+      constructor(length, text16) {
         this.length = length;
-        this.text = text15;
+        this.text = text16;
         this.name = "commandComplete";
       }
     };
@@ -2550,8 +2550,8 @@ var require_serializer = __commonJS({
         /* code.startup */
       );
     };
-    var query2 = (text15) => {
-      return writer.addCString(text15).flush(
+    var query2 = (text16) => {
+      return writer.addCString(text16).flush(
         81
         /* code.query */
       );
@@ -2668,8 +2668,8 @@ var require_serializer = __commonJS({
       return msg.name ? cstringMessage(68, `${msg.type}${msg.name || ""}`) : msg.type === "P" ? emptyDescribePortal : emptyDescribeStatement;
     };
     var close = (msg) => {
-      const text15 = `${msg.type}${msg.name || ""}`;
-      return cstringMessage(67, text15);
+      const text16 = `${msg.type}${msg.name || ""}`;
+      return cstringMessage(67, text16);
     };
     var copyData = (chunk) => {
       return writer.add(chunk).flush(
@@ -2941,8 +2941,8 @@ var require_parser = __commonJS({
       return new messages_1.ReadyForQueryMessage(LATEINIT_LENGTH, status);
     };
     var parseCommandCompleteMessage = (reader) => {
-      const text15 = reader.cstring();
-      return new messages_1.CommandCompleteMessage(LATEINIT_LENGTH, text15);
+      const text16 = reader.cstring();
+      return new messages_1.CommandCompleteMessage(LATEINIT_LENGTH, text16);
     };
     var parseCopyData = (reader, length) => {
       const chunk = reader.bytes(length - 4);
@@ -3329,8 +3329,8 @@ var require_connection = __commonJS({
         }
         return this.stream.write(buffer);
       }
-      query(text15) {
-        this._send(serialize.query(text15));
+      query(text16) {
+        this._send(serialize.query(text16));
       }
       // send parse message
       parse(query2) {
@@ -4726,9 +4726,9 @@ var require_pg_pool = __commonJS({
         this._idle.push(new IdleItem(client, idleListener, tid));
         this._pulseQueue();
       }
-      query(text15, values, cb) {
-        if (typeof text15 === "function") {
-          const response2 = promisify(this.Promise, text15);
+      query(text16, values, cb) {
+        if (typeof text16 === "function") {
+          const response2 = promisify(this.Promise, text16);
           setImmediate(function() {
             return response2.callback(new Error("Passing a function as the first parameter to pool.query is not supported"));
           });
@@ -4756,7 +4756,7 @@ var require_pg_pool = __commonJS({
           client.once("error", onError);
           this.log("dispatching query");
           try {
-            client.query(text15, values, (err2, res) => {
+            client.query(text16, values, (err2, res) => {
               this.log("query dispatched");
               client.removeListener("error", onError);
               if (clientReleased) {
@@ -5660,6 +5660,33 @@ var HTTP_STATUS = {
 
 // server/transport/http.ts
 var MILLISECONDS_PER_SECOND2 = 1e3;
+var ACTUATOR_INFO_PATH = "/actuator/info";
+var ACTUATOR_PROMETHEUS_PATH = "/actuator/prometheus";
+var PROMETHEUS_BODY = [
+  "# HELP prospector_center_up Whether the Prospector center process is serving requests.",
+  "# TYPE prospector_center_up gauge",
+  "prospector_center_up 1",
+  ""
+].join("\n");
+function operationalHeaders(contentType) {
+  return {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Connection": "close"
+  };
+}
+async function sendActuatorInfo(response, service, head) {
+  const readiness = await service.ready();
+  const status = readiness.ok ? HTTP_STATUS.OK : HTTP_STATUS[readiness.error.code];
+  const payload = readiness.ok ? { status: "UP" } : readiness;
+  response.writeHead(status, operationalHeaders("application/json; charset=utf-8"));
+  response.end(head ? void 0 : JSON.stringify(payload));
+}
+function sendPrometheus(response) {
+  response.writeHead(HTTP_STATUS.OK, operationalHeaders("text/plain; version=0.0.4; charset=utf-8"));
+  response.end(PROMETHEUS_BODY);
+}
 function send(response, result2) {
   if (response.destroyed || response.writableEnded)
     return;
@@ -5728,6 +5755,14 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
     }
     if (request2.headers.origin || request2.headers["sec-fetch-site"] === "cross-site") {
       send(response, failure("FORBIDDEN", "\u5F53\u524D\u4EC5\u63A5\u53D7\u672C\u673A\u975E\u6D4F\u89C8\u5668\u8DE8\u7AD9\u8BF7\u6C42"));
+      return;
+    }
+    if ((method === "GET" || method === "HEAD") && path4 === ACTUATOR_INFO_PATH) {
+      await sendActuatorInfo(response, service, method === "HEAD");
+      return;
+    }
+    if (method === "GET" && path4 === ACTUATOR_PROMETHEUS_PATH) {
+      sendPrometheus(response);
       return;
     }
     if (desktop && path4.startsWith("/api/auth/desktop/")) {
@@ -5944,6 +5979,81 @@ var postgres_test_settings_default = {
   connection_timeout_seconds: 5
 };
 
+// server/adapters/postgres/kms-credential.ts
+var import_node_crypto = require("node:crypto");
+var KMS_SALT = "default_salt";
+var KMS_RANDOM_ALPHABET = "1234567890!@#$%^&*()_+=-";
+var KMS_RANDOM_LENGTH = 6;
+function text3(value2) {
+  return typeof value2 === "string" ? value2.trim() : "";
+}
+function postgresKmsSecretName(env) {
+  return text3(env.PROSPECTOR_CENTER_PG_KMS_SECRET) || text3(env["postgres.password"]);
+}
+function randomNonce() {
+  let value2 = "";
+  for (let index = 0; index < KMS_RANDOM_LENGTH; index += 1) {
+    value2 += KMS_RANDOM_ALPHABET[(0, import_node_crypto.randomInt)(KMS_RANDOM_ALPHABET.length)];
+  }
+  return value2;
+}
+function credentialFromSecret(raw) {
+  let value2;
+  try {
+    value2 = JSON.parse(raw);
+  } catch {
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
+  }
+  if (!value2 || typeof value2 !== "object" || Array.isArray(value2)) {
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
+  }
+  const record16 = value2;
+  const username = text3(record16.AccountName) || text3(record16.username);
+  const password = text3(record16.AccountPassword) || text3(record16.password);
+  if (!username || !password)
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
+  return { username, password };
+}
+async function resolvePostgresKmsCredential(env = process.env, request2 = (input, init) => fetch(input, init)) {
+  const secretName = postgresKmsSecretName(env);
+  const cluster = text3(env.YQN_APOLLO_CLUSTER);
+  const appId = text3(env.YQN_APOLLO_APP_ID) || text3(env.APP_PORT);
+  if (!secretName || !/^[a-z0-9][a-z0-9-]{0,62}$/i.test(cluster) || !/^\d{1,10}$/.test(appId)) {
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u914D\u7F6E\u4E0D\u5B8C\u6574");
+  }
+  const timestamp2 = String(Date.now());
+  const random = randomNonce();
+  const sign2 = (0, import_node_crypto.createHash)("sha256").update([appId, cluster, timestamp2, random, KMS_SALT].join("|")).digest("base64");
+  const endpoint = `http://42069.${cluster}.yqn.corp:42069/aliyun/kms/secret`;
+  let response;
+  let body2;
+  try {
+    response = await request2(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        header: {},
+        model: { secretName, env: cluster, appId, timestamp: timestamp2, random, sign: sign2 }
+      })
+    });
+    body2 = await response.json();
+  } catch {
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u8BF7\u6C42\u5931\u8D25");
+  }
+  if (!response.ok || !body2 || typeof body2 !== "object" || Array.isArray(body2)) {
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u8BF7\u6C42\u5931\u8D25");
+  }
+  const result2 = body2;
+  const data = result2.data;
+  if (result2.code !== 200 || !data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u8BF7\u6C42\u5931\u8D25");
+  }
+  const secretValue = text3(data.secretValue);
+  if (!secretValue)
+    throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
+  return credentialFromSecret(secretValue);
+}
+
 // server/adapters/postgres/config.ts
 var CRM_TEST_DATABASE = postgres_test_settings_default.database;
 var CRM_TEST_PORT = postgres_test_settings_default.port;
@@ -6031,15 +6141,37 @@ function readOnlineDatabaseConfig(env = process.env) {
     return readProductionDatabaseConfig(env);
   throw new Error("\u672A\u77E5\u4E2D\u5FC3\u8FD0\u884C\u6A21\u5F0F");
 }
+async function resolveOnlineDatabaseConfig(env = process.env, loadCredential = resolvePostgresKmsCredential) {
+  if (env.PROSPECTOR_CENTER_MODE !== "production" || !postgresKmsSecretName(env)) {
+    return readOnlineDatabaseConfig(env);
+  }
+  const credential = await loadCredential(env);
+  const resolved = {
+    ...env,
+    PROSPECTOR_CENTER_PG_USER: credential.username,
+    PROSPECTOR_CENTER_PG_PASSWORD: credential.password
+  };
+  delete resolved.PROSPECTOR_CENTER_PG_DSN;
+  return readProductionDatabaseConfig(resolved);
+}
 function assertCenterDatabasePool(pool, env = process.env) {
-  const expected = readOnlineDatabaseConfig(env);
+  let expectedEnv = env;
+  if (env.PROSPECTOR_CENTER_MODE === "production" && postgresKmsSecretName(env)) {
+    expectedEnv = {
+      ...env,
+      PROSPECTOR_CENTER_PG_USER: String(pool.options.user || ""),
+      PROSPECTOR_CENTER_PG_PASSWORD: "kms-resolved"
+    };
+    delete expectedEnv.PROSPECTOR_CENTER_PG_DSN;
+  }
+  const expected = readOnlineDatabaseConfig(expectedEnv);
   if (pool.options.host !== expected.host || pool.options.port !== expected.port || pool.options.database !== expected.database || pool.options.user !== expected.user) {
     throw new Error(env.PROSPECTOR_CENTER_MODE === "production" ? "\u4E2D\u5FC3\u6570\u636E\u5E93\u8FDE\u63A5\u4E0E\u8FD0\u884C\u6A21\u5F0F\u4E0D\u5339\u914D" : "\u4E2D\u5FC3\u4EC5\u5141\u8BB8\u9694\u79BB\u6D4B\u8BD5\u6570\u636E\u5E93");
   }
 }
 
 // server/adapters/postgres/repository.ts
-var import_node_crypto = require("node:crypto");
+var import_node_crypto2 = require("node:crypto");
 
 // server/adapters/postgres/schema.ts
 var CRM_SCHEMA_VERSION = "001-crm-foundation";
@@ -6104,8 +6236,8 @@ function sqlCode(error) {
     return error.code;
   return "UNKNOWN";
 }
-function literalSearch(text15) {
-  return `%${text15.replace(/[\\%_]/g, "\\$&")}%`;
+function literalSearch(text16) {
+  return `%${text16.replace(/[\\%_]/g, "\\$&")}%`;
 }
 var PostgresCrmRepository = class {
   constructor(pool, log) {
@@ -6152,7 +6284,7 @@ var PostgresCrmRepository = class {
       await client.query("SELECT pg_advisory_xact_lock($1)", [CRM_SCHEMA_LOCK]);
       await client.query(`CREATE TABLE IF NOT EXISTS crm_schema_migrations (
         version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
-      const checksum4 = (0, import_node_crypto.createHash)("sha256").update(CRM_SCHEMA_SQL).digest("hex");
+      const checksum4 = (0, import_node_crypto2.createHash)("sha256").update(CRM_SCHEMA_SQL).digest("hex");
       const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CRM_SCHEMA_VERSION]);
       if (existing.rows.length) {
         if (existing.rows[0].checksum !== checksum4)
@@ -6267,7 +6399,7 @@ var PostgresCrmRepository = class {
 };
 
 // server/adapters/postgres/auth-repository.ts
-var import_node_crypto3 = require("node:crypto");
+var import_node_crypto4 = require("node:crypto");
 
 // server/adapters/postgres/auth-schema.ts
 var AUTH_SCHEMA_VERSION = "002-identity-foundation-public";
@@ -6308,7 +6440,7 @@ CREATE TABLE public.identity_audit (
 `;
 
 // server/adapters/postgres/admin-repository.ts
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto3 = require("node:crypto");
 var import_promises = require("node:fs/promises");
 var import_node_path2 = __toESM(require("node:path"));
 
@@ -6661,7 +6793,7 @@ var PostgresAdminRepository = class {
   migrate() {
     return this.execute(() => this.tx(async (c) => {
       await c.query("SELECT pg_advisory_xact_lock($1)", [ADMIN_LOCK]);
-      const hash = (0, import_node_crypto2.createHash)("sha256").update(ADMIN_SQL).digest("hex");
+      const hash = (0, import_node_crypto3.createHash)("sha256").update(ADMIN_SQL).digest("hex");
       const existing = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [ADMIN_VERSION]);
       if (existing.rows.length) {
         if (existing.rows[0].checksum !== hash)
@@ -6671,7 +6803,7 @@ var PostgresAdminRepository = class {
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [ADMIN_VERSION, hash]);
         this.log.write("INFO", "management.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${ADMIN_VERSION}`);
       }
-      const lifecycleHash = (0, import_node_crypto2.createHash)("sha256").update(USER_LIFECYCLE_SQL).digest("hex");
+      const lifecycleHash = (0, import_node_crypto3.createHash)("sha256").update(USER_LIFECYCLE_SQL).digest("hex");
       const lifecycle = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [USER_LIFECYCLE_VERSION]);
       if (lifecycle.rows.length && lifecycle.rows[0].checksum !== lifecycleHash)
         return failure("CONFLICT", "\u8D26\u53F7\u751F\u547D\u5468\u671F\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -6680,7 +6812,7 @@ var PostgresAdminRepository = class {
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [USER_LIFECYCLE_VERSION, lifecycleHash]);
         this.log.write("INFO", "management.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${USER_LIFECYCLE_VERSION}`);
       }
-      const navigatorHash = (0, import_node_crypto2.createHash)("sha256").update(NAVIGATOR_ACCESS_SQL).digest("hex");
+      const navigatorHash = (0, import_node_crypto3.createHash)("sha256").update(NAVIGATOR_ACCESS_SQL).digest("hex");
       const navigator2 = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [NAVIGATOR_ACCESS_VERSION]);
       if (navigator2.rows.length && navigator2.rows[0].checksum !== navigatorHash)
         return failure("CONFLICT", "Navigator \u6388\u6743\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -6689,7 +6821,7 @@ var PostgresAdminRepository = class {
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [NAVIGATOR_ACCESS_VERSION, navigatorHash]);
         this.log.write("INFO", "management.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${NAVIGATOR_ACCESS_VERSION}`);
       }
-      const productHash = (0, import_node_crypto2.createHash)("sha256").update(NAVIGATOR_PRODUCT_SQL).digest("hex");
+      const productHash = (0, import_node_crypto3.createHash)("sha256").update(NAVIGATOR_PRODUCT_SQL).digest("hex");
       const product = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [NAVIGATOR_PRODUCT_VERSION]);
       if (product.rows.length && product.rows[0].checksum !== productHash)
         return failure("CONFLICT", "Navigator \u4EA7\u54C1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -6895,7 +7027,7 @@ var PostgresAdminRepository = class {
         const existing = await c.query(`SELECT e.user_id,u.deleted_at FROM public.identity_login_emails e JOIN public.identity_users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u`, [cmd.email]);
         if (existing.rows.length)
           return failure("CONFLICT", existing.rows[0].deleted_at ? "\u8BE5\u90AE\u7BB1\u5DF2\u5F52\u6863\uFF0C\u8BF7\u5230\u5DF2\u5F52\u6863\u8D26\u53F7\u4E2D\u6062\u590D" : "\u8BE5\u90AE\u7BB1\u5DF2\u6CE8\u518C");
-        targetId = (0, import_node_crypto2.randomUUID)();
+        targetId = (0, import_node_crypto3.randomUUID)();
         productId = "crm";
         const { roles, scope, capabilities } = productPermissionsFor(cmd.role);
         await c.query("INSERT INTO public.identity_users(user_id,display_name,identity_admin,must_change_password) VALUES($1,$2,$3,true)", [targetId, cmd.email.split("@")[0], cmd.role === "admin"]);
@@ -6917,7 +7049,7 @@ var PostgresAdminRepository = class {
           return failure("NOT_FOUND", "\u672A\u627E\u5230\u76EE\u6807\u8EAB\u4EFD");
         if (cmd.purpose === "recover" && (!existing.rows[0].active || existing.rows[0].deleted_at))
           return failure("FORBIDDEN", "\u505C\u7528\u6216\u5DF2\u5220\u9664\u8D26\u53F7\u4E0D\u80FD\u91CD\u7F6E\u5BC6\u7801");
-        targetId = existing.rows[0]?.user_id ?? (0, import_node_crypto2.randomUUID)();
+        targetId = existing.rows[0]?.user_id ?? (0, import_node_crypto3.randomUUID)();
         if (cmd.purpose === "activate" && !existing.rows.length) {
           await c.query("INSERT INTO public.identity_users(user_id,display_name,active) VALUES($1,$2,false)", [targetId, cmd.displayName]);
           await c.query("INSERT INTO public.identity_login_emails(user_id,email) VALUES($1,$2)", [targetId, cmd.email]);
@@ -7242,7 +7374,7 @@ function profileFromRow(row2) {
   };
 }
 function stableGrowthEventId(userId, sourceProduct, sourceEventId) {
-  const bytes = (0, import_node_crypto3.createHash)("sha256").update(`${sourceProduct}:${userId}:${sourceEventId}`).digest().subarray(0, 16);
+  const bytes = (0, import_node_crypto4.createHash)("sha256").update(`${sourceProduct}:${userId}:${sourceEventId}`).digest().subarray(0, 16);
   bytes[6] = bytes[6] & 15 | 80;
   bytes[8] = bytes[8] & 63 | 128;
   const hex = bytes.toString("hex");
@@ -7292,7 +7424,7 @@ var PostgresAuthRepository = class {
   migrate() {
     return this.execute(() => this.tx(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock($1)", [AUTH_SCHEMA_LOCK]);
-      const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(AUTH_SCHEMA_SQL).digest("hex");
+      const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(AUTH_SCHEMA_SQL).digest("hex");
       const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [AUTH_SCHEMA_VERSION]);
       if (existing.rows.length) {
         if (existing.rows[0].checksum !== checksum4)
@@ -7308,7 +7440,7 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [PASSWORD_SCHEMA_LOCK]);
-        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(PASSWORD_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(PASSWORD_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [PASSWORD_SCHEMA_VERSION]);
         if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u6539\u5BC6\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -7323,7 +7455,7 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [DESKTOP_SCHEMA_LOCK]);
-        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(DESKTOP_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(DESKTOP_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [DESKTOP_SCHEMA_VERSION]);
         if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u684C\u9762\u4F1A\u8BDD\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -7338,7 +7470,7 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [DESKTOP_DEVICE_SCHEMA_LOCK]);
-        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(DESKTOP_DEVICE_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(DESKTOP_DEVICE_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [DESKTOP_DEVICE_SCHEMA_VERSION]);
         if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u684C\u9762\u8BBE\u5907\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -7354,7 +7486,7 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [ACCOUNT_PROFILE_SCHEMA_LOCK]);
-        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(ACCOUNT_PROFILE_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(ACCOUNT_PROFILE_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [ACCOUNT_PROFILE_SCHEMA_VERSION]);
         if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u8D26\u53F7\u8D44\u6599\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -7370,7 +7502,7 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [ACCOUNT_GROWTH_SCHEMA_LOCK]);
-        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(ACCOUNT_GROWTH_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(ACCOUNT_GROWTH_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [ACCOUNT_GROWTH_SCHEMA_VERSION]);
         if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u8D26\u53F7\u6210\u957F\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -7386,7 +7518,7 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [PASSWORD_COMPAT_SCHEMA_LOCK]);
-        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(PASSWORD_COMPAT_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(PASSWORD_COMPAT_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [PASSWORD_COMPAT_SCHEMA_VERSION]);
         if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u65E7\u5BC6\u7801\u517C\u5BB9\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -7402,7 +7534,7 @@ var PostgresAuthRepository = class {
         return result2;
       return this.execute(() => this.tx(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock($1)", [LEGACY_ACCOUNT_MAPPING_SCHEMA_LOCK]);
-        const checksum4 = (0, import_node_crypto3.createHash)("sha256").update(LEGACY_ACCOUNT_MAPPING_SCHEMA_SQL).digest("hex");
+        const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(LEGACY_ACCOUNT_MAPPING_SCHEMA_SQL).digest("hex");
         const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEGACY_ACCOUNT_MAPPING_SCHEMA_VERSION]);
         if (existing.rows.length && existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u65E7\u8D26\u53F7\u6620\u5C04\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -7438,7 +7570,7 @@ var PostgresAuthRepository = class {
       const existing = await client.query("SELECT e.user_id,u.deleted_at FROM public.identity_login_emails e JOIN public.identity_users u USING(user_id) WHERE e.email=$1 FOR UPDATE OF u", [input.email]);
       if (existing.rows.length)
         return failure("CONFLICT", existing.rows[0].deleted_at ? "\u8BE5\u90AE\u7BB1\u5DF2\u5F52\u6863\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u6062\u590D\u8D26\u53F7" : "\u8BE5\u90AE\u7BB1\u5DF2\u6CE8\u518C");
-      const userId = (0, import_node_crypto3.randomUUID)();
+      const userId = (0, import_node_crypto4.randomUUID)();
       await client.query("INSERT INTO public.identity_users(user_id,display_name,identity_admin) VALUES($1,$2,false)", [userId, input.email.split("@")[0]]);
       await client.query("INSERT INTO public.identity_login_emails(user_id,email,verified_at) VALUES($1,$2,NULL)", [userId, input.email]);
       await client.query("INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme) VALUES($1,$2,'scrypt-v1')", [userId, input.passwordHash]);
@@ -7708,7 +7840,7 @@ var PostgresAuthRepository = class {
 };
 
 // server/adapters/password.ts
-var import_node_crypto4 = require("node:crypto");
+var import_node_crypto5 = require("node:crypto");
 var PASSWORD_PARAMETERS = { N: 131072, r: 8, p: 1, maxmem: 256 * 1024 * 1024 };
 var SALT_BYTES = 16;
 var HASH_BYTES = 32;
@@ -7727,14 +7859,14 @@ var PasswordAdapter = class {
   active = 0;
   dummyHash = "";
   async initialize() {
-    this.dummyHash = await this.hash((0, import_node_crypto4.randomBytes)(TOKEN_BYTES).toString("hex"));
+    this.dummyHash = await this.hash((0, import_node_crypto5.randomBytes)(TOKEN_BYTES).toString("hex"));
   }
   async derive(password, salt) {
     if (this.active >= this.maxConcurrent)
       throw new Error("\u5BC6\u7801\u6821\u9A8C\u5E76\u53D1\u5DF2\u6EE1");
     this.active++;
     try {
-      return await new Promise((resolve3, reject) => (0, import_node_crypto4.scrypt)(password, salt, HASH_BYTES, PASSWORD_PARAMETERS, (error, key) => error ? reject(error) : resolve3(key)));
+      return await new Promise((resolve3, reject) => (0, import_node_crypto5.scrypt)(password, salt, HASH_BYTES, PASSWORD_PARAMETERS, (error, key) => error ? reject(error) : resolve3(key)));
     } finally {
       this.active--;
     }
@@ -7744,7 +7876,7 @@ var PasswordAdapter = class {
       throw new Error("\u5BC6\u7801\u6821\u9A8C\u5E76\u53D1\u5DF2\u6EE1");
     this.active++;
     try {
-      return await new Promise((resolve3, reject) => (0, import_node_crypto4.pbkdf2)(
+      return await new Promise((resolve3, reject) => (0, import_node_crypto5.pbkdf2)(
         password,
         salt,
         iterations,
@@ -7757,14 +7889,14 @@ var PasswordAdapter = class {
     }
   }
   async hash(password) {
-    const salt = (0, import_node_crypto4.randomBytes)(SALT_BYTES), key = await this.derive(password, salt);
+    const salt = (0, import_node_crypto5.randomBytes)(SALT_BYTES), key = await this.derive(password, salt);
     return `${HASH_PREFIX}$${salt.toString("hex")}$${key.toString("hex")}`;
   }
   async verify(password, hash) {
     const match = HASH_PATTERN.exec(hash);
     if (match) {
       const actual = await this.derive(password, Buffer.from(match[1], "hex"));
-      return (0, import_node_crypto4.timingSafeEqual)(actual, Buffer.from(match[2], "hex"));
+      return (0, import_node_crypto5.timingSafeEqual)(actual, Buffer.from(match[2], "hex"));
     }
     const legacy = LEGACY_HASH_PATTERN.exec(hash);
     if (legacy) {
@@ -7772,7 +7904,7 @@ var PasswordAdapter = class {
       if (!Number.isSafeInteger(iterations) || iterations < LEGACY_MIN_ITERATIONS || iterations > LEGACY_MAX_ITERATIONS)
         return false;
       const actual = await this.deriveLegacy(password, legacy[2], iterations);
-      return (0, import_node_crypto4.timingSafeEqual)(actual, Buffer.from(legacy[3], "hex"));
+      return (0, import_node_crypto5.timingSafeEqual)(actual, Buffer.from(legacy[3], "hex"));
     }
     if (!HASH_PATTERN.exec(this.dummyHash))
       throw new Error("\u5BC6\u7801\u6821\u9A8C\u5668\u672A\u521D\u59CB\u5316");
@@ -7781,8 +7913,8 @@ var PasswordAdapter = class {
   }
 };
 var tokenAdapter = {
-  create: () => (0, import_node_crypto4.randomBytes)(TOKEN_BYTES).toString("base64url"),
-  hash: (token) => (0, import_node_crypto4.createHash)("sha256").update(token).digest("hex")
+  create: () => (0, import_node_crypto5.randomBytes)(TOKEN_BYTES).toString("base64url"),
+  hash: (token) => (0, import_node_crypto5.createHash)("sha256").update(token).digest("hex")
 };
 
 // server/adapters/login-rate.ts
@@ -7918,7 +8050,7 @@ function readOnlineConfig(env = process.env) {
 
 // server/adapters/fixtures.ts
 var import_node_fs3 = require("node:fs");
-var import_node_crypto5 = require("node:crypto");
+var import_node_crypto6 = require("node:crypto");
 var FIXTURE_PATH = ".work/pg-crm/online-fixtures.json";
 var PRIVATE_FILE_MODE = 384;
 var PASSWORD_BYTES = 24;
@@ -7932,7 +8064,7 @@ async function initializeFixtures(repo, passwords, testMode) {
   if (!testMode)
     return;
   if (!(0, import_node_fs3.existsSync)(FIXTURE_PATH)) {
-    const accounts = FIXTURES.map((item) => ({ email: item.email, userId: (0, import_node_crypto5.randomUUID)(), password: (0, import_node_crypto5.randomBytes)(PASSWORD_BYTES).toString("base64url") }));
+    const accounts = FIXTURES.map((item) => ({ email: item.email, userId: (0, import_node_crypto6.randomUUID)(), password: (0, import_node_crypto6.randomBytes)(PASSWORD_BYTES).toString("base64url") }));
     (0, import_node_fs3.writeFileSync)(FIXTURE_PATH, JSON.stringify({ marker: FIXTURE_MARKER, accounts }, null, JSON_INDENT), { mode: PRIVATE_FILE_MODE, flag: "wx" });
   }
   const file = JSON.parse((0, import_node_fs3.readFileSync)(FIXTURE_PATH, "utf8"));
@@ -8583,10 +8715,10 @@ function createPasswordChangeService(repo, authRepo, passwords, tokens, auth) {
 }
 
 // server/adapters/postgres/flat-lead-import.ts
-var import_node_crypto15 = require("node:crypto");
+var import_node_crypto16 = require("node:crypto");
 
 // server/adapters/postgres/lead-match-repository.ts
-var import_node_crypto14 = require("node:crypto");
+var import_node_crypto15 = require("node:crypto");
 
 // server/core/lead-conflict.ts
 var LEGAL_SUFFIXES = /* @__PURE__ */ new Set(["co", "company", "corp", "corporation", "inc", "ltd", "limited", "llc", "sa", "sas", "srl", "gmbh", "ag", "bv", "nv", "pty", "plc"]);
@@ -8668,16 +8800,16 @@ var LEAD_INGRESS_LIMITS = { contacts: 200, candidates: 5, text: 500, key: 160 };
 var LEAD_INGRESS_SOURCES = ["manual", "flat_import", "workbook_import", "agent_import", "api_contact_update", "soft_delete_recovery", "migration_recovery"];
 var UUID5 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var record4 = (value2) => !!value2 && typeof value2 === "object" && !Array.isArray(value2);
-var text3 = (value2, max = LEAD_INGRESS_LIMITS.text, min = 1) => typeof value2 === "string" && value2.trim().length >= min && value2.length <= max;
+var text4 = (value2, max = LEAD_INGRESS_LIMITS.text, min = 1) => typeof value2 === "string" && value2.trim().length >= min && value2.length <= max;
 function validateLeadIngressResolution(value2) {
   if (!record4(value2) || Object.keys(value2).some((key) => !["decisionId", "action", "expectedVersion", "idempotencyKey"].includes(key)))
     return failure("INVALID_INPUT", "\u51B2\u7A81\u5904\u7406\u53C2\u6570\u65E0\u6548");
-  if (!text3(value2.decisionId, 64) || !UUID5.test(value2.decisionId) || !["create_new", "attach_company", "restore"].includes(String(value2.action)) || !Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !text3(value2.idempotencyKey, LEAD_INGRESS_LIMITS.key))
+  if (!text4(value2.decisionId, 64) || !UUID5.test(value2.decisionId) || !["create_new", "attach_company", "restore"].includes(String(value2.action)) || !Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !text4(value2.idempotencyKey, LEAD_INGRESS_LIMITS.key))
     return failure("INVALID_INPUT", "\u51B2\u7A81\u5904\u7406\u53C2\u6570\u65E0\u6548");
   return success({ decisionId: value2.decisionId, action: value2.action, expectedVersion: Number(value2.expectedVersion), idempotencyKey: value2.idempotencyKey });
 }
 function validateLeadIngressDecisionQuery(source, idempotencyKey) {
-  if (!LEAD_INGRESS_SOURCES.includes(source) || !text3(idempotencyKey, LEAD_INGRESS_LIMITS.key))
+  if (!LEAD_INGRESS_SOURCES.includes(source) || !text4(idempotencyKey, LEAD_INGRESS_LIMITS.key))
     return failure("INVALID_INPUT", "\u51B2\u7A81\u8BB0\u5F55\u53C2\u6570\u65E0\u6548");
   return success({ source, idempotencyKey });
 }
@@ -8922,7 +9054,7 @@ function sharedAccessSql(actorSql, ownerSql) {
 }
 
 // server/adapters/postgres/contact-assignment-repository.ts
-var import_node_crypto12 = require("node:crypto");
+var import_node_crypto13 = require("node:crypto");
 
 // server/core/contact-assignment-state.ts
 var CONTACT_ASSIGNMENT_STATUSES = [
@@ -8985,10 +9117,10 @@ function isContactAssignmentTarget(member2, actorId) {
 }
 
 // server/adapters/postgres/contact-mail-repository.ts
-var import_node_crypto10 = require("node:crypto");
+var import_node_crypto11 = require("node:crypto");
 
 // server/adapters/postgres/contact-mail-analysis-repository.ts
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 
 // server/core/mail-analysis.ts
 var MAIL_RELEVANCE_VALUES = ["customer_business", "internal", "notification", "vendor", "spam", "unknown"];
@@ -9066,28 +9198,28 @@ function contactStateForMail(kind, direction, fromEmail, primaryEmail) {
     return "replied";
   return null;
 }
-function containsAny(text15, words) {
-  return words.find((word) => text15.includes(word)) ?? null;
+function containsAny(text16, words) {
+  return words.find((word) => text16.includes(word)) ?? null;
 }
-function detectedIntent(text15) {
+function detectedIntent(text16) {
   for (const rule of INTENT_RULES) {
-    const evidence2 = containsAny(text15, rule.words);
+    const evidence2 = containsAny(text16, rule.words);
     if (evidence2)
       return { code: rule.code, label: rule.label, evidence: evidence2, confidence: evidence2.length >= 5 ? 0.9 : 0.82 };
   }
   return null;
 }
 function mechanicalMailAnalysis(input) {
-  const text15 = `${input.subject}
+  const text16 = `${input.subject}
 ${input.preview}`.toLocaleLowerCase();
-  const vendor = containsAny(text15, VENDOR_WORDS);
-  const spam = containsAny(text15, SPAM_WORDS);
-  const internal = input.internal || !!containsAny(text15, INTERNAL_WORDS);
+  const vendor = containsAny(text16, VENDOR_WORDS);
+  const spam = containsAny(text16, SPAM_WORDS);
+  const internal = input.internal || !!containsAny(text16, INTERNAL_WORDS);
   const classification = input.kind === "bounced" ? "bounced" : input.kind === "autoreply" ? "autoreply" : input.kind === "replied" ? "replied" : "other";
   const personalReply = input.kind !== "replied" || input.direction === "inbound" && !!input.primaryEmail && input.fromEmail.trim().toLowerCase() === input.primaryEmail.trim().toLowerCase();
   const relevance = internal ? "internal" : spam ? "spam" : vendor ? "vendor" : mailRelevanceFor({ classification, matchedContact: input.matchedContact && personalReply, internal: false, ccOnly: input.kind === "cc" });
   const contactState = contactStateForMail(input.kind, input.direction, input.fromEmail, input.primaryEmail);
-  const intent = relevance === "customer_business" ? detectedIntent(text15) : null;
+  const intent = relevance === "customer_business" ? detectedIntent(text16) : null;
   const confidence2 = relevance === "customer_business" ? input.kind === "sent" || input.kind === "replied" || input.kind === "bounced" || input.kind === "autoreply" ? 0.99 : intent?.confidence ?? 0.7 : 0.95;
   const signals2 = intent ? [{
     code: intent.code,
@@ -9158,7 +9290,7 @@ function newerAnalysisWins(incoming, current) {
 }
 
 // server/adapters/postgres/contact-mail-analysis-schema.ts
-var import_node_crypto6 = require("node:crypto");
+var import_node_crypto7 = require("node:crypto");
 var CONTACT_MAIL_ANALYSIS_SCHEMA_VERSION = "059-contact-mail-analysis";
 var CONTACT_MAIL_ANALYSIS_LOCK = 590059;
 var CONTACT_MAIL_ANALYSIS_SQL = `
@@ -9245,13 +9377,13 @@ CREATE INDEX idx_crm_contact_mail_task_suggestions_active
 async function ensureContactMailAnalysisSchemaIn(client) {
   const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_ANALYSIS_SCHEMA_VERSION]);
   if (existing.rows.length) {
-    const checksum4 = (0, import_node_crypto6.createHash)("sha256").update(CONTACT_MAIL_ANALYSIS_SQL).digest("hex");
+    const checksum4 = (0, import_node_crypto7.createHash)("sha256").update(CONTACT_MAIL_ANALYSIS_SQL).digest("hex");
     return existing.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u90AE\u4EF6\u5206\u6790\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
   }
   return migrateContactMailAnalysisSchema(client);
 }
 async function migrateContactMailAnalysisSchema(client) {
-  const checksum4 = (0, import_node_crypto6.createHash)("sha256").update(CONTACT_MAIL_ANALYSIS_SQL).digest("hex");
+  const checksum4 = (0, import_node_crypto7.createHash)("sha256").update(CONTACT_MAIL_ANALYSIS_SQL).digest("hex");
   const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_ANALYSIS_SCHEMA_VERSION]);
   if (existing.rows.length)
     return existing.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u90AE\u4EF6\u5206\u6790\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -9265,7 +9397,7 @@ async function migrateContactMailAnalysisSchema(client) {
 }
 
 // server/adapters/postgres/team-attention-schema.ts
-var import_node_crypto7 = require("node:crypto");
+var import_node_crypto8 = require("node:crypto");
 
 // server/core/team-attention.ts
 var TEAM_ATTENTION_ROUTES = {
@@ -9433,7 +9565,7 @@ CREATE TABLE crm_team_attention_notifications (
 );
 `;
 function checksum() {
-  return (0, import_node_crypto7.createHash)("sha256").update(TEAM_ATTENTION_SQL).digest("hex");
+  return (0, import_node_crypto8.createHash)("sha256").update(TEAM_ATTENTION_SQL).digest("hex");
 }
 async function ensureTeamAttentionSchemaIn(client) {
   const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TEAM_ATTENTION_SCHEMA_VERSION]);
@@ -9459,7 +9591,7 @@ async function migrateTeamAttentionSchema(client) {
 }
 
 // server/adapters/postgres/task-repository.ts
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto9 = require("node:crypto");
 
 // server/core/tasks.ts
 var TASK_ROUTES = { tasks: "/api/crm/tasks", rescheduleAction: "reschedule", completeAction: "complete" };
@@ -9616,7 +9748,7 @@ var PostgresTaskRepository = class {
     return success(taskRow(r.rows[0], canManage(a, c)));
   }
   async cached(db, a, operation, input, fn) {
-    const digest2 = (0, import_node_crypto8.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const digest2 = (0, import_node_crypto9.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
     const old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
     if (old.rows.length) {
       if (old.rows[0].digest !== digest2)
@@ -9631,7 +9763,7 @@ var PostgresTaskRepository = class {
   async migrate() {
     return this.tx(async (db) => {
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TASK_VERSION]);
-      const hash = (0, import_node_crypto8.createHash)("sha256").update(TASK_SQL).digest("hex");
+      const hash = (0, import_node_crypto9.createHash)("sha256").update(TASK_SQL).digest("hex");
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u4EFB\u52A1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
       if (!old.rows.length) {
@@ -9743,7 +9875,7 @@ var PostgresTaskRepository = class {
 var SUMMARY_MAX = 2e3;
 var DIGEST_FIELDS = ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "source", "inputSequence", "result", "classification", "relevance", "summary", "signals", "requiresAction", "nextAction", "priority", "dueHint", "confidence", "evidence"];
 function sha(value2) {
-  return (0, import_node_crypto9.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+  return (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
 }
 function jsonArray(value2) {
   if (Array.isArray(value2))
@@ -10025,10 +10157,10 @@ function contactMailFingerprint(input) {
   const fields = [input.contactId, input.customerId, input.eventKey, input.mailboxKey, input.messageKey, input.kind, input.direction, input.occurredAt, input.subject, input.preview, input.fromEmail, input.toEmails, input.ccEmails];
   if (input.correction)
     fields.push([input.correction.previousEventKey, input.correction.classification]);
-  return (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify(fields)).digest("hex");
+  return (0, import_node_crypto11.createHash)("sha256").update(JSON.stringify(fields)).digest("hex");
 }
 function contactMailContentHash(input) {
-  return (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify([input.contactId, input.customerId, input.mailboxKey, input.messageKey, input.subject, input.preview, input.fromEmail, input.toEmails, input.ccEmails])).digest("hex");
+  return (0, import_node_crypto11.createHash)("sha256").update(JSON.stringify([input.contactId, input.customerId, input.mailboxKey, input.messageKey, input.subject, input.preview, input.fromEmail, input.toEmails, input.ccEmails])).digest("hex");
 }
 async function recordContactMailEventIn(client, actor, input) {
   if (input.advanceSendStage !== void 0 && (typeof input.advanceSendStage !== "boolean" || input.kind !== "sent" || input.direction !== "outbound"))
@@ -10090,7 +10222,7 @@ async function recordContactMailEventIn(client, actor, input) {
     if (!newer)
       await client.query("UPDATE contacts SET status=$2 WHERE id=$1", [input.contactId, classification]);
   }
-  const eventId = (0, import_node_crypto10.randomUUID)();
+  const eventId = (0, import_node_crypto11.randomUUID)();
   await client.query("INSERT INTO crm_contact_mail_events(event_id,actor_id,contact_id,customer_id,event_key,mailbox_key,message_key,kind,direction,occurred_at,subject,preview,from_email,to_emails,cc_emails,digest,recorded_at,activity_id,classification_correction,classification_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16,$17,$18,$19::jsonb,$20)", [eventId, actor.userId, input.contactId, input.customerId, input.eventKey, input.mailboxKey, input.messageKey, input.kind, input.direction, occurred, input.subject, input.preview, input.fromEmail, JSON.stringify(input.toEmails), JSON.stringify(input.ccEmails), fingerprint2, recorded, activityId, input.correction ? JSON.stringify(input.correction) : null, revision.data]);
   if (input.advanceSendStage) {
     await advanceStage();
@@ -10109,7 +10241,7 @@ async function recordContactMailEventIn(client, actor, input) {
 }
 
 // server/adapters/postgres/contact-assignment-group-schema.ts
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto12 = require("node:crypto");
 var CONTACT_ASSIGNMENT_GROUP_VERSION = "050-contact-assignment-groups";
 var CONTACT_ASSIGNMENT_GROUP_SQL = `
 CREATE TABLE IF NOT EXISTS crm_contact_assignment_group_members(
@@ -10120,7 +10252,7 @@ CREATE TABLE IF NOT EXISTS crm_contact_assignment_group_members(
 CREATE INDEX IF NOT EXISTS idx_crm_contact_assignment_group_member ON crm_contact_assignment_group_members(group_id,request_id);
 `;
 async function migrateContactAssignmentGroups(c) {
-  const checksum4 = (0, import_node_crypto11.createHash)("sha256").update(CONTACT_ASSIGNMENT_GROUP_SQL).digest("hex");
+  const checksum4 = (0, import_node_crypto12.createHash)("sha256").update(CONTACT_ASSIGNMENT_GROUP_SQL).digest("hex");
   const old = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_ASSIGNMENT_GROUP_VERSION]);
   if (old.rows.length && old.rows[0].checksum !== checksum4)
     return failure("CONFLICT", "\u5206\u914D\u7EC4\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10267,7 +10399,7 @@ async function listContactGroupsIn(c, a, q) {
   return success({ items: rows.rows.map((row2) => ({ key: String(row2.key), label: String(row2.label), count: Number(row2.count), companyCount: Number(row2.company_count), countryCount: Number(row2.country_count), touchedCount: Number(row2.touched_count), companies: row2.companies ?? [], countries: row2.countries ?? [], clientTypes: row2.client_types ?? [], sourceLevel1: row2.source_level1 ?? [], latestImportedAt: row2.latest_imported_at ? new Date(row2.latest_imported_at).toISOString() : null, latestUpdatedAt: row2.latest_updated_at ? new Date(row2.latest_updated_at).toISOString() : null })), total: Number(rows.rows[0]?.total ?? 0) });
 }
 async function cached(c, a, operation, input, work, replay) {
-  const digest2 = (0, import_node_crypto12.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = (await c.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey])).rows[0];
+  const digest2 = (0, import_node_crypto13.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = (await c.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey])).rows[0];
   if (old)
     return old.digest !== digest2 ? failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42") : replay ? replay(old.response) : success(old.response);
   const result2 = await work();
@@ -10363,7 +10495,7 @@ async function createContactAssignmentsIn(c, a, input) {
   const org = await assignmentOrgContext(c, a.userId, input.targetUserId), notifyUserIds = contactAssignmentRecipients(input.targetUserId, org.supervisorUserIds);
   return cached(c, a, "contact-assignments:create", input, async () => {
     const items = [];
-    const groupId = (0, import_node_crypto12.randomUUID)(), ordered = [...input.contacts].sort((x, y) => x.contactId - y.contactId);
+    const groupId = (0, import_node_crypto13.randomUUID)(), ordered = [...input.contacts].sort((x, y) => x.contactId - y.contactId);
     for (const [index, ref2] of ordered.entries()) {
       const ct = await contact(c, ref2, true);
       if (!ct || !read(a, ct))
@@ -10372,7 +10504,7 @@ async function createContactAssignmentsIn(c, a, input) {
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u5206\u914D\u3001\u53D7\u9650\u6216\u7248\u672C\u5DF2\u53D8\u5316");
       if ((await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE contact_id=$1 AND status IN ('pending','accepted','pending_transfer')", [ref2.contactId])).rows.length)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u6709\u6709\u6548\u5206\u914D\u8BF7\u6C42");
-      const id = (0, import_node_crypto12.randomUUID)();
+      const id = (0, import_node_crypto13.randomUUID)();
       await c.query("INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids,supervisor_user_ids,source_org_unit_id,source_org_unit_name) VALUES($1,$2,$3,$4,$5,$6::uuid[],$7::uuid[],$8,$9)", [id, ref2.contactId, ref2.customerId, input.targetUserId, a.userId, notifyUserIds, org.supervisorUserIds, org.sourceOrgUnitId, org.sourceOrgUnitName]);
       await c.query("INSERT INTO crm_contact_assignment_group_members(group_id,request_id) VALUES($1,$2)", [groupId, id]);
       const r = await request(c, a, id);
@@ -10475,7 +10607,7 @@ async function decideContactAssignmentGroupIn(c, a, action, input) {
   if (action === "cancel" ? !contactManager(a) : rows.some((row2) => row2.target_user_id !== a.userId) || !a.capabilities.includes("leads.develop"))
     return failure("NOT_FOUND", "\u5206\u914D\u8BF7\u6C42\u4E0D\u5B58\u5728");
   for (const row2 of rows.filter((row3) => row3.status === "pending")) {
-    const decision2 = { requestId: row2.request_id, expectedVersion: Number(row2.version), idempotencyKey: (0, import_node_crypto12.createHash)("sha256").update(`${input.idempotencyKey}:${row2.request_id}`).digest("hex") };
+    const decision2 = { requestId: row2.request_id, expectedVersion: Number(row2.version), idempotencyKey: (0, import_node_crypto13.createHash)("sha256").update(`${input.idempotencyKey}:${row2.request_id}`).digest("hex") };
     const result3 = await decideContactAssignmentIn(c, a, action, decision2);
     if (!result3.ok)
       return result3;
@@ -10764,7 +10896,7 @@ function workbookRowIssue(row2) {
 }
 
 // server/adapters/postgres/lead-match-schema.ts
-var import_node_crypto13 = require("node:crypto");
+var import_node_crypto14 = require("node:crypto");
 var LEAD_MATCH_SCHEMA_VERSION = "058-lead-ingress-conflict";
 var LEAD_MATCH_LOCK = 580058;
 var LEAD_MATCH_SQL = `
@@ -10827,7 +10959,7 @@ CREATE INDEX idx_crm_lead_match_decisions_selected_contact
   WHERE selected_contact_id IS NOT NULL;
 `;
 async function migrateLeadMatchSchema(client) {
-  const checksum4 = (0, import_node_crypto13.createHash)("sha256").update(LEAD_MATCH_SQL).digest("hex");
+  const checksum4 = (0, import_node_crypto14.createHash)("sha256").update(LEAD_MATCH_SQL).digest("hex");
   const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_MATCH_SCHEMA_VERSION]);
   if (existing.rows.length)
     return existing.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u7EBF\u7D22\u51B2\u7A81\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10846,7 +10978,7 @@ async function migrateLeadMatchSchema(client) {
 var globalActor = (actor) => actor.roles.includes("admin") && ["shared", "summary"].includes(actor.scope) && actor.capabilities.includes("leads.read.all");
 var operationsManager = (actor) => actor.roles.includes("operations") && ["shared", "summary"].includes(actor.scope) && actor.capabilities.includes("leads.assign");
 var contactLookupToken = (name) => name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\u3400-\u9fff]+/g, "").slice(0, 4);
-var text4 = (value2) => value2?.trim() || null;
+var text5 = (value2) => value2?.trim() || null;
 function candidateVisible(actor, row2) {
   if (globalActor(actor))
     return true;
@@ -11058,7 +11190,7 @@ async function eventIn(c, actor, customerId, version4, type, contactId) {
   ]);
 }
 async function createCustomerIn(c, actor, input, companyId) {
-  const customerId = (0, import_node_crypto14.randomUUID)();
+  const customerId = (0, import_node_crypto15.randomUUID)();
   const inserted = await c.query(`INSERT INTO crm_customers(
     customer_id,company_id,source,customer_key,source_detail,created_by,origin,state,owner_user_id,business_type,development_restriction,source_created_at
   ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(source,customer_key) DO NOTHING RETURNING customer_id`, [
@@ -11071,8 +11203,8 @@ async function createCustomerIn(c, actor, input, companyId) {
     input.kind,
     input.kind === "personal" ? "owned" : "draft",
     input.kind === "personal" ? actor.userId : null,
-    text4(input.company.businessType),
-    text4(input.profile?.developmentRestriction),
+    text5(input.company.businessType),
+    text5(input.profile?.developmentRestriction),
     input.profile?.sourceCreatedAt ? normalizeSourceDate(input.profile.sourceCreatedAt) : null
   ]);
   return inserted.rows[0]?.customer_id;
@@ -11088,7 +11220,7 @@ async function appendContactsIn(c, actor, input, companyId, customerId) {
           AND ct.first_name IS NOT DISTINCT FROM $2 AND ct.last_name IS NOT DISTINCT FROM $3
           AND ct.title IS NOT DISTINCT FROM $4 AND ct.phone IS NOT DISTINCT FROM $5
           AND ct.whatsapp IS NOT DISTINCT FROM $6 AND ct.linkedin IS NOT DISTINCT FROM $7
-        LIMIT 1`, [input.target.customerId, text4(contact2.firstName ?? contact2.name), text4(contact2.lastName), text4(contact2.title), text4(contact2.phone), text4(contact2.whatsapp), text4(contact2.linkedinUrl)]);
+        LIMIT 1`, [input.target.customerId, text5(contact2.firstName ?? contact2.name), text5(contact2.lastName), text5(contact2.title), text5(contact2.phone), text5(contact2.whatsapp), text5(contact2.linkedinUrl)]);
       if (duplicate.rows.length) {
         ids.push(Number(duplicate.rows[0].id));
         continue;
@@ -11101,19 +11233,19 @@ async function appendContactsIn(c, actor, input, companyId, customerId) {
     RETURNING id`, [
       email3,
       companyId,
-      text4(contact2.firstName ?? contact2.name),
-      text4(contact2.lastName),
-      text4(contact2.title),
-      text4(contact2.phone),
-      text4(contact2.whatsapp),
-      text4(contact2.linkedinUrl),
-      text4(contact2.country),
-      text4(contact2.language),
-      text4(contact2.clientType),
-      text4(contact2.sourceLevel1),
-      text4(contact2.sourceLevel2),
-      text4(contact2.stage) ?? "cold",
-      text4(contact2.status) ?? "",
+      text5(contact2.firstName ?? contact2.name),
+      text5(contact2.lastName),
+      text5(contact2.title),
+      text5(contact2.phone),
+      text5(contact2.whatsapp),
+      text5(contact2.linkedinUrl),
+      text5(contact2.country),
+      text5(contact2.language),
+      text5(contact2.clientType),
+      text5(contact2.sourceLevel1),
+      text5(contact2.sourceLevel2),
+      text5(contact2.stage) ?? "cold",
+      text5(contact2.status) ?? "",
       JSON.stringify(contact2.tags ?? []),
       JSON.stringify(contact2.extra ?? {}),
       input.sourceChannel,
@@ -11143,19 +11275,19 @@ async function restoreContactIn(c, actor, input, candidate) {
     crm_deleted_at=NULL,crm_deleted_by=NULL,crm_contact_version=crm_contact_version+1,updated_at=clock_timestamp()
     WHERE id=$1 AND crm_deleted_at IS NOT NULL RETURNING id,crm_contact_version`, [
     candidate.contactId,
-    text4(contact2.firstName ?? contact2.name),
-    text4(contact2.lastName),
-    text4(contact2.title),
-    text4(contact2.phone),
-    text4(contact2.whatsapp),
-    text4(contact2.linkedinUrl),
-    text4(contact2.country),
-    text4(contact2.language),
-    text4(contact2.clientType),
-    text4(contact2.sourceLevel1),
-    text4(contact2.sourceLevel2),
-    text4(contact2.stage),
-    text4(contact2.status),
+    text5(contact2.firstName ?? contact2.name),
+    text5(contact2.lastName),
+    text5(contact2.title),
+    text5(contact2.phone),
+    text5(contact2.whatsapp),
+    text5(contact2.linkedinUrl),
+    text5(contact2.country),
+    text5(contact2.language),
+    text5(contact2.clientType),
+    text5(contact2.sourceLevel1),
+    text5(contact2.sourceLevel2),
+    text5(contact2.stage),
+    text5(contact2.status),
     JSON.stringify(contact2.tags ?? []),
     JSON.stringify(contact2.extra ?? {})
   ]);
@@ -11211,10 +11343,10 @@ async function materializeLeadIngressIn(c, actor, input, action, candidate) {
   } else {
     const company = await c.query("INSERT INTO companies(name,country,customer_type,industry,domain) VALUES($1,$2,$3,$4,$5) RETURNING id", [
       input.company.name.trim(),
-      text4(input.company.country),
-      text4(input.company.customerType),
-      text4(input.company.businessType),
-      text4(input.company.domain)
+      text5(input.company.country),
+      text5(input.company.customerType),
+      text5(input.company.businessType),
+      text5(input.company.domain)
     ]);
     companyId = company.rows[0].id;
     const created = await createCustomerIn(c, actor, input, companyId);
@@ -11357,7 +11489,7 @@ function ingressSource(source) {
   return source.toLowerCase().includes("agent") ? "agent_import" : "flat_import";
 }
 async function importFlatLeadsIn(c, actor, input) {
-  const batchId = (0, import_node_crypto15.randomUUID)();
+  const batchId = (0, import_node_crypto16.randomUUID)();
   await c.query("INSERT INTO crm_import_batches(batch_id,actor_id,source,source_detail,mapping) VALUES($1,$2,$3,$4,$5)", [batchId, actor.userId, input.source, input.sourceDetail, JSON.stringify(input.mapping ?? {})]);
   const rows = [];
   for (const [index, original] of input.rows.entries()) {
@@ -11368,7 +11500,7 @@ async function importFlatLeadsIn(c, actor, input) {
       email: original.email.trim().toLowerCase(),
       remark: unmatchedImportRemark(original.rawRow, Object.values(input.mapping ?? {}))
     };
-    const rowId = (0, import_node_crypto15.randomUUID)();
+    const rowId = (0, import_node_crypto16.randomUUID)();
     let status = "created";
     let message = importRowIssue(row2);
     let customerId;
@@ -11473,10 +11605,10 @@ CREATE TABLE crm_send_authorizations (
 `;
 
 // server/adapters/postgres/send-acceptance-repository.ts
-var import_node_crypto16 = require("node:crypto");
+var import_node_crypto17 = require("node:crypto");
 var MILLISECONDS_PER_SECOND8 = 1e3;
 var normalized = (emails) => [...new Set(emails.map((email3) => email3.toLowerCase()))].sort();
-var fingerprint = (value2) => (0, import_node_crypto16.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+var fingerprint = (value2) => (0, import_node_crypto17.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
 function mapped4(row2) {
   return {
     authorizationId: row2.authorization_id,
@@ -11569,7 +11701,7 @@ async function acceptSendIn(client, actor, input) {
     eventId = recorded.data.eventId;
     duplicate = recorded.data.duplicate;
   } else {
-    eventId = old?.event_id ?? (0, import_node_crypto16.randomUUID)();
+    eventId = old?.event_id ?? (0, import_node_crypto17.randomUUID)();
     duplicate = !!old;
     if (!old)
       await client.query(
@@ -11637,7 +11769,7 @@ CREATE INDEX idx_contact_share_outgoing ON crm_contact_shares(grantor_user_id,st
 `;
 
 // server/adapters/postgres/contact-sharing-repository.ts
-var import_node_crypto17 = require("node:crypto");
+var import_node_crypto18 = require("node:crypto");
 var SELECT2 = `SELECT sh.share_id AS "shareId",sh.contact_id AS "contactId",sh.customer_id AS "customerId",sh.grantor_user_id AS "grantorUserId",gu.display_name AS "grantorName",sh.target_user_id AS "targetUserId",tu.display_name AS "targetName",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'\u8054\u7CFB\u4EBA') AS "contactName",co.name AS "companyName",sh.editable_fields AS "editableFields",sh.can_followup AS "canFollowup",sh.can_change_stage AS "canChangeStage",sh.status,sh.version,sh.created_at AS "createdAt",(${validShareSql(CONTACT_OWNER_SQL)}) AS valid,c.created_by,c.origin FROM crm_contact_shares sh JOIN contacts ct ON ct.id=sh.contact_id JOIN crm_customers c ON c.customer_id=sh.customer_id JOIN companies co ON co.id=c.company_id JOIN public.identity_users gu ON gu.user_id=sh.grantor_user_id JOIN public.identity_users tu ON tu.user_id=sh.target_user_id`;
 function manage(a, r) {
   return globalContactActor(a) || sourceContactManager(a, { ...r, ownerUserId: r.grantorUserId }) || r.grantorUserId === a.userId && r.valid;
@@ -11695,7 +11827,7 @@ async function createShareIn(c, a, input) {
     await c.query(`UPDATE crm_contact_shares sh SET status='revoked',version=sh.version+1,updated_at=now(),decided_at=now() FROM crm_customers c WHERE sh.contact_id=$1 AND sh.customer_id=c.customer_id AND sh.status IN ('pending','accepted') AND NOT (${validShareSql(CONTACT_OWNER_SQL.replaceAll("ct.id", "sh.contact_id"))})`, [input.contactId]);
     if ((await c.query("SELECT 1 FROM crm_contact_shares WHERE contact_id=$1 AND target_user_id=$2 AND status IN ('pending','accepted')", [input.contactId, input.targetUserId])).rowCount)
       return failure("CONFLICT", "\u8BE5\u7528\u6237\u5DF2\u6709\u5171\u4EAB\u9080\u8BF7\u6216\u534F\u4F5C\u6743\u9650");
-    const id = (0, import_node_crypto17.randomUUID)();
+    const id = (0, import_node_crypto18.randomUUID)();
     await c.query("INSERT INTO crm_contact_shares(share_id,contact_id,customer_id,grantor_user_id,target_user_id,editable_fields,can_followup,can_change_stage) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8)", [id, input.contactId, input.customerId, a.userId, input.targetUserId, JSON.stringify(input.editableFields), input.canFollowup, input.canChangeStage]);
     const r = await result(c, a, id);
     if (r.ok)
@@ -11751,7 +11883,7 @@ async function updateShareIn(c, a, input) {
 }
 
 // server/adapters/postgres/lead-repository.ts
-var import_node_crypto20 = require("node:crypto");
+var import_node_crypto21 = require("node:crypto");
 
 // server/adapters/postgres/lead-schema.ts
 var LEAD_VERSION = "005-lead-collaboration-public";
@@ -11869,7 +12001,7 @@ ALTER TABLE crm_shared_activities ADD CONSTRAINT crm_shared_activities_contact_s
 `;
 
 // server/adapters/postgres/workbook-import-repository.ts
-var import_node_crypto18 = require("node:crypto");
+var import_node_crypto19 = require("node:crypto");
 var value = (input) => input?.trim() || null;
 var attemptKey2 = (key, index) => `${key.slice(0, 120)}:${index}`;
 function customerMatches(row2, current) {
@@ -12033,7 +12165,7 @@ async function importContact(c, actor, input, row2, index, blocked) {
   return { status: applied.data.createdContactIds?.length === 0 && applied.data.restoredContactIds.length === 0 ? "duplicate" : "appended", customerId: current.customer_id };
 }
 async function importWorkbookIn(c, actor, input) {
-  const batchId = (0, import_node_crypto18.randomUUID)();
+  const batchId = (0, import_node_crypto19.randomUUID)();
   await c.query("INSERT INTO crm_import_batches(batch_id,actor_id,source,source_detail,mapping) VALUES($1,$2,$3,$4,$5)", [batchId, actor.userId, input.source, input.sourceDetail, JSON.stringify({ format: "workbook", kind: input.kind })]);
   const receipts = new Array(input.rows.length), blocked = /* @__PURE__ */ new Set();
   for (const entity of ["customer", "contact"])
@@ -12044,7 +12176,7 @@ async function importWorkbookIn(c, actor, input) {
       const outcome = issue ? { status: "invalid", message: issue } : entity === "customer" ? await importCustomer(c, actor, input, row2, index) : await importContact(c, actor, input, row2, index, blocked);
       if (entity === "customer" && !["created", "duplicate"].includes(outcome.status))
         blocked.add(row2.sourceRef.trim());
-      const receipt = { rowId: (0, import_node_crypto18.randomUUID)(), index, entity, sheetName: row2.sheetName, rowNumber: row2.rowNumber, ...outcome };
+      const receipt = { rowId: (0, import_node_crypto19.randomUUID)(), index, entity, sheetName: row2.sheetName, rowNumber: row2.rowNumber, ...outcome };
       await c.query("INSERT INTO crm_import_rows(row_id,batch_id,row_index,customer_key,raw_row,customer_id,status) VALUES($1,$2,$3,$4,$5,$6,$7)", [receipt.rowId, batchId, index, row2.sourceRef, JSON.stringify({ input: row2, rawRow: row2.rawRow, entity, sheetName: row2.sheetName, rowNumber: row2.rowNumber }), outcome.customerId ?? null, outcome.status]);
       receipts[index] = receipt;
     }
@@ -12070,7 +12202,7 @@ CREATE INDEX idx_crm_contact_assignment_actor ON crm_contact_assignment_requests
 `;
 
 // server/adapters/postgres/contact-assignment-state-schema.ts
-var import_node_crypto19 = require("node:crypto");
+var import_node_crypto20 = require("node:crypto");
 var CONTACT_ASSIGNMENT_STATE_VERSION = "057-contact-assignment-state";
 var CONTACT_ASSIGNMENT_STATE_LOCK = 570057;
 var CONTACT_ASSIGNMENT_STATE_SQL = `
@@ -12173,7 +12305,7 @@ CREATE INDEX idx_crm_contact_monitor_audits_contact
   ON crm_contact_monitor_audits(contact_id,created_at DESC,audit_id DESC);
 `;
 async function migrateContactAssignmentState(client) {
-  const checksum4 = (0, import_node_crypto19.createHash)("sha256").update(CONTACT_ASSIGNMENT_STATE_SQL).digest("hex");
+  const checksum4 = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_ASSIGNMENT_STATE_SQL).digest("hex");
   const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_ASSIGNMENT_STATE_VERSION]);
   if (old.rows.length && old.rows[0].checksum !== checksum4) {
     return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5206\u914D\u72B6\u6001\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12379,7 +12511,7 @@ var PostgresLeadRepository = class {
   migrate() {
     return this.tx(async (c) => {
       await c.query("SELECT pg_advisory_xact_lock($1)", [LEAD_LOCK]);
-      const hash = (0, import_node_crypto20.createHash)("sha256").update(LEAD_SQL).digest("hex");
+      const hash = (0, import_node_crypto21.createHash)("sha256").update(LEAD_SQL).digest("hex");
       const old = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u7EBF\u7D22\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12387,7 +12519,7 @@ var PostgresLeadRepository = class {
         await c.query(LEAD_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEAD_VERSION, hash]);
       }
-      const nextHash = (0, import_node_crypto20.createHash)("sha256").update(CUSTOMER_SQL).digest("hex");
+      const nextHash = (0, import_node_crypto21.createHash)("sha256").update(CUSTOMER_SQL).digest("hex");
       const next = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CUSTOMER_VERSION]);
       if (next.rows.length && next.rows[0].checksum !== nextHash)
         return failure("CONFLICT", "\u5BA2\u6237\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12395,7 +12527,7 @@ var PostgresLeadRepository = class {
         await c.query(CUSTOMER_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CUSTOMER_VERSION, nextHash]);
       }
-      const profileHash = (0, import_node_crypto20.createHash)("sha256").update(CUSTOMER_PROFILE_SQL).digest("hex");
+      const profileHash = (0, import_node_crypto21.createHash)("sha256").update(CUSTOMER_PROFILE_SQL).digest("hex");
       const profile2 = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CUSTOMER_PROFILE_VERSION]);
       if (profile2.rows.length && profile2.rows[0].checksum !== profileHash)
         return failure("CONFLICT", "\u5BA2\u6237\u4E3B\u6863\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12403,7 +12535,7 @@ var PostgresLeadRepository = class {
         await c.query(CUSTOMER_PROFILE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CUSTOMER_PROFILE_VERSION, profileHash]);
       }
-      const followupHash = (0, import_node_crypto20.createHash)("sha256").update(FOLLOWUP_SQL).digest("hex");
+      const followupHash = (0, import_node_crypto21.createHash)("sha256").update(FOLLOWUP_SQL).digest("hex");
       const followup = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [FOLLOWUP_VERSION]);
       if (followup.rows.length && followup.rows[0].checksum !== followupHash)
         return failure("CONFLICT", "\u5BA2\u6237\u8DDF\u8FDB\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12411,7 +12543,7 @@ var PostgresLeadRepository = class {
         await c.query(FOLLOWUP_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [FOLLOWUP_VERSION, followupHash]);
       }
-      const contactHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_ASSIGNMENT_SQL).digest("hex");
+      const contactHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_ASSIGNMENT_SQL).digest("hex");
       const contactOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_ASSIGNMENT_VERSION]);
       if (contactOld.rows.length && contactOld.rows[0].checksum !== contactHash)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5206\u914D\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12419,7 +12551,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_ASSIGNMENT_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_ASSIGNMENT_VERSION, contactHash]);
       }
-      const mailHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_MAIL_SQL).digest("hex");
+      const mailHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_MAIL_SQL).digest("hex");
       const mailOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_VERSION]);
       if (mailOld.rows.length && mailOld.rows[0].checksum !== mailHash)
         return failure("CONFLICT", "\u90AE\u4EF6\u4E8B\u4EF6\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12427,7 +12559,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_MAIL_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_MAIL_VERSION, mailHash]);
       }
-      const sendStageHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_MAIL_SEND_STAGE_SQL).digest("hex");
+      const sendStageHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_MAIL_SEND_STAGE_SQL).digest("hex");
       const sendStageOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_SEND_STAGE_VERSION]);
       if (sendStageOld.rows.length && sendStageOld.rows[0].checksum !== sendStageHash)
         return failure("CONFLICT", "\u53D1\u9001\u8F6E\u6B21\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12435,7 +12567,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_MAIL_SEND_STAGE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_MAIL_SEND_STAGE_VERSION, sendStageHash]);
       }
-      const lifecycleHash = (0, import_node_crypto20.createHash)("sha256").update(LIFECYCLE_SQL).digest("hex");
+      const lifecycleHash = (0, import_node_crypto21.createHash)("sha256").update(LIFECYCLE_SQL).digest("hex");
       const lifecycleOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LIFECYCLE_VERSION]);
       if (lifecycleOld.rows.length && lifecycleOld.rows[0].checksum !== lifecycleHash)
         return failure("CONFLICT", "\u751F\u547D\u5468\u671F\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12443,7 +12575,7 @@ var PostgresLeadRepository = class {
         await c.query(LIFECYCLE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LIFECYCLE_VERSION, lifecycleHash]);
       }
-      const shareHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_SHARING_SQL).digest("hex");
+      const shareHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_SHARING_SQL).digest("hex");
       const shareOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_SHARING_VERSION]);
       if (shareOld.rows.length && shareOld.rows[0].checksum !== shareHash)
         return failure("CONFLICT", "\u5171\u4EAB\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12451,7 +12583,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_SHARING_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_SHARING_VERSION, shareHash]);
       }
-      const correctionHash = (0, import_node_crypto20.createHash)("sha256").update(MAIL_CORRECTION_SQL).digest("hex");
+      const correctionHash = (0, import_node_crypto21.createHash)("sha256").update(MAIL_CORRECTION_SQL).digest("hex");
       const correctionOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [MAIL_CORRECTION_VERSION]);
       if (correctionOld.rows.length && correctionOld.rows[0].checksum !== correctionHash)
         return failure("CONFLICT", "\u90AE\u4EF6\u66F4\u6B63\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12459,7 +12591,7 @@ var PostgresLeadRepository = class {
         await c.query(MAIL_CORRECTION_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [MAIL_CORRECTION_VERSION, correctionHash]);
       }
-      const acceptanceHash = (0, import_node_crypto20.createHash)("sha256").update(SEND_ACCEPTANCE_SQL).digest("hex");
+      const acceptanceHash = (0, import_node_crypto21.createHash)("sha256").update(SEND_ACCEPTANCE_SQL).digest("hex");
       const acceptanceOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [SEND_ACCEPTANCE_VERSION]);
       if (acceptanceOld.rows.length && acceptanceOld.rows[0].checksum !== acceptanceHash)
         return failure("CONFLICT", "\u53D1\u9001\u5F52\u6863\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12467,7 +12599,7 @@ var PostgresLeadRepository = class {
         await c.query(SEND_ACCEPTANCE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [SEND_ACCEPTANCE_VERSION, acceptanceHash]);
       }
-      const extensionHash = (0, import_node_crypto20.createHash)("sha256").update(LEAD_FIELD_EXTENSION_SQL).digest("hex");
+      const extensionHash = (0, import_node_crypto21.createHash)("sha256").update(LEAD_FIELD_EXTENSION_SQL).digest("hex");
       const extension = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_FIELD_EXTENSION_VERSION]);
       if (extension.rows.length && extension.rows[0].checksum !== extensionHash)
         return failure("CONFLICT", "\u7EBF\u7D22\u5B57\u6BB5\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12475,7 +12607,7 @@ var PostgresLeadRepository = class {
         await c.query(LEAD_FIELD_EXTENSION_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEAD_FIELD_EXTENSION_VERSION, extensionHash]);
       }
-      const touchHash = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_TOUCH_STATUS_SQL).digest("hex");
+      const touchHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_TOUCH_STATUS_SQL).digest("hex");
       const touchOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_TOUCH_STATUS_VERSION]);
       if (touchOld.rows.length && touchOld.rows[0].checksum !== touchHash)
         return failure("CONFLICT", "\u8054\u7CFB\u72B6\u6001\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12549,7 +12681,7 @@ var PostgresLeadRepository = class {
     });
   }
   async cached(c, a, operation, input, action) {
-    const digest2 = (0, import_node_crypto20.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const digest2 = (0, import_node_crypto21.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
     const old = await c.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
     if (old.rows.length) {
       if (old.rows[0].digest !== digest2)
@@ -12581,7 +12713,7 @@ var PostgresLeadRepository = class {
       if (!a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop"))
         return failure("FORBIDDEN", "\u65E0\u5BA2\u6237\u521B\u5EFA\u6743\u9650");
       return this.cached(c, a, "create", input, async () => {
-        const ingressInput = { source: input.source.toLowerCase().includes("agent") ? "agent_import" : "manual", sourceChannel: input.source, sourceDetail: input.sourceDetail, kind: operationsOrigin(a) ? "operations" : "personal", idempotencyKey: input.idempotencyKey, customerKey: (0, import_node_crypto20.randomUUID)(), company: { name: input.companyName.trim(), country: input.country ?? null, customerType: input.customerType?.trim() || null, businessType: input.businessType?.trim() || null }, contacts: input.contacts.map((contact2) => ({ email: contact2.email.trim().toLowerCase() || null, name: contact2.name, country: contact2.country, phone: contact2.phone, whatsapp: contact2.whatsapp, title: contact2.title })), profile: { developmentRestriction: input.developmentRestriction, sourceCreatedAt: input.sourceCreatedAt } };
+        const ingressInput = { source: input.source.toLowerCase().includes("agent") ? "agent_import" : "manual", sourceChannel: input.source, sourceDetail: input.sourceDetail, kind: operationsOrigin(a) ? "operations" : "personal", idempotencyKey: input.idempotencyKey, customerKey: (0, import_node_crypto21.randomUUID)(), company: { name: input.companyName.trim(), country: input.country ?? null, customerType: input.customerType?.trim() || null, businessType: input.businessType?.trim() || null }, contacts: input.contacts.map((contact2) => ({ email: contact2.email.trim().toLowerCase() || null, name: contact2.name, country: contact2.country, phone: contact2.phone, whatsapp: contact2.whatsapp, title: contact2.title })), profile: { developmentRestriction: input.developmentRestriction, sourceCreatedAt: input.sourceCreatedAt } };
         const ingress = await evaluateLeadIngressIn(c, a, ingressInput);
         if (!ingress.ok)
           return ingress;
@@ -12932,18 +13064,18 @@ var UUID7 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function record5(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
-function text5(v, max, min = 1) {
+function text6(v, max, min = 1) {
   return typeof v === "string" && v.trim().length >= min && v.length <= max;
 }
 function keys2(v, allowed) {
   return Object.keys(v).every((k) => allowed.includes(k));
 }
 function command(v) {
-  return record5(v) && text5(v.customerId, LEAD_LIMITS.key) && UUID7.test(v.customerId) && Number.isSafeInteger(v.expectedVersion) && Number(v.expectedVersion) > 0 && text5(v.idempotencyKey, LEAD_LIMITS.key);
+  return record5(v) && text6(v.customerId, LEAD_LIMITS.key) && UUID7.test(v.customerId) && Number.isSafeInteger(v.expectedVersion) && Number(v.expectedVersion) > 0 && text6(v.idempotencyKey, LEAD_LIMITS.key);
 }
 var CONTACT_EMAIL_MAX = 254;
 function contacts(v, update = false) {
-  return Array.isArray(v) && v.length <= LEAD_LIMITS.batchRows && v.every((x) => record5(x) && keys2(x, ["email", "name", "country", "phone", "whatsapp", "title", ...update ? ["contactId"] : []]) && text5(x.email, CONTACT_EMAIL_MAX, 0) && (x.email.trim() ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.email.trim()) : [x.name, x.phone, x.whatsapp].some((v2) => typeof v2 === "string" && v2.trim())) && ["name", "country", "phone", "whatsapp", "title"].every((k) => x[k] === void 0 || text5(x[k], LEAD_LIMITS.text, 0)) && (x.contactId === void 0 || update && Number.isSafeInteger(x.contactId) && Number(x.contactId) > 0)) && new Set(v.filter((x) => x.email.trim()).map((x) => x.email.trim().toLowerCase())).size === v.filter((x) => x.email.trim()).length;
+  return Array.isArray(v) && v.length <= LEAD_LIMITS.batchRows && v.every((x) => record5(x) && keys2(x, ["email", "name", "country", "phone", "whatsapp", "title", ...update ? ["contactId"] : []]) && text6(x.email, CONTACT_EMAIL_MAX, 0) && (x.email.trim() ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.email.trim()) : [x.name, x.phone, x.whatsapp].some((v2) => typeof v2 === "string" && v2.trim())) && ["name", "country", "phone", "whatsapp", "title"].every((k) => x[k] === void 0 || text6(x[k], LEAD_LIMITS.text, 0)) && (x.contactId === void 0 || update && Number.isSafeInteger(x.contactId) && Number(x.contactId) > 0)) && new Set(v.filter((x) => x.email.trim()).map((x) => x.email.trim().toLowerCase())).size === v.filter((x) => x.email.trim()).length;
 }
 var PROFILE_KEYS = ["customerType", "businessType", "developmentRestriction", "sourceCreatedAt"];
 var MILLISECONDS_PER_SECOND9 = 1e3;
@@ -12959,7 +13091,7 @@ function validOccurrence(value2) {
   return date.getUTCFullYear() === Number(year) && date.getUTCMonth() + 1 === Number(month) && date.getUTCDate() === Number(day) && Number(hour) < ISO_TIME_PART_LIMITS.hours && Number(minute) < ISO_TIME_PART_LIMITS.minutes && Number(second) < ISO_TIME_PART_LIMITS.seconds && (offsetHour === void 0 || Number(offsetHour) < ISO_TIME_PART_LIMITS.hours && Number(offsetMinute) < ISO_TIME_PART_LIMITS.minutes) && Number.isFinite(Date.parse(value2)) && Date.parse(value2) <= Date.now() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND9;
 }
 function profile(v) {
-  return (v.customerType === void 0 || v.customerType === "" || v.customerType === "\u4EE3\u7406" || v.customerType === "\u76F4\u5BA2") && ["businessType", "developmentRestriction"].every((k) => v[k] === void 0 || text5(v[k], LEAD_LIMITS.text, 0)) && (v.sourceCreatedAt === void 0 || typeof v.sourceCreatedAt === "string" && (v.sourceCreatedAt === "" || normalizeSourceDate(v.sourceCreatedAt) !== void 0));
+  return (v.customerType === void 0 || v.customerType === "" || v.customerType === "\u4EE3\u7406" || v.customerType === "\u76F4\u5BA2") && ["businessType", "developmentRestriction"].every((k) => v[k] === void 0 || text6(v[k], LEAD_LIMITS.text, 0)) && (v.sourceCreatedAt === void 0 || typeof v.sourceCreatedAt === "string" && (v.sourceCreatedAt === "" || normalizeSourceDate(v.sourceCreatedAt) !== void 0));
 }
 function createLeadService(repo, tokens) {
   function run2(token, action) {
@@ -12979,12 +13111,12 @@ function createLeadService(repo, tokens) {
       return run2(token, (h) => repo.listContactGroups ? repo.listContactGroups(h, query2.data) : Promise.resolve(failure("UNAVAILABLE", "\u8054\u7CFB\u4EBA\u5206\u7EC4\u6682\u4E0D\u53EF\u7528")));
     },
     createCustomer(token, v) {
-      if (!record5(v) || !keys2(v, ["companyName", "country", "source", "sourceDetail", "contacts", "idempotencyKey", ...PROFILE_KEYS]) || !profile(v) || !text5(v.companyName, LEAD_LIMITS.text) || v.country !== void 0 && !text5(v.country, LEAD_LIMITS.text, 0) || !text5(v.source, LEAD_LIMITS.text) || !text5(v.sourceDetail, LEAD_LIMITS.text, 0) || !text5(v.idempotencyKey, LEAD_LIMITS.key) || !contacts(v.contacts))
+      if (!record5(v) || !keys2(v, ["companyName", "country", "source", "sourceDetail", "contacts", "idempotencyKey", ...PROFILE_KEYS]) || !profile(v) || !text6(v.companyName, LEAD_LIMITS.text) || v.country !== void 0 && !text6(v.country, LEAD_LIMITS.text, 0) || !text6(v.source, LEAD_LIMITS.text) || !text6(v.sourceDetail, LEAD_LIMITS.text, 0) || !text6(v.idempotencyKey, LEAD_LIMITS.key) || !contacts(v.contacts))
         return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.createCustomer ? repo.createCustomer(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u5BA2\u6237\u521B\u5EFA\u6682\u4E0D\u53EF\u7528")));
     },
     updateCustomer(token, v) {
-      if (!command(v) || !record5(v) || !keys2(v, ["customerId", "companyName", "country", "contacts", "expectedVersion", "idempotencyKey", ...PROFILE_KEYS]) || !profile(v) || !text5(v.companyName, LEAD_LIMITS.text) || v.country !== void 0 && !text5(v.country, LEAD_LIMITS.text, 0) || !contacts(v.contacts, true))
+      if (!command(v) || !record5(v) || !keys2(v, ["customerId", "companyName", "country", "contacts", "expectedVersion", "idempotencyKey", ...PROFILE_KEYS]) || !profile(v) || !text6(v.companyName, LEAD_LIMITS.text) || v.country !== void 0 && !text6(v.country, LEAD_LIMITS.text, 0) || !contacts(v.contacts, true))
         return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u66F4\u65B0\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.updateCustomer ? repo.updateCustomer(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u5BA2\u6237\u66F4\u65B0\u6682\u4E0D\u53EF\u7528")));
     },
@@ -12994,13 +13126,13 @@ function createLeadService(repo, tokens) {
       return run2(token, (h) => repo.assign ? repo.assign(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u5206\u914D\u6682\u4E0D\u53EF\u7528")));
     },
     members(token, v) {
-      if (!v || !text5(v.search, LEAD_LIMITS.text, 0) || !Number.isSafeInteger(v.limit) || v.limit < 1 || v.limit > LEAD_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0)
+      if (!v || !text6(v.search, LEAD_LIMITS.text, 0) || !Number.isSafeInteger(v.limit) || v.limit < 1 || v.limit > LEAD_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0)
         return Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.members ? repo.members(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u6210\u5458\u76EE\u5F55\u6682\u4E0D\u53EF\u7528")));
     },
     bootstrap: (token) => run2(token, (h) => repo.bootstrap(h)),
     importWorkbook(token, v) {
-      if (!record5(v) || !keys2(v, ["source", "sourceDetail", "idempotencyKey", "kind", "rows"]) || !text5(v.source, LEAD_LIMITS.text) || !text5(v.sourceDetail, LEAD_LIMITS.text, 0) || !text5(v.idempotencyKey, LEAD_LIMITS.key) || !["personal", "operations"].includes(v.kind) || !Array.isArray(v.rows) || !v.rows.length || v.rows.length > WORKBOOK_LIMITS.batchRows)
+      if (!record5(v) || !keys2(v, ["source", "sourceDetail", "idempotencyKey", "kind", "rows"]) || !text6(v.source, LEAD_LIMITS.text) || !text6(v.sourceDetail, LEAD_LIMITS.text, 0) || !text6(v.idempotencyKey, LEAD_LIMITS.key) || !["personal", "operations"].includes(v.kind) || !Array.isArray(v.rows) || !v.rows.length || v.rows.length > WORKBOOK_LIMITS.batchRows)
         return Promise.resolve(failure("INVALID_INPUT", "\u5DE5\u4F5C\u7C3F\u5BFC\u5165\u53C2\u6570\u65E0\u6548\u6216\u8D85\u8FC7200\u884C"));
       const allowed = ["entity", "sourceRef", "customerRef", "companyName", "country", "customerType", "businessType", "developmentRestriction", "sourceCreatedAt", "email", "name", "firstName", "lastName", "phone", "whatsapp", "title", "linkedinUrl", "language", "clientType", "sourceLevel1", "sourceLevel2", "stage", "status", "tags", "sheetName", "rowNumber", "rawRow"];
       if (v.rows.some((r) => !record5(r) || !keys2(r, allowed) || !["customer", "contact"].includes(r.entity) || typeof r.sourceRef !== "string" || typeof r.sheetName !== "string" || !Number.isSafeInteger(r.rowNumber) || Number(r.rowNumber) < 1 || !record5(r.rawRow) || ["customerRef", "companyName", "country", "customerType", "businessType", "developmentRestriction", "sourceCreatedAt", "email", "name", "firstName", "lastName", "phone", "whatsapp", "title", "linkedinUrl", "language", "clientType", "sourceLevel1", "sourceLevel2", "stage", "status"].some((k) => r[k] !== void 0 && typeof r[k] !== "string") || r.tags !== void 0 && (!Array.isArray(r.tags) || r.tags.some((t) => typeof t !== "string"))))
@@ -13008,7 +13140,7 @@ function createLeadService(repo, tokens) {
       return run2(token, (h) => repo.importWorkbook ? repo.importWorkbook(h, v) : Promise.resolve(failure("UNAVAILABLE", "\u5DE5\u4F5C\u7C3F\u5BFC\u5165\u6682\u4E0D\u53EF\u7528")));
     },
     importRows(token, v) {
-      if (!record5(v) || !keys2(v, ["source", "sourceDetail", "idempotencyKey", "rows", "mapping", "kind", "companyMatching"]) || v.kind !== void 0 && !["personal", "operations"].includes(v.kind) || !text5(v.source, LEAD_LIMITS.text) || !text5(v.sourceDetail, LEAD_LIMITS.text, 0) || !text5(v.idempotencyKey, LEAD_LIMITS.key) || !Array.isArray(v.rows) || !v.rows.length || v.rows.length > LEAD_LIMITS.batchRows || v.mapping !== void 0 && (!record5(v.mapping) || Object.values(v.mapping).some((x) => !text5(x, LEAD_LIMITS.text))))
+      if (!record5(v) || !keys2(v, ["source", "sourceDetail", "idempotencyKey", "rows", "mapping", "kind", "companyMatching"]) || v.kind !== void 0 && !["personal", "operations"].includes(v.kind) || !text6(v.source, LEAD_LIMITS.text) || !text6(v.sourceDetail, LEAD_LIMITS.text, 0) || !text6(v.idempotencyKey, LEAD_LIMITS.key) || !Array.isArray(v.rows) || !v.rows.length || v.rows.length > LEAD_LIMITS.batchRows || v.mapping !== void 0 && (!record5(v.mapping) || Object.values(v.mapping).some((x) => !text6(x, LEAD_LIMITS.text))))
         return Promise.resolve(failure("INVALID_INPUT", "\u5BFC\u5165\u53C2\u6570\u65E0\u6548\u6216\u8D85\u8FC7200\u884C"));
       if (v.companyMatching !== void 0 && typeof v.companyMatching !== "boolean")
         return Promise.resolve(failure("INVALID_INPUT", "\u516C\u53F8\u5339\u914D\u53C2\u6570\u65E0\u6548"));
@@ -13017,12 +13149,12 @@ function createLeadService(repo, tokens) {
       return run2(token, (h) => repo.importRows(h, v));
     },
     publish(token, id, v) {
-      if (!UUID7.test(id) || !record5(v) || !keys2(v, ["rowIds", "expectedVersion", "idempotencyKey"]) || !Array.isArray(v.rowIds) || !v.rowIds.length || v.rowIds.length > LEAD_LIMITS.batchRows || v.rowIds.some((x) => typeof x !== "string" || !UUID7.test(x)) || !Number.isSafeInteger(v.expectedVersion) || Number(v.expectedVersion) < 1 || !text5(v.idempotencyKey, LEAD_LIMITS.key))
+      if (!UUID7.test(id) || !record5(v) || !keys2(v, ["rowIds", "expectedVersion", "idempotencyKey"]) || !Array.isArray(v.rowIds) || !v.rowIds.length || v.rowIds.length > LEAD_LIMITS.batchRows || v.rowIds.some((x) => typeof x !== "string" || !UUID7.test(x)) || !Number.isSafeInteger(v.expectedVersion) || Number(v.expectedVersion) < 1 || !text6(v.idempotencyKey, LEAD_LIMITS.key))
         return Promise.resolve(failure("INVALID_INPUT", "\u53D1\u5E03\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.publish(h, id, v));
     },
     list(token, v) {
-      if (!v || !["pool", "mine", "operations", "personal", "assigned", "all"].includes(v.view) || !text5(v.search, LEAD_LIMITS.text, 0) || !Number.isSafeInteger(v.limit) || v.limit < 1 || v.limit > LEAD_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0 || v.assignment !== void 0 && !["unassigned", "assigned"].includes(v.assignment) || v.followupOnly !== void 0 && (typeof v.followupOnly !== "boolean" || v.followupOnly && v.view === "pool") || v.stage !== void 0 && (!["cold", ...CRM_STAGES].includes(v.stage) || v.view === "pool"))
+      if (!v || !["pool", "mine", "operations", "personal", "assigned", "all"].includes(v.view) || !text6(v.search, LEAD_LIMITS.text, 0) || !Number.isSafeInteger(v.limit) || v.limit < 1 || v.limit > LEAD_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || v.offset < 0 || v.assignment !== void 0 && !["unassigned", "assigned"].includes(v.assignment) || v.followupOnly !== void 0 && (typeof v.followupOnly !== "boolean" || v.followupOnly && v.view === "pool") || v.stage !== void 0 && (!["cold", ...CRM_STAGES].includes(v.stage) || v.view === "pool"))
         return Promise.resolve(failure("INVALID_INPUT", "\u5217\u8868\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.list(h, v));
     },
@@ -13035,7 +13167,7 @@ function createLeadService(repo, tokens) {
       return run2(token, (h) => repo.claim(h, v));
     },
     followup(token, v) {
-      if (!command(v) || !record5(v) || !keys2(v, ["customerId", "expectedVersion", "idempotencyKey", "note", "stage", "method", "occurredAt", "contactId", "contactStatus", "opportunityId"]) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID7.test(v.opportunityId)) || !text5(v.note, LEAD_LIMITS.note) || v.stage !== void 0 && !["cold", ...CRM_STAGES].includes(v.stage) || v.method !== void 0 && !FOLLOWUP_METHODS.includes(v.method) || v.occurredAt !== void 0 && !validOccurrence(v.occurredAt) || v.contactId !== void 0 && (!Number.isSafeInteger(v.contactId) || Number(v.contactId) < 1) || v.contactStatus !== void 0 && (!CONTACT_TOUCH_STATUSES.includes(v.contactStatus) || v.contactId === void 0 || v.method === "note"))
+      if (!command(v) || !record5(v) || !keys2(v, ["customerId", "expectedVersion", "idempotencyKey", "note", "stage", "method", "occurredAt", "contactId", "contactStatus", "opportunityId"]) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID7.test(v.opportunityId)) || !text6(v.note, LEAD_LIMITS.note) || v.stage !== void 0 && !["cold", ...CRM_STAGES].includes(v.stage) || v.method !== void 0 && !FOLLOWUP_METHODS.includes(v.method) || v.occurredAt !== void 0 && !validOccurrence(v.occurredAt) || v.contactId !== void 0 && (!Number.isSafeInteger(v.contactId) || Number(v.contactId) < 1) || v.contactStatus !== void 0 && (!CONTACT_TOUCH_STATUSES.includes(v.contactStatus) || v.contactId === void 0 || v.method === "note"))
         return Promise.resolve(failure("INVALID_INPUT", "\u8DDF\u8FDB\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.followup(h, v));
     },
@@ -13064,28 +13196,28 @@ var LIFECYCLE_LIMITS = { batch: 200, text: 500, key: 128, page: 50, pageMax: 100
 // server/services/crm-lifecycle.ts
 var record6 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var keys3 = (v, allowed) => Object.keys(v).every((k) => allowed.includes(k));
-var text6 = (v, max, min = 1) => typeof v === "string" && v.trim().length >= min && v.length <= max;
+var text7 = (v, max, min = 1) => typeof v === "string" && v.trim().length >= min && v.length <= max;
 var positive2 = (v) => Number.isSafeInteger(v) && Number(v) > 0;
 var uuid2 = (v) => typeof v === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v);
 var invalid3 = () => failure("INVALID_INPUT", "\u8D44\u6599\u64CD\u4F5C\u53C2\u6570\u65E0\u6548");
 function contactDelete(v) {
-  if (!record6(v) || !keys3(v, ["contacts", "idempotencyKey"]) || !text6(v.idempotencyKey, LIFECYCLE_LIMITS.key) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > LIFECYCLE_LIMITS.batch || v.contacts.some((r) => !record6(r) || !keys3(r, ["contactId", "customerId", "expectedVersion"]) || !positive2(r.contactId) || !uuid2(r.customerId) || !positive2(r.expectedVersion)) || new Set(v.contacts.map((r) => r.contactId)).size !== v.contacts.length)
+  if (!record6(v) || !keys3(v, ["contacts", "idempotencyKey"]) || !text7(v.idempotencyKey, LIFECYCLE_LIMITS.key) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > LIFECYCLE_LIMITS.batch || v.contacts.some((r) => !record6(r) || !keys3(r, ["contactId", "customerId", "expectedVersion"]) || !positive2(r.contactId) || !uuid2(r.customerId) || !positive2(r.expectedVersion)) || new Set(v.contacts.map((r) => r.contactId)).size !== v.contacts.length)
     return invalid3();
   return success(v);
 }
 function companyCreate(v) {
-  if (!record6(v) || !keys3(v, ["name", "domain", "idempotencyKey"]) || !text6(v.name, LIFECYCLE_LIMITS.text) || !text6(v.idempotencyKey, LIFECYCLE_LIMITS.key) || v.domain !== void 0 && v.domain !== null && (!text6(v.domain, LIFECYCLE_LIMITS.text) || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(v.domain.trim())))
+  if (!record6(v) || !keys3(v, ["name", "domain", "idempotencyKey"]) || !text7(v.name, LIFECYCLE_LIMITS.text) || !text7(v.idempotencyKey, LIFECYCLE_LIMITS.key) || v.domain !== void 0 && v.domain !== null && (!text7(v.domain, LIFECYCLE_LIMITS.text) || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(v.domain.trim())))
     return invalid3();
   return success({ name: v.name.trim(), domain: typeof v.domain === "string" ? v.domain.trim().toLowerCase() : null, idempotencyKey: v.idempotencyKey });
 }
 function companyDelete(v) {
-  return record6(v) && keys3(v, ["companyId", "expectedRevision", "idempotencyKey"]) && positive2(v.companyId) && text6(v.expectedRevision, LIFECYCLE_LIMITS.text) && text6(v.idempotencyKey, LIFECYCLE_LIMITS.key) ? success(v) : invalid3();
+  return record6(v) && keys3(v, ["companyId", "expectedRevision", "idempotencyKey"]) && positive2(v.companyId) && text7(v.expectedRevision, LIFECYCLE_LIMITS.text) && text7(v.idempotencyKey, LIFECYCLE_LIMITS.key) ? success(v) : invalid3();
 }
 function companyQuery(v) {
   if (!record6(v) || !keys3(v, ["search", "scope", "limit", "offset"]))
     return invalid3();
   const q = { search: v.search ?? "", scope: v.scope ?? "all", limit: v.limit ?? LIFECYCLE_LIMITS.page, offset: v.offset ?? 0 };
-  return text6(q.search, LIFECYCLE_LIMITS.text, 0) && ["all", "personal", "assigned"].includes(String(q.scope)) && positive2(q.limit) && Number(q.limit) <= LIFECYCLE_LIMITS.pageMax && Number.isSafeInteger(q.offset) && Number(q.offset) >= 0 ? success(q) : invalid3();
+  return text7(q.search, LIFECYCLE_LIMITS.text, 0) && ["all", "personal", "assigned"].includes(String(q.scope)) && positive2(q.limit) && Number(q.limit) <= LIFECYCLE_LIMITS.pageMax && Number.isSafeInteger(q.offset) && Number(q.offset) >= 0 ? success(q) : invalid3();
 }
 function companyRef(v) {
   return record6(v) && keys3(v, ["companyId", "scope"]) && positive2(v.companyId) && ["all", "personal", "assigned"].includes(String(v.scope ?? "all")) ? success({ companyId: Number(v.companyId), scope: v.scope ?? "all" }) : invalid3();
@@ -13112,7 +13244,7 @@ function record7(v) {
 function keys4(v, allowed) {
   return Object.keys(v).every((k) => allowed.includes(k));
 }
-function text7(v, max, min = 1) {
+function text8(v, max, min = 1) {
   return typeof v === "string" && v.trim().length >= min && v.length <= max;
 }
 function uuid3(v) {
@@ -13122,7 +13254,7 @@ function positive3(v) {
   return Number.isSafeInteger(v) && Number(v) > 0;
 }
 function version2(v) {
-  return positive3(v.expectedVersion) && text7(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key);
+  return positive3(v.expectedVersion) && text8(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key);
 }
 function ref(v) {
   return positive3(v.contactId) && uuid3(v.customerId);
@@ -13136,7 +13268,7 @@ function contactRef(v) {
 var COMPANY_FIELDS = ["customerType", "name", "domain", "country", "industry", "size", "backcheckData"];
 var COMPANY_REPORT_MAX = 1e5;
 function companyUpdate(v) {
-  if (!record7(v) || !keys4(v, ["contactId", "customerId", "expectedRevision", "idempotencyKey", "fields"]) || !ref(v) || !text7(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || !text7(v.expectedRevision, CONTACT_ASSIGNMENT_LIMITS.text) || !record7(v.fields) || !Object.keys(v.fields).length || !keys4(v.fields, COMPANY_FIELDS))
+  if (!record7(v) || !keys4(v, ["contactId", "customerId", "expectedRevision", "idempotencyKey", "fields"]) || !ref(v) || !text8(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || !text8(v.expectedRevision, CONTACT_ASSIGNMENT_LIMITS.text) || !record7(v.fields) || !Object.keys(v.fields).length || !keys4(v.fields, COMPANY_FIELDS))
     return invalid4();
   for (const [field, value2] of Object.entries(v.fields)) {
     if (field === "customerType" && value2 !== null && value2 !== "\u4EE3\u7406" && value2 !== "\u76F4\u5BA2")
@@ -13144,13 +13276,13 @@ function companyUpdate(v) {
     if (field === "backcheckData") {
       if (value2 !== null && (!record7(value2) || JSON.stringify(value2).length > COMPANY_REPORT_MAX))
         return invalid4();
-    } else if (field === "name" ? !text7(value2, CONTACT_ASSIGNMENT_LIMITS.text) : value2 !== null && !text7(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0))
+    } else if (field === "name" ? !text8(value2, CONTACT_ASSIGNMENT_LIMITS.text) : value2 !== null && !text8(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0))
       return invalid4();
   }
   return success(v);
 }
 function contactAssignmentCreate(v) {
-  if (!record7(v) || !keys4(v, ["contacts", "targetUserId", "idempotencyKey"]) || !uuid3(v.targetUserId) || !text7(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > CONTACT_ASSIGNMENT_LIMITS.batch || v.contacts.some((x) => !record7(x) || !keys4(x, ["contactId", "customerId", "expectedVersion"]) || !ref(x) || !positive3(x.expectedVersion)) || new Set(v.contacts.map((x) => x.contactId)).size !== v.contacts.length)
+  if (!record7(v) || !keys4(v, ["contacts", "targetUserId", "idempotencyKey"]) || !uuid3(v.targetUserId) || !text8(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > CONTACT_ASSIGNMENT_LIMITS.batch || v.contacts.some((x) => !record7(x) || !keys4(x, ["contactId", "customerId", "expectedVersion"]) || !ref(x) || !positive3(x.expectedVersion)) || new Set(v.contacts.map((x) => x.contactId)).size !== v.contacts.length)
     return invalid4();
   return success(v);
 }
@@ -13164,13 +13296,13 @@ function contactAssignmentExpiry(v) {
   return record7(v) && keys4(v, ["limit"]) && positive3(v.limit) && Number(v.limit) <= CONTACT_ASSIGNMENT_EXPIRY_BATCH ? success(v) : invalid4();
 }
 function contactAssignmentGroupDecision(v) {
-  return record7(v) && keys4(v, ["groupId", "idempotencyKey"]) && uuid3(v.groupId) && text7(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) ? success(v) : invalid4();
+  return record7(v) && keys4(v, ["groupId", "idempotencyKey"]) && uuid3(v.groupId) && text8(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) ? success(v) : invalid4();
 }
 function contactAssignmentQuery(v) {
   if (!record7(v) || !keys4(v, ["view", "status", "search", "limit", "offset", "requestId", "groupId"]) || v.requestId !== void 0 && !uuid3(v.requestId) || v.groupId !== void 0 && !uuid3(v.groupId) || v.requestId !== void 0 && v.groupId !== void 0)
     return invalid4();
   const query2 = { view: v.view ?? "incoming", status: v.status ?? "pending", search: v.search ?? "", limit: v.limit ?? CONTACT_ASSIGNMENT_LIMITS.page, offset: v.offset ?? 0, ...v.requestId !== void 0 ? { requestId: v.requestId } : {}, ...v.groupId !== void 0 ? { groupId: v.groupId } : {} };
-  if (!["incoming", "outgoing"].includes(query2.view) || !CONTACT_ASSIGNMENT_STATUSES.includes(query2.status) || !text7(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
+  if (!["incoming", "outgoing"].includes(query2.view) || !CONTACT_ASSIGNMENT_STATUSES.includes(query2.status) || !text8(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
     return invalid4();
   return success({ ...query2, search: query2.search.trim() });
 }
@@ -13178,7 +13310,7 @@ function contactAssignmentGroupQuery(v) {
   if (!record7(v) || !keys4(v, ["view", "status", "search", "limit", "offset"]))
     return invalid4();
   const query2 = { view: v.view ?? "incoming", status: v.status ?? "pending", search: v.search ?? "", limit: v.limit ?? CONTACT_ASSIGNMENT_LIMITS.page, offset: v.offset ?? 0 };
-  if (!["incoming", "outgoing"].includes(query2.view) || !CONTACT_ASSIGNMENT_STATUSES.includes(query2.status) || !text7(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
+  if (!["incoming", "outgoing"].includes(query2.view) || !CONTACT_ASSIGNMENT_STATUSES.includes(query2.status) || !text8(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
     return invalid4();
   return success({ ...query2, search: query2.search.trim() });
 }
@@ -13187,16 +13319,16 @@ function contactUpdate(v) {
     return invalid4();
   for (const [key, value2] of Object.entries(v.fields)) {
     if (key === "tags") {
-      if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.pageMax || value2.some((x) => !text7(x, CONTACT_ASSIGNMENT_LIMITS.text)) || new Set(value2).size !== value2.length)
+      if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.pageMax || value2.some((x) => !text8(x, CONTACT_ASSIGNMENT_LIMITS.text)) || new Set(value2).size !== value2.length)
         return invalid4();
       continue;
     }
     if (key === "preferences") {
-      if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.preferences || value2.some((x) => !text7(x, CONTACT_ASSIGNMENT_LIMITS.preferenceText)) || new Set(value2).size !== value2.length)
+      if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.preferences || value2.some((x) => !text8(x, CONTACT_ASSIGNMENT_LIMITS.preferenceText)) || new Set(value2).size !== value2.length)
         return invalid4();
       continue;
     }
-    if (value2 !== null && !text7(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0) || ["stage", "status"].includes(key) && value2 === null)
+    if (value2 !== null && !text8(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0) || ["stage", "status"].includes(key) && value2 === null)
       return invalid4();
     if (key === "email" && typeof value2 === "string" && value2.trim() && (value2.length > EMAIL_LIMIT2 || !/^\S+@[^\s@]+\.[^\s@]+$/.test(value2.trim())))
       return invalid4();
@@ -13213,7 +13345,7 @@ function occurrence2(v) {
   return d.getUTCFullYear() === Number(p[1]) && d.getUTCMonth() + 1 === Number(p[2]) && d.getUTCDate() === Number(p[3]) && Number(p[4]) < TIME_LIMIT.hour && Number(p[5]) < TIME_LIMIT.minute && Number(p[6]) < TIME_LIMIT.second && (p[8] === void 0 || Number(p[8]) < TIME_LIMIT.hour && Number(p[9]) < TIME_LIMIT.minute) && Number.isFinite(Date.parse(v)) && Date.parse(v) <= Date.now() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND10;
 }
 function contactFollowup(v) {
-  if (!record7(v) || !keys4(v, ["contactId", "customerId", "expectedVersion", "idempotencyKey", "note", "stage", "method", "occurredAt", "contactStatus"]) || !ref(v) || !version2(v) || !text7(v.note, CONTACT_ASSIGNMENT_LIMITS.note) || v.stage !== void 0 && !["cold", ...CRM_STAGES].includes(v.stage) || v.method !== void 0 && !FOLLOWUP_METHODS.includes(v.method) || v.occurredAt !== void 0 && !occurrence2(v.occurredAt) || v.contactStatus !== void 0 && (!CONTACT_TOUCH_STATUSES.includes(v.contactStatus) || v.method === "note"))
+  if (!record7(v) || !keys4(v, ["contactId", "customerId", "expectedVersion", "idempotencyKey", "note", "stage", "method", "occurredAt", "contactStatus"]) || !ref(v) || !version2(v) || !text8(v.note, CONTACT_ASSIGNMENT_LIMITS.note) || v.stage !== void 0 && !["cold", ...CRM_STAGES].includes(v.stage) || v.method !== void 0 && !FOLLOWUP_METHODS.includes(v.method) || v.occurredAt !== void 0 && !occurrence2(v.occurredAt) || v.contactStatus !== void 0 && (!CONTACT_TOUCH_STATUSES.includes(v.contactStatus) || v.method === "note"))
     return invalid4();
   return success(v);
 }
@@ -13496,7 +13628,7 @@ function createLeadIngressHandler(service) {
 }
 
 // server/adapters/postgres/notification-repository.ts
-var import_node_crypto21 = require("node:crypto");
+var import_node_crypto22 = require("node:crypto");
 
 // server/adapters/postgres/assignment-schema.ts
 var ASSIGNMENT_VERSION = "009-directed-assignment-public";
@@ -13578,7 +13710,7 @@ var PostgresNotificationRepository = class {
   async migrate() {
     return this.tx(async (db) => {
       await db.query("SELECT pg_advisory_xact_lock($1)", [NOTIFICATION_LOCK]);
-      const sum = (0, import_node_crypto21.createHash)("sha256").update(NOTIFICATION_SQL).digest("hex");
+      const sum = (0, import_node_crypto22.createHash)("sha256").update(NOTIFICATION_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [NOTIFICATION_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== sum)
         return failure("CONFLICT", "\u901A\u77E5\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13586,7 +13718,7 @@ var PostgresNotificationRepository = class {
         await db.query(NOTIFICATION_SQL);
         await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [NOTIFICATION_VERSION, sum]);
       }
-      const nextSum = (0, import_node_crypto21.createHash)("sha256").update(ASSIGNMENT_SQL).digest("hex");
+      const nextSum = (0, import_node_crypto22.createHash)("sha256").update(ASSIGNMENT_SQL).digest("hex");
       const next = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [ASSIGNMENT_VERSION]);
       if (next.rows.length && next.rows[0].checksum !== nextSum)
         return failure("CONFLICT", "\u5206\u914D\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -14126,7 +14258,7 @@ function createDesktopAuthHandler(service, gate, config) {
 }
 
 // server/adapters/offline-access.ts
-var import_node_crypto22 = require("node:crypto");
+var import_node_crypto23 = require("node:crypto");
 var import_node_fs4 = require("node:fs");
 var import_node_path5 = require("node:path");
 
@@ -14145,7 +14277,7 @@ function createOfflineAccessIssuer(privateKey, issuer) {
   const address = new URL(issuer);
   if (!["http:", "https:"].includes(address.protocol) || address.origin !== issuer || address.username || address.password)
     throw new Error("\u79BB\u7EBF\u7B7E\u53D1\u4E2D\u5FC3\u5730\u5740\u65E0\u6548");
-  const publicKey = (0, import_node_crypto22.createPublicKey)(privateKey).export({ format: "pem", type: "spki" }).toString();
+  const publicKey = (0, import_node_crypto23.createPublicKey)(privateKey).export({ format: "pem", type: "spki" }).toString();
   return {
     issue(identity, now, absoluteExpiresAt = Infinity) {
       if (identity.mustChangePassword)
@@ -14159,7 +14291,7 @@ function createOfflineAccessIssuer(privateKey, issuer) {
       const serialized = JSON.stringify(payload);
       if (Buffer.byteLength(serialized, "utf8") > OFFLINE_ACCESS_LIMITS.payload_bytes)
         throw new Error("\u79BB\u7EBF\u6388\u6743\u8EAB\u4EFD\u8D85\u51FA\u9650\u5236");
-      return { payload: serialized, signature: (0, import_node_crypto22.sign)(null, Buffer.from(serialized, "utf8"), privateKey).toString("base64url"), publicKey };
+      return { payload: serialized, signature: (0, import_node_crypto23.sign)(null, Buffer.from(serialized, "utf8"), privateKey).toString("base64url"), publicKey };
     }
   };
 }
@@ -14167,7 +14299,7 @@ function readPrivateKey(path4) {
   const info = (0, import_node_fs4.lstatSync)(path4);
   if (!info.isFile() || info.isSymbolicLink() || info.size > PRIVATE_KEY_BYTES)
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u6587\u4EF6\u65E0\u6548");
-  const key = (0, import_node_crypto22.createPrivateKey)((0, import_node_fs4.readFileSync)(path4));
+  const key = (0, import_node_crypto23.createPrivateKey)((0, import_node_fs4.readFileSync)(path4));
   if (key.type !== "private" || key.asymmetricKeyType !== "ed25519")
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u7C7B\u578B\u65E0\u6548");
   return key;
@@ -14183,8 +14315,8 @@ function loadOfflineAccessIssuer(runtimeDirectory, issuer) {
     if (error.code !== "ENOENT")
       throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u8BFB\u53D6\u5931\u8D25");
   }
-  const temporary = (0, import_node_path5.join)(directory, `.offline-access-${(0, import_node_crypto22.randomUUID)()}.tmp`);
-  const generated = (0, import_node_crypto22.generateKeyPairSync)("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
+  const temporary = (0, import_node_path5.join)(directory, `.offline-access-${(0, import_node_crypto23.randomUUID)()}.tmp`);
+  const generated = (0, import_node_crypto23.generateKeyPairSync)("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
   (0, import_node_fs4.writeFileSync)(temporary, generated, { flag: "wx", mode: PRIVATE_FILE_MODE2 });
   try {
     try {
@@ -14211,14 +14343,14 @@ function record8(v) {
 function keys5(v, allowed) {
   return Object.keys(v).every((k) => allowed.includes(k));
 }
-function text8(v, max) {
+function text9(v, max) {
   return typeof v === "string" && !!v.trim() && v.length <= max;
 }
 function positive4(v) {
   return Number.isSafeInteger(v) && Number(v) > 0;
 }
 function command2(v) {
-  return record8(v) && typeof v.taskId === "string" && UUID10.test(v.taskId) && positive4(v.expectedVersion) && text8(v.idempotencyKey, TASK_LIMITS.key);
+  return record8(v) && typeof v.taskId === "string" && UUID10.test(v.taskId) && positive4(v.expectedVersion) && text9(v.idempotencyKey, TASK_LIMITS.key);
 }
 function createTaskService(repo, tokens) {
   function run2(token, action) {
@@ -14226,7 +14358,7 @@ function createTaskService(repo, tokens) {
   }
   return {
     create(token, v) {
-      if (!record8(v) || !keys5(v, ["customerId", "title", "dueAt", "expectedCustomerVersion", "idempotencyKey", "opportunityId", "mailSuggestionId"]) || typeof v.customerId !== "string" || !UUID10.test(v.customerId) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID10.test(v.opportunityId)) || v.mailSuggestionId !== void 0 && (typeof v.mailSuggestionId !== "string" || !UUID10.test(v.mailSuggestionId)) || !text8(v.title, TASK_LIMITS.title) || !validTaskTime(v.dueAt) || !positive4(v.expectedCustomerVersion) || !text8(v.idempotencyKey, TASK_LIMITS.key))
+      if (!record8(v) || !keys5(v, ["customerId", "title", "dueAt", "expectedCustomerVersion", "idempotencyKey", "opportunityId", "mailSuggestionId"]) || typeof v.customerId !== "string" || !UUID10.test(v.customerId) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID10.test(v.opportunityId)) || v.mailSuggestionId !== void 0 && (typeof v.mailSuggestionId !== "string" || !UUID10.test(v.mailSuggestionId)) || !text9(v.title, TASK_LIMITS.title) || !validTaskTime(v.dueAt) || !positive4(v.expectedCustomerVersion) || !text9(v.idempotencyKey, TASK_LIMITS.key))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.create(h, v));
     },
@@ -14244,7 +14376,7 @@ function createTaskService(repo, tokens) {
       return run2(token, (h) => repo.reschedule(h, v));
     },
     complete(token, v) {
-      if (!command2(v) || !keys5(v, ["taskId", "expectedVersion", "idempotencyKey", "feedback"]) || !text8(v.feedback, TASK_LIMITS.feedback))
+      if (!command2(v) || !keys5(v, ["taskId", "expectedVersion", "idempotencyKey", "feedback"]) || !text9(v.feedback, TASK_LIMITS.feedback))
         return Promise.resolve(failure("INVALID_INPUT", "\u5B8C\u6210\u53CD\u9988\u65E0\u6548"));
       return run2(token, (h) => repo.complete(h, v));
     },
@@ -14324,7 +14456,7 @@ function startTaskDispatcher(service, log) {
 }
 
 // server/adapters/postgres/opportunity-repository.ts
-var import_node_crypto23 = require("node:crypto");
+var import_node_crypto24 = require("node:crypto");
 
 // server/adapters/postgres/opportunity-schema.ts
 var OPPORTUNITY_VERSION = "018-opportunities-public";
@@ -14457,7 +14589,7 @@ var PostgresOpportunityRepository = class {
     return success({ ...dates2(r.rows[0]), canManage: canManage2(a, customer2), history: await this.history(db, id) });
   }
   async cached(db, a, operation, input, fn) {
-    const digest2 = (0, import_node_crypto23.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
+    const digest2 = (0, import_node_crypto24.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
     if (old.rows.length) {
       if (old.rows[0].digest !== digest2)
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
@@ -14480,7 +14612,7 @@ var PostgresOpportunityRepository = class {
   }
   migrate() {
     return this.tx(async (db) => {
-      const hash = (0, import_node_crypto23.createHash)("sha256").update(OPPORTUNITY_SQL).digest("hex"), old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [OPPORTUNITY_VERSION]);
+      const hash = (0, import_node_crypto24.createHash)("sha256").update(OPPORTUNITY_SQL).digest("hex"), old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [OPPORTUNITY_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u5546\u673A\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
       if (!old.rows.length) {
@@ -14566,7 +14698,7 @@ function record9(v) {
 function keys6(v, allowed) {
   return Object.keys(v).every((k) => allowed.includes(k));
 }
-function text9(v, max, required = false) {
+function text10(v, max, required = false) {
   return typeof v === "string" && v.length <= max && (!required || !!v.trim());
 }
 function positive5(v) {
@@ -14581,7 +14713,7 @@ function createOpportunityService(repo, tokens) {
   }
   return {
     create(token, v) {
-      if (!record9(v) || !keys6(v, ["customerId", "expectedCustomerVersion", "idempotencyKey", "title", "description", "pol", "pod", "containerType", "source", "amount", "currency"]) || typeof v.customerId !== "string" || !UUID11.test(v.customerId) || !positive5(v.expectedCustomerVersion) || !text9(v.idempotencyKey, OPPORTUNITY_LIMITS.key, true) || !text9(v.title, OPPORTUNITY_LIMITS.title, true) || !amount(v) || v.description !== void 0 && !text9(v.description, OPPORTUNITY_LIMITS.description) || ["pol", "pod", "containerType"].some((k) => v[k] !== void 0 && !text9(v[k], OPPORTUNITY_LIMITS.route)) || v.source !== void 0 && !text9(v.source, OPPORTUNITY_LIMITS.source))
+      if (!record9(v) || !keys6(v, ["customerId", "expectedCustomerVersion", "idempotencyKey", "title", "description", "pol", "pod", "containerType", "source", "amount", "currency"]) || typeof v.customerId !== "string" || !UUID11.test(v.customerId) || !positive5(v.expectedCustomerVersion) || !text10(v.idempotencyKey, OPPORTUNITY_LIMITS.key, true) || !text10(v.title, OPPORTUNITY_LIMITS.title, true) || !amount(v) || v.description !== void 0 && !text10(v.description, OPPORTUNITY_LIMITS.description) || ["pol", "pod", "containerType"].some((k) => v[k] !== void 0 && !text10(v[k], OPPORTUNITY_LIMITS.route)) || v.source !== void 0 && !text10(v.source, OPPORTUNITY_LIMITS.source))
         return Promise.resolve(failure("INVALID_INPUT", "\u5546\u673A\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.create(h, v));
     },
@@ -14594,7 +14726,7 @@ function createOpportunityService(repo, tokens) {
       return typeof id === "string" && UUID11.test(id) ? run2(token, (h) => repo.detail(h, id)) : Promise.resolve(failure("NOT_FOUND", "\u5546\u673A\u4E0D\u5B58\u5728"));
     },
     updateStage(token, v) {
-      if (!record9(v) || !keys6(v, ["opportunityId", "expectedVersion", "idempotencyKey", "stage", "amount", "currency", "evidence", "lostReason"]) || typeof v.opportunityId !== "string" || !UUID11.test(v.opportunityId) || !positive5(v.expectedVersion) || !text9(v.idempotencyKey, OPPORTUNITY_LIMITS.key, true) || !OPPORTUNITY_STAGES.includes(v.stage) || !amount(v) || v.evidence !== void 0 && !text9(v.evidence, OPPORTUNITY_LIMITS.evidence, true) || v.lostReason !== void 0 && !text9(v.lostReason, OPPORTUNITY_LIMITS.reason, true) || v.stage === "closed_won" && !text9(v.evidence, OPPORTUNITY_LIMITS.evidence, true) || v.stage === "closed_lost" && !text9(v.lostReason, OPPORTUNITY_LIMITS.reason, true) || v.evidence !== void 0 && v.stage !== "closed_won" || v.lostReason !== void 0 && v.stage !== "closed_lost")
+      if (!record9(v) || !keys6(v, ["opportunityId", "expectedVersion", "idempotencyKey", "stage", "amount", "currency", "evidence", "lostReason"]) || typeof v.opportunityId !== "string" || !UUID11.test(v.opportunityId) || !positive5(v.expectedVersion) || !text10(v.idempotencyKey, OPPORTUNITY_LIMITS.key, true) || !OPPORTUNITY_STAGES.includes(v.stage) || !amount(v) || v.evidence !== void 0 && !text10(v.evidence, OPPORTUNITY_LIMITS.evidence, true) || v.lostReason !== void 0 && !text10(v.lostReason, OPPORTUNITY_LIMITS.reason, true) || v.stage === "closed_won" && !text10(v.evidence, OPPORTUNITY_LIMITS.evidence, true) || v.stage === "closed_lost" && !text10(v.lostReason, OPPORTUNITY_LIMITS.reason, true) || v.evidence !== void 0 && v.stage !== "closed_won" || v.lostReason !== void 0 && v.stage !== "closed_lost")
         return Promise.resolve(failure("INVALID_INPUT", "\u5546\u673A\u9636\u6BB5\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.updateStage(h, v));
     }
@@ -14650,9 +14782,10 @@ function createAdminDataBrowserService(repo, tokens) {
 }
 
 // server/adapters/postgres/contact-change-repository.ts
-var import_node_crypto24 = require("node:crypto");
+var import_node_crypto26 = require("node:crypto");
 
 // server/adapters/postgres/contact-change-schema.ts
+var import_node_crypto25 = require("node:crypto");
 var CONTACT_CHANGE_VERSION = "008-contact-change-import-capture-public";
 var CONTACT_CHANGE_LOCK = 19041007;
 var PUBLIC_OUTBOX_FK_REPAIR_VERSION = "063-public-outbox-fk-repair";
@@ -14692,19 +14825,28 @@ DROP TRIGGER IF EXISTS crm_contact_change_capture ON public.identity_outbox;
 CREATE TRIGGER crm_contact_change_capture AFTER INSERT ON public.identity_outbox FOR EACH ROW EXECUTE FUNCTION crm_contact_change_capture();
 `;
 var PUBLIC_OUTBOX_FK_REPAIR_SQL = `
-ALTER TABLE public.crm_contact_changes DROP CONSTRAINT IF EXISTS crm_contact_changes_event_id_fkey;
-ALTER TABLE public.crm_contact_changes ADD CONSTRAINT crm_contact_changes_event_id_fkey
+ALTER TABLE crm_contact_changes DROP CONSTRAINT IF EXISTS crm_contact_changes_event_id_fkey;
+ALTER TABLE crm_contact_changes ADD CONSTRAINT crm_contact_changes_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
-ALTER TABLE public.crm_event_deliveries DROP CONSTRAINT IF EXISTS crm_event_deliveries_event_id_fkey;
-ALTER TABLE public.crm_event_deliveries ADD CONSTRAINT crm_event_deliveries_event_id_fkey
+ALTER TABLE crm_event_deliveries DROP CONSTRAINT IF EXISTS crm_event_deliveries_event_id_fkey;
+ALTER TABLE crm_event_deliveries ADD CONSTRAINT crm_event_deliveries_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
-ALTER TABLE public.crm_notification_consumed DROP CONSTRAINT IF EXISTS crm_notification_consumed_event_id_fkey;
-ALTER TABLE public.crm_notification_consumed ADD CONSTRAINT crm_notification_consumed_event_id_fkey
+ALTER TABLE crm_notification_consumed DROP CONSTRAINT IF EXISTS crm_notification_consumed_event_id_fkey;
+ALTER TABLE crm_notification_consumed ADD CONSTRAINT crm_notification_consumed_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
-ALTER TABLE public.crm_task_due_receipts DROP CONSTRAINT IF EXISTS crm_task_due_receipts_event_id_fkey;
-ALTER TABLE public.crm_task_due_receipts ADD CONSTRAINT crm_task_due_receipts_event_id_fkey
+ALTER TABLE crm_task_due_receipts DROP CONSTRAINT IF EXISTS crm_task_due_receipts_event_id_fkey;
+ALTER TABLE crm_task_due_receipts ADD CONSTRAINT crm_task_due_receipts_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
 `;
+var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL = PUBLIC_OUTBOX_FK_REPAIR_SQL.replaceAll(
+  "ALTER TABLE crm_",
+  "ALTER TABLE public.crm_"
+);
+var PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM = (0, import_node_crypto25.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest("hex");
+var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM = (0, import_node_crypto25.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL).digest("hex");
+function acceptsPublicOutboxFkRepairChecksum(checksum4) {
+  return checksum4 === PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM || checksum4 === PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM;
+}
 
 // server/adapters/postgres/contact-change-repository.ts
 var TOMBSTONE_EVENTS = /* @__PURE__ */ new Set(["crm.contact.deleted", "crm.contact.share.revoked"]);
@@ -14736,7 +14878,7 @@ var PostgresContactChangeRepository = class {
   }
   async migrate() {
     return this.tx(async (db) => {
-      const checksum4 = (0, import_node_crypto24.createHash)("sha256").update(CONTACT_CHANGE_SQL).digest("hex");
+      const checksum4 = (0, import_node_crypto26.createHash)("sha256").update(CONTACT_CHANGE_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_CHANGE_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== checksum4)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u53D8\u5316\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -14744,13 +14886,12 @@ var PostgresContactChangeRepository = class {
         await db.query(CONTACT_CHANGE_SQL);
         await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_CHANGE_VERSION, checksum4]);
       }
-      const repairChecksum = (0, import_node_crypto24.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest("hex");
       const repaired = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [PUBLIC_OUTBOX_FK_REPAIR_VERSION]);
-      if (repaired.rows.length && repaired.rows[0].checksum !== repairChecksum)
+      if (repaired.rows.length && !acceptsPublicOutboxFkRepairChecksum(repaired.rows[0].checksum))
         return failure("CONFLICT", "\u516C\u5171 outbox \u5916\u952E\u4FEE\u590D\u6821\u9A8C\u4E0D\u4E00\u81F4");
       if (!repaired.rows.length) {
         await db.query(PUBLIC_OUTBOX_FK_REPAIR_SQL);
-        await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [PUBLIC_OUTBOX_FK_REPAIR_VERSION, repairChecksum]);
+        await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [PUBLIC_OUTBOX_FK_REPAIR_VERSION, PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM]);
       }
       return success(void 0);
     });
@@ -14832,7 +14973,7 @@ function createContactChangeHandler(service) {
 }
 
 // server/adapters/postgres/campaign-repository.ts
-var import_node_crypto25 = require("node:crypto");
+var import_node_crypto27 = require("node:crypto");
 
 // server/core/campaigns.ts
 var CAMPAIGN_ROUTES = { campaigns: "/api/crm/campaigns", confirm: "confirm", pause: "pause", dryRunClaim: "dry-run-claim" };
@@ -14920,7 +15061,7 @@ var PostgresCampaignRepository = class {
   }
   async migrate() {
     return this.tx(async (db) => {
-      const hash = (0, import_node_crypto25.createHash)("sha256").update(CAMPAIGN_SQL).digest("hex");
+      const hash = (0, import_node_crypto27.createHash)("sha256").update(CAMPAIGN_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CAMPAIGN_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u81EA\u52A8\u5F00\u53D1\u4EFB\u52A1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -15002,7 +15143,7 @@ var PostgresCampaignRepository = class {
         return failure("FORBIDDEN", "\u53EA\u80FD\u4FEE\u6539\u81EA\u5DF1\u7684\u4EFB\u52A1");
       if (c.data.version !== input.expectedVersion || c.data.state !== "draft")
         return failure("CONFLICT", "\u53EA\u6709\u672A\u786E\u8BA4\u8349\u7A3F\u53EF\u4EE5\u6DFB\u52A0\u89E6\u70B9");
-      const digest2 = (0, import_node_crypto25.createHash)("sha256").update(JSON.stringify(input.targets)).digest("hex");
+      const digest2 = (0, import_node_crypto27.createHash)("sha256").update(JSON.stringify(input.targets)).digest("hex");
       const idem = await db.query("SELECT response,digest FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, `campaign:targets:${input.campaignId}`, input.idempotencyKey]);
       if (idem.rows.length) {
         if (idem.rows[0].digest !== digest2)
@@ -15064,7 +15205,7 @@ var TOKEN2 = /^[A-Za-z0-9_-]{43}$/;
 function record10(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
-function text10(v, max, min = 1) {
+function text11(v, max, min = 1) {
   return typeof v === "string" && v.trim().length >= min && v.length <= max && !v.includes("\0");
 }
 function positive6(v) {
@@ -15074,13 +15215,13 @@ function run(token, tokens, fn) {
   return TOKEN2.test(token) ? fn(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
 }
 function command3(v) {
-  return record10(v) && UUID12.test(String(v.campaignId)) && positive6(v.expectedVersion) && text10(v.idempotencyKey, CAMPAIGN_LIMITS.key);
+  return record10(v) && UUID12.test(String(v.campaignId)) && positive6(v.expectedVersion) && text11(v.idempotencyKey, CAMPAIGN_LIMITS.key);
 }
 function createCampaignService(repository, tokens) {
   const tokenPort = tokens ?? { hash: (v) => v };
   return {
     create(token, v) {
-      if (!record10(v) || !text10(v.name, CAMPAIGN_LIMITS.name) || !text10(v.idempotencyKey, CAMPAIGN_LIMITS.key) || v.autoSend !== void 0 && typeof v.autoSend !== "boolean" || v.nextRunAt !== void 0 && (typeof v.nextRunAt !== "string" || !Number.isFinite(Date.parse(v.nextRunAt))))
+      if (!record10(v) || !text11(v.name, CAMPAIGN_LIMITS.name) || !text11(v.idempotencyKey, CAMPAIGN_LIMITS.key) || v.autoSend !== void 0 && typeof v.autoSend !== "boolean" || v.nextRunAt !== void 0 && (typeof v.nextRunAt !== "string" || !Number.isFinite(Date.parse(v.nextRunAt))))
         return Promise.resolve(failure("INVALID_INPUT", "\u4E2D\u5FC3\u4EFB\u52A1\u53C2\u6570\u65E0\u6548"));
       const value2 = v;
       return run(token, tokenPort, (h) => repository.create(h, { name: value2.name.trim(), idempotencyKey: value2.idempotencyKey, autoSend: false, nextRunAt: value2.nextRunAt }));
@@ -15099,23 +15240,23 @@ function createCampaignService(repository, tokens) {
       return run(token, tokenPort, (h) => repository.confirm(h, v));
     },
     pause(token, v) {
-      if (!command3(v) || !record10(v) || v.reason !== void 0 && !text10(v.reason, CAMPAIGN_LIMITS.reason, 0))
+      if (!command3(v) || !record10(v) || v.reason !== void 0 && !text11(v.reason, CAMPAIGN_LIMITS.reason, 0))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u6682\u505C\u53C2\u6570\u65E0\u6548"));
       return run(token, tokenPort, (h) => repository.pause(h, v));
     },
     addTargets(token, v) {
-      if (!record10(v) || !UUID12.test(String(v.campaignId)) || !positive6(v.expectedVersion) || !text10(v.idempotencyKey, CAMPAIGN_LIMITS.key) || !Array.isArray(v.targets) || v.targets.length < 1 || v.targets.length > CAMPAIGN_LIMITS.claimBatchMax || !v.targets.every((t) => record10(t) && Number.isSafeInteger(t.contactId) && Number(t.contactId) > 0 && UUID12.test(String(t.customerId)) && positive6(t.contactVersion) && Number.isSafeInteger(t.round) && Number(t.round) >= 0 && typeof t.nextTouchAt === "string" && Number.isFinite(Date.parse(t.nextTouchAt))))
+      if (!record10(v) || !UUID12.test(String(v.campaignId)) || !positive6(v.expectedVersion) || !text11(v.idempotencyKey, CAMPAIGN_LIMITS.key) || !Array.isArray(v.targets) || v.targets.length < 1 || v.targets.length > CAMPAIGN_LIMITS.claimBatchMax || !v.targets.every((t) => record10(t) && Number.isSafeInteger(t.contactId) && Number(t.contactId) > 0 && UUID12.test(String(t.customerId)) && positive6(t.contactVersion) && Number.isSafeInteger(t.round) && Number(t.round) >= 0 && typeof t.nextTouchAt === "string" && Number.isFinite(Date.parse(t.nextTouchAt))))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u89E6\u70B9\u53C2\u6570\u65E0\u6548"));
       return run(token, tokenPort, (h) => repository.addTargets(h, v));
     },
     claimDryRun(token, v) {
-      if (!record10(v) || !positive6(v.limit) || Number(v.limit) > CAMPAIGN_LIMITS.claimBatchMax || !text10(v.workerId, CAMPAIGN_LIMITS.workerId))
+      if (!record10(v) || !positive6(v.limit) || Number(v.limit) > CAMPAIGN_LIMITS.claimBatchMax || !text11(v.workerId, CAMPAIGN_LIMITS.workerId))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u9886\u53D6\u53C2\u6570\u65E0\u6548"));
       const value2 = v;
       return run(token, tokenPort, (h) => repository.claimDryRun(h, { limit: Number(value2.limit), workerId: value2.workerId.trim() }));
     },
     completeDryRun(token, v) {
-      if (!record10(v) || !UUID12.test(String(v.attemptId)) || !text10(v.executionKey, CAMPAIGN_LIMITS.key) || !["accepted", "rejected", "unknown"].includes(String(v.state)) || v.error !== void 0 && !text10(v.error, CAMPAIGN_LIMITS.reason, 0))
+      if (!record10(v) || !UUID12.test(String(v.attemptId)) || !text11(v.executionKey, CAMPAIGN_LIMITS.key) || !["accepted", "rejected", "unknown"].includes(String(v.state)) || v.error !== void 0 && !text11(v.error, CAMPAIGN_LIMITS.reason, 0))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u8BD5\u8FD0\u884C\u56DE\u6267\u65E0\u6548"));
       return run(token, tokenPort, (h) => repository.completeDryRun(h, v));
     }
@@ -15171,7 +15312,7 @@ function createCampaignHandler(service) {
 }
 
 // server/adapters/postgres/team-repository.ts
-var import_node_crypto26 = require("node:crypto");
+var import_node_crypto28 = require("node:crypto");
 
 // server/core/organization.ts
 function canPlaceOrganizationUnit(parent, child) {
@@ -15894,7 +16035,7 @@ var PostgresTeamRepository = class {
         [ORGANIZATION_ASSIGNMENT_INTEGRITY_VERSION, ORGANIZATION_ASSIGNMENT_INTEGRITY_SQL],
         [ORGANIZATION_DISSOLUTION_VERSION, ORGANIZATION_DISSOLUTION_SQL]
       ]) {
-        const checksum4 = (0, import_node_crypto26.createHash)("sha256").update(sql).digest("hex");
+        const checksum4 = (0, import_node_crypto28.createHash)("sha256").update(sql).digest("hex");
         const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [version4]);
         if (old.rows.length && old.rows[0].checksum !== checksum4)
           return failure("CONFLICT", `\u7EC4\u7EC7\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4: ${version4}`);
@@ -16098,7 +16239,7 @@ var PostgresTeamRepository = class {
     return row2.count === userIds2.length;
   }
   async cache(client, actorId, operation, key, input) {
-    const digest2 = (0, import_node_crypto26.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const digest2 = (0, import_node_crypto28.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
     const old = (await client.query("SELECT digest,response FROM crm_org_idempotency WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3 FOR UPDATE", [actorId, operation, key])).rows[0];
     if (!old)
       return { state: "new", digest: digest2 };
@@ -16145,13 +16286,13 @@ var PostgresTeamRepository = class {
         return failure("CONFLICT", "\u540C\u4E00\u5C42\u7EA7\u5DF2\u5B58\u5728\u540C\u540D\u7EC4\u7EC7");
       if (!await this.validInvitees(client, input.inviteeUserIds))
         return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
-      const teamId = (0, import_node_crypto26.randomUUID)();
+      const teamId = (0, import_node_crypto28.randomUUID)();
       await client.query("INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,created_by) VALUES($1,$2,$3,$4,$5)", [teamId, kind, parentUnitId, name, actor.userId]);
       const assigned = await this.insertAssignment(client, leaderUserId, teamId, kind, "leader");
       if (!assigned.ok)
         return assigned;
       for (const inviteeUserId of input.inviteeUserIds)
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)", [(0, import_node_crypto26.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)", [(0, import_node_crypto28.randomUUID)(), teamId, actor.userId, inviteeUserId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
@@ -16178,7 +16319,7 @@ var PostgresTeamRepository = class {
       if (!await this.validInvitees(client, input.userIds))
         return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
       for (const inviteeUserId of input.userIds)
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto26.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto28.randomUUID)(), teamId, actor.userId, inviteeUserId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
@@ -16417,7 +16558,7 @@ var PostgresTeamRepository = class {
         if (occupied.rows.length)
           return failure("CONFLICT", "\u6210\u5458\u5DF2\u7ECF\u5728\u5176\u4ED6\u5C55\u793A\u5206\u7EC4");
       }
-      const groupId = input.groupId ?? (0, import_node_crypto26.randomUUID)();
+      const groupId = input.groupId ?? (0, import_node_crypto28.randomUUID)();
       if (!input.groupId)
         await client.query("INSERT INTO crm_org_member_groups(group_id,unit_id,name) VALUES($1,$2,$3)", [groupId, teamId, input.name.trim()]);
       await client.query("DELETE FROM crm_org_member_group_members WHERE group_id=$1", [groupId]);
@@ -16463,14 +16604,14 @@ function record11(value2) {
 function keys7(value2, allowed) {
   return Object.keys(value2).every((key) => allowed.includes(key));
 }
-function text11(value2, maximum, minimum = 1) {
+function text12(value2, maximum, minimum = 1) {
   return typeof value2 === "string" && value2.trim().length >= minimum && value2.trim().length <= maximum;
 }
 function userIds(value2, maximum = TEAM_LIMITS.inviteBatch) {
   return Array.isArray(value2) && value2.length <= maximum && new Set(value2).size === value2.length && value2.every((userId) => typeof userId === "string" && UUID13.test(userId));
 }
 function idempotency(value2) {
-  return text11(value2, TEAM_LIMITS.key);
+  return text12(value2, TEAM_LIMITS.key);
 }
 function unitType(value2) {
   return value2 === void 0 || value2 === "operations" || value2 === "sales_team";
@@ -16525,7 +16666,7 @@ function memberInput(value2) {
   return value2;
 }
 function groupInput(value2) {
-  if (!record11(value2) || !keys7(value2, ["groupId", "name", "memberIds", "expectedVersion", "idempotencyKey"]) || value2.groupId !== null && (typeof value2.groupId !== "string" || !UUID13.test(value2.groupId)) || !text11(value2.name, TEAM_LIMITS.groupName, 1) || !userIds(value2.memberIds, TEAM_LIMITS.groupMembers) || !version3(value2.expectedVersion, value2.groupId === null) || !idempotency(value2.idempotencyKey))
+  if (!record11(value2) || !keys7(value2, ["groupId", "name", "memberIds", "expectedVersion", "idempotencyKey"]) || value2.groupId !== null && (typeof value2.groupId !== "string" || !UUID13.test(value2.groupId)) || !text12(value2.name, TEAM_LIMITS.groupName, 1) || !userIds(value2.memberIds, TEAM_LIMITS.groupMembers) || !version3(value2.expectedVersion, value2.groupId === null) || !idempotency(value2.idempotencyKey))
     return void 0;
   return value2;
 }
@@ -16547,7 +16688,7 @@ function createTeamService(repo, tokens) {
       return query2 ? repo.candidates(tokens.hash(token), query2) : Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u641C\u7D22\u53C2\u6570\u65E0\u6548"));
     },
     create(token, value2) {
-      if (!record11(value2) || !keys7(value2, ["name", "parentTeamId", "unitType", "leaderUserId", "inviteeUserIds", "idempotencyKey"]) || !text11(value2.name, TEAM_LIMITS.name, 2) || value2.parentTeamId !== null && (typeof value2.parentTeamId !== "string" || !UUID13.test(value2.parentTeamId)) || !unitType(value2.unitType) || value2.leaderUserId !== void 0 && (typeof value2.leaderUserId !== "string" || !UUID13.test(value2.leaderUserId)) || !userIds(value2.inviteeUserIds) || !idempotency(value2.idempotencyKey))
+      if (!record11(value2) || !keys7(value2, ["name", "parentTeamId", "unitType", "leaderUserId", "inviteeUserIds", "idempotencyKey"]) || !text12(value2.name, TEAM_LIMITS.name, 2) || value2.parentTeamId !== null && (typeof value2.parentTeamId !== "string" || !UUID13.test(value2.parentTeamId)) || !unitType(value2.unitType) || value2.leaderUserId !== void 0 && (typeof value2.leaderUserId !== "string" || !UUID13.test(value2.leaderUserId)) || !userIds(value2.inviteeUserIds) || !idempotency(value2.idempotencyKey))
         return Promise.resolve(failure("INVALID_INPUT", "\u521B\u5EFA\u56E2\u961F\u53C2\u6570\u65E0\u6548"));
       if (requiresExplicitLeader(value2) && value2.leaderUserId === void 0)
         return Promise.resolve(failure("INVALID_INPUT", "\u7BA1\u7406\u89D2\u8272\u521B\u5EFA\u7EC4\u7EC7\u65F6\u5FC5\u987B\u660E\u786E\u6307\u5B9A\u8D1F\u8D23\u4EBA"));
@@ -16682,26 +16823,26 @@ function record12(value2) {
 function keys8(value2, allowed) {
   return Object.keys(value2).every((key) => allowed.includes(key));
 }
-function text12(value2, max, min = 0) {
+function text13(value2, max, min = 0) {
   return typeof value2 === "string" && value2.length <= max && value2.trim().length >= min && !value2.includes("\0");
 }
 function nullableText(value2, max) {
-  return value2 === null || text12(value2, max);
+  return value2 === null || text13(value2, max);
 }
 function confidence(value2) {
   return typeof value2 === "number" && Number.isFinite(value2) && value2 >= 0 && value2 <= 1;
 }
 function base(value2) {
-  return Number.isSafeInteger(value2.contactId) && Number(value2.contactId) > 0 && typeof value2.customerId === "string" && UUID14.test(value2.customerId) && text12(value2.mailboxKey, 128, 1) && text12(value2.messageKey, 256, 1) && typeof value2.contentHash === "string" && HASH.test(value2.contentHash);
+  return Number.isSafeInteger(value2.contactId) && Number(value2.contactId) > 0 && typeof value2.customerId === "string" && UUID14.test(value2.customerId) && text13(value2.mailboxKey, 128, 1) && text13(value2.messageKey, 256, 1) && typeof value2.contentHash === "string" && HASH.test(value2.contentHash);
 }
 function signals(value2) {
-  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.signals && value2.every((signal) => record12(signal) && keys8(signal, ["code", "label", "confidence", "evidence"]) && MAIL_INTENT_CODES.includes(signal.code) && text12(signal.label, CONTACT_MAIL_ANALYSIS_LIMITS.label, 1) && confidence(signal.confidence) && text12(signal.evidence, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
+  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.signals && value2.every((signal) => record12(signal) && keys8(signal, ["code", "label", "confidence", "evidence"]) && MAIL_INTENT_CODES.includes(signal.code) && text13(signal.label, CONTACT_MAIL_ANALYSIS_LIMITS.label, 1) && confidence(signal.confidence) && text13(signal.evidence, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
 }
 function evidence(value2) {
-  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.evidence && value2.every((item) => text12(item, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
+  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.evidence && value2.every((item) => text13(item, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
 }
 function conclusion(value2) {
-  return MAIL_CLASSIFICATIONS.includes(value2.classification) && MAIL_RELEVANCE_VALUES.includes(value2.relevance) && text12(value2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) && signals(value2.signals) && typeof value2.requiresAction === "boolean" && nullableText(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction) && MAIL_PRIORITIES.includes(value2.priority) && nullableText(value2.dueHint, CONTACT_MAIL_ANALYSIS_LIMITS.dueHint) && confidence(value2.confidence) && evidence(value2.evidence);
+  return MAIL_CLASSIFICATIONS.includes(value2.classification) && MAIL_RELEVANCE_VALUES.includes(value2.relevance) && text13(value2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) && signals(value2.signals) && typeof value2.requiresAction === "boolean" && nullableText(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction) && MAIL_PRIORITIES.includes(value2.priority) && nullableText(value2.dueHint, CONTACT_MAIL_ANALYSIS_LIMITS.dueHint) && confidence(value2.confidence) && evidence(value2.evidence);
 }
 function contactMailAnalysisQuery(value2) {
   if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "includeHistory", "historyLimit"]) || !base(value2))
@@ -16713,24 +16854,24 @@ function contactMailAnalysisQuery(value2) {
   return success({ ...value2, includeHistory, historyLimit: Number(historyLimit) });
 }
 function contactMailAnalysisSubmission(value2) {
-  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "inputSequence", "idempotencyKey", "result"]) || !base(value2) || !Number.isSafeInteger(value2.inputSequence) || Number(value2.inputSequence) < 0 || !text12(value2.idempotencyKey, 256, 1) || !record12(value2.result))
+  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "inputSequence", "idempotencyKey", "result"]) || !base(value2) || !Number.isSafeInteger(value2.inputSequence) || Number(value2.inputSequence) < 0 || !text13(value2.idempotencyKey, 256, 1) || !record12(value2.result))
     return failure("INVALID_INPUT", "AI \u90AE\u4EF6\u5206\u6790\u53C2\u6570\u65E0\u6548");
   const result2 = value2.result;
-  if (!keys8(result2, ["classification", "relevance", "summary", "signals", "actionability", "confidence", "evidence", "analyzerVersion"]) || !MAIL_CLASSIFICATIONS.includes(result2.classification) || !MAIL_RELEVANCE_VALUES.includes(result2.relevance) || !text12(result2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) || !signals(result2.signals) || !record12(result2.actionability) || !confidence(result2.confidence) || !evidence(result2.evidence) || !text12(result2.analyzerVersion, CONTACT_MAIL_ANALYSIS_LIMITS.version, 1))
+  if (!keys8(result2, ["classification", "relevance", "summary", "signals", "actionability", "confidence", "evidence", "analyzerVersion"]) || !MAIL_CLASSIFICATIONS.includes(result2.classification) || !MAIL_RELEVANCE_VALUES.includes(result2.relevance) || !text13(result2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) || !signals(result2.signals) || !record12(result2.actionability) || !confidence(result2.confidence) || !evidence(result2.evidence) || !text13(result2.analyzerVersion, CONTACT_MAIL_ANALYSIS_LIMITS.version, 1))
     return failure("INVALID_INPUT", "AI \u90AE\u4EF6\u5206\u6790\u7ED3\u8BBA\u65E0\u6548");
   const actionability = result2.actionability;
   if (!keys8(actionability, ["requiresAction", "nextAction", "priority", "dueHint"]) || typeof actionability.requiresAction !== "boolean" || !nullableText(actionability.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction) || !MAIL_PRIORITIES.includes(actionability.priority) || !nullableText(actionability.dueHint, CONTACT_MAIL_ANALYSIS_LIMITS.dueHint))
     return failure("INVALID_INPUT", "AI \u884C\u52A8\u5EFA\u8BAE\u65E0\u6548");
-  if (actionability.requiresAction && !text12(actionability.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
+  if (actionability.requiresAction && !text13(actionability.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
     return failure("INVALID_INPUT", "\u884C\u52A8\u5EFA\u8BAE\u7F3A\u5C11\u4E0B\u4E00\u6B65");
   if (result2.relevance !== "customer_business" && actionability.requiresAction)
     return failure("INVALID_INPUT", "\u975E\u5BA2\u6237\u4E1A\u52A1\u90AE\u4EF6\u4E0D\u80FD\u751F\u6210\u884C\u52A8\u5EFA\u8BAE");
   return success(value2);
 }
 function contactMailAnalysisCorrection(value2) {
-  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "idempotencyKey", "expectedCurrentId", "classification", "relevance", "summary", "signals", "requiresAction", "nextAction", "priority", "dueHint", "confidence", "evidence"]) || !base(value2) || !text12(value2.idempotencyKey, 256, 1) || !text12(value2.expectedCurrentId, 64, 1) || !conclusion(value2))
+  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "idempotencyKey", "expectedCurrentId", "classification", "relevance", "summary", "signals", "requiresAction", "nextAction", "priority", "dueHint", "confidence", "evidence"]) || !base(value2) || !text13(value2.idempotencyKey, 256, 1) || !text13(value2.expectedCurrentId, 64, 1) || !conclusion(value2))
     return failure("INVALID_INPUT", "\u4EBA\u5DE5\u90AE\u4EF6\u5206\u6790\u53C2\u6570\u65E0\u6548");
-  if (value2.requiresAction === true && !text12(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
+  if (value2.requiresAction === true && !text13(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
     return failure("INVALID_INPUT", "\u884C\u52A8\u5EFA\u8BAE\u7F3A\u5C11\u4E0B\u4E00\u6B65");
   if (
     /* Human confirmation may make a matched business mail actionable, but never turns unrelated mail into customer business. */
@@ -16805,7 +16946,7 @@ function createContactMailAnalysisHandler(service) {
 }
 
 // server/adapters/postgres/team-attention-repository.ts
-var import_node_crypto27 = require("node:crypto");
+var import_node_crypto29 = require("node:crypto");
 var ITEM_COLUMNS = `i.item_id AS "itemId",i.target_member_user_id AS "targetMemberUserId",target.display_name AS "targetMemberName",i.source_supervisor_user_id AS "sourceSupervisorUserId",source.display_name AS "sourceSupervisorName",i.customer_id AS "customerId",co.name AS "customerName",i.contact_id AS "contactId",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),NULLIF(ct.email,''),'\u8054\u7CFB\u4EBA') AS "contactName",ct.email AS "contactEmail",i.mail_event_id AS "mailEventId",i.analysis_id AS "analysisId",i.reason,i.priority,i.status,i.note,i.result,i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt",i.acknowledged_at AS "acknowledgedAt",i.resolved_at AS "resolvedAt",i.dismissed_at AS "dismissedAt"`;
 var ITEM_JOINS = `FROM crm_team_attention_items i JOIN public.identity_users target ON target.user_id=i.target_member_user_id JOIN public.identity_users source ON source.user_id=i.source_supervisor_user_id JOIN crm_customers c ON c.customer_id=i.customer_id JOIN companies co ON co.id=c.company_id JOIN contacts ct ON ct.id=i.contact_id`;
 function iso2(value2) {
@@ -16815,7 +16956,7 @@ function optionalIso(value2) {
   return value2 ? new Date(value2).toISOString() : null;
 }
 function digest(value2) {
-  return (0, import_node_crypto27.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+  return (0, import_node_crypto29.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
 }
 function oversight(actor) {
   return actor.roles.includes("admin") || actor.roles.includes("operations");
@@ -17007,11 +17148,11 @@ function record13(value2) {
 function keys9(value2, allowed) {
   return Object.keys(value2).every((key) => allowed.includes(key));
 }
-function text13(value2, maximum, minimum = 1) {
+function text14(value2, maximum, minimum = 1) {
   return typeof value2 === "string" && value2.trim().length >= minimum && value2.trim().length <= maximum && !value2.includes("\0");
 }
 function optionalText(value2, maximum) {
-  return value2 === void 0 || text13(value2, maximum);
+  return value2 === void 0 || text14(value2, maximum);
 }
 function uuid4(value2) {
   return typeof value2 === "string" && UUID15.test(value2);
@@ -17040,18 +17181,18 @@ function createInput(value2) {
     return void 0;
   if (!TEAM_ATTENTION_REASONS.includes(value2.reason) || !MAIL_PRIORITIES.includes(value2.priority))
     return void 0;
-  if (!optionalText(value2.note, TEAM_ATTENTION_LIMITS.note) || !text13(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
+  if (!optionalText(value2.note, TEAM_ATTENTION_LIMITS.note) || !text14(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
     return void 0;
   return value2;
 }
 function transition(value2) {
   if (!record13(value2) || !keys9(value2, ["action", "expectedVersion", "idempotencyKey", "result"]) || !["acknowledge", "dismiss", "resolve"].includes(String(value2.action)))
     return void 0;
-  if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !text13(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
+  if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !text14(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
     return void 0;
   if (!optionalText(value2.result, TEAM_ATTENTION_LIMITS.result))
     return void 0;
-  if (value2.action === "resolve" && !text13(value2.result, TEAM_ATTENTION_LIMITS.result))
+  if (value2.action === "resolve" && !text14(value2.result, TEAM_ATTENTION_LIMITS.result))
     return void 0;
   return value2;
 }
@@ -17154,7 +17295,7 @@ function teamMonitoringScopeFor(input) {
 }
 
 // server/adapters/postgres/team-monitoring-schema.ts
-var import_node_crypto28 = require("node:crypto");
+var import_node_crypto30 = require("node:crypto");
 var TEAM_MONITORING_SCHEMA_VERSION = "061-team-monitoring";
 var TEAM_MONITORING_LOCK = 610061;
 var TEAM_MONITORING_SQL = `
@@ -17210,7 +17351,7 @@ CREATE INDEX idx_crm_team_monitoring_tasks_responsible
   WHERE status='open' AND source_responsible_user_id IS NOT NULL;
 `;
 function checksum2() {
-  return (0, import_node_crypto28.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
+  return (0, import_node_crypto30.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
 }
 async function migrateTeamMonitoringSchema(client) {
   const digest2 = checksum2();
@@ -18061,7 +18202,7 @@ function createTeamMonitoringHandler(service) {
 }
 
 // server/adapters/postgres/sales-performance-repository.ts
-var import_node_crypto30 = require("node:crypto");
+var import_node_crypto32 = require("node:crypto");
 
 // server/core/sales-performance.ts
 var SALES_PERFORMANCE_ROUTES = {
@@ -18120,7 +18261,7 @@ function customerGradeFor(signals2) {
 }
 
 // server/adapters/postgres/sales-performance-schema.ts
-var import_node_crypto29 = require("node:crypto");
+var import_node_crypto31 = require("node:crypto");
 var SALES_PERFORMANCE_SCHEMA_VERSION = "062-sales-performance-customer-grade";
 var SALES_PERFORMANCE_SCHEMA_LOCK = 620062;
 var SALES_PERFORMANCE_SQL = `
@@ -18209,7 +18350,7 @@ CREATE INDEX idx_crm_sales_perf_customer_origin_source
   ON crm_customers(origin,source,customer_id);
 `;
 function checksum3() {
-  return (0, import_node_crypto29.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
+  return (0, import_node_crypto31.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
 }
 async function migrateSalesPerformanceSchema(client) {
   const digest2 = checksum3();
@@ -18816,7 +18957,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto30.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto32.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, OVERRIDE_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -18852,7 +18993,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto30.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto32.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, CLEAR_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -18888,11 +19029,11 @@ function record15(value2) {
 function keys11(value2, allowed) {
   return Object.keys(value2).every((key) => allowed.includes(key));
 }
-function text14(value2, maximum, minimum = 1) {
+function text15(value2, maximum, minimum = 1) {
   return typeof value2 === "string" && value2.trim().length >= minimum && value2.trim().length <= maximum && !value2.includes("\0");
 }
 function optionalText2(value2, maximum) {
-  return value2 === void 0 || text14(value2, maximum);
+  return value2 === void 0 || text15(value2, maximum);
 }
 function uuid5(value2) {
   return typeof value2 === "string" && UUID17.test(value2);
@@ -18965,7 +19106,7 @@ function setBody(value2) {
     return void 0;
   if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 0)
     return void 0;
-  if (!CUSTOMER_GRADES.includes(value2.grade) || !text14(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text14(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
+  if (!CUSTOMER_GRADES.includes(value2.grade) || !text15(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text15(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
     return void 0;
   return { expectedVersion: Number(value2.expectedVersion), grade: value2.grade, reason: value2.reason.trim(), idempotencyKey: value2.idempotencyKey };
 }
@@ -18974,7 +19115,7 @@ function clearBody(value2) {
     return void 0;
   if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1)
     return void 0;
-  if (!text14(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text14(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
+  if (!text15(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text15(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
     return void 0;
   return { expectedVersion: Number(value2.expectedVersion), reason: value2.reason.trim(), idempotencyKey: value2.idempotencyKey };
 }
@@ -19074,11 +19215,27 @@ function createSalesPerformanceHandler(service) {
   };
 }
 
+// server/adapters/online-instance.ts
+var import_node_crypto33 = require("node:crypto");
+var INSTANCE_ID_PATTERN = /^[a-f0-9]{64}$/;
+function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto33.randomBytes)(32).toString("hex")) {
+  const configured = env.PROSPECTOR_ONLINE_INSTANCE?.trim();
+  if (configured) {
+    if (!INSTANCE_ID_PATTERN.test(configured))
+      throw new Error("\u672C\u8282\u70B9\u542F\u52A8\u6807\u8BC6\u65E0\u6548");
+    return configured;
+  }
+  const generated = generate();
+  if (!INSTANCE_ID_PATTERN.test(generated))
+    throw new Error("\u672C\u8282\u70B9\u542F\u52A8\u6807\u8BC6\u751F\u6210\u5931\u8D25");
+  return generated;
+}
+
 // server/online.ts
 var EXIT_FAILED = 1;
 var SHUTDOWN_TIMEOUT_MS = 5e3;
 async function main() {
-  const config = readOnlineConfig(), pool = new Pool(readOnlineDatabaseConfig());
+  const config = readOnlineConfig(), pool = new Pool(await resolveOnlineDatabaseConfig());
   let started = false;
   try {
     const crm = new PostgresCrmRepository(pool, serverLog), repo = new PostgresAuthRepository(pool, serverLog);
@@ -19087,9 +19244,7 @@ async function main() {
     const passwords = new PasswordAdapter(config.password_concurrency);
     await passwords.initialize();
     await initializeFixtures(repo, passwords, config.test_mode);
-    const clock = { now: () => Date.now() }, instanceId = process.env.PROSPECTOR_ONLINE_INSTANCE;
-    if (!instanceId || !/^[a-f0-9]{64}$/.test(instanceId))
-      throw new Error("\u7F3A\u5C11\u672C\u8282\u70B9\u542F\u52A8\u6807\u8BC6");
+    const clock = { now: () => Date.now() }, instanceId = resolveOnlineInstanceId();
     const auth = createAuthService(repo, passwords, tokenAdapter, clock, config.session_ttl_seconds);
     const adminRepository = new PostgresAdminRepository(pool, serverLog);
     const admin = createAdminService(adminRepository, repo, passwords, tokenAdapter, clock, auth);

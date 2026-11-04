@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Pool, PoolConfig } from "pg";
 import settings from "../../core/postgres-test-settings.json";
+import { postgresKmsSecretName, resolvePostgresKmsCredential, type PostgresKmsCredential } from "./kms-credential";
 
 export const CRM_TEST_DATABASE = settings.database;
 export const CRM_TEST_PORT = settings.port;
@@ -83,8 +84,34 @@ export function readOnlineDatabaseConfig(env: NodeJS.ProcessEnv = process.env): 
   throw new Error("未知中心运行模式");
 }
 
+export async function resolveOnlineDatabaseConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  loadCredential: (source: NodeJS.ProcessEnv) => Promise<PostgresKmsCredential> = resolvePostgresKmsCredential,
+): Promise<PoolConfig> {
+  if (env.PROSPECTOR_CENTER_MODE !== 'production' || !postgresKmsSecretName(env)) {
+    return readOnlineDatabaseConfig(env);
+  }
+  const credential = await loadCredential(env);
+  const resolved: NodeJS.ProcessEnv = {
+    ...env,
+    PROSPECTOR_CENTER_PG_USER: credential.username,
+    PROSPECTOR_CENTER_PG_PASSWORD: credential.password,
+  };
+  delete resolved.PROSPECTOR_CENTER_PG_DSN;
+  return readProductionDatabaseConfig(resolved);
+}
+
 export function assertCenterDatabasePool(pool: Pool, env: NodeJS.ProcessEnv = process.env): void {
-  const expected = readOnlineDatabaseConfig(env);
+  let expectedEnv = env;
+  if (env.PROSPECTOR_CENTER_MODE === 'production' && postgresKmsSecretName(env)) {
+    expectedEnv = {
+      ...env,
+      PROSPECTOR_CENTER_PG_USER: String(pool.options.user || ''),
+      PROSPECTOR_CENTER_PG_PASSWORD: 'kms-resolved',
+    };
+    delete expectedEnv.PROSPECTOR_CENTER_PG_DSN;
+  }
+  const expected = readOnlineDatabaseConfig(expectedEnv);
   if (pool.options.host !== expected.host || pool.options.port !== expected.port
     || pool.options.database !== expected.database || pool.options.user !== expected.user) {
     throw new Error(env.PROSPECTOR_CENTER_MODE === 'production'

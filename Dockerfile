@@ -1,3 +1,8 @@
+# Supply curl from a pinned internal Bookworm image without an APT step on Jenkins.
+FROM harbor.sa.iyunquna.com/yqn-library/fc_sandbox_v2:20260903@sha256:1864a44b2df21e11559985921dbf3a18c2a8321eaa4cfc0e788e098824b981ae AS curl-tools
+COPY deploy/export_curl_runtime.py /tmp/export_curl_runtime.py
+RUN python3 /tmp/export_curl_runtime.py /tmp/curl-runtime
+
 FROM harbor.sa.iyunquna.com/yqn-library/node:22-bookworm-slim
 
 ENV LANG=C.UTF-8
@@ -26,7 +31,10 @@ ENV APP_PORT=${APP_PORT} \
 
 USER root
 
-RUN mkdir -p /opt/web/ws-${APP_PORT} /var/lib/prospector-center \
+COPY --from=curl-tools /tmp/curl-runtime/ /
+
+RUN curl --version \
+    && mkdir -p /opt/web/ws-${APP_PORT}/logs /var/lib/prospector-center \
     && chmod -R 755 /opt/web \
     && chmod 1777 /tmp
 

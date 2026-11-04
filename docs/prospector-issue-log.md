@@ -647,3 +647,27 @@
 - 修改：前端增加只存在于渲染层的“超级管理员 → 公司 → 运营组/直属团队”结构。超级管理员卡片的成员列表只使用当前已认证超管身份，未把 `YQN Admin` 等混合团队当超管组；所有真实团队保留在公司下游。团队卡明确显示“群主”，点击展开成员，再点击成员复用 `online:team-monitoring-member` 查看近期动作、关注项和邮件摘要。
 - 验证：团队布局与渲染 29 项通过；真实 Electron 验证虚拟超管根、公司层、群主标签、卡片展开、成员监控抽屉、滚动缩放和 1440/1040/824 布局，页面错误 0。
 - 边界：现有后端没有“全部超级管理员名单”接口，因此虚拟超管团队只能列出当前登录的超管身份；其他超管账号不会由前端猜测。未新增 HTTP、IPC、数据库字段或迁移。
+
+### QA4 中心因数据库 KMS 密钥名被当作明文密码而启动失败
+
+- 现象：QA4 中心启动时报“缺少正式中心数据库连接配置”；补入数据库变量后又因认证失败而无法就绪。
+- 原因：Apollo 的 `postgres.password` 保存的是 KMS 密钥名，旧中心只读取明文 `PROSPECTOR_CENTER_PG_PASSWORD`，没有在创建 PostgreSQL 连接池前解析公司 KMS 凭据。首轮适配上线后又确认 QA4 注入层会过滤带点号的键，实例只加载 7 项配置并回退旧明文路径，PostgreSQL 返回 `28P01`。
+- 修改：新增签名 KMS 凭据适配器；生产模式优先解析可注入的 `PROSPECTOR_CENTER_PG_KMS_SECRET`，并保留 `postgres.password` 兼容路径，用返回的账号和密码构造固定 `milogin_center`、`prospector,public` 搜索路径的连接池。仓储层连接边界也支持已解析的 KMS 连接池，不再依赖旧明文密码变量。QA4 Apollo 已发布两个 KMS 密钥名配置和 `PROSPECTOR_CENTER_PG_USER=yqnroot`。
+- 验证：KMS 解析、优先级、Apollo 点号键过滤、错误脱敏、路由元数据和无旧明文密码连接池校验共 6 项单元测试通过；服务端入口 esbuild 解析、预构建包 Node 语法和 `git diff --check` 通过；只读数据库连通性此前已验证。
+- 边界：KMS 修复镜像已进入 QA4，数据库认证不再是最新 Pod 的阻断点；旧 `PROSPECTOR_CENTER_PG_PASSWORD` 配置暂未删除，但新适配器会忽略它。服务整体就绪仍取决于后续启动边界通过。
+
+### QA4 容器通过数据库迁移后因缺少启动标识退出
+
+- 现象：KMS 修复镜像加载 8 项 Apollo 配置并通过数据库认证后，启动继续报“缺少本节点启动标识”，Pod 进入 CrashLoopBackOff。
+- 原因：本机 `production-server.mjs` 启动器会生成 `PROSPECTOR_ONLINE_INSTANCE`，但 Dockerfile 直接执行预构建 `online.cjs`，K8s 没有经过该启动器，也没有注入这个本机进程管理字段。
+- 修改：在线服务在未配置时为当前进程生成随机 32 字节启动标识；启动器显式提供的合法标识继续原样使用，显式非法值仍拒绝启动。预构建部署包同步同一逻辑。
+- 验证：启动器传值、容器缺省生成和非法配置拒绝共 3 项单元测试通过；QA4 最新 Pod 日志已证明 KMS 数据库认证不再是当前阻断点。
+- 边界：新启动标识修复仍需构建部署；部署后继续检查剩余迁移、`/health/live` 和 `/health/ready`，不能仅以 CrashLoop 错误变化宣称服务就绪。
+
+### QA4 联系人变化迁移错误定位到 public schema
+
+- 现象：容器生成启动标识并继续迁移后，日志报 `contact-change.pg`，随后以“联系人变化迁移被拒绝”退出。
+- 原因：公司 QA4 使用 `search_path=prospector,public`，四张 CRM 表都位于 `prospector`；迁移 `063-public-outbox-fk-repair` 却将它们硬编码为 `public.crm_*`。只读数据库核验确认联系人变化迁移 `008` 已完成，而 `063` 尚未记录。
+- 修改：四张 CRM 表改为通过既有 `search_path` 解析，外键目标继续显式指向共享的 `public.identity_outbox`；旧本地单 schema 中的 `public` 表仍可兼容。已执行旧 `063` 的中心可继续使用原 SQL checksum，其他 checksum 漂移仍拒绝。预构建在线服务同步同一逻辑。
+- 验证：schema 回归断言先在旧 SQL 下按预期失败，历史 checksum 回归断言先因兼容接口缺失而失败，修改后均通过；源码与预构建 SQL 对比一致，预构建 bundle 通过 Node 语法检查。隔离工作树缺少 Vitest 和 esbuild 依赖，未安装依赖，正式 Vitest 与重新打包命令未执行成功。
+- 边界：需发布新镜像后确认迁移 `063` 落库、日志不再出现 `contact-change.pg`，并检查 Pod Ready；本次未手工修改 QA4 数据库。
