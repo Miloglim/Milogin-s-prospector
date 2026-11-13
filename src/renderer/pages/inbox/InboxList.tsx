@@ -445,7 +445,6 @@ export function InboxList() {
   const [managementScope, setManagementScope] = useState<InboxManagementScope>("all");
   const [analysisFilter, setAnalysisFilter] = useState<InboxAnalysisFilter | null>(null);
   const [labelFilter, setLabelFilter] = useState<number | null>(null);
-  const [pinnedFilter, setPinnedFilter] = useState(false);
   const [pinnedFolderOpen, setPinnedFolderOpen] = useState(true);
   const [foldersOpen, setFoldersOpen] = useState(true);
   const [analysisDetailOpen, setAnalysisDetailOpen] = useState(true);
@@ -865,14 +864,13 @@ export function InboxList() {
     if (managementScope === "waiting_other") next = next.filter(i => latestByConversation.get(inboxConversationKey(i))?.id === i.id && i.classification === 'sent');
     if (analysisFilter === 'action') next = next.filter(i => matchesInboxAnalysisFilter(i, 'action'));
     else if (analysisFilter) next = next.filter(i => matchesInboxAnalysisFilter(i, 'important') || i.id === sid);
-    if (pinnedFilter) next = next.filter(i => i._pinned);
     if (labelFilter) next = next.filter(i => (i._labelIds || []).includes(labelFilter));
     if (search.trim()) {
       const q = search.toLowerCase();
       next = next.filter(i => (i.subject || "").toLowerCase().includes(q) || i.fromEmail.toLowerCase().includes(q) || (i.fromName || "").toLowerCase().includes(q));
     }
     return next;
-  }, [analysisFilter, filter, labelFilter, latestByConversation, managementScope, pinnedFilter, scopedItems, search, sid]);
+  }, [analysisFilter, filter, labelFilter, latestByConversation, managementScope, scopedItems, search, sid]);
   const todoOpenIds = useMemo(
     () => todoView ? filteredItems.filter(item => item._todoState !== 'done').map(item => item.id) : [],
     [filteredItems, todoView],
@@ -922,7 +920,6 @@ export function InboxList() {
       setManagementScope('all');
       setAnalysisFilter(null);
       setLabelFilter(null);
-      setPinnedFilter(false);
       setView('flat');
       setSenderFilter(null);
       setSearch(routeMailSubject || '');
@@ -944,7 +941,6 @@ export function InboxList() {
     setManagementScope('all');
     setAnalysisFilter(null);
     setLabelFilter(null);
-    setPinnedFilter(false);
     setView('flat');
     setSenderFilter(null);
     setSearch('');
@@ -1463,14 +1459,13 @@ export function InboxList() {
     action: scopedItems.filter(item => matchesInboxAnalysisFilter(item, 'action')).length,
     important: scopedItems.filter(item => matchesInboxAnalysisFilter(item, 'important')).length,
   };
-  const managementActive = pinnedFilter ? 'folder:pinned' : analysisFilter ? `analysis:${analysisFilter}` : labelFilter !== null ? `label:${labelFilter}` : managementScope !== 'all' ? `scope:${managementScope}` : `filter:${filter}`;
+  const managementActive = analysisFilter ? `analysis:${analysisFilter}` : labelFilter !== null ? `label:${labelFilter}` : managementScope !== 'all' ? `scope:${managementScope}` : `filter:${filter}`;
   const applyAccount = (key: string | null) => {
     setAccountFilter(key);
     setManagementScope('all');
     setFilter('all');
     setAnalysisFilter(null);
     setLabelFilter(null);
-    setPinnedFilter(false);
     setSenderFilter(null);
   };
   const applyScope = (scope: InboxManagementScope) => {
@@ -1478,17 +1473,7 @@ export function InboxList() {
     setFilter('all');
     setAnalysisFilter(null);
     setLabelFilter(null);
-    setPinnedFilter(false);
     if (scope === 'needs_reply' || scope === 'waiting_other') setView('flat');
-    setSenderFilter(null);
-  };
-  const applyPinned = () => {
-    setManagementScope('all');
-    setFilter('all');
-    setAnalysisFilter(null);
-    setLabelFilter(null);
-    setPinnedFilter(true);
-    setView('flat');
     setSenderFilter(null);
   };
   const applyClassification = (classification: string) => {
@@ -1496,14 +1481,12 @@ export function InboxList() {
     setFilter(classification);
     setAnalysisFilter(null);
     setLabelFilter(null);
-    setPinnedFilter(false);
     setSenderFilter(null);
   };
   const applyAnalysis = (analysis: InboxAnalysisFilter) => {
     setManagementScope('all');
     setFilter('all');
     setLabelFilter(null);
-    setPinnedFilter(false);
     setAnalysisFilter(analysis);
     if (analysis === 'action') setView('flat');
     setSenderFilter(null);
@@ -1512,7 +1495,6 @@ export function InboxList() {
     setManagementScope('all');
     setFilter('all');
     setAnalysisFilter(null);
-    setPinnedFilter(false);
     setLabelFilter(labelId);
     setSenderFilter(null);
   };
@@ -1635,11 +1617,18 @@ export function InboxList() {
               </button>
             </div>
             {pinnedFolderOpen && <div className="inbox-folder-children">
-              <button type="button" title="全部置顶邮件" className={`inbox-management-item${pinnedFilter ? ' is-active' : ''}`} onClick={applyPinned}>
-                <InboxOutlined /><span>全部置顶邮件</span><em>{pinnedCount}</em>
-              </button>
               {pinnedItems.length === 0 ? <div className="inbox-folder-empty">暂无置顶邮件</div> : pinnedItems.map(item => (
-                <button key={item.id} type="button" className="inbox-folder-mail-row" title={item.subject || item.fromEmail} onClick={() => { setPinnedFilter(false); setSid(item.id); setSel(new Set([item.id])); setLast(item.id); }}>
+                <button key={item.id} type="button" className="inbox-folder-mail-row" title={item.subject || item.fromEmail} onClick={() => {
+                  setManagementScope('all');
+                  setFilter('all');
+                  setAnalysisFilter(null);
+                  setLabelFilter(null);
+                  setView('flat');
+                  setSenderFilter(null);
+                  setSid(item.id);
+                  setSel(new Set([item.id]));
+                  setLast(item.id);
+                }}>
                   <span>{item.subject || item.fromEmail}</span><em>{cleanListTime(item.receivedAt)}</em>
                 </button>
               ))}

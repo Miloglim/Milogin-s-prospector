@@ -105,9 +105,10 @@ describe('inbox full-screen layout', () => {
     expect(inbox).toContain('className={`inbox-management-item${');
     expect(inbox).not.toContain('title="已匹配联系人"');
     expect(inbox).toContain('title="新建文件夹"');
-    expect(inbox).toContain('title="置顶邮件"');
-    expect(inbox).not.toContain('inbox-folder-toggle');
+    expect(inbox).not.toContain('title="全部置顶邮件"');
     expect(inbox).toContain('aria-expanded={pinnedFolderOpen}');
+    expect(inbox).toContain('className="inbox-folder-mail-row"');
+    expect(inbox).not.toContain('inbox-folder-toggle');
     expect(inbox).toContain('aria-expanded={foldersOpen}');
     expect(inbox).toContain('<FolderOutlined /><span>{label.name}</span>');
     expect(inbox).toContain('inbox:messageLabels');

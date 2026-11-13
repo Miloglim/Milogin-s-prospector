@@ -116,7 +116,7 @@ describe('center contact mailbox renderer boundary', () => {
     expect(host.textContent).toContain('Sent followup');
     expect(host.textContent).not.toContain('Unread bounce');
   });
-  it('shows pinned mail and AI folder suggestions with explicit confirmation actions', async () => {
+  it('shows AI folder suggestions without a pinned-mail navigation category', async () => {
     const delegate = invoke.getMockImplementation()!;
     invoke.mockImplementation(async (channel, input) => {
       if (channel === 'inbox:list') return { success: true, data: [
@@ -133,6 +133,7 @@ describe('center contact mailbox renderer boundary', () => {
     await mount(<InboxList />);
 
     expect(host.querySelector('button[title="置顶邮件"]')).not.toBeNull();
+    expect(host.querySelector('button[title="全部置顶邮件"]')).toBeNull();
     expect(host.textContent).toContain('Acme Logistics');
     expect(host.querySelector('button[aria-label="确认文件夹 Acme Logistics"]')).not.toBeNull();
     expect(host.querySelector('button[aria-label="删除文件夹建议 Acme Logistics"]')).not.toBeNull();
@@ -140,9 +141,8 @@ describe('center contact mailbox renderer boundary', () => {
     await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="确认文件夹 Acme Logistics"]')!.click(); await flush(); });
     expect(invoke).toHaveBeenCalledWith('inbox:folderConfirm', expect.objectContaining({ labelId: 12 }));
 
-    await act(async () => { host.querySelector<HTMLButtonElement>('button[title="全部置顶邮件"]')!.click(); await flush(); });
     expect(host.textContent).toContain('Pinned quote');
-    expect(host.textContent).not.toContain('Unpinned update');
+    expect(host.textContent).toContain('Unpinned update');
   });
   it('exposes basic mail actions in the right-click menu', async () => {
     const delegate = invoke.getMockImplementation()!;
