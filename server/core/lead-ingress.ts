@@ -2,6 +2,7 @@ import { failure, success, type JsonObject, type Result } from './crm';
 import { matchCompanyConflict, normalizeCompanyDomain, normalizeCompanyName, normalizeLeadEmail, type LeadConflictLevel } from './lead-conflict';
 
 export const LEAD_INGRESS_ROUTES = { decision: '/api/crm/lead-ingress/decision', resolve: '/api/crm/lead-ingress/resolve' } as const;
+export const DEAL_OVERLAP_EVENT = 'crm.deal.overlap_detected';
 export const LEAD_INGRESS_LIMITS = { contacts: 200, candidates: 5, text: 500, key: 160 } as const;
 export const LEAD_INGRESS_SOURCES = ['manual','flat_import','workbook_import','agent_import','api_contact_update','soft_delete_recovery','migration_recovery'] as const;
 export type LeadIngressSource = typeof LEAD_INGRESS_SOURCES[number];

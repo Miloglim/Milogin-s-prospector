@@ -5,7 +5,7 @@ import type {SendAcceptanceRepository,SendAuthorizationInput,SendAcceptanceInput
 import {MAIL_CORRECTION_VERSION,MAIL_CORRECTION_SQL} from './contact-mail-correction-schema';
 import type {ContactSharingRepository,ContactShareQuery,ContactShareCreate,ContactShareDecision,ContactShareUpdate} from '../../core/contact-sharing';
 import {CONTACT_SHARING_VERSION,CONTACT_SHARING_SQL} from './contact-sharing-schema';
-import {sharesIn,createShareIn,decideShareIn,updateShareIn,shareMembersIn} from './contact-sharing-repository';
+import {sharesIn,createShareIn,decideShareIn,updateShareIn,shareTeamIn,shareMembersIn} from './contact-sharing-repository';
 import {createHash,randomUUID} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import {success,failure,type Result,type LogSink} from '../../core/crm';
@@ -69,6 +69,7 @@ export class PostgresLeadRepository implements LeadRepository,ContactAssignmentR
  acceptSend(hash:string,input:SendAcceptanceInput){return this.authorized(hash,(c,a)=>acceptSendIn(c,a,input));}
  shares(hash:string,input:ContactShareQuery){return this.authorized(hash,(c,a)=>sharesIn(c,a,input));}
  createShare(hash:string,input:ContactShareCreate){return this.authorized(hash,(c,a)=>createShareIn(c,a,input));}
+ shareTeam(hash:string,input:import('../../core/contact-sharing').ContactTeamShareCreate){return this.authorized(hash,(c,a)=>shareTeamIn(c,a,input));}
  decideShare(hash:string,action:'accept'|'reject'|'revoke',input:ContactShareDecision){return this.authorized(hash,(c,a)=>decideShareIn(c,a,action,input));}
  updateShare(hash:string,input:ContactShareUpdate){return this.authorized(hash,(c,a)=>updateShareIn(c,a,input));}
  shareMembers(hash:string){return this.authorized(hash,(c,a)=>shareMembersIn(c,a));}
@@ -93,8 +94,30 @@ export class PostgresLeadRepository implements LeadRepository,ContactAssignmentR
  for(const contact of input.contacts){const values=[contact.email.trim().toLowerCase()||null,contact.name??null,contact.country??null,contact.phone??null,contact.whatsapp??null,contact.title??null];if(contact.contactId!==undefined)await c.query('UPDATE contacts SET email=$1,first_name=$2,country=$3,phone=$4,whatsapp=$5,title=$6,crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$7',[...values,contact.contactId]);else{const row=await c.query('INSERT INTO contacts(email,first_name,country,phone,whatsapp,title,company_id,source,source_detail) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',[...values,customer.company_id,customer.source,customer.source_detail]);await c.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[input.customerId,row.rows[0].id]);}}
  await c.query('UPDATE companies SET customer_type=CASE WHEN $2 THEN $3 ELSE customer_type END,industry=CASE WHEN $4 THEN $5 ELSE industry END,updated_at=now() WHERE id=$1',[customer.company_id,input.customerType!==undefined,input.customerType?.trim()||null,input.businessType!==undefined,input.businessType?.trim()||null]);await c.query('UPDATE crm_customers SET business_type=CASE WHEN $2 THEN $3 ELSE business_type END,development_restriction=CASE WHEN $4 THEN $5 ELSE development_restriction END,source_created_at=CASE WHEN $6 THEN $7::timestamptz ELSE source_created_at END,version=version+1 WHERE customer_id=$1',[input.customerId,input.businessType!==undefined,input.businessType?.trim()||null,input.developmentRestriction!==undefined,input.developmentRestriction?.trim()||null,input.sourceCreatedAt!==undefined,input.sourceCreatedAt?normalizeSourceDate(input.sourceCreatedAt):null]);await this.event(c,a,input.customerId,input.expectedVersion+1,'crm.customer.updated');return this.detailIn(c,a,input.customerId);
  });});}
- private async memberRows(c:PoolClient){const rows=await c.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",pa.scope,pa.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role) AS roles FROM public.identity_users u JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE u.active AND NOT u.must_change_password ORDER BY u.display_name,u.user_id FOR SHARE OF u,pa`);return rows.rows.filter(x=>x.roles.length).map(x=>({...x,capabilities:effectiveCapabilitiesFor(x.roles,x.capabilities)})).filter(x=>x.capabilities.length);}
- members(hash:string,q:MemberQuery):Promise<Result<MemberPage>>{return this.authorized(hash,async(c,a)=>{if(!a.capabilities.includes('members.read')||!a.capabilities.includes('leads.assign')||!(operational(a)||administrator(a)))return failure('FORBIDDEN','无分配成员目录权限');const rows=(await this.memberRows(c)).filter(x=>x.displayName.toLocaleLowerCase().includes(q.search.toLocaleLowerCase()));return success({items:rows.slice(q.offset,q.offset+q.limit).map(x=>({userId:x.userId,displayName:x.displayName,assignable:isContactAssignmentTarget(x,a.userId)})),total:rows.length});});}
+ private async memberRows(c:PoolClient){
+  const rows=await c.query(`SELECT
+    u.user_id AS "userId",u.display_name AS "displayName",
+    COALESCE((SELECT email.email FROM public.identity_login_emails email WHERE email.user_id=u.user_id ORDER BY email.verified_at DESC NULLS LAST,email.email LIMIT 1),NULL) AS email,
+    COALESCE((SELECT jsonb_agg(DISTINCT unit.name ORDER BY unit.name)
+      FROM crm_org_assignments membership
+      JOIN crm_org_units unit ON unit.unit_id=membership.unit_id AND unit.kind='sales_team' AND unit.dissolved_at IS NULL
+      WHERE membership.user_id=u.user_id AND membership.ended_at IS NULL),'[]'::jsonb) AS "teamNames",
+    COALESCE((SELECT jsonb_agg(DISTINCT leader.display_name ORDER BY leader.display_name)
+      FROM crm_org_assignments membership
+      JOIN crm_org_units unit ON unit.unit_id=membership.unit_id AND unit.kind='sales_team' AND unit.dissolved_at IS NULL
+      JOIN crm_org_assignments lead ON lead.unit_id=unit.unit_id AND lead.role='leader' AND lead.is_primary AND lead.ended_at IS NULL
+      JOIN public.identity_users leader ON leader.user_id=lead.user_id
+      WHERE membership.user_id=u.user_id AND membership.role='member' AND membership.ended_at IS NULL),'[]'::jsonb) AS "supervisorNames",
+    EXISTS(SELECT 1 FROM crm_org_assignments leader WHERE leader.user_id=u.user_id AND leader.role='leader' AND leader.ended_at IS NULL) AS "isSupervisor",
+    pa.scope,pa.capabilities,
+    ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role) AS roles
+   FROM public.identity_users u
+   JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active
+   WHERE u.active AND NOT u.must_change_password
+   ORDER BY u.display_name,u.user_id FOR SHARE OF u,pa`);
+  return rows.rows.filter(x=>x.roles.length).map(x=>({...x,capabilities:effectiveCapabilitiesFor(x.roles,x.capabilities)})).filter(x=>x.capabilities.length);
+ }
+ members(hash:string,q:MemberQuery):Promise<Result<MemberPage>>{return this.authorized(hash,async(c,a)=>{const managementDirectory=a.capabilities.includes('members.read')&&a.capabilities.includes('leads.assign')&&(operational(a)||administrator(a));if(!managementDirectory&&!a.capabilities.includes('leads.develop'))return failure('FORBIDDEN','无分配成员目录权限');const needle=q.search.toLocaleLowerCase();const rows=(await this.memberRows(c)).filter(x=>[x.displayName,x.email??'',...(x.teamNames??[]),...(x.supervisorNames??[])].join(' ').toLocaleLowerCase().includes(needle));return success({items:rows.slice(q.offset,q.offset+q.limit).map(x=>({userId:x.userId,displayName:x.displayName,assignable:isContactAssignmentTarget(x,a.userId),email:x.email,teamNames:x.teamNames??[],supervisorNames:x.supervisorNames??[],isSupervisor:!!x.isSupervisor})),total:rows.length});});}
  assign(hash:string,_input:AssignRequest):Promise<Result<LeadDetail>>{return this.authorized(hash,async()=>failure('CONFLICT','请使用联系人分配请求并等待接收'));}
  bootstrap(hash:string):Promise<Result<LeadBootstrap>>{return this.authorized(hash,async(c,a)=>{const counts=await c.query(`SELECT count(*) FILTER(WHERE state='published')::int AS pool,count(*) FILTER(WHERE owner_user_id=$1)::int AS mine FROM crm_customers`,[a.userId]);const head=await c.query('SELECT COALESCE((SELECT delivery_seq FROM crm_feed_heads WHERE user_id=$1),0)::text AS cursor',[a.userId]);return success({userId:a.userId,capabilities:a.capabilities,scope:a.scope,summary:{pool:a.capabilities.includes('leads.claim')?counts.rows[0].pool:0,mine:a.capabilities.includes('leads.develop')?counts.rows[0].mine:0},feedCursor:head.rows[0].cursor});});}
  importWorkbook(hash:string,input:WorkbookImportRequest):Promise<Result<WorkbookImportReceipt>>{return this.authorized(hash,async(c,a)=>{const personal=!operationsOrigin(a);input={...input,kind:personal?'personal':'operations'};if(personal?!a.capabilities.includes('leads.create')||!a.capabilities.includes('leads.develop'):!administrator(a)&&(!a.capabilities.includes('leads.import')||!operational(a)))return failure('FORBIDDEN','无导入权限或来源管理范围');return this.cached(c,a,'workbook-import',input,()=>importWorkbookIn(c,a,input));});}

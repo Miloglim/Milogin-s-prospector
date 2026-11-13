@@ -40,9 +40,11 @@ describe('page scroll containment', () => {
     expect(customersCss).not.toMatch(/\.customer-assignment-page\s*\{[^}]*100vh/s);
   });
 
-  it('lets the contact table grow naturally for route content scrolling', () => {
-    expect(customersCss).toMatch(/\.customer-legacy-page\s*>\s*\.customer-contacts-page\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
-    expect(customersCss).toMatch(/\.customer-contacts-page \.customer-contacts-table \.ant-table-content\s*\{[^}]*overflow-y:\s*visible!important;?/s);
+  it('fills the contact table area with a square outer border and internal scrolling', () => {
+    expect(customersCss).toContain('.customer-contacts-page{flex:1 1 auto;min-height:0;height:100%}');
+    expect(customersCss).toContain('.customer-contacts-table .ant-table-container{position:relative;width:100%;border:1px solid var(--customer-border,#e5e7eb);border-radius:0!important;overflow:hidden}');
+    expect(customersCss).toContain('.customer-contacts-table .ant-table-content{overflow:auto!important}');
+    expect(customersCss).not.toContain('.customer-contacts-table .ant-table-pagination');
   });
 
   it('keeps an empty assignment table compact and removes header separators', () => {

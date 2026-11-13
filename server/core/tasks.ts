@@ -8,7 +8,7 @@ export interface TaskCreate {opportunityId?:string;customerId:string;title:strin
 export interface TaskCommand {taskId:string;expectedVersion:number;idempotencyKey:string;}
 export interface TaskReschedule extends TaskCommand {dueAt:string;}
 export interface TaskComplete extends TaskCommand {feedback:string;}
-export interface TaskQuery {customerId?:string;status?:TaskStatus;limit:number;offset:number;}
+export interface TaskQuery {customerId?:string;status?:TaskStatus;mine?:boolean;limit:number;offset:number;}
 export interface FollowupTask {opportunityId?:string|null;opportunityTitle?:string|null;taskId:string;customerId:string;title:string;dueAt:string;status:TaskStatus;version:number;responsibleUserId:string;responsibleName:string|null;createdBy:string;createdAt:string;updatedAt:string;completedAt:string|null;completedBy:string|null;feedback:string|null;canManage:boolean;sourceKind?:TaskSourceKind|null;sourceSuggestionId?:string|null;sourceAnalysisId?:string|null;sourceContactId?:number|null;sourceThreadKey?:string|null;sourceActionCode?:string|null;}
 export interface TaskPage {items:FollowupTask[];total:number;}
 export interface TaskRepository {

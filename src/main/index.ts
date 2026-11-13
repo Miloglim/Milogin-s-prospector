@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { initDatabase, runMigrations, saveDatabase, closeDatabase } from "./db";
 import { Log } from "./logger";
-import { registerOnlineCrmIPC, closeOnlineCrmSession, getOnlineIdentity, isOnlineConnection, onOnlineIdentityChanged, configureOnlineLocalScope, configureOnlineAccountSwitchLifecycle, loginDevelopmentIdentity, startContactMailDataflow } from "./transport/online-crm.ipc";
+import { registerOnlineCrmIPC, closeOnlineCrmSession, getOnlineIdentity, isOnlineConnection, onOnlineIdentityChanged, configureOnlineLocalScope, configureOnlineAccountSwitchLifecycle, configureOnlineHandoffRuntime, loginDevelopmentIdentity, startContactMailDataflow } from "./transport/online-crm.ipc";
 import { developmentLogin } from './adapters/developer-login.adapter';
 import { registerUpdateIPC } from "./transport/update.ipc";
 import { registerSystemRestartIPC } from "./transport/system.ipc";
@@ -12,6 +12,11 @@ import { APP_ROOT, getResourcesRoot, loadConfig, selectAccountRoot } from "./con
 import { DesktopLocalScope, developerProfileRoot, developmentUserDataRoot, accountProfileRoot } from "./adapters/desktop-local-scope.adapter";
 import { registerLockedLocalIPC, registerGuardedLocalIPC } from "./transport/desktop-local.ipc";
 import { EVENTS } from "./events";
+
+if (!app.isPackaged) {
+  app.disableHardwareAcceleration();
+  Log.warn("app.gpu", "开发模式使用软件渲染，避免显卡进程异常导致窗口退出");
+}
 
 const developerRoot = developerProfileRoot(process.env.PROSPECTOR_DEV_PROFILE, app.isPackaged);
 const developmentUserData = developmentUserDataRoot(developerRoot, app.isPackaged, app.getPath('appData'));
@@ -30,6 +35,7 @@ let identityRestartTimer: ReturnType<typeof setTimeout> | null = null;
 let lastIdentityScopeState = "";
 const IDENTITY_SETTLE_MS = 1_000;
 let suspendLocalNetworkWork: () => void = () => {};
+let resumeLocalNetworkWork: () => void = () => {};
 const LOCAL_BACKUP_START_MS = 5 * 60_000;
 const LOCAL_BACKUP_INTERVAL_MS = 24 * 60 * 60_000;
 
@@ -248,8 +254,9 @@ async function registerAllIPC() {
   if (!localScope.allowed() || identityRestarting) return;
   backgroundTasks.setBgTaskNetworkAllowed(() => localScope.allowed() && isOnlineConnection());
   if (inboxModule && 'suspendLocalNetworkWork' in inboxModule) {
-    const suspendMail = inboxModule.suspendLocalNetworkWork as () => void;
-    suspendLocalNetworkWork = () => { suspendMail(); stopAll(); backgroundTasks.cancelAll(); };
+    const suspendMail = inboxModule.suspendLocalNetworkWork as () => (() => void);
+    suspendLocalNetworkWork = () => { resumeLocalNetworkWork = suspendMail(); stopAll(); backgroundTasks.cancelAll(); };
+    configureOnlineHandoffRuntime({ pause: suspendLocalNetworkWork, resume: () => resumeLocalNetworkWork() });
   }
   const registrars = modules.map(module => {
     const registration = Object.entries(module).find(([name]) => name.startsWith("register"));
@@ -260,6 +267,10 @@ async function registerAllIPC() {
     return registration[1] as () => void;
   });
   registerGuardedLocalIPC(localScope, registrars);
+  if (inboxModule && 'startInboxAnalysis' in inboxModule) {
+    try { (inboxModule.startInboxAnalysis as () => void)(); }
+    catch (error) { Log.warn('inbox.analysis', `启动分析失败: ${error instanceof Error ? error.message : String(error)}`); }
+  }
 
   Log.info("ipc", "本地 IPC 通道已按账号资料归属注册");
 }

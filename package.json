@@ -1,6 +1,6 @@
 {
   "name": "prospecting-email",
-  "version": "0.71.0-alpha.7",
+  "version": "0.72.0-alpha.10",
   "description": "Milogin's Outreacher — 货代行业客户开发工具",
   "main": "./dist/main/index.js",
   "scripts": {

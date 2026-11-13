@@ -83,10 +83,12 @@ function NavigatorManagement({ info, users, dashboard, error, loading, onRefresh
 
 function Overview({ snapshot, onViewFlows, onViewDatabases }: { snapshot: ManagementDashboard; onViewFlows: () => void; onViewDatabases: () => void }) {
   return <><Row gutter={[12, 12]} className="dashboard-stats">
-    <Col xs={12} md={6}><Card><Statistic title="数据区" value={snapshot.overview.healthy} suffix={`/ ${snapshot.overview.databases} 可读取`} /><Button type="link" onClick={onViewDatabases}>查看数据库</Button></Card></Col>
-    <Col xs={12} md={6}><Card><Statistic title="启用账号" value={snapshot.overview.activeUsers} /></Card></Col>
-    <Col xs={12} md={6}><Card><Statistic title="客户记录" value={snapshot.overview.customers} /></Card></Col>
-    <Col xs={12} md={6}><Card><Statistic title="待处理事件" value={snapshot.overview.pendingEvents} valueStyle={{ color: snapshot.overview.pendingEvents ? '#ad6b2e' : undefined }} /></Card></Col>
+    <Col xs={12} md={8}><Card><Statistic title="数据区" value={snapshot.overview.healthy} suffix={`/ ${snapshot.overview.databases} 可读取`} /><Button type="link" onClick={onViewDatabases}>查看数据库</Button></Card></Col>
+    <Col xs={12} md={8}><Card><Statistic title="启用账号" value={snapshot.overview.activeUsers} /></Card></Col>
+    <Col xs={12} md={8}><Card><Statistic title="客户记录" value={snapshot.overview.customers} /></Card></Col>
+    <Col xs={12} md={8}><Card><Statistic title="当前邮件分析" value={snapshot.overview.mailAnalyses} /><Typography.Text type="secondary">{snapshot.overview.humanLockedMail} 封人工锁定</Typography.Text></Card></Col>
+    <Col xs={12} md={8}><Card><Statistic title="需要动作" value={snapshot.overview.mailActions} valueStyle={{ color: snapshot.overview.mailActions ? '#ad6b2e' : undefined }} /><Button type="link" onClick={onViewFlows}>查看分析链路</Button></Card></Col>
+    <Col xs={12} md={8}><Card><Statistic title="待处理事件" value={snapshot.overview.pendingEvents} valueStyle={{ color: snapshot.overview.pendingEvents ? '#ad6b2e' : undefined }} /></Card></Col>
   </Row><div className="dashboard-grid"><Card title="数据流状态" extra={<button className="dashboard-link" onClick={onViewFlows}>查看全部</button>}><div className="dashboard-list">{snapshot.flows.map(flow => <FlowRow key={flow.id} flow={flow} />)}</div></Card><Card title="需要关注"><div className="dashboard-list">{snapshot.alerts.map(alert => <div className="alert-row" key={alert.id}><span className={`alert-dot ${alert.level}`} /><div><Typography.Text strong>{alert.title}</Typography.Text><Typography.Paragraph type="secondary">{alert.detail}</Typography.Paragraph></div></div>)}</div></Card></div></>;
 }
 

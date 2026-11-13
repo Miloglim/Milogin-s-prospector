@@ -1,19 +1,20 @@
 import type { ImportFileContent } from "../../shared/online-crm";
 import { dialog } from 'electron';
 import { randomUUID } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
-import { parseImportTable, parseWorkbookImport } from './import-table.adapter';
+import { readFile } from 'node:fs/promises';
+import { isValidBase64, parseImportTable, parseWorkbookImport } from './import-table.adapter';
 import { failure, success } from '../../../server/core/crm';
 import { DESKTOP_AUTH_ROUTES } from '../../../server/core/desktop-session';
 import { API_ROUTES } from '../../../server/core/auth';
 import type { DesktopDeviceContext, DesktopLoginResponse } from '../../../server/core/desktop-session';
+import { DESKTOP_HANDOFF_ROUTES, emptyDeviceHandoffSummary } from '../../../server/core/device-handoff';
 import { loginAccountId, type OnlineSessionStore, type SavedOnlineSession } from './online-session-store.adapter';
 import { TEAM_MONITORING_ROUTES, type LoginAccountQuery, type SavedAccountLogin, type OnlineLogout, type TeamMonitoringContactSummary, type TeamMonitoringMailDetail, type TeamMonitoringMemberDetail, type TeamMonitoringOverview, type TeamMonitoringQuery } from '../../shared/online-crm';
 import { SALES_PERFORMANCE_ROUTES, type CustomerGradeOverrideClear, type CustomerGradeOverrideReceipt, type CustomerGradeOverrideSet, type CustomerGradePage, type CustomerGradeQuery, type SalesPerformanceOverview, type SalesPerformanceQuery } from '../../shared/online-crm';
 import { isCenterUnavailable, OFFLINE_ACCESS_LIMITS } from '../../../server/core/offline-access';
 import type { OfflineAccessGrant } from '../../../server/core/offline-access';
 import { verifyOfflineAccess } from './offline-access-verifier.adapter';
-import { LEAD_INGRESS_ROUTES, TEAM_ROUTES, type AccountProfile, type Result, type Identity, type OnlineLogin, type OnlinePasswordChange, type OnlineSessionSnapshot, type ImportPreview, type OnlineFeed, type OnlineFeedRequest, type OnlineRegistration, type RegisteredAccount, type TeamContext, type TeamDissolveInput, type TeamLeaderInput, type TeamMemberAdjustmentInput, type TeamMemberGroupDeleteInput, type TeamMemberGroupInput, type TeamMoveInput, type LeadIngressDecisionDTO, type LeadIngressDecisionQuery, type LeadIngressResolutionCommand, type LeadIngressResolutionReceipt } from '../../shared/online-crm';
+import { LEAD_INGRESS_ROUTES, TEAM_ROUTES, type AccountProfile, type Result, type Identity, type OnlineLogin, type OnlinePasswordChange, type OnlineSessionSnapshot, type ImportPreview, type OnlineFeed, type OnlineFeedRequest, type OnlineRegistration, type RegisteredAccount, type TeamContext, type TeamDissolveInput, type TeamLeaderInput, type TeamMemberAdjustmentInput, type TeamMemberGroupDeleteInput, type TeamMemberGroupInput, type TeamMoveInput, type LeadIngressDecisionDTO, type LeadIngressDecisionQuery, type LeadIngressResolutionCommand, type LeadIngressResolutionReceipt, type OnlineHandoffBegin, type OnlineHandoffBeginResult, type OnlineHandoffComplete, type OnlineHandoffState, type OnlineHandoffTakeover, type OnlineHandoffToken, type DeviceHandoffSummary } from '../../shared/online-crm';
 import { ONLINE_LIMITS } from '../../shared/online-crm';
 import type { OnlineCrmPort } from '../services/online-crm.service';
 import { Log } from '../logger';
@@ -44,6 +45,16 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   };
   setContactSync(sync: typeof this.contactSync): void { this.contactSync = sync; }
   setContactWriter(writer: typeof this.contactWriter): void { this.contactWriter = writer; }
+  private handoffInspector?: () => DeviceHandoffSummary;
+  private handoffPause?: () => void;
+  private handoffResume?: () => void;
+  private handoffPausedFor = '';
+  private handoffScan: Promise<void> | null = null;
+  setHandoffRuntime(runtime: { inspect: () => DeviceHandoffSummary; pause: () => void; resume: () => void }): void {
+    this.handoffInspector = runtime.inspect;
+    this.handoffPause = runtime.pause;
+    this.handoffResume = runtime.resume;
+  }
   contactUpdate(input: import('../../../server/core/contact-assignments').CenterContactUpdate) { return this.contactWriter?.update(input) ?? Promise.resolve(failure('UNAVAILABLE', '联系人保存尚未就绪')); }
   contactFollowup(input: import('../../../server/core/contact-assignments').CenterContactFollowup) { return this.contactWriter?.followup(input) ?? Promise.resolve(failure('UNAVAILABLE', '跟进保存尚未就绪')); }
   leadIngressDecision(input:LeadIngressDecisionQuery){return this.requestLive<LeadIngressDecisionDTO>('GET',`${LEAD_INGRESS_ROUTES.decision}?source=${encodeURIComponent(input.source)}&idempotencyKey=${encodeURIComponent(input.idempotencyKey)}`);}
@@ -61,6 +72,8 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   }
   private contactReader: ((query: import('../../../server/core/center-contacts').CenterContactQuery) => Promise<Result<import('../../../server/core/center-contacts').CenterContactPage>>) | undefined;
   setContactReader(reader: typeof this.contactReader): void { this.contactReader = reader; }
+  private contactGroupReader: ((query: CenterContactGroupQuery) => Promise<Result<CenterContactGroupPage>>) | undefined;
+  setContactGroupReader(reader: typeof this.contactGroupReader): void { this.contactGroupReader = reader; }
   async contacts(query: CenterContactQuery): Promise<Result<CenterContactPage>> {
     const local: Result<CenterContactPage> = this.contactReader
       ? await this.contactReader(query)
@@ -71,6 +84,11 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   }
   async contactGroups(query: CenterContactGroupQuery): Promise<Result<CenterContactGroupPage>> {
     if (!this.currentIdentity()) return failure('UNAUTHORIZED', '请登录中心账号');
+    const local: Result<CenterContactGroupPage> = this.contactGroupReader
+      ? await this.contactGroupReader(query)
+      : failure('UNAVAILABLE', '联系人分组本地读取尚未就绪');
+    if (local.ok || !this.identity || !this.isOnline() || !['DATABASE_ERROR', 'UNAVAILABLE'].includes(local.error.code)) return local;
+    Log.error('online.contacts', `本地联系人分组不可用，回退中心实时查询: ${local.error.message}`);
     return this.requestLive<CenterContactGroupPage>('GET', `${CENTER_CONTACT_GROUP_ROUTE}?${new URLSearchParams({ dimension: query.dimension, scope: query.scope, search: query.search, limit: String(query.limit), offset: String(query.offset) })}`);
   }
   contactReadContext():OfflineCrmContext|null { return this.crmContext(); }
@@ -228,6 +246,65 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     if(this.store)try { await this.diskAction(()=>this.store!.clear()); } catch { Log.error('online.storage','清理登录信息失败，后续恢复将由服务器再次校验'); }
     this.changed();
   }
+  private async preparePendingHandoff(): Promise<void> {
+    if (!this.refreshToken || !this.handoffInspector || this.handoffScan || this.connection !== 'online') return;
+    const pending = this.handoffScan = (async () => {
+      try {
+        const request = await this.raw<{ handoffId: string; newDeviceName: string; expiresAt: string } | null>('POST', DESKTOP_HANDOFF_ROUTES.pending, { refreshToken: this.refreshToken });
+        if (!request.ok) return;
+        if (!request.data) {
+          if (this.handoffPausedFor) {
+            this.handoffPausedFor = '';
+            this.handoffResume?.();
+            Log.warn('online.handoff', '换机请求已结束，旧电脑恢复后台工作');
+          }
+          return;
+        }
+        if (this.handoffPausedFor !== request.data.handoffId) {
+          this.handoffPausedFor = request.data.handoffId;
+          this.handoffPause?.();
+          Log.warn('online.handoff', `检测到换机请求，旧电脑已暂停自动发送并开始盘点 ${request.data.handoffId.slice(0, 8)}`);
+        }
+        const synced = await this.syncNow();
+        if (!synced.ok) Log.warn('online.handoff', `旧电脑补传未全部完成 ${synced.error.code}: ${synced.error.message}`);
+        const ctx = this.crmContext();
+        if (!ctx) return;
+        const contact = this.contactSync?.status();
+        const offline = this.localCrm ? await this.localCrm.status(ctx) : undefined;
+        let local = emptyDeviceHandoffSummary();
+        try { local = this.handoffInspector!(); } catch (error) {
+          Log.warn('online.handoff', `旧电脑本地数据盘点失败 ${error instanceof Error ? error.name : 'unknown'}`);
+          local.blockers.push('原电脑本地数据暂时无法读取，请确认数据已经同步后再继续');
+        }
+        const counts = {
+          ...local.counts,
+          contactPending: contact?.pending ?? 0,
+          contactFailed: (contact?.failed ?? 0) + (contact?.conflicts ?? 0),
+          offlinePending: offline?.ok ? offline.data.pending : 0,
+          offlineFailed: offline?.ok ? offline.data.failed + offline.data.conflicts : 0,
+        };
+        const blockers: string[] = [...local.blockers];
+        if (offline && !offline.ok) blockers.push('原电脑的离线客户队列状态无法读取');
+        if (counts.contactPending) blockers.push(`有 ${counts.contactPending} 条客户修改尚未上传`);
+        if (counts.contactFailed) blockers.push(`有 ${counts.contactFailed} 条客户同步失败或冲突`);
+        if (counts.offlinePending) blockers.push(`有 ${counts.offlinePending} 条客户操作尚未上传`);
+        if (counts.offlineFailed) blockers.push(`有 ${counts.offlineFailed} 条客户操作需要核对`);
+        if (counts.templates) blockers.push(`素材库有 ${counts.templates} 个模板尚未支持跨设备恢复`);
+        if (counts.inboxLabels) blockers.push(`收件箱有 ${counts.inboxLabels} 个自定义标签尚未支持跨设备恢复`);
+        if (counts.queuedSends) blockers.push(`发送队列还有 ${counts.queuedSends} 项内容`);
+        if (counts.activeCampaigns) blockers.push(`有 ${counts.activeCampaigns} 个自动开发任务仍在运行`);
+        if (counts.pendingMailChanges) blockers.push(`有 ${counts.pendingMailChanges} 条邮件分类修改待同步`);
+        const summary: DeviceHandoffSummary = { checkedAt: new Date().toISOString(), counts, blockers };
+        const prepared = await this.raw<OnlineHandoffState>('POST', DESKTOP_HANDOFF_ROUTES.prepare, { refreshToken: this.refreshToken, summary });
+        if (!prepared.ok) Log.warn('online.handoff', `换机准备状态上报失败 ${prepared.error.code}: ${prepared.error.message}`);
+      } catch (error) {
+        Log.warn('online.handoff', `换机准备扫描失败 ${error instanceof Error ? error.name : 'unknown'}`);
+      } finally {
+        this.handoffScan = null;
+      }
+    })();
+    await this.handoffScan;
+  }
   private async raw<T>(method:string,path:string,body?:unknown,bearer?:string):Promise<Result<T>> {
     try {
       const response=await this.fetcher(`${this.baseUrl}${path}`,{method,redirect:'error',headers:{...(bearer?{Authorization:`Bearer ${bearer}`} : {}),'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(ONLINE_LIMITS.timeoutMs)});
@@ -322,6 +399,33 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   register(input:OnlineRegistration):Promise<Result<RegisteredAccount>> {
     return this.raw<RegisteredAccount>('POST',DESKTOP_AUTH_ROUTES.register,input);
   }
+  async beginHandoff(input:OnlineHandoffBegin):Promise<Result<OnlineHandoffBeginResult>> {
+    if(!input||typeof input.baseUrl!=='string'||typeof input.email!=='string'||typeof input.password!=='string'||typeof input.requestKey!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(input.requestKey))return failure('INVALID_INPUT','换机参数错误');
+    const base=validateCenterBase(input.baseUrl);if(!base)return failure('INVALID_INPUT','中心地址必须使用 HTTPS；本机测试仅允许回环 HTTP');
+    this.baseUrl=base;
+    const desktop=this.desktopDevice;
+    if(!desktop)return failure('UNAVAILABLE','设备身份尚未就绪');
+    return this.raw<OnlineHandoffBeginResult>('POST',DESKTOP_HANDOFF_ROUTES.begin,{email:input.email,password:input.password,requestKey:input.requestKey,desktop});
+  }
+  handoffStatus(input:OnlineHandoffToken):Promise<Result<OnlineHandoffState>> {
+    return input&&typeof input.handoffToken==='string'?this.raw<OnlineHandoffState>('POST',DESKTOP_HANDOFF_ROUTES.status,input):Promise.resolve(failure('INVALID_INPUT','换机参数错误'));
+  }
+  private async finishHandoff(path:string,input:OnlineHandoffComplete,reason?:string):Promise<Result<Identity>> {
+    if(!input||typeof input.handoffToken!=='string'||input.remember!==undefined&&typeof input.remember!=='boolean'||input.autoLogin!==undefined&&typeof input.autoLogin!=='boolean'||input.autoLogin===true&&input.remember!==true)return failure('INVALID_INPUT','换机参数错误');
+    this.remembered=input.remember===true;
+    this.autoLogin=this.remembered&&(input.autoLogin??true);
+    const generation=this.generation;
+    const result=await this.raw<DesktopLoginResponse>('POST',path,{handoffToken:input.handoffToken,...(reason?{reason}:{})});
+    if(generation!==this.generation)return failure('UNAUTHORIZED','登录已取消');
+    if(!result.ok)return result;
+    const accepted=await this.accept(result.data,generation);if(!accepted.ok)return accepted;
+    const me=await this.request<Identity>('GET',DESKTOP_AUTH_ROUTES.me);
+    if(me.ok&&generation===this.generation){this.identity=me.data;this.changed();}
+    return me;
+  }
+  completeHandoff(input:OnlineHandoffComplete):Promise<Result<Identity>> { return this.finishHandoff(DESKTOP_HANDOFF_ROUTES.complete,input); }
+  takeoverHandoff(input:OnlineHandoffTakeover):Promise<Result<Identity>> { return this.finishHandoff(DESKTOP_HANDOFF_ROUTES.takeover,input,input.reason); }
+  cancelHandoff(input:OnlineHandoffToken):Promise<Result<void>> { return this.raw<void>('POST',DESKTOP_HANDOFF_ROUTES.cancel,input); }
   async login(input:OnlineLogin):Promise<Result<Identity>> {
     if(!input || typeof input.baseUrl!=='string' || typeof input.email!=='string' || typeof input.password!=='string') return failure('INVALID_INPUT','登录参数错误');
     if(input.autoLogin!==undefined&&typeof input.autoLogin!=='boolean'||input.remember!==undefined&&typeof input.remember!=='boolean'||input.replaceActiveDevice!==undefined&&typeof input.replaceActiveDevice!=='boolean'||input.autoLogin===true&&input.remember!==true)return failure('INVALID_INPUT','自动登录需要记住登录凭据');
@@ -386,6 +490,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     this.identity=me.data;this.connection='online';
     if(!this.offlineAccess){this.lastSeenAt=Date.now();this.localExpiresAt=this.lastSeenAt+OFFLINE_ACCESS_LIMITS.validity_seconds*MILLISECONDS_PER_SECOND;this.localExpired=false;}
     this.changed();
+    void this.preparePendingHandoff();
     const ctx=this.crmContext();if(ctx&&this.localCrm)void this.localCrm.sync(ctx,(m,p,b)=>this.onlineRequest(m,p,b));
     return success(this.snapshot());
   }
@@ -426,6 +531,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
           this.identity=offline.identity;this.offlineAccess=saved.offlineAccess;this.trustedPublicKey=saved.trustedPublicKey!;this.lastSeenAt=saved.lastSeenAt!;this.persistedClockFloor=this.lastSeenAt;this.localExpiresAt=Date.parse(offline.expiresAt);
           if(await this.offline())return success(this.snapshot());
         }
+        if(generation===this.generation&&isCenterUnavailable(result.error.code)&&saved.offlineAccess)return failure('UNAUTHORIZED','离线授权已到期，请连接中心完成一次验证后继续使用本地工作区');
         return result;
       }
       if(this.snapshot().identity?.userId!==saved.userId){await this.forget();return failure('UNAUTHORIZED','已保存的身份不一致');}
@@ -455,18 +561,16 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     if(input===undefined)return this.readPreview(false);
     if(!this.currentIdentity())return failure('UNAUTHORIZED','请登录中心账号');
     if(!input||typeof input!=='object'||!['csv','xlsx','tsv'].includes(input.type)||typeof input.data!=='string'||(input.encoding!==undefined&&input.encoding!=='base64'))return failure('INVALID_INPUT','文件内容无效');
-    if(input.data.length>ONLINE_LIMITS.fileBytes*2)return failure('PAYLOAD_TOO_LARGE','文件超过10 MiB');
     try {
       const encoded=input.type==='xlsx'||input.encoding==='base64';
-      if(encoded&&!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input.data))return failure('INVALID_INPUT','文件内容编码无效');
+      if(encoded&&!isValidBase64(input.data))return failure('INVALID_INPUT','文件内容编码无效');
       const bytes=Buffer.from(input.data,encoded?'base64':'utf8');
-      if(bytes.length>ONLINE_LIMITS.fileBytes)return failure('PAYLOAD_TOO_LARGE','文件超过10 MiB');
       return parseImportTable(bytes,`导入.${input.type}`);
-    } catch {return failure('INVALID_INPUT','文件解析失败');} // Untrusted file content never writes local CRM.
+    } catch(error) {Log.error('online.preview',`文件解析失败 (${error instanceof Error?error.name:'unknown'})`);return failure('INVALID_INPUT','文件解析失败');} // Untrusted file content never writes local CRM.
   }
   tasks(query:TaskQuery):Promise<Result<TaskPage>> {
     if (!query || typeof query!=='object' || Array.isArray(query)) return Promise.resolve(failure('INVALID_INPUT','任务查询无效'));
-    return this.request('GET',`${TASK_ROUTES.tasks}?${new URLSearchParams({limit:String(query.limit),offset:String(query.offset),...(query.customerId?{customerId:query.customerId}:{}),...(query.status?{status:query.status}:{})})}`);
+    return this.request('GET',`${TASK_ROUTES.tasks}?${new URLSearchParams({limit:String(query.limit),offset:String(query.offset),...(query.customerId?{customerId:query.customerId}:{}),...(query.status?{status:query.status}:{}),...(query.mine!==undefined?{mine:String(query.mine)}:{})})}`);
   }
   createTask(input:TaskCreate):Promise<Result<FollowupTask>> { return this.request('POST',TASK_ROUTES.tasks,input); }
   rescheduleTask(input:TaskReschedule):Promise<Result<FollowupTask>> { return input && typeof input.taskId==='string' ? this.request('POST',`${TASK_ROUTES.tasks}/${encodeURIComponent(input.taskId)}/${TASK_ROUTES.rescheduleAction}`,input) : Promise.resolve(failure('INVALID_INPUT','任务参数无效')); }
@@ -488,10 +592,8 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     if(selected.canceled || !selected.filePaths[0]) return failure('INVALID_INPUT','未选择文件');
     const file=selected.filePaths[0];
     try {
-      if((await stat(file)).size>ONLINE_LIMITS.fileBytes) return failure('PAYLOAD_TOO_LARGE','文件超过 10 MiB');
       const bytes=await readFile(file);
       if(generation!==this.generation) return failure('UNAUTHORIZED','账号已切换');
-      if(bytes.byteLength>ONLINE_LIMITS.fileBytes) return failure('PAYLOAD_TOO_LARGE','文件超过 10 MiB');
       return (workbook ? parseWorkbookImport : parseImportTable)(bytes,file.split(/[\\/]/).pop()??'线索表格');
     } catch(error) { Log.error('online.preview',`表格读取失败 (${error instanceof Error?error.name:'unknown'})`); return failure('INVALID_INPUT','无法读取表格'); }
   }

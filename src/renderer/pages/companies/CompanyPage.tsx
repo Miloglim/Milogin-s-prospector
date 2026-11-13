@@ -1,4 +1,5 @@
 import { invalidateDomain } from "../../lib/cacheDeps";
+import { isPermissionDenied } from "../../lib/permissionGate";
 import { useState, useEffect } from "react";
 import { Card, Input, Button, Tag, message, Empty, Popconfirm, Space } from "antd";
 import { SearchOutlined, PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined, CloseOutlined, EnvironmentOutlined } from "@ant-design/icons";
@@ -99,10 +100,10 @@ export function CompanyPage({ dataPort }: { dataPort?: CompanyDataPort } = {}) {
   useEffect(() => {
     if (dataPort && selectedId && listData?.success) void qc.invalidateQueries({ queryKey: ['center-company-detail', 'detail', dataPort.key, selectedId] });
   }, [dataPort, selectedId, listUpdatedAt, listData?.success, qc]);
-  useEffect(() => { if (dataPort && !detail?.canEdit) setEditingField(null); }, [dataPort, detail?.canEdit]);
+  useEffect(() => { if (dataPort && isPermissionDenied(detail?.canEdit)) setEditingField(null); }, [dataPort, detail?.canEdit]);
 
   const saveField = (field: string, val: string) => {
-    if (!detail || dataPort && !detail.canEdit) return;
+    if (!detail || dataPort && isPermissionDenied(detail.canEdit)) return;
     upsertMut.mutate({ id: detail.company.id, name: detail.company.name, [field]: val });
     setEditingField(null);
   };
@@ -196,7 +197,7 @@ export function CompanyPage({ dataPort }: { dataPort?: CompanyDataPort } = {}) {
               <Space>
                 <Popconfirm title={`确定删除 ${detail.company.name}？`}
                   onConfirm={() => deleteMut.mutate(detail.company.id)}>
-                  <Button size="small" danger disabled={!!dataPort && (!dataPort.delete || !detail.canDelete)} icon={<DeleteOutlined />}>删除</Button>
+                  <Button size="small" danger disabled={!!dataPort && (!dataPort.delete || isPermissionDenied(detail.canDelete))} icon={<DeleteOutlined />}>删除</Button>
                 </Popconfirm>
               </Space>
             </div>
@@ -211,7 +212,7 @@ export function CompanyPage({ dataPort }: { dataPort?: CompanyDataPort } = {}) {
                   { label: "规模", field: "size" },
                 ]).map(row => {
                   const val = String((detail.company as Record<string, unknown>)[row.field] || "");
-                  const editing = editingField === row.field && (!dataPort || detail.canEdit);
+                  const editing = editingField === row.field && (!dataPort || !isPermissionDenied(detail.canEdit));
                   return (
                     <div key={row.field} className="flex items-center gap-2 text-xs">
                       <span className="w-16 shrink-0 text-gray-400">{row.label}</span>
@@ -228,10 +229,10 @@ export function CompanyPage({ dataPort }: { dataPort?: CompanyDataPort } = {}) {
                             onClick={() => setEditingField(null)} />
                         </div>
                       ) : (
-                        <span className={`flex-1 text-gray-600 rounded px-1 py-0.5 ${!dataPort || detail.canEdit ? "cursor-pointer hover:bg-gray-50" : ""}`}
-                          onClick={() => { if (dataPort && !detail.canEdit) return; setEditingField(row.field); setEditVal(val); }}>
+                        <span className={`flex-1 text-gray-600 rounded px-1 py-0.5 ${!dataPort || !isPermissionDenied(detail.canEdit) ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                          onClick={() => { if (dataPort && isPermissionDenied(detail.canEdit)) return; setEditingField(row.field); setEditVal(val); }}>
                           {val || "—"}
-                          {(!dataPort || detail.canEdit) && <EditOutlined className="text-[9px] text-gray-300 ml-1 opacity-0 hover:opacity-100" />}
+                          {(!dataPort || !isPermissionDenied(detail.canEdit)) && <EditOutlined className="text-[9px] text-gray-300 ml-1 opacity-0 hover:opacity-100" />}
                         </span>
                       )}
                     </div>

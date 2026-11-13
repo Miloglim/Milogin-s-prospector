@@ -1,9 +1,8 @@
-import { ChevronRight, Clock3, RefreshCw } from 'lucide-react';
+import { ChevronRight, Clock3, UsersRound } from 'lucide-react';
 import { CONTACT_TOUCH_LABELS, ONLINE_LIMITS, type CenterContact, type FollowupTask } from '../../../shared/online-crm';
 import type { TeamContactScope } from '../../../shared/team-workspace';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { TEAM_DATA_LIMITS, useTeamContactPage, useTeamOpenTasks } from './team-data';
-import { TeamAttentionPanel } from './TeamAttentionPanel';
 import './personal-workspace.css';
 
 const dateTime = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -42,13 +41,13 @@ function resultMessage(result: { ok: boolean; error?: { message: string } } | un
 }
 
 function TaskList({ tasks, total, error }: { tasks: readonly FollowupTask[]; total: number; error: string }) {
-  return <aside className="personal-task-panel" aria-label="我的待办">
+  return <section className="personal-task-panel" aria-label="我的待办">
     <div className="personal-panel-heading"><div><h2>待办</h2><span>最近开放</span></div><span>{total} 项</span></div>
     {error ? <div className="personal-panel-state is-error">{error}</div> : tasks.length === 0 ? <div className="personal-panel-state">暂无待办</div> : <div className="personal-task-list">{tasks.map(task => <article key={task.taskId} className="personal-task-row"><span className="personal-task-dot"><Clock3 aria-hidden="true" /></span><div><strong>{task.title}</strong><small>{when(task.dueAt)}</small></div></article>)}</div>}
-  </aside>;
+  </section>;
 }
 
-export function PersonalWorkspace({ includeTasks, online, attentionFocusId }: { includeTasks: boolean; online: boolean; attentionFocusId?: string | null }) {
+export function PersonalWorkspace({ includeTasks, search = '', teamName, leaderName, memberCount }: { includeTasks: boolean; search?: string; teamName?: string; leaderName?: string; memberCount?: number }) {
   const personal = useTeamContactPage('personal', '', 1, TEAM_DATA_LIMITS.summaryContactPage);
   const assigned = useTeamContactPage('assigned', '', 1, TEAM_DATA_LIMITS.summaryContactPage);
   const tasks = useTeamOpenTasks(includeTasks, TEAM_DATA_LIMITS.summaryTaskPage);
@@ -60,6 +59,7 @@ export function PersonalWorkspace({ includeTasks, online, attentionFocusId }: { 
   const taskTotal = tasks.data?.ok ? tasks.data.data.total : 0;
   const contactError = personal.data && !personal.data.ok && assigned.data && !assigned.data.ok ? resultMessage(personal.data) : '';
   const taskError = includeTasks ? resultMessage(tasks.data) : '';
+  const normalizedSearch = search.trim().toLocaleLowerCase('zh-CN');
   const seen = new Set<string>();
   const actions = [...personalRows.map(contact => ({ contact, scope: 'personal' as const })), ...assignedRows.map(contact => ({ contact, scope: 'assigned' as const }))]
     .filter(item => ACTIONABLE_STATES.includes(item.contact.touchStatus as (typeof ACTIONABLE_STATES)[number]))
@@ -69,8 +69,10 @@ export function PersonalWorkspace({ includeTasks, online, attentionFocusId }: { 
       seen.add(key);
       return true;
     })
+    .filter(item => !normalizedSearch || [contactName(item.contact), item.contact.companyName, item.contact.email].filter(Boolean).some(value => value!.toLocaleLowerCase('zh-CN').includes(normalizedSearch)))
     .sort((left, right) => ACTION_PRIORITY[left.contact.touchStatus as keyof typeof ACTION_PRIORITY] - ACTION_PRIORITY[right.contact.touchStatus as keyof typeof ACTION_PRIORITY] || Date.parse(right.contact.lastFollowupAt ?? '') - Date.parse(left.contact.lastFollowupAt ?? ''))
     .slice(0, 6) satisfies ActionContact[];
+  const visibleTasks = normalizedSearch ? taskItems.filter(task => task.title.toLocaleLowerCase('zh-CN').includes(normalizedSearch)) : taskItems;
   const refresh = async () => {
     await Promise.all([personal.refetch(), assigned.refetch(), ...(includeTasks ? [tasks.refetch()] : [])]);
   };
@@ -78,22 +80,21 @@ export function PersonalWorkspace({ includeTasks, online, attentionFocusId }: { 
   const loading = personal.isLoading && assigned.isLoading;
 
   return <div className={`personal-workspace-body${includeTasks ? ' has-tasks' : ''}`}>
-    <section className="personal-overview" aria-label="工作台概览">
-      <div className="personal-overview-actions"><span>行动概览</span><a href="#/customers?view=table">打开客户页 <ChevronRight aria-hidden="true" /></a></div>
-      <div className="personal-metrics">
-        <div><span>我的线索</span><strong>{personalTotal ?? '—'}</strong><a href="#/customers?view=table">查看</a></div>
-        <div><span>分配线索</span><strong>{assignedTotal ?? '—'}</strong><a href="#/customers?view=table">查看</a></div>
-        {includeTasks && <div><span>开放待办</span><strong>{tasks.data?.ok ? taskTotal : '—'}</strong><span>仅本人</span></div>}
-      </div>
-      <button className="personal-refresh" type="button" aria-label="刷新工作台" title="刷新" onClick={() => void refresh()} disabled={personal.isFetching || assigned.isFetching || tasks.isFetching}><RefreshCw aria-hidden="true" /></button>
-    </section>
-    <main className="personal-actions-panel">
-      <TeamAttentionPanel online={online} focusItemId={attentionFocusId} />
+    <main className="personal-actions-panel personal-main-panel">
+      <div className="personal-panel-heading personal-workspace-heading"><div><span>个人工作台</span><h2>今天先处理这些</h2></div><span>按优先级排序</span></div>
+      <section className="personal-overview" aria-label="工作台概览">
+        <div className="personal-overview-actions"><span>行动概览</span><a href="#/customers?view=table">打开客户页 <ChevronRight aria-hidden="true" /></a></div>
+        <div className="personal-metrics">
+          <div><span>我的线索</span><strong>{personalTotal ?? '—'}</strong><a href="#/customers?view=table">查看</a></div>
+          <div><span>分配线索</span><strong>{assignedTotal ?? '—'}</strong><a href="#/customers?view=table">查看</a></div>
+          {includeTasks && <div><span>开放待办</span><strong>{tasks.data?.ok ? taskTotal : '—'}</strong><span>仅本人</span></div>}
+        </div>
+      </section>
       <div className="personal-panel-heading"><div><h2>最近需要处理</h2><span>最多 6 条</span></div><span>进入客户页处理</span></div>
       <div className="personal-action-list" aria-live="polite">
         {contactError ? <div className="personal-panel-state is-error">{contactError}</div>
           : loading ? <div className="personal-panel-state">正在读取中心线索</div>
-            : actions.length === 0 ? <div className="personal-panel-state">暂无需要立即处理的线索</div>
+            : actions.length === 0 ? <div className="personal-panel-state">{normalizedSearch ? '没有匹配的线索' : '暂无需要立即处理的线索'}</div>
               : actions.map(({ contact, scope }) => <a key={`${contact.customerId}:${contact.contactId}`} className="personal-action-row" href={customerHref(contact)}>
                 <span className="personal-action-main"><span><strong>{contactName(contact)}</strong><small>{contact.companyName}</small></span><span className={`personal-contact-status is-${contact.touchStatus}`}>{CONTACT_TOUCH_LABELS[contact.touchStatus]}</span></span>
                 <span className="personal-action-next"><small>{scope === 'personal' ? '我的线索' : '分配线索'} · {when(contact.lastFollowupAt)}</small><strong>{actionLabel(contact)}</strong></span>
@@ -101,6 +102,9 @@ export function PersonalWorkspace({ includeTasks, online, attentionFocusId }: { 
               </a>)}
       </div>
     </main>
-    {includeTasks && <TaskList tasks={taskItems} total={taskTotal} error={taskError} />}
+    <aside className="personal-side">
+      {includeTasks && <TaskList tasks={visibleTasks} total={normalizedSearch ? visibleTasks.length : taskTotal} error={taskError} />}
+      {teamName && <section className="personal-team-panel" aria-label="我的团队"><div className="personal-panel-heading"><div><span>团队</span><h2>我的团队</h2></div></div><div className="personal-team-body"><span className="personal-team-avatar"><UsersRound aria-hidden="true" /></span><span><strong>{teamName}</strong><small>主管 {leaderName || '未设置'} · {memberCount ?? 0} 位成员</small></span></div><div className="personal-team-structure"><span>主管 <b>{leaderName || '未设置'}</b></span><span>组员 <b>{Math.max(0, (memberCount ?? 0) - 1)} 人</b></span></div></section>}
+    </aside>
   </div>;
 }

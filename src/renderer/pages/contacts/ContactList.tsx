@@ -1,12 +1,13 @@
 import { invalidateDomain } from "../../lib/cacheDeps";
+import { isPermissionDenied } from "../../lib/permissionGate";
 import { useRouterState } from "@tanstack/react-router";
 import { useState, useEffect, useRef, type ReactNode, type ComponentRef } from "react";
 import { createPortal } from "react-dom";
-import { Table, Button, Input, Space, Tag, message, Form, Select, Popover, Checkbox, Modal } from "antd";
+import { Table, Button, Input, Space, Tag, message, Form, Select, Popover, Checkbox } from "antd";
 import { PlusOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, ImportOutlined, PartitionOutlined, MailOutlined, ExportOutlined, MoreOutlined, LeftOutlined, CloseOutlined } from "@ant-design/icons";
 import type { TableColumnsType } from "antd";
 import { useQueryClient } from "@tanstack/react-query";
-import { useContacts, useUpsertContact, useDeleteContact, type Contact, type ContactDataPort } from "../../hooks/useContacts";
+import { useInfiniteContacts, useUpsertContact, type Contact, type ContactDataPort, type ContactDataResult } from "../../hooks/useContacts";
 import { ContactDetailDrawer, ContactDetailLayout, SectionTitle, CLIENT_TYPE, STATUS_META, STAGE_META, CRM_STAGES, COUNTRIES } from "../../components/ContactDetail";
 import { ImportDrawer, type ImportDrawerPort } from "../../components/ImportDrawer";
 import { LeadIngressConflictDrawer, type LeadIngressConflictTarget } from "../customers/LeadIngressConflictDrawer";
@@ -14,13 +15,25 @@ import { LeadIngressConflictDrawer, type LeadIngressConflictTarget } from "../cu
 /* ---------- 可配置列定义 ---------- */
 const COLS_KEY = "contacts-cols";
 const CENTER_COLS_KEY = "contacts-cols-lead-fields";
-const LOCAL_DEFAULT_COLS = ["name", "email", "companyName", "clientType", "status", "relationshipStage", "stage", "title", "source"];
+const REQUIRED_COLS = ["assignee"] as const;
+const LOCAL_DEFAULT_COLS = ["name", "email", "companyName", "clientType", "status", "relationshipStage", "stage", "title", "source", "assignee"];
 const SCROLL_THUMB_MIN_HEIGHT = 24;
 const SCROLL_THUMB_HIDE_MS = 520;
 const SCROLL_KEY_STEP = 42;
-const DEFAULT_COLS = ["companyName", "country", "clientType", "name", "title", "phone", "whatsapp", "email", "sourceLevel1", "sourceLevel2", "status", "relationshipStage", "stage"];
+const LOAD_MORE_DISTANCE_PX = 240;
+const DEFAULT_COLS = ["companyName", "country", "clientType", "name", "title", "phone", "whatsapp", "email", "sourceLevel1", "sourceLevel2", "status", "relationshipStage", "stage", "assignee"];
+const withRequiredCols = (cols: string[]) => [...new Set([...cols, ...REQUIRED_COLS])];
 
 interface ColDef { key: string; title: string; width?: number; render: (c: Contact) => ReactNode; }
+interface ContactInfiniteData {
+  pages: ContactDataResult<{ items: Contact[]; total: number }>[];
+  pageParams: number[];
+}
+
+const isContactInfiniteData = (value: unknown): value is ContactInfiniteData => {
+  const candidate = value as Partial<ContactInfiniteData> | null;
+  return Boolean(candidate && Array.isArray(candidate.pages));
+};
 
 // 单元格用原生 title 悬浮提示：50 行 × 10 列若包 antd Tooltip（含操作列共 ~500 实例），
 // 每次进页挂载开销是"切页卡一下"的主体；原生 title 零组件成本，Chromium 上表现一致
@@ -38,7 +51,7 @@ const inCrm = (contact: Contact) => contact.dataSource === 'center' ? ['contacte
 const TOUCH_STATUS_META: Record<string, { label: string; color: string }> = {
   uncontacted: { label: '未触达', color: 'default' },
   contacted: { label: '已触达', color: 'blue' },
-  replied: { label: '已回复', color: 'green' },
+  replied: { label: '已收到', color: 'green' },
   bounced: { label: '退信', color: 'red' },
   autoreply: { label: '自动回复', color: 'orange' },
 };
@@ -100,7 +113,13 @@ const COLUMN_DEFS: ColDef[] = [
     key: "source", title: "导入批次来源", width: 120,
     render: (c) => c.source ? <Tag className="text-[10px] my-0 leading-none px-1.5">{c.source}</Tag> : <Dash />,
   },
-  { key: "assignee", title: "负责人", width: 90, render: (c) => <Muted v={c.assignee} /> },
+  {
+    key: "assignee", title: "归属", width: 100,
+    render: (c) => {
+      const owner = c.assignee?.trim();
+      return <Tag color={owner ? "blue" : "default"} className="contact-ownership-tag text-[10px] my-0 leading-none py-0.5 px-1.5" title={owner || "未分配"}>{owner || "未分配"}</Tag>;
+    },
+  },
   {
     key: "tags", title: "标签", width: 90,
     render: (c) => {
@@ -123,9 +142,6 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   const portKey = dataPort?.key ?? 'local';
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [pageState, setPageState] = useState({ key: portKey, page: 1 });
-  const page = pageState.key === portKey ? pageState.page : 1;
-  const setPage = (next: number) => setPageState({ key: portKey, page: next });
   const [addOpen, setAddOpen] = useState(false);
   const [addConflict, setAddConflict] = useState<LeadIngressConflictTarget | null>(null);
   const [returnInboxId, setReturnInboxId] = useState<number | null>(null);
@@ -133,7 +149,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsView, setActionsView] = useState<"main" | "columns" | "export">("main");
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingIds, setDeletingIds] = useState<number[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   // 从收件箱跳转（#/customers?detail=id）的目标联系人：数据到达后滚动定位 + 高亮 + 展开
   const [pendingDetailId, setPendingDetailId] = useState<number | null>(null);
@@ -144,8 +160,8 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
       const current = dataPort ? localStorage.getItem(CENTER_COLS_KEY) : null;
       const s = current ?? localStorage.getItem(COLS_KEY);
       const saved = s ? JSON.parse(s) as string[] : dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS;
-      return dataPort && !current ? [...new Set(saved.flatMap(key => key === 'source' ? ['sourceLevel1', 'sourceLevel2'] : [key]))] : saved;
-    } catch { return dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS; }
+      return withRequiredCols(dataPort && !current ? [...new Set(saved.flatMap(key => key === 'source' ? ['sourceLevel1', 'sourceLevel2'] : [key]))] : saved);
+    } catch { return withRequiredCols(dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS); }
   });
   const [form] = Form.useForm();
 
@@ -155,22 +171,39 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data, isLoading, error, dataUpdatedAt } = useContacts({ search: debouncedSearch, page }, dataPort);
+  const { data, isLoading, error, dataUpdatedAt, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteContacts({ search: debouncedSearch }, dataPort);
   const upsertContact = useUpsertContact(dataPort);
-  const deleteContact = useDeleteContact(dataPort);
   const qc = useQueryClient();
 
   useEffect(() => {
-    setPageState({ key: portKey, page: 1 });
     setSelectedRowKeys([]);
     setDetailContact(null);
     setPendingDetailId(null);
+    setDeletingIds([]);
     const scroller = tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-content');
     if (scroller) scroller.scrollTop = 0;
   }, [portKey]);
 
-  const contacts = data?.success ? (data.data?.items || []) : [];
-  const total = data?.success ? (data.data?.total || 0) : 0;
+  const pages = data?.pages ?? [];
+  const failedPage = pages.find(page => !page.success);
+  const contacts = [...new Map(pages.flatMap(page => page.success ? page.data?.items ?? [] : []).map(row => [row.id, row])).values()];
+  const total = pages.reduce((value, page) => page.success ? page.data?.total ?? value : value, 0);
+
+  useEffect(() => {
+    if (!hasNextPage || isFetchingNextPage) return;
+    const scroller = tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-content');
+    if (!scroller) return;
+    let requested = false;
+    const loadIfNearBottom = () => {
+      if (requested) return;
+      const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      if (remaining > LOAD_MORE_DISTANCE_PX) return;
+      requested = true;
+      void fetchNextPage().finally(() => { requested = false; });
+    };
+    scroller.addEventListener('scroll', loadIfNearBottom, { passive: true });
+    return () => scroller.removeEventListener('scroll', loadIfNearBottom);
+  }, [contacts.length, fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   // Native vertical scrollbars reserve a gutter even when transparent. Overlay only
   // this table's vertical control so its header and fixed action cells reach the border.
@@ -232,7 +265,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   }, [dataUpdatedAt]);
 
   useEffect(() => {
-    if (!dataPort || !data?.success || !selectedRowKeys.length) return;
+    if (!dataPort || failedPage || !selectedRowKeys.length) return;
     let active = true;
     // A paginated row disappearing does not prove loss of access; reconcile against the full authorized scope.
     void dataPort.listIds({}).then(result => {
@@ -241,19 +274,23 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
       setSelectedRowKeys(previous => previous.every(id => allowed.has(Number(id))) ? previous : previous.filter(id => allowed.has(Number(id))));
     }).catch(() => { /* Retain selection while the authorized ID list is unavailable. */ });
     return () => { active = false; };
-  }, [dataPort, dataUpdatedAt, data?.success, selectedRowKeys.length]);
+  }, [dataPort, dataUpdatedAt, failedPage, selectedRowKeys.length]);
 
   // 跳转定位：目标联系人出现在当前列表数据后 → 高亮该行 + 滚动到可视区 + 详情已由上方打开
   useEffect(() => {
-    if (pendingDetailId == null) return;
+    if (pendingDetailId == null || !data || isLoading) return;
     const idx = contacts.findIndex(c => c.id === pendingDetailId);
-    if (idx < 0) return; // 数据未加载到（翻页/清筛选后重新拉取中），等下一次数据变更
+    if (idx < 0) {
+      if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+      else if (!hasNextPage) setPendingDetailId(null);
+      return;
+    }
     setSelectedRowKeys([pendingDetailId]);
     requestAnimationFrame(() => {
       try { tableRef.current?.scrollTo?.({ index: idx }); } catch { /* 老版本无 scrollTo 时忽略 */ }
     });
     setPendingDetailId(null);
-  }, [contacts, pendingDetailId]);
+  }, [contacts, data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, pendingDetailId]);
 
   // 跨页全选：拉取当前搜索结果的全部 id（服务端分页时表头全选只能选当前页 50 条）
   const selectAllMatched = async () => {
@@ -265,47 +302,79 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
     } else message.error(r?.error || "选择失败");
   };
 
-  // 批量删除选中联系人（一次级联 + 一次落盘，支持跨页全选）
+  const deleteContacts = async (ids: number[], previousSelection: React.Key[] = selectedRowKeys) => {
+    if (!ids.length || deletingIds.length) return;
+    if (dataPort && (!online || !dataPort.deleteBatch)) {
+      message.error(!online ? "当前离线，无法删除联系人" : "当前联系人数据源不支持删除");
+      return;
+    }
+    const queryKey = dataPort ? "center-contacts" : "contacts";
+    const cached = qc.getQueriesData<ContactDataResult<{ items: Contact[]; total: number }> | ContactInfiniteData>({ queryKey: [queryKey] });
+    const loaded = new Map<number, Contact>();
+    for (const [, cachedValue] of cached) {
+      if (isContactInfiniteData(cachedValue)) {
+        for (const page of cachedValue.pages) {
+          if (!page.success || !page.data) continue;
+          for (const row of page.data.items) loaded.set(row.id, row);
+        }
+        continue;
+      }
+      if (!cachedValue?.success || !cachedValue.data) continue;
+      for (const row of cachedValue.data.items) loaded.set(row.id, row);
+    }
+    for (const row of contacts) loaded.set(row.id, row);
+    const selected = new Set(ids);
+    setDeletingIds(ids);
+    try {
+      const result = await (dataPort
+        ? dataPort.deleteBatch!(ids, [...loaded.values()])
+        : ids.length === 1
+          ? window.api.invoke("contacts:delete", ids[0])
+          : window.api.invoke("contacts:deleteBatch", ids)) as { success: boolean; error?: string };
+      if (!result?.success) {
+        message.error(result?.error || "删除失败，请稍后重试");
+        return;
+      }
+      for (const [key, previous] of cached) {
+        if (isContactInfiniteData(previous)) {
+          const pages = previous.pages.map(page => {
+            if (!page.success || !page.data) return page;
+            return {
+              ...page,
+              data: {
+                ...page.data,
+                items: page.data.items.filter(item => !selected.has(item.id)),
+                total: Math.max(0, page.data.total - selected.size),
+              },
+            };
+          });
+          qc.setQueryData(key, { ...previous, pages });
+          continue;
+        }
+        if (!previous?.success || !previous.data) continue;
+        const items = previous.data.items.filter(item => !selected.has(item.id));
+        if (items.length === previous.data.items.length) continue;
+        qc.setQueryData(key, { ...previous, data: { ...previous.data, items, total: Math.max(0, previous.data.total - (previous.data.items.length - items.length)) } });
+      }
+      setSelectedRowKeys(previous => previous.filter(key => !selected.has(Number(key))));
+      message.success(`已删除 ${ids.length} 个联系人`);
+      if (dataPort) {
+        for (const key of ["center-contacts", "center-companies", "center-company-detail", "center-contact-detail", "dashboard", "search", "center-assignment", "inbox"]) {
+          void qc.invalidateQueries({ queryKey: [key] });
+        }
+      } else {
+        invalidateDomain(qc, "contacts");
+      }
+    } catch (error) {
+      message.error(error instanceof Error && error.message ? error.message : "删除失败，请稍后重试");
+    } finally {
+      setDeletingIds([]);
+    }
+  };
+
   const batchDelete = () => {
-    if (dataPort && (!online || !dataPort.deleteBatch)) return;
-    if (selectedRowKeys.length === 0) return;
     const ids = selectedRowKeys.map(k => Number(k)).filter(n => Number.isInteger(n) && n > 0);
-    Modal.confirm({
-      title: `删除 ${ids.length} 个联系人？`,
-      content: dataPort ? "删除后不再参与匹配和新发送任务，历史记录保留。" : "将同时清除其跟进/发送记录并解除邮件关联，空壳公司一并回收。此操作不可撤销，建议先导出。",
-      okText: "删除", okType: "danger", cancelText: "取消",
-      onOk: async () => {
-        const previousSelection = selectedRowKeys;
-        const snapshots = dataPort ? qc.getQueriesData<{ success: boolean; data?: { items: Contact[]; total: number }; error?: string }>({ queryKey: ["center-contacts"] }) : [];
-        if (dataPort) {
-          const selected = new Set(ids);
-          for (const [key, previous] of snapshots) qc.setQueryData(key, previous && previous.success && previous.data ? (() => {
-            const items = previous.data.items.filter(item => !selected.has(item.id));
-            const clearsQuery = previous.data.items.every(item => selected.has(item.id)) && ids.length >= previous.data.total;
-            return { ...previous, data: { ...previous.data, items, total: clearsQuery ? 0 : Math.max(0, previous.data.total - (previous.data.items.length - items.length)) } };
-          })() : previous);
-          setSelectedRowKeys([]);
-        }
-        try {
-          const r = await (dataPort ? dataPort.deleteBatch!(ids) : window.api.invoke("contacts:deleteBatch", ids)) as
-            { success: boolean; data?: { deleted: number; companiesRemoved: number }; error?: string };
-          if (!r?.success) {
-            for (const [key, previous] of snapshots) qc.setQueryData(key, previous);
-            if (dataPort) setSelectedRowKeys(previousSelection);
-            message.error(r?.error || "删除失败");
-          } else {
-            message.success(`已删除 ${r.data?.deleted ?? ids.length} 个联系人`);
-            setSelectedRowKeys([]);
-          }
-          if(dataPort)for(const key of ["center-contacts","center-companies","center-company-detail","center-contact-detail","dashboard","search","center-assignment","inbox"])void qc.invalidateQueries({queryKey:[key]});
-          else invalidateDomain(qc, "contacts");
-        } catch {
-          for (const [key, previous] of snapshots) qc.setQueryData(key, previous);
-          if (dataPort) setSelectedRowKeys(previousSelection);
-          message.error("删除失败");
-        }
-      },
-    });
+    void deleteContacts(ids);
   };
 
   // ── 导出（原独立导出页功能并入：联系人 CSV / 跟进记录 CSV）──
@@ -361,15 +430,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
         // 算出目标所在页码，数据到位后由下方 effect 滚动定位 + 高亮 + 保持详情展开
         setSearch("");
         setDebouncedSearch("");
-        setPage(1);
-        window.api.invoke("contacts:listIds", {}).then((res) => {
-          const r = res as { success: boolean; data?: { ids: number[] } };
-          if (r?.success && r.data) {
-            const idx = r.data.ids.indexOf(id);
-            if (idx >= 50) setPage(Math.floor(idx / 50) + 1);
-          }
-          setPendingDetailId(id);
-        });
+        setPendingDetailId(id);
       }
       window.location.hash = rawHash.split("?")[0]!;
       return;
@@ -393,8 +454,9 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   }, [form, location.pathname, location.searchStr, dataPort]);
 
   const updateCols = (cols: string[]) => {
-    setVisibleCols(cols);
-    localStorage.setItem(dataPort ? CENTER_COLS_KEY : COLS_KEY, JSON.stringify(cols));
+    const next = withRequiredCols(cols);
+    setVisibleCols(next);
+    localStorage.setItem(dataPort ? CENTER_COLS_KEY : COLS_KEY, JSON.stringify(next));
   };
 
   const visibleDefinitions = visibleCols.flatMap(key => COLUMN_DEFS.find(d => d.key === key) ?? []);
@@ -430,24 +492,21 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
             }}
           />
           <Button type="text" size="small" icon={<DeleteOutlined />}
-            disabled={!!dataPort && (!online || !r.canDelete)}
-            loading={deletingId === r.id}
+            disabled={!!dataPort && !online}
+            loading={deletingIds.includes(r.id)}
             className="btn-hover-color"
             style={{ color: "#bbb" }}
             title="删除"
+            aria-label="删除联系人"
             onDoubleClick={(e) => e.stopPropagation()}
-            onClick={async (e) => {
+            onClick={(e) => {
               e.stopPropagation();
-              if (deletingId) return;
-              setDeletingId(r.id);
-              try {
-                const res = await deleteContact.mutateAsync(r.id);
-                res?.success ? message.success("已删除") : message.error(res?.error || "失败");
-              } catch {
-                message.error("删除失败");
-              } finally {
-                setDeletingId(null);
+              if (deletingIds.length) return;
+              if (dataPort && isPermissionDenied(r.canDelete)) {
+                message.error("该联系人当前不可删除：可能已分配或权限已变化");
+                return;
               }
+              void deleteContacts([r.id], selectedRowKeys.includes(r.id) ? selectedRowKeys : [...selectedRowKeys, r.id]);
             }}
           />
         </Space>
@@ -464,7 +523,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
         className="contact-columns-options grid grid-cols-2 gap-x-2 gap-y-1"
       >
         {COLUMN_DEFS.map(d => (
-          <Checkbox key={d.key} value={d.key} className="text-xs">{d.title}</Checkbox>
+          <Checkbox key={d.key} value={d.key} disabled={d.key === 'assignee'} className="text-xs">{d.title}</Checkbox>
         ))}
       </Checkbox.Group>
       <div className="flex justify-between mt-3 pt-2 border-t border-gray-100">
@@ -499,7 +558,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
     .reduce((s, d) => s + (d.width || 100), 0) + 96 /* 操作列 */ + 32 /* 多选列 */;
 
   const searchInput = <Input prefix={<SearchOutlined />} placeholder="搜索邮箱、姓名、公司..."
-    value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+    value={search} onChange={e => setSearch(e.target.value)}
     size="small" style={{ width: 260, maxWidth: "100%" }} allowClear />;
   const headerActions = <Space size="small">
     {headerActionsTarget && searchInput}
@@ -531,13 +590,14 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
             title={`将选中的 ${selectedRowKeys.length} 个联系人分配线索`}>分配线索</Button>}
           <Button size="small" danger icon={<DeleteOutlined />}
             title={`删除选中的 ${selectedRowKeys.length} 个联系人`}
-            disabled={!!dataPort && (!online || !dataPort.deleteBatch || selectedRowKeys.some(id=>!dataPort.canDelete?.(Number(id))))}
+            disabled={!!dataPort && (!online || !dataPort.deleteBatch)}
+            loading={deletingIds.length > 1}
             onClick={batchDelete}>删除</Button>
         </Space>
       </div>}
 
       {/* 加载 / 错误 */}
-      {(error || data?.success === false) && <div role="alert" className="text-xs text-red-500 p-2 bg-red-50 rounded">{data?.error || '加载失败'}</div>}
+      {(error || failedPage) && <div role="alert" className="text-xs text-red-500 p-2 bg-red-50">{failedPage?.error || '加载失败'}</div>}
 
       {/* 表格 — 高密度 */}
       <Table
@@ -549,11 +609,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
         size="small"
         scroll={{ x: tableScrollX }}
         className="prospector-page-table customer-contacts-table [&_.ant-table-thead>tr>th]:!text-[11px] [&_.ant-table-thead>tr>th]:!text-gray-400 [&_.ant-table-thead>tr>th]:!font-medium"
-        pagination={{
-          current: page, pageSize: 50, total, onChange: setPage,
-          size: "small", showSizeChanger: false,
-          showTotal: t => `${t} 人`,
-        }}
+        pagination={false}
         rowSelection={{
           selectedRowKeys,
           onChange: setSelectedRowKeys,

@@ -1,7 +1,7 @@
 import { askAssistant } from '../../lib/ask-ai';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Input, Modal, Select, Space, Spin, Tabs, Tag, Timeline, Tooltip, message } from 'antd';
+import { Alert, Button, Input, Select, Space, Spin, Tabs, Tag, Timeline, Tooltip, message } from 'antd';
 import { CloseOutlined, DeleteOutlined, EditOutlined, PartitionOutlined, SearchOutlined, ShareAltOutlined, UndoOutlined } from '@ant-design/icons';
 import { ContactDetailLayout, InfoTab, CRM_STAGES, STATUS_META } from '../../components/ContactDetail';
 import { DiamondLogo } from '../../components/DiamondLogo';
@@ -11,6 +11,7 @@ import { useIdentity } from '../../IdentityContext';
 import { centerInvoke, displayCenterContact } from './centerContactPort';
 import { ContactSharingModal } from './ContactSharing';
 import { canEditContactField } from './contactRights';
+import { isPermissionDenied } from '../../lib/permissionGate';
 import { projectContactMailHistory } from './contactMailTimeline';
 import { ONLINE_LIMITS } from '../../../shared/online-crm';
 import { LeadIngressConflictDrawer, type LeadIngressConflictTarget } from './LeadIngressConflictDrawer';
@@ -351,7 +352,7 @@ function MailAnalysisEventPicker({ events, value, onChange }: {
   />;
 }
 
-function CenterContactDetailContent({ reference, open, onClose, variant = 'drawer' }: { reference: CenterContactRef; open: boolean; onClose: () => void; variant?: 'drawer' | 'board' }) {
+function CenterContactDetailContent({ reference, open, onClose, variant = 'drawer', highlight = false }: { reference: CenterContactRef; open: boolean; onClose: () => void; variant?: 'drawer' | 'board'; highlight?: boolean }) {
   const { identity, baseUrl, status } = useIdentity();
   const qc = useQueryClient();
   const current = useRef(true);
@@ -392,26 +393,33 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
     for (const prefix of ['center-contacts', 'center-companies', 'center-company-detail', 'center-assignment', 'center-shares', 'inbox', 'dashboard', 'search']) void qc.invalidateQueries({ queryKey: [prefix] });
     onClose();
   }, [denied, backcheckScope, qc]);
-  const canEditField = (field: string) => !!detail && (detail.permissions ? canEditContactField(detail.permissions, field) : field === 'relationshipStage' ? detail.canFollowup : detail.canEdit);
+  const canEditField = (field: string) => !!detail && (detail.permissions ? canEditContactField(detail.permissions, field) : !isPermissionDenied(field === 'relationshipStage' ? detail.canFollowup : detail.canEdit));
   const error = query.data && !query.data.ok ? query.data.error.message : query.error?.message;
   const changed = (next: Detail) => { qc.setQueryData(key, { ok: true, data: next }); void qc.invalidateQueries({ queryKey: ['center-contacts'] }); void qc.invalidateQueries({ queryKey: ['center-assignment'] }); void qc.invalidateQueries({ queryKey: ['contacts', 'match'] }); void qc.invalidateQueries({ queryKey: ['inbox'] }); void qc.invalidateQueries({ queryKey: ['dashboard'] }); void qc.invalidateQueries({ queryKey: ['search'] }); void qc.invalidateQueries({ queryKey: ['center-company-detail'] }); };
   function remove() {
-    if(!hasCurrentAccess()||!reference||!detail?.canDelete||busy||status==='offline')return;
+    if(!hasCurrentAccess()||!reference||busy||status==='offline')return;
+    if(isPermissionDenied(detail?.canDelete)){message.error('该联系人当前不可删除：可能已分配或权限已变化');return;}
+    void confirmRemove();
+  }
+  async function confirmRemove() {
+    if(!hasCurrentAccess()||!reference||!detail||busy||status==='offline')return;
     const captured=reference;
     const startedScope=backcheckScope;
-    Modal.confirm({title:'删除该联系人？',content:'删除后不再参与匹配和新发送任务，历史记录保留。',okText:'删除',okType:'danger',cancelText:'取消',onOk:async()=>{
+    setBusy(true);
+    try {
+      const previous=deleteRetry.current?.contacts[0];
+      if(!previous||previous.contactId!==captured.contactId||previous.customerId!==captured.customerId)deleteRetry.current={contacts:[{...captured,expectedVersion:detail.contact.contactVersion??detail.contact.customerVersion}],idempotencyKey:crypto.randomUUID()};
+      const r=await centerInvoke<ContactDeleteReceipt>(ONLINE_CHANNELS.CONTACT_DELETE,deleteRetry.current);
       if(!hasCurrentAccess()||!current.current||currentBackcheckScope.current!==startedScope)return;
-      setBusy(true);
-      try {
-        const previous=deleteRetry.current?.contacts[0];
-        if(!previous||previous.contactId!==captured.contactId||previous.customerId!==captured.customerId)deleteRetry.current={contacts:[{...captured,expectedVersion:detail.contact.contactVersion??detail.contact.customerVersion}],idempotencyKey:crypto.randomUUID()};
-        const r=await centerInvoke<ContactDeleteReceipt>(ONLINE_CHANNELS.CONTACT_DELETE,deleteRetry.current);
-        if(!hasCurrentAccess()||!current.current||currentBackcheckScope.current!==startedScope)return;
-        if(!r.ok){if(r.error.code==='CONFLICT')deleteRetry.current=null;message.error(r.error.message);void qc.invalidateQueries({queryKey:key});return;}
-        for(const prefix of ['center-contacts','center-companies','center-company-detail','center-contact-detail','dashboard','search','center-assignment','inbox'])void qc.invalidateQueries({queryKey:[prefix]});
-        message.success('已删除');onClose();
-      }finally{if(current.current&&currentBackcheckScope.current===startedScope)setBusy(false);}
-    }});
+      if(!r.ok){if(r.error.code==='CONFLICT')deleteRetry.current=null;message.error(r.error.message);void qc.invalidateQueries({queryKey:key});return;}
+      deleteRetry.current=null;
+      for(const prefix of ['center-contacts','center-companies','center-company-detail','center-contact-detail','dashboard','search','center-assignment','inbox'])void qc.invalidateQueries({queryKey:[prefix]});
+      message.success('已删除');onClose();
+    } catch (error) {
+      message.error(error instanceof Error && error.message ? error.message : '删除失败，请稍后重试');
+    } finally {
+      if(current.current&&currentBackcheckScope.current===startedScope)setBusy(false);
+    }
   }
   async function save(field: string, value: string | null) {
     if (!hasCurrentAccess() || !reference || !detail || !canEditField(field) || busy) return false;
@@ -419,7 +427,7 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
     const isCurrent = () => hasCurrentAccess() && currentBackcheckScope.current === startedScope;
     if (detail.permissions && field === 'status' && ![null, '', 'reached', 'replied', 'bounced', 'autoreply'].includes(value)) return;
     if (field === 'relationshipStage' || field === 'status' && [null, '', 'reached', 'replied', 'bounced', 'autoreply'].includes(value)) {
-      if (field === 'relationshipStage' ? !(detail.permissions?.canChangeStage ?? detail.canFollowup) : !detail.canFollowup) return;
+    if (isPermissionDenied(field === 'relationshipStage' ? detail.permissions?.canChangeStage ?? detail.canFollowup : detail.canFollowup)) return;
       const nextStage = CRM_STAGES.find(item => item.key === value);
       if (field === 'relationshipStage' && !nextStage) return;
       const content = field === 'relationshipStage'
@@ -464,7 +472,7 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
     finally { if (isCurrent()) setBusy(false); }
   }
   async function followup() {
-    if (!hasCurrentAccess() || !reference || !detail?.canFollowup || busy || !note.trim()) return;
+    if (!hasCurrentAccess() || !reference || !detail || isPermissionDenied(detail.canFollowup) || busy || !note.trim()) return;
     const startedScope = backcheckScope;
     const isCurrent = () => hasCurrentAccess() && currentBackcheckScope.current === startedScope;
     const content = { note: note.trim(), method, ...(stage && (detail.permissions?.canChangeStage ?? true) ? { stage } : {}), ...(method !== 'note' && contactStatus ? { contactStatus } : {}) };
@@ -542,13 +550,14 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
   }, [analysisMailEvents]);
   const analysisEvent = analysisMailEvents.find(event => event.eventId === analysisEventId) ?? analysisMailEvents[0];
   const analysisQuery = useMemo(() => analysisQueryForMail(analysisEvent), [analysisEvent]);
-  return <ContactDetailLayout open={open} onClose={onClose} destroyOnClose {...(variant === 'board' ? { mask: true, rootClassName: 'customer-classic-floating-detail', width: 'clamp(360px, 44vw, 620px)', rootStyle: { top: 36 }, styles: { body: { padding: 12, height: '100%', overflow: 'hidden' } } } : {})}>
-    <div className="flex-shrink-0 pb-3 mb-2 border-b border-gray-100"><div className="flex items-center gap-1.5 flex-wrap"><span className="text-base font-semibold text-gray-900">{contact ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '未命名联系人' : '联系人'}</span><Tooltip title="在收件箱中搜索"><Button type="text" aria-label="在收件箱中搜索" size="small" icon={<SearchOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} disabled={!contact?.email} onClick={() => { window.location.hash = `#/inbox?search=${encodeURIComponent(contact?.email ?? '')}`; }} /></Tooltip><Tooltip title={reached ? '在CRM中查看' : '未进入CRM管线'}><Button type="text" aria-label="在CRM中查看" size="small" icon={<PartitionOutlined />} disabled={!reached} className="btn-hover-color" style={{ color: reached ? '#bbb' : '#d9d9d9', padding: 0, minWidth: 20, height: 20 }} onClick={() => { const target = new URLSearchParams({ view: 'board', centerContact: String(contact?.contactId ?? ''), centerCustomer: contact?.customerId ?? '' }); window.location.hash = '#/customers?' + target.toString(); onClose(); }} /></Tooltip><Tooltip title="带着这位联系人问 AI"><Button type="text" aria-label="带着这位联系人问 AI" size="small" disabled={!contact} onClick={() => { if (contact) askAssistant({ question: `请查询中心联系人 #${contact.contactId}（客户编号 ${contact.customerId}），分析最近情况与跟进建议。` }); }} icon={<DiamondLogo size={14} state="static" />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="共享线索"><Button type="text" aria-label="共享线索" size="small" disabled={!detail?.permissions?.canShare || busy || status === 'offline'} onClick={() => setSharing(true)} icon={<ShareAltOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="删除"><Button type="text" aria-label="删除联系人" size="small" disabled={!detail?.canDelete || busy || status === 'offline'} onClick={remove} icon={<DeleteOutlined />} className="btn-hover-color" style={{ padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} className="ml-auto" /></div><div className="text-[11px] text-gray-500 font-mono mt-1">{contact?.email}</div></div>
+  const rootClassName = `${variant === 'board' ? 'customer-classic-floating-detail' : 'customer-contact-detail-layer'}${highlight ? ' notification-target-highlight' : ''}`;
+  return <ContactDetailLayout open={open} onClose={onClose} destroyOnClose rootClassName={rootClassName} {...(variant === 'board' ? { mask: true, width: 'clamp(360px, 44vw, 620px)', rootStyle: { top: 36 }, styles: { body: { padding: 12, height: '100%', overflow: 'hidden' } } } : {})}>
+    <div className="flex-shrink-0 pb-3 mb-2 border-b border-gray-100"><div className="flex items-center gap-1.5 flex-wrap"><span className="text-base font-semibold text-gray-900">{contact ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '未命名联系人' : '联系人'}</span><Tooltip title="在收件箱中搜索"><Button type="text" aria-label="在收件箱中搜索" size="small" icon={<SearchOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} disabled={!contact?.email} onClick={() => { window.location.hash = `#/inbox?search=${encodeURIComponent(contact?.email ?? '')}`; }} /></Tooltip><Tooltip title={reached ? '在CRM中查看' : '未进入CRM管线'}><Button type="text" aria-label="在CRM中查看" size="small" icon={<PartitionOutlined />} disabled={!reached} className="btn-hover-color" style={{ color: reached ? '#bbb' : '#d9d9d9', padding: 0, minWidth: 20, height: 20 }} onClick={() => { const target = new URLSearchParams({ view: 'board', centerContact: String(contact?.contactId ?? ''), centerCustomer: contact?.customerId ?? '' }); window.location.hash = '#/customers?' + target.toString(); onClose(); }} /></Tooltip><Tooltip title="带着这位联系人问 AI"><Button type="text" aria-label="带着这位联系人问 AI" size="small" disabled={!contact} onClick={() => { if (contact) askAssistant({ question: `请查询中心联系人 #${contact.contactId}（客户编号 ${contact.customerId}），分析最近情况与跟进建议。` }); }} icon={<DiamondLogo size={14} state="static" />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="共享线索"><Button type="text" aria-label="共享线索" size="small" disabled={!detail?.permissions?.canShare || busy || status === 'offline'} onClick={() => setSharing(true)} icon={<ShareAltOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="删除"><Button type="text" aria-label="删除联系人" size="small" disabled={busy || status === 'offline'} loading={busy} onClick={remove} icon={<DeleteOutlined />} className="btn-hover-color" style={{ padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} className="ml-auto" /></div><div className="text-[11px] text-gray-500 font-mono mt-1">{contact?.email}</div></div>
     {query.isFetching && !detail && <Spin />}{error && <Alert type="error" message={error} />}
     {contact && detail && <Tabs activeKey={tab} onChange={setTab} size="small" className="contact-detail-tabs" items={[
       { key: 'info', label: '基本信息', children: <div className="customer-info-with-grade"><CustomerGradePanel customerId={reference.customerId} /><InfoTab key={backcheckScope} contact={contact} canEdit={(detail.permissions ? !!(detail.permissions.editableFields.length || detail.permissions.canFollowup || detail.permissions.canChangeStage) : detail.canEdit)} canEditField={canEditField} onSaveField={save} /></div> },
       { key: 'company', label: '公司背调', children: detail.supplementAvailable === false ? <div className="text-xs text-gray-400">联网后加载公司资料</div> : <CompanyBackcheck companyId={null} run={canBackcheck && status !== 'offline' ? backcheck : undefined} centerCompany={{ id: detail.company.companyId, name: detail.company.name, domain: detail.company.domain, backcheckData: transientReport?.scope === backcheckScope ? JSON.stringify(transientReport.report) : detail.company.backcheckData ? JSON.stringify(detail.company.backcheckData) : null }} /> },
-      { key: 'history', label: '往来记录', children: <div className="space-y-3">{(detail.supplementAvailable === false || !detail.mailAvailable) && <div className="text-xs text-gray-400">{detail.supplementAvailable === false ? '联网后加载往来记录' : '邮件往来暂未接入'}</div>}{analysisQuery && <div className="mail-analysis-block"><MailAnalysisEventPicker events={analysisMailEvents} value={analysisEventId} onChange={setAnalysisEventId} /><MailAnalysisPanel key={analysisEvent?.eventId} queryInput={analysisQuery} /></div>}{detail.canFollowup && <div className="space-y-2"><Space wrap><Select size="small" value={method} onChange={setMethod} options={FOLLOWUP_METHODS.map(value => ({ value, label: FOLLOWUP_METHOD_LABELS[value] }))} /><Select size="small" placeholder="联系状态" allowClear value={contactStatus} disabled={method === 'note'} onChange={setContactStatus} options={CONTACT_TOUCH_STATUSES.filter(value => value !== 'uncontacted').map(value => ({ value, label: CONTACT_TOUCH_LABELS[value] }))} /><Select size="small" placeholder="跟进阶段" disabled={detail.permissions ? !detail.permissions.canChangeStage : false} allowClear value={stage} onChange={setStage} options={CRM_STAGES.map(item => ({ value: item.key, label: item.label }))} /></Space><Input.TextArea rows={3} value={note} onChange={event => setNote(event.target.value)} placeholder="跟进记录" /><Button type="primary" size="small" block loading={busy} disabled={!note.trim()} onClick={followup}>保存</Button></div>}<div><div className="text-[11px] font-semibold text-gray-600 mb-2 flex items-center gap-2">互动历史<Tag className="text-[9px] px-1 my-0">{history.length} 条</Tag></div>{history.length ? <Timeline items={history.slice(0, 20)} /> : <div className="text-xs text-gray-400 p-3 bg-gray-50 rounded text-center">暂无互动记录</div>}</div></div> },
+      { key: 'history', label: '往来记录', children: <div className="space-y-3">{(detail.supplementAvailable === false || !detail.mailAvailable) && <div className="text-xs text-gray-400">{detail.supplementAvailable === false ? '联网后加载往来记录' : '邮件往来暂未接入'}</div>}{analysisQuery && <div className="mail-analysis-block"><MailAnalysisEventPicker events={analysisMailEvents} value={analysisEventId} onChange={setAnalysisEventId} /><MailAnalysisPanel key={analysisEvent?.eventId} queryInput={analysisQuery} /></div>}{!isPermissionDenied(detail.canFollowup) && <div className="space-y-2"><Space wrap><Select size="small" value={method} onChange={setMethod} options={FOLLOWUP_METHODS.map(value => ({ value, label: FOLLOWUP_METHOD_LABELS[value] }))} /><Select size="small" placeholder="联系状态" allowClear value={contactStatus} disabled={method === 'note'} onChange={setContactStatus} options={CONTACT_TOUCH_STATUSES.filter(value => value !== 'uncontacted').map(value => ({ value, label: CONTACT_TOUCH_LABELS[value] }))} /><Select size="small" placeholder="跟进阶段" disabled={detail.permissions ? !detail.permissions.canChangeStage : false} allowClear value={stage} onChange={setStage} options={CRM_STAGES.map(item => ({ value: item.key, label: item.label }))} /></Space><Input.TextArea rows={3} value={note} onChange={event => setNote(event.target.value)} placeholder="跟进记录" /><Button type="primary" size="small" block loading={busy} disabled={!note.trim()} onClick={followup}>保存</Button></div>}<div><div className="text-[11px] font-semibold text-gray-600 mb-2 flex items-center gap-2">互动历史<Tag className="text-[9px] px-1 my-0">{history.length} 条</Tag></div>{history.length ? <Timeline items={history.slice(0, 20)} /> : <div className="text-xs text-gray-400 p-3 bg-gray-50 rounded text-center">暂无互动记录</div>}</div></div> },
     ].filter(item => COMPANY_BACKCHECK_UI_ENABLED || item.key !== 'company')} />}
     {sharing && reference && detail && <ContactSharingModal key={`${baseUrl}:${identity?.userId}:${reference.contactId}`} reference={reference} detail={detail} close={() => setSharing(false)} />}
     {ingressConflict && <LeadIngressConflictDrawer
@@ -565,7 +574,7 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
   </ContactDetailLayout>;
 }
 
-export function CenterContactDetail({ reference, onClose, variant = 'drawer' }: { reference: CenterContactRef | null; onClose: () => void; variant?: 'drawer' | 'board' }) {
+export function CenterContactDetail({ reference, onClose, variant = 'drawer', highlight = false }: { reference: CenterContactRef | null; onClose: () => void; variant?: 'drawer' | 'board'; highlight?: boolean }) {
   const [activeReference, setActiveReference] = useState<CenterContactRef | null>(reference);
   const [open, setOpen] = useState(!!reference);
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -581,10 +590,10 @@ export function CenterContactDetail({ reference, onClose, variant = 'drawer' }: 
     return () => { if (exitTimer.current) clearTimeout(exitTimer.current); };
   }, [reference?.customerId, reference?.contactId]);
   if (!activeReference) return null;
-  return <CenterContactDetailContent reference={activeReference} open={open} onClose={onClose} variant={variant} />;
+  return <CenterContactDetailContent reference={activeReference} open={open} onClose={onClose} variant={variant} highlight={highlight} />;
 }
 
-export function ContactMonitorDetail({ reference, onClose }: { reference: CenterContactRef | null; onClose: () => void }) {
+export function ContactMonitorDetail({ reference, onClose, highlight = false }: { reference: CenterContactRef | null; onClose: () => void; highlight?: boolean }) {
   const { identity, baseUrl } = useIdentity();
   const scope = JSON.stringify([baseUrl, identity?.userId, reference?.customerId, reference?.contactId]);
   const query = useQuery({
@@ -633,7 +642,7 @@ export function ContactMonitorDetail({ reference, onClose }: { reference: Center
   const contactName = contact ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.email || '联系人' : '联系人';
   const gradeCustomerId = contact?.customerId ?? reference?.customerId;
   const stage = contact ? CRM_STAGES.find(item => item.key === contact.stage)?.label ?? contact.stage : '';
-  return <ContactDetailLayout open={!!reference} onClose={onClose} destroyOnClose width="min(500px, calc(100vw - 16px))">
+  return <ContactDetailLayout open={!!reference} onClose={onClose} destroyOnClose width="min(500px, calc(100vw - 16px))" rootClassName={`customer-contact-detail-layer${highlight ? ' notification-target-highlight' : ''}`}>
     <div className="contact-monitor-detail" data-scope={scope}>
       <div className="contact-monitor-detail-header">
         <div className="contact-monitor-detail-title"><strong>{contactName}</strong><span>{contact?.email}</span></div>

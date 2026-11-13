@@ -7,6 +7,11 @@ import { migrateTagsValue } from "./tags-migrate";
 import { BASE_SCHEMA_SQL } from "./schema-sql";
 import { CENTER_SEND_AUTHORIZATION_DDL, CENTER_SEND_RECEIPT_DDL } from '../core/center-send-storage';
 import { MAIL_CLASSIFICATION_CHANGES_DDL } from '../core/mail-classification-storage';
+import { INBOX_LABEL_DDL } from '../core/inbox-label-storage';
+import { INBOX_ANALYSIS_DDL } from '../core/inbox-analysis-storage';
+import { MAIL_ANALYSIS_QUEUE_DDL } from '../core/mail-analysis-queue-storage';
+import { INBOX_TODO_DDL } from '../core/inbox-todo-storage';
+import { INBOX_SEEN_OUTBOX_DDL } from '../core/inbox-seen-outbox-storage';
 import { installSearchIndex, searchLatin } from "./search-index";
 import * as path from "path";
 import * as fs from "fs";
@@ -362,6 +367,21 @@ export function runMigrations(): void {
   });
   step('v0.39-center-send-receipts', () => raw.exec(CENTER_SEND_RECEIPT_DDL));
   step('v0.47-inbox-classification-changes',()=>raw.exec(MAIL_CLASSIFICATION_CHANGES_DDL));
+  step('v0.71-inbox-labels', () => raw.exec(INBOX_LABEL_DDL));
+  step('v0.71-inbox-label-operations', () => raw.exec(INBOX_LABEL_DDL));
+  step('v0.72-inbox-folders', () => {
+    const columns = tableCols('inbox_labels');
+    if (!columns.includes('source')) raw.exec("ALTER TABLE inbox_labels ADD COLUMN source TEXT NOT NULL DEFAULT 'user'");
+    if (!columns.includes('status')) raw.exec("ALTER TABLE inbox_labels ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+    raw.exec(INBOX_LABEL_DDL);
+  });
+  step('v0.72-inbox-mail-analyses', () => raw.exec(INBOX_ANALYSIS_DDL));
+  step('v0.72-mail-analysis-queue', () => raw.exec(MAIL_ANALYSIS_QUEUE_DDL));
+  step('v0.72-inbox-todo-states', () => raw.exec(INBOX_TODO_DDL));
+  step('v0.72-inbox-seen-outbox', () => raw.exec(INBOX_SEEN_OUTBOX_DDL));
+  step('v0.72-inbox-initial-2000', () => {
+    raw.prepare("DELETE FROM email_sync_state WHERE folder='inbox' AND (target_count < 2000 OR first_completed_at IS NULL)").run();
+  });
   step('v0.48-center-send-authorizations', () => raw.exec(CENTER_SEND_AUTHORIZATION_DDL));
   step("v0.9-search-fts5", () => raw.transaction(() => installSearchIndex(raw))());
   Log.info("db.migrations", `${statements.length} 条建表语句已执行`);

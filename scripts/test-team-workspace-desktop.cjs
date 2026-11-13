@@ -12,7 +12,9 @@ if (!runtime) throw new Error('CODEX_NODE_PACKAGES must point to the bundled pac
 const { _electron } = require(path.join(runtime, 'playwright'));
 const root = process.cwd();
 const out = path.join(root, '.work', 'team-workspace-desktop');
+const designs = process.env.PROSPECTOR_SMOKE_OUTPUT_DIR || path.join(root, 'docs', 'designs');
 mkdirSync(out, { recursive: true });
+mkdirSync(designs, { recursive: true });
 const bundle = path.join(out, 'main.cjs');
 buildSync({ entryPoints: ['tests/fixtures/offline-crm-desktop.ts'], outfile: bundle, bundle: true, platform: 'node', format: 'cjs', packages: 'external' });
 
@@ -42,10 +44,10 @@ function teamContext(role) {
   const operationsUnitId = randomUUID();
   const teamId = randomUUID();
   const adminTeams = role === 'operations' ? [
-    { teamId: operationsUnitId, name: 'East Operations', unitType: 'operations', organizationKind: 'operations_group', parentTeamId: companyId, parentTeamName: 'Milogin Logistics', depth: 0, childCount: 2, leaderName: 'Operations One', memberCount: 2, pendingInvitationCount: 0, createdAt: now },
-    { teamId, name: 'East Sales Team', unitType: 'sales_team', organizationKind: 'sales_team', parentTeamId: operationsUnitId, parentTeamName: 'East Operations', depth: 1, childCount: 0, leaderName: 'Operations One', memberCount: 2, pendingInvitationCount: 0, createdAt: now },
-    { teamId: randomUUID(), name: 'South Sales Team', unitType: 'sales_team', organizationKind: 'sales_team', parentTeamId: operationsUnitId, parentTeamName: 'East Operations', depth: 1, childCount: 0, leaderName: 'Liu Chen', memberCount: 4, pendingInvitationCount: 1, createdAt: now },
-    { teamId: randomUUID(), name: 'Key Accounts', unitType: 'sales_team', organizationKind: 'sales_team', parentTeamId: operationsUnitId, parentTeamName: 'East Operations', depth: 1, childCount: 0, leaderName: 'Wang Yue', memberCount: 3, pendingInvitationCount: 0, createdAt: now },
+    { teamId: operationsUnitId, name: 'East Operations', unitType: 'operations', organizationKind: 'operations_group', parentTeamId: companyId, parentTeamName: 'Milogin Logistics', depth: 0, childCount: 1, leaderName: 'Operations One', memberCount: 2, pendingInvitationCount: 0, createdAt: now },
+    { teamId, name: 'East Sales Team', unitType: 'sales_team', organizationKind: 'sales_team', parentTeamId: companyId, parentTeamName: 'Milogin Logistics', assignmentSourceTeamIds: [operationsUnitId], assignedLeadCount: 6, depth: 0, childCount: 0, leaderName: 'Operations One', memberCount: 2, pendingInvitationCount: 0, createdAt: now },
+    { teamId: randomUUID(), name: 'South Sales Team', unitType: 'sales_team', organizationKind: 'sales_team', parentTeamId: companyId, parentTeamName: 'Milogin Logistics', assignmentSourceTeamIds: [], assignedLeadCount: 0, depth: 0, childCount: 0, leaderName: 'Liu Chen', memberCount: 4, pendingInvitationCount: 1, createdAt: now },
+    { teamId: randomUUID(), name: 'Key Accounts', unitType: 'sales_team', organizationKind: 'sales_team', parentTeamId: companyId, parentTeamName: 'Milogin Logistics', assignmentSourceTeamIds: [], assignedLeadCount: 0, depth: 0, childCount: 0, leaderName: 'Wang Yue', memberCount: 3, pendingInvitationCount: 0, createdAt: now },
   ] : [];
   return {
     team: { teamId, name: 'East Sales Team', unitType: 'sales_team', memberCount: 2, parentTeamId: operationsUnitId, parentTeamName: 'East Operations', leaderUserId: operationsUserId, leaderName: 'Operations One', version: 1, createdAt: now, members: [leader, member], memberGroups: [] },
@@ -63,7 +65,12 @@ function monitoringDetail(userId) {
   const member = currentTeamContext.team.members.find(item => item.userId === userId) || currentTeamContext.team.members[0];
   const counts = { contacts: 3, uncontacted: 0, contacted: 1, replied: 1, bounced: 1, autoreply: 0, openActions: 2, overdueActions: 1, importantReplies: 1, openAttention: 1, pendingAssignments: 0, pendingTransfers: 0 };
   const rates = { contactRate: 1, replyRate: 0.33, bounceRate: 0.33, actionRate: 0.67 };
-  return { scope: 'operations', generatedAt: now, member: { userId: member.userId, displayName: member.displayName, email: member.email, teamId: currentTeamContext.team.teamId, teamName: currentTeamContext.team.name, organizationKind: 'sales_team', counts, rates, stages: { cold: 0, reaching: 1, quoting: 1, trial: 1, cooperating: 0, lost: 0, other: 0 }, lastActivityAt: now, latestImportantReplyAt: now }, recentActions: [], attention: [], recentMail: [] };
+  return {
+    scope: 'operations', generatedAt: now, member: { userId: member.userId, displayName: member.displayName, email: member.email, teamId: currentTeamContext.team.teamId, teamName: currentTeamContext.team.name, organizationKind: 'sales_team', counts, rates, stages: { cold: 0, reaching: 1, quoting: 1, trial: 1, cooperating: 0, lost: 0, other: 0 }, lastActivityAt: now, latestImportantReplyAt: now },
+    recentActions: [{ actionId: randomUUID(), kind: 'task', title: '回复 Santos 报价', customerId: contact.customerId, customerName: contact.companyName, contactId: contact.contactId, contactName: 'Ana Lima', dueAt: now, occurredAt: now, priority: 'important' }],
+    attention: [{ itemId: randomUUID(), memberUserId: member.userId, memberName: member.displayName, customerId: contact.customerId, customerName: contact.companyName, contactId: contact.contactId, contactName: 'Ana Lima', reason: '客户要求今天确认舱位', priority: 'urgent', status: 'open', note: null, updatedAt: now }],
+    recentMail: [{ eventId: randomUUID(), contactId: contact.contactId, customerId: contact.customerId, subject: 'Re: Santos rate request', kind: 'reply', direction: 'inbound', occurredAt: now, analysisId: null, classification: null, relevance: null, summary: '客户确认 2x40HQ 报价，等待舱位确认。', signals: [], intent: null, requiresAction: true, nextAction: null, priority: 'important', confidence: null, source: null, analyzerVersion: null }],
+  };
 }
 
 function grant() {
@@ -94,7 +101,7 @@ async function startCenter() {
       const team = selected && selected.teamId !== baseTeam.teamId
         ? { ...baseTeam, teamId: selected.teamId, name: selected.name, unitType: selected.unitType, parentTeamId: selected.parentTeamId, parentTeamName: selected.parentTeamName, members: baseTeam.members }
         : baseTeam;
-      result = ok({ team, outgoingInvitations: [], children: currentTeamContext.adminTeams.filter(item => item.parentTeamId === team.teamId) });
+      result = ok({ team, outgoingInvitations: [], children: currentTeamContext.adminTeams.filter(item => (item.assignmentSourceTeamIds || []).includes(team.teamId)) });
     }
     else if (request.method === 'GET' && url.pathname.startsWith('/api/crm/team-monitoring/members/')) { counters.teamMonitoring++; result = ok(monitoringDetail(decodeURIComponent(url.pathname.split('/').pop()))); }
     else if (request.method === 'GET' && url.pathname === '/api/crm/team-invite-candidates') { counters.candidates++; result = ok({ items: [{ userId: randomUUID(), displayName: 'Wang Yue', email: 'wang.yue@example.invalid' }], total: 1 }); }
@@ -135,7 +142,7 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
     await page.waitForTimeout(200);
     const wide = await page.evaluate(() => { const root = document.querySelector('.team-workspace-page'); return { clientWidth: root?.clientWidth, scrollWidth: root?.scrollWidth }; });
     assert.equal(wide.scrollWidth, wide.clientWidth);
-    if (initialPage === 'workbench') await page.screenshot({ path: path.join(root, 'docs', 'designs', `${name}-workbench-1440.png`) });
+    if (initialPage === 'workbench') await page.screenshot({ path: path.join(designs, `${name}-workbench-1440.png`) });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1040, 720));
     await page.waitForTimeout(200);
     const narrow = await page.evaluate(() => { const root = document.querySelector('.team-workspace-page'); return { clientWidth: root?.clientWidth, scrollWidth: root?.scrollWidth }; });
@@ -144,7 +151,7 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
     await page.waitForTimeout(200);
     const compact = await page.evaluate(() => { const root = document.querySelector('.team-workspace-page'); return { clientWidth: root?.clientWidth, scrollWidth: root?.scrollWidth }; });
     assert.equal(compact.scrollWidth, compact.clientWidth);
-    await page.screenshot({ path: path.join(root, 'docs', 'designs', `${name}-824.png`) });
+    await page.screenshot({ path: path.join(designs, `${name}-824.png`) });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1440, 1000));
     await page.waitForTimeout(200);
     await checks(page, app);
@@ -153,13 +160,13 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
       return { name, wide, narrow, compact, pageErrors };
     }
     if (await page.locator('.personal-action-row').count() === 0) {
-      await page.getByRole('button', { name: '工作台' }).click();
+      await page.getByRole('button', { name: '个人' }).click();
     }
     const row = page.locator('.personal-action-row').first();
     await row.waitFor();
     await row.click();
     await page.locator('.contact-detail-tabs').waitFor();
-    await page.screenshot({ path: path.join(root, 'docs', 'designs', `${name}-customer-detail-1440.png`) });
+    await page.screenshot({ path: path.join(designs, `${name}-customer-detail-1440.png`) });
     assert.ok(counters.details >= 1);
     assert.deepEqual(pageErrors, []);
     return { name, wide, narrow, compact, pageErrors };
@@ -179,7 +186,7 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
     const before = { ...counters };
     currentTeamContext = teamContext('sales');
     const sales = await runScenario('prospector-team-sales', { userId: salesUserId, displayName: 'Sales One', email: 'sales@example.invalid', emailVerified: true, identityAdmin: false, crmRoles: ['sales'], crmCapabilities: ['leads.claim', 'leads.develop'] }, async page => {
-      assert.deepEqual(await page.locator('.team-section-tabs button').allTextContents(), ['工作台', '我的团队', '绩效']);
+      assert.deepEqual(await page.locator('.team-section-tabs button').allTextContents(), ['个人', '我的团队', '团队管理']);
       assert.equal(await page.locator('.personal-task-panel').count(), 1);
     });
     const salesTasks = counters.tasks - before.tasks;
@@ -189,52 +196,50 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
     currentTeamContext = teamContext('operations');
     const beforeOps = { ...counters };
     const operations = await runScenario('prospector-team-operations', currentIdentity, async (page, app) => {
-      assert.deepEqual(await page.locator('.team-section-tabs button').allTextContents(), ['工作台', '我的团队', '绩效', '监控', '团队管理']);
+      assert.deepEqual(await page.locator('.team-section-tabs button').allTextContents(), ['个人', '我的团队', '监控', '团队管理', '绩效']);
       assert.equal(await page.locator('.personal-task-panel').count(), 0);
-      await page.getByRole('button', { name: '我的团队' }).click();
-      await page.locator('.team-info-view').waitFor();
-      assert.match(await page.locator('.team-info-view').innerText(), /East Sales Team/);
-      await page.getByRole('button', { name: '邀请成员' }).click();
-      await page.locator('.team-candidate-row').first().waitFor();
-      assert.ok(counters.candidates >= 1);
-      await page.getByRole('button', { name: '团队管理' }).click();
-      await page.locator('.team-admin-view').waitFor();
       await page.locator('.team-admin-workspace.is-directory').waitFor();
       assert.equal(await page.locator('.team-admin-canvas-viewport').count(), 0);
       assert.match(await page.locator('.team-admin-stat-grid').innerText(), /成员席位/);
-      const teamSearch = page.getByRole('textbox', { name: '搜索团队或负责人' });
+      const teamSearch = page.getByRole('textbox', { name: '搜索团队、负责人或成员' });
       await teamSearch.fill('Key Accounts');
       assert.equal(await page.locator('.team-admin-tree-row').count(), 1);
       await teamSearch.fill('');
-      await page.screenshot({ path: path.join(root, 'docs', 'designs', 'prospector-team-operations-admin-1440.png') });
+      await page.screenshot({ path: path.join(designs, 'prospector-team-operations-admin-1440.png') });
       await page.locator('.team-admin-tree-row').first().click();
       await page.locator('.team-admin-team-head').waitFor();
       assert.ok(counters.teamDetails >= 1);
-      await page.screenshot({ path: path.join(root, 'docs', 'designs', 'prospector-team-operations-admin-detail-1440.png') });
+      await page.screenshot({ path: path.join(designs, 'prospector-team-operations-admin-detail-1440.png') });
+      const memberRow = page.locator('.team-admin-member-tree-row').first();
+      await memberRow.waitFor();
+      await memberRow.click();
+      await page.locator('.team-collaboration-log').waitFor();
+      assert.match(await page.locator('.team-collaboration-log').innerText(), /暂无协作动态/);
+      assert.doesNotMatch(await page.locator('.team-admin-overview-aside').innerText(), /触达率|回复率|最近活动|开放动作|关注项/);
+      assert.equal(await page.locator('.team-collaboration-tools button:disabled').count(), 4);
+      assert.equal(await page.locator('.team-collaboration-composer textarea:disabled').count(), 1);
+      await page.screenshot({ path: path.join(designs, 'prospector-team-operations-collaboration-1440.png') });
+      await page.locator('.team-admin-tree-row').first().click();
+      await page.locator('.team-admin-team-head').waitFor();
       await page.getByRole('button', { name: '返回团队树' }).click();
-      await page.getByRole('button', { name: '组织画布' }).click();
+      await page.getByRole('button', { name: '团队画布' }).click();
       const canvas = page.locator('.team-admin-canvas-viewport');
       await canvas.waitFor();
-      assert.equal(await page.locator('.team-admin-org-node').count(), 6);
-      assert.equal(await page.locator('.team-admin-org-node.is-superadmin').count(), 1);
-      assert.equal(await page.locator('.team-admin-org-node.is-company').count(), 1);
-      await page.screenshot({ path: path.join(root, 'docs', 'designs', 'prospector-team-operations-admin-canvas-1440.png') });
+      assert.equal(await page.locator('.team-admin-org-node').count(), 4);
+      assert.equal(await page.locator('.team-admin-org-node.is-superadmin').count(), 0);
+      assert.equal(await page.locator('.team-admin-org-node.is-company').count(), 0);
+      await page.screenshot({ path: path.join(designs, 'prospector-team-operations-admin-canvas-1440.png') });
       await page.locator('.team-admin-org-node-main').filter({ hasText: 'East Operations' }).click();
       const expandedMember = page.locator('.team-admin-org-node.is-expanded .team-admin-org-member-row').first();
       await expandedMember.waitFor();
-      await page.screenshot({ path: path.join(root, 'docs', 'designs', 'prospector-team-operations-admin-canvas-expanded-1440.png') });
-      await expandedMember.click();
-      await page.locator('.team-monitoring-member-detail').waitFor();
-      assert.ok(counters.teamMonitoring >= 1);
-      await page.waitForTimeout(400);
-      const drawerRect = await page.locator('.team-canvas-member-drawer').boundingBox();
-      assert.ok(drawerRect && drawerRect.width >= 500 && drawerRect.x < 1200, `member drawer layout ${JSON.stringify(drawerRect)}`);
-      await page.screenshot({ path: path.join(root, 'docs', 'designs', 'prospector-team-operations-admin-member-1440.png') });
-      await page.getByRole('button', { name: '关闭成员详情' }).click();
+      await page.screenshot({ path: path.join(designs, 'prospector-team-operations-admin-canvas-expanded-1440.png') });
+      assert.equal(await expandedMember.evaluate(node => node.tagName), 'DIV');
+      assert.equal(await page.locator('.team-monitoring-member-detail').count(), 0);
+      await page.screenshot({ path: path.join(designs, 'prospector-team-operations-admin-member-1440.png') });
       await page.getByRole('button', { name: '收起 East Operations' }).click();
       assert.equal(await page.locator('.team-admin-org-node').count(), 3);
       await page.getByRole('button', { name: '展开 East Operations' }).click();
-      assert.equal(await page.locator('.team-admin-org-node').count(), 6);
+      assert.equal(await page.locator('.team-admin-org-node').count(), 4);
       const canvasBox = await canvas.boundingBox();
       assert.ok(canvasBox);
       const zoomBefore = await page.locator('.team-admin-canvas-actions span').innerText();
@@ -255,10 +260,16 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
       assert.equal(adminNarrow.scrollWidth, adminNarrow.clientWidth);
       await page.getByRole('button', { name: '适配视图' }).click();
       await page.waitForTimeout(120);
-      await page.screenshot({ path: path.join(root, 'docs', 'designs', 'prospector-team-operations-admin-canvas-1040.png') });
+      await page.screenshot({ path: path.join(designs, 'prospector-team-operations-admin-canvas-1040.png') });
       await page.getByRole('button', { name: '团队列表' }).click();
       await page.locator('.team-admin-workspace.is-directory').waitFor();
-      await page.screenshot({ path: path.join(root, 'docs', 'designs', 'prospector-team-operations-admin-1040.png') });
+      await page.locator('.team-admin-tree-row').first().click();
+      await page.locator('.team-admin-team-head').waitFor();
+      await page.locator('.team-admin-member-tree-row').first().click();
+      await page.locator('.team-collaboration-log').waitFor();
+      const collaborationNarrow = await page.evaluate(() => { const root = document.querySelector('.team-admin-view'); return { clientWidth: root?.clientWidth, scrollWidth: root?.scrollWidth }; });
+      assert.equal(collaborationNarrow.scrollWidth, collaborationNarrow.clientWidth);
+      await page.screenshot({ path: path.join(designs, 'prospector-team-operations-admin-1040.png') });
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1440, 1000));
       await page.waitForTimeout(200);
     }, { initialPage: 'management' });
@@ -280,7 +291,7 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
       await page.waitForTimeout(200);
       const compact = await page.evaluate(() => { const root = document.querySelector('.team-workspace-page'); return { clientWidth: root?.clientWidth, scrollWidth: root?.scrollWidth }; });
       assert.equal(compact.scrollWidth, compact.clientWidth);
-      await page.screenshot({ path: path.join(root, 'docs', 'designs', 'prospector-team-invitation-live-824.png') });
+      await page.screenshot({ path: path.join(designs, 'prospector-team-invitation-live-824.png') });
     }, { initialPage: 'setup' });
     console.log(JSON.stringify({ ok: true, counters, scenarios: [sales, operations, invitationScenario] }, null, 2));
   } catch (error) {

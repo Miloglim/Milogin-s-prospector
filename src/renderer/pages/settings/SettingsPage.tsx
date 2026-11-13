@@ -850,7 +850,7 @@ const ENDPOINT_PRESETS = [
   { label: "Agnes（云端 OpenAI 兼容）", baseUrl: "https://apihub.agnes-ai.com/v1", model: "agnes-2.5-pro-beta", wireApi: "chat_completions" as const },
   { label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-v4-flash", wireApi: "chat_completions" as const },
   { label: "本地 Ollama", baseUrl: "http://localhost:11434/v1", model: "qwen3:8b", wireApi: "chat_completions" as const },
-  { label: "公司内部中转", baseUrl: "", model: "", wireApi: "chat_completions" as const },
+  { label: "公司内部中转", baseUrl: "https://sub2api.iyunquna.com/v1", model: "gpt-5.6-luna", wireApi: "responses" as const },
 ];
 
 function ProviderCard() {

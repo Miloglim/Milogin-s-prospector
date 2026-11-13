@@ -7,7 +7,11 @@ import { body, send, type BrowserHandler } from './http';
 export function createTaskHandler(service:TaskService):BrowserHandler { return async(request,response)=>{
   const url=new URL(request.url??'/','http://localhost');
   const token=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.authorization??'')?.[1]??'';
-  if(request.method==='GET' && url.pathname===TASK_ROUTES.tasks){send(response,await service.list(token,{limit:Number(url.searchParams.get('limit')??TASK_LIMITS.page),offset:Number(url.searchParams.get('offset')??0),...(url.searchParams.has('customerId')?{customerId:url.searchParams.get('customerId')!}:{}),...(url.searchParams.has('status')?{status:url.searchParams.get('status') as TaskStatus}:{})}));return;}
+  if(request.method==='GET' && url.pathname===TASK_ROUTES.tasks){
+    const mine=url.searchParams.get('mine');
+    if(mine!==null&&mine!=='true'&&mine!=='false'){send(response,failure('INVALID_INPUT','任务列表参数无效'));return;}
+    send(response,await service.list(token,{limit:Number(url.searchParams.get('limit')??TASK_LIMITS.page),offset:Number(url.searchParams.get('offset')??0),...(mine===null?{}:{mine:mine==='true'}),...(url.searchParams.has('customerId')?{customerId:url.searchParams.get('customerId')!}:{}),...(url.searchParams.has('status')?{status:url.searchParams.get('status') as TaskStatus}:{})}));return;
+  }
   const parts=url.pathname.slice(TASK_ROUTES.tasks.length+1).split('/');
   if(request.method==='GET' && url.pathname.startsWith(`${TASK_ROUTES.tasks}/`) && parts.length===1){send(response,await service.detail(token,parts[0]!));return;}
   if(request.method==='POST') {

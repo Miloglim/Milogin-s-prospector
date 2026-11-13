@@ -2,10 +2,10 @@ import type { Database } from 'better-sqlite3';
 import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { CenterContact, CenterContactPage, CenterContactQuery } from '../../../server/core/center-contacts';
+import type { CenterContact, CenterContactGroupPage, CenterContactGroupQuery, CenterContactPage, CenterContactQuery } from '../../../server/core/center-contacts';
 import type { CenterContactRef, CenterContactDetail } from '../../../server/core/contact-assignments';
 import { CONTACT_COMMAND_PREFIX, CONTACT_COMMAND_RETENTION, contactCommandFingerprint, contactCommandAllowed, contactAccessFingerprint, type ContactCommand, type ContactCommandReceipt, type ContactCommandAction, type ContactCommandInput, type ContactCommandDuplicate } from '../core/contact-commands';
-import { contactDetailSnapshot, contactMirrorPage } from '../core/contact-mirror';
+import { contactDetailSnapshot, contactMirrorGroups, contactMirrorPage } from '../core/contact-mirror';
 import { accountProfileRoot } from './desktop-local-scope.adapter';
 import { CONTACT_MIRROR_LIMITS, normalizedContactEmail, type QueuedContactMailEvent, type ContactMirrorContext, type ContactMirrorStore, type ContactMailLink, type ContactMailLinkInput } from '../core/contact-mirror';
 import { Log } from '../logger';
@@ -73,6 +73,12 @@ const GROUP_KEY_SQL = {
   country: `COALESCE(NULLIF(${contactValue('country')},''),'unset')`,
   company: `COALESCE(CAST(${contactValue('companyId')} AS TEXT),'unset')`,
   clientType: `COALESCE(NULLIF(${contactValue('clientType')},''),'unset')`,
+} as const;
+const GROUP_LABEL_SQL = {
+  batch: `CASE WHEN ${GROUP_KEY_SQL.batch}='unset' THEN '未标记' ELSE ${GROUP_KEY_SQL.batch} END`,
+  country: `CASE WHEN ${GROUP_KEY_SQL.country}='unset' THEN '未标记' ELSE ${GROUP_KEY_SQL.country} END`,
+  company: `COALESCE(NULLIF(${contactValue('companyName')},''),'未命名公司')`,
+  clientType: `CASE ${GROUP_KEY_SQL.clientType} WHEN 'agent' THEN '代理' WHEN 'direct' THEN '直客' ELSE '未设置' END`,
 } as const;
 const PAGE_INDEXES = `
 CREATE INDEX IF NOT EXISTS crm_contact_mirror_page ON crm_contact_mirror(${UPDATED_ORDER});
@@ -331,6 +337,53 @@ export class SqliteContactMirrorStore implements ContactMirrorStore {
       const total = (db.prepare(`SELECT COUNT(*) AS total FROM ${source}${where}`).get(...parameters) as { total: number }).total;
       const rows = db.prepare(`SELECT snapshot FROM ${source}${where} ORDER BY ${query.followupOnly ? FOLLOWUP_ORDER : UPDATED_ORDER} LIMIT ? OFFSET ?`).all(...parameters, query.limit, query.offset) as { snapshot: string }[];
       return { items: rows.map(row => JSON.parse(row.snapshot) as CenterContact), total };
+    })();
+  }
+
+  groups(ctx: ContactMirrorContext, query: CenterContactGroupQuery): CenterContactGroupPage {
+    const db = this.database(ctx);
+    if (typeof db.function !== 'function') return contactMirrorGroups(this.contacts(ctx), query, ctx.userId);
+    const conditions: string[] = [], parameters: (string | number)[] = [];
+    if (query.scope === 'personal') {
+      conditions.push(`${contactValue('origin')}='personal' AND ${contactValue('ownerUserId')}=?`); parameters.push(ctx.userId);
+    }
+    if (query.scope === 'assigned') {
+      conditions.push(`((${contactValue('origin')}='operations' AND ${contactValue('ownerUserId')}=?) OR ${contactValue('isShared')}=1)`); parameters.push(ctx.userId);
+    }
+    const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+    const search = query.search.trim().toLowerCase();
+    const memberSearch = [...SEARCH_FIELDS, 'phone' as const].map(field => `instr(${searchValue(field)},?)>0`).join(' OR ');
+    const key = GROUP_KEY_SQL[query.dimension], label = GROUP_LABEL_SQL[query.dimension];
+    const memberParameters = Array(SEARCH_FIELDS.length + 1).fill(search);
+    return db.transaction(() => {
+      const rows = db.prepare(`WITH grouped AS (
+        SELECT ${key} AS key,${label} AS label,COUNT(*) AS count,
+          COUNT(DISTINCT ${contactValue('companyId')}) AS company_count,
+          COUNT(DISTINCT NULLIF(${contactValue('country')},'')) AS country_count,
+          SUM(CASE WHEN ${FOLLOWUP_PREDICATE} THEN 1 ELSE 0 END) AS touched_count,
+          MAX(${contactValue('createdAt')}) AS latest_imported_at,MAX(${contactValue('updatedAt')}) AS latest_updated_at,
+          MIN(NULLIF(${contactValue('companyName')},'')) AS company,
+          MIN(NULLIF(${contactValue('country')},'')) AS country,
+          MIN(NULLIF(${contactValue('sourceLevel1')},'')) AS source_level1,
+          MIN(NULLIF(${contactValue('clientType')},'')) AS client_type,
+          MAX(CASE WHEN ${memberSearch} THEN 1 ELSE 0 END) AS member_match
+        FROM crm_contact_mirror${where} GROUP BY 1,2
+      ),filtered AS (
+        SELECT * FROM grouped WHERE ?='' OR instr(crm_contact_lower(label),?)>0 OR member_match=1
+      ) SELECT *,COUNT(*) OVER() AS total FROM filtered ORDER BY count DESC,label LIMIT ? OFFSET ?`).all(
+        ...memberParameters, ...parameters, search, search, query.limit, query.offset,
+      ) as Array<{ key:string;label:string;count:number;company_count:number;country_count:number;touched_count:number;latest_imported_at:string|null;latest_updated_at:string|null;company:string|null;country:string|null;source_level1:string|null;client_type:string|null;total:number }>;
+      return {
+        items: rows.map(row => ({
+          key: String(row.key), label: String(row.label), count: Number(row.count),
+          companyCount: Number(row.company_count), countryCount: Number(row.country_count), touchedCount: Number(row.touched_count),
+          companies: row.company ? [row.company] : [], countries: row.country ? [row.country] : [],
+          sourceLevel1: row.source_level1 ? [row.source_level1] : [],
+          clientTypes: row.client_type ? [row.client_type === 'agent' ? '代理' : row.client_type === 'direct' ? '直客' : row.client_type] : [],
+          latestImportedAt: row.latest_imported_at, latestUpdatedAt: row.latest_updated_at,
+        })),
+        total: Number(rows[0]?.total ?? 0),
+      };
     })();
   }
 

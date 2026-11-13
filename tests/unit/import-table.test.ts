@@ -1,15 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import * as XLSX from 'xlsx';
-import { parseImportTable, parseWorkbookImport } from '../../src/main/adapters/import-table.adapter';
+import { isValidBase64, parseImportTable, parseWorkbookImport } from '../../src/main/adapters/import-table.adapter';
 
 const text = '公司名称,邮箱\n中文公司,a@example.invalid\n';
 describe('center import file preview', () => {
+  it('validates multi-megabyte base64 uploads without exhausting the call stack', () => {
+    const encoded = Buffer.alloc(8 * 1024 * 1024, 0x61).toString('base64');
+    expect(isValidBase64(encoded)).toBe(true);
+    for (const invalid of ['A===', '====', 'abc!', 'abc', '中文']) expect(isValidBase64(invalid)).toBe(false);
+  });
   it('uses tab separators for pasted Excel cells containing commas and quoted newlines', () => {
     const result = parseImportTable(Buffer.from('公司\t邮箱\t备注\n"Synthetic, Company"\tlead@example.invalid\t"Line one\nLine two"\n'), 'paste.tsv');
     expect(result).toMatchObject({ ok: true, data: { headers: ['公司', '邮箱', '备注'], rows: [{ 公司: 'Synthetic, Company', 邮箱: 'lead@example.invalid', 备注: 'Line one\nLine two' }] } });
   });
-  it('enforces raw byte size before parsing a table', () => {
-    expect(parseImportTable(Buffer.alloc(10485761), 'too-large.csv')).toMatchObject({ ok: false, error: { code: 'PAYLOAD_TOO_LARGE' } });
+  it('parses a file above the retired 10 MiB byte threshold', () => {
+    const result = parseImportTable(Buffer.from('公司,邮箱,备注\nAcme,a@example.invalid,' + 'x'.repeat(10 * 1024 * 1024)), 'large.csv');
+    expect(result).toMatchObject({ ok: true, data: { headers: ['公司', '邮箱', '备注'] } });
+  });
+  it('ignores a sparse worksheet range, preserves data without a header, and drops isolated cells beyond the real header width', () => {
+    const book = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([[], ['公司名称', '', '邮箱'], ['Acme', 'ignored', 'a@example.invalid']]);
+    sheet.XFC15 = { t: 's', v: 'x' }; sheet['!ref'] = 'A1:XFC15';
+    XLSX.utils.book_append_sheet(book, sheet, '客户');
+    const bytes = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' });
+    expect(parseImportTable(bytes, 'sparse.xlsx')).toMatchObject({ ok: true, data: { headers: ['公司名称', '未命名列2', '邮箱'], rows: [{ 公司名称: 'Acme', 未命名列2: 'ignored', 邮箱: 'a@example.invalid' }], rowNumbers: [3] } });
+    expect(parseWorkbookImport(bytes, 'sparse.xlsx')).toMatchObject({ ok: true, data: { headers: ['公司名称', '未命名列2', '邮箱'], sheets: [{ headers: ['公司名称', '未命名列2', '邮箱'], rowNumbers: [3] }] } });
   });
   it('previews a seven-sheet 16740-row workbook with customer2461/contact8760',()=>{
     const book=XLSX.utils.book_new();
@@ -56,7 +71,7 @@ describe('center import file preview', () => {
     expect(parseImportTable(Buffer.from([0x81]), 'leads.csv').ok).toBe(false);
   });
   it('rejects over-limit spreadsheets without silently returning a truncated preview', () => {
-    const input = Buffer.from('公司,邮箱\n' + 'Test,a@example.invalid\n'.repeat(10001));
+    const input = Buffer.from('公司,邮箱\n' + 'Test,a@example.invalid\n'.repeat(100001));
     expect(parseImportTable(input, 'leads.csv')).toMatchObject({ ok: false, error: { code: 'PAYLOAD_TOO_LARGE' } });
   });
   it('reads GB18030 CSV using strict decoding', () => {

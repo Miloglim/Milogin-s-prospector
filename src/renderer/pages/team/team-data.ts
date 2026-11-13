@@ -19,6 +19,7 @@ import {
   type TeamMemberGroupDeleteInput,
   type TeamMemberGroupInput,
   type TeamMoveInput,
+  type TeamMonitoringMemberDetail,
   type TeamUnitType,
 } from '../../../shared/online-crm';
 import type { TeamContactScope } from '../../../shared/team-workspace';
@@ -76,22 +77,42 @@ export function useTeamDetail(teamId: string | null, enabled = true) {
   });
 }
 
-export function useTeamCandidates(search: string, enabled: boolean, role: 'member' | 'leader' = 'member', unitType: TeamUnitType = 'sales_team') {
+export function useTeamMonitoringMember(userId: string | null, enabled = true, limit = 10) {
   const { identity, baseUrl, status } = useIdentity();
   return useQuery({
-    queryKey: ['team-candidates', baseUrl, identity?.userId, permissionScope(identity), role, unitType, search],
+    queryKey: ['team-monitoring-member', baseUrl, identity?.userId, permissionScope(identity), userId, limit],
+    enabled: enabled && !!userId && !!identity && status === 'authenticated',
+    queryFn: async (): Promise<Result<TeamMonitoringMemberDetail>> => userId
+      ? invoke<TeamMonitoringMemberDetail>(ONLINE_CHANNELS.TEAM_MONITORING_MEMBER, userId, limit, 0)
+      : { ok: false, error: { code: 'INVALID_INPUT', message: '成员编号无效' } },
+  });
+}
+
+export function useTeamCandidates(search: string, enabled: boolean, role: 'member' | 'leader' = 'member', unitType: TeamUnitType = 'sales_team', purpose: 'invite' | 'create' = 'invite') {
+  const { identity, baseUrl, status } = useIdentity();
+  return useQuery({
+    queryKey: ['team-candidates', baseUrl, identity?.userId, permissionScope(identity), role, unitType, purpose, search],
     enabled: !!identity && status === 'authenticated' && enabled,
-    queryFn: () => invoke<TeamMemberCandidatePage>(ONLINE_CHANNELS.TEAM_CANDIDATES, { search, limit: 50, offset: 0, role, unitType }),
+    queryFn: () => invoke<TeamMemberCandidatePage>(ONLINE_CHANNELS.TEAM_CANDIDATES, { search, limit: 50, offset: 0, role, unitType, ...(purpose === 'create' ? { purpose } : {}) }),
   });
 }
 
 export function useTeamOpenTasks(enabled = true, limit = TEAM_TASK_PAGE_SIZE) {
   const { identity, baseUrl, status } = useIdentity();
   const active = !!identity && ['authenticated', 'offline'].includes(status);
+  const queryFn = async (): Promise<Result<TaskPage>> => {
+    const mine = await invoke<TaskPage>(ONLINE_CHANNELS.TASK_LIST, { status: 'open', mine: true, limit, offset: 0 });
+    if (mine.ok || mine.error.code !== 'INVALID_INPUT') return mine;
+    // 兼容尚未加载 mine 参数的中心；新版中心不会走这条降级路径。
+    const legacy = await invoke<TaskPage>(ONLINE_CHANNELS.TASK_LIST, { status: 'open', limit: 100, offset: 0 });
+    if (!legacy.ok) return legacy;
+    const items = legacy.data.items.filter(task => task.responsibleUserId === identity?.userId);
+    return { ok: true, data: { items: items.slice(0, limit), total: items.length } };
+  };
   return useQuery({
-    queryKey: ['team-open-tasks', baseUrl, identity?.userId, permissionScope(identity), limit],
+    queryKey: ['team-open-tasks', baseUrl, identity?.userId, permissionScope(identity), 'mine', limit],
     enabled: active && enabled,
-    queryFn: () => invoke<TaskPage>(ONLINE_CHANNELS.TASK_LIST, { status: 'open', limit, offset: 0 }),
+    queryFn,
   });
 }
 

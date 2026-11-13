@@ -20,7 +20,7 @@ export const CONTACT_ASSIGNMENT_ROUTES = {
   monitor: '/api/crm/contact-monitor',
   contact: '/api/crm/contacts',
 } as const;
-export const CONTACT_ASSIGNMENT_LIMITS = { batch: 200, page: 50, pageMax: 100, notify: 20, text: 500, note: 20000, key: 128, preferences: 10, preferenceText: 200 } as const;
+export const CONTACT_ASSIGNMENT_LIMITS = { batch: 200, page: 50, pageMax: 200, notify: 20, text: 500, note: 20000, key: 128, preferences: 10, preferenceText: 200 } as const;
 export const CONTACT_ASSIGNMENT_EVENTS = {
   requested: 'crm.contact.assignment.requested',
   accepted: 'crm.contact.assignment.accepted',
@@ -56,7 +56,7 @@ export interface ContactAssignmentGroup {
   canAcceptAll: boolean; canRejectAll: boolean; canCancelAll: boolean;
 }
 export interface ContactAssignmentGroupPage { items: ContactAssignmentGroup[]; total: number; }
-export interface ContactAssignmentCreate { contacts: Array<{ contactId: number; customerId: string; expectedVersion: number }>; targetUserId: string; idempotencyKey: string; }
+export interface ContactAssignmentCreate { contacts: Array<{ contactId: number; customerId: string; expectedVersion: number }>; targetUserId: string; supervisorUserIds?: string[]; idempotencyKey: string; }
 export interface ContactAssignmentDecision { requestId: string; expectedVersion: number; idempotencyKey: string; }
 export interface ContactAssignmentTransfer { requestId: string; targetUserId: string; expectedVersion: number; idempotencyKey: string; }
 export interface ContactAssignmentGroupDecision { groupId: string; idempotencyKey: string; }

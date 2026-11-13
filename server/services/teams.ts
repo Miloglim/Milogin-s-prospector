@@ -47,16 +47,19 @@ function requiresExplicitLeader(value: Record<string, unknown>): boolean {
 
 function candidateQuery(value: unknown): TeamMemberCandidateQuery | undefined {
   if (value === undefined) return { search: '', limit: TEAM_LIMITS.page, offset: 0, role: 'member', unitType: 'sales_team' };
-  if (!record(value) || !keys(value, ['search', 'limit', 'offset', 'role', 'unitType'])) return undefined;
+  if (!record(value) || !keys(value, ['search', 'limit', 'offset', 'role', 'unitType', 'purpose'])) return undefined;
   const search = value.search ?? '';
   const limit = value.limit ?? TEAM_LIMITS.page;
   const offset = value.offset ?? 0;
   const role = value.role ?? 'member';
   const type = value.unitType ?? 'sales_team';
+  const purpose = value.purpose ?? 'invite';
   if (typeof search !== 'string' || search.length > TEAM_LIMITS.text || !Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > TEAM_LIMITS.pageMax || !Number.isSafeInteger(offset) || Number(offset) < 0) return undefined;
   if (!['member', 'leader'].includes(String(role)) || !['operations', 'sales_team'].includes(String(type))) return undefined;
+  if (!['invite', 'create'].includes(String(purpose))) return undefined;
   if (role === 'member' && type !== 'sales_team') return undefined;
-  return { search: search.trim(), limit: Number(limit), offset: Number(offset), role: role as TeamMemberCandidateQuery['role'], unitType: type as TeamMemberCandidateQuery['unitType'] };
+  if (purpose === 'create' && role !== 'member') return undefined;
+  return { search: search.trim(), limit: Number(limit), offset: Number(offset), role: role as TeamMemberCandidateQuery['role'], unitType: type as TeamMemberCandidateQuery['unitType'], purpose: purpose as TeamMemberCandidateQuery['purpose'] };
 }
 
 function decision(value: unknown): TeamInvitationDecision | undefined {
@@ -84,7 +87,7 @@ function leaderInput(value: unknown): TeamLeaderInput | undefined {
 }
 
 function memberInput(value: unknown): TeamMemberAdjustmentInput | undefined {
-  if (!record(value) || !keys(value, ['userId', 'action', 'expectedVersion', 'idempotencyKey']) || typeof value.userId !== 'string' || !UUID.test(value.userId) || value.action !== 'add' && value.action !== 'remove' || !version(value.expectedVersion) || !idempotency(value.idempotencyKey)) return undefined;
+  if (!record(value) || !keys(value, ['userId', 'action', 'expectedVersion', 'idempotencyKey']) || typeof value.userId !== 'string' || !UUID.test(value.userId) || !['add', 'remove', 'leave'].includes(String(value.action)) || !version(value.expectedVersion) || !idempotency(value.idempotencyKey)) return undefined;
   return value as unknown as TeamMemberAdjustmentInput;
 }
 

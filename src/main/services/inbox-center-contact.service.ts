@@ -11,7 +11,7 @@ export interface MailboxSnapshot {
   folder?: string; uid?: string | number;
 }
 export type CenterMailRole = 'primary' | 'to' | 'cc' | 'bounce';
-export interface InboxCenterLink extends CenterContactRef { role?: CenterMailRole; status?: string; tags?: string[]; email?: string; companyName?: string; contactVersion?: number; canDelete?: boolean }
+export interface InboxCenterLink extends CenterContactRef { messageKey?: string; role?: CenterMailRole; status?: string; tags?: string[]; email?: string; companyName?: string; contactVersion?: number; canDelete?: boolean }
 export interface InboxCenterMailInput { localMessageId: number; role: CenterMailRole; event: ContactMailEventInput; recordEvent?: boolean; }
 export interface InboxCenterContactPort {
   context(): InboxCenterContext | null;
@@ -19,6 +19,7 @@ export interface InboxCenterContactPort {
   storeMail(context: InboxCenterContext, input: InboxCenterMailInput): Result<unknown> | Promise<Result<unknown>>;
   /** Synchronous, account-scoped offline mirror; no network required by inbox list hydration. */
   getLinks?(context: InboxCenterContext, localMessageId: number): InboxCenterLink[];
+  localMessageIdForMessageKey?(context: InboxCenterContext, messageKey: string): number | null;
   contacts?(context: InboxCenterContext): CenterContact[] | Promise<CenterContact[]>;
 }
 export interface CenterMailboxMatchOptions {

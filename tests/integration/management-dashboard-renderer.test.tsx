@@ -7,7 +7,7 @@ import { api, ApiError } from '../../admin-web/api';
 import type { Identity } from '../../server/core/auth';
 
 const identity: Identity = { userId: 'admin', email: 'admin@example.invalid', displayName: '管理员', emailVerified: true, identityAdmin: true, mustChangePassword: false, crmRoles: ['admin'] };
-const snapshot = { generatedAt: '2026-10-13T06:00:00.000Z', overview: { databases: 3, healthy: 2, activeUsers: 4, customers: 12, openTasks: 2, pendingEvents: 1 }, databases: [{ id: 'crm', name: 'Prospector 业务库', kind: 'PostgreSQL', state: 'healthy' as const, records: 12, updatedAt: null, detail: '客户', recordLabel: '客户' }], flows: [{ id: 'import', label: '导入 → 客户库', state: 'healthy' as const, records: 4, updatedAt: null, detail: '导入批次', recordLabel: '导入批次', timeLabel: '最近导入', stages: ['文件解析', '字段校验', '客户入库'] }], alerts: [], receipts: [] };
+const snapshot = { generatedAt: '2026-10-13T06:00:00.000Z', overview: { databases: 4, healthy: 3, activeUsers: 4, customers: 12, openTasks: 2, pendingEvents: 1, mailAnalyses: 9, mailActions: 3, humanLockedMail: 2 }, databases: [{ id: 'crm', name: 'Prospector 业务库', kind: 'PostgreSQL', state: 'healthy' as const, records: 12, updatedAt: null, detail: '客户', recordLabel: '客户' }, { id: 'mail-analysis', name: 'Prospector 邮件分析区', kind: 'PostgreSQL', state: 'healthy' as const, records: 11, updatedAt: null, detail: '9 封当前分析，3 封需要动作，2 封人工锁定', recordLabel: '邮件事件' }], flows: [{ id: 'import', label: '导入 → 客户库', state: 'healthy' as const, records: 4, updatedAt: null, detail: '导入批次', recordLabel: '导入批次', timeLabel: '最近导入', stages: ['文件解析', '字段校验', '客户入库'] }, { id: 'mail-analysis', label: '客户邮件 → AI 分析 → 待办建议', state: 'healthy' as const, records: 9, updatedAt: null, detail: '3 封需要动作，2 封人工锁定，1 条建议待确认', recordLabel: '当前分析', timeLabel: '最近分析', stages: ['邮件事件', '规则/AI 分拣', '人工修正', '任务建议'] }], alerts: [], receipts: [] };
 const navigatorSnapshot = { service: { status: 'ok' as const, backend: 'postgres', port: 8795 }, counts: { rates: 12, currentRates: 9, space: 3, groups: 4, activeGroups: 4, carriers: 2, pendingAwaiting: 5, pendingFailed: 1, reviewIssuesOpen: 2 }, latestMessage: '2026-10-19 10:00:00', entryUrl: 'http://127.0.0.1:8795' };
 
 describe('Prospector management dashboard', () => {
@@ -22,13 +22,13 @@ describe('Prospector management dashboard', () => {
     vi.spyOn(api, 'navigatorDashboard').mockResolvedValue(navigatorSnapshot);
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
     await act(async () => { root.render(<ProductManagement identity={identity} />); await new Promise(resolve => setTimeout(resolve, 0)); });
-    expect(host.textContent).toContain('运行总览'); expect(host.textContent).toContain('导入 → 客户库');
+    expect(host.textContent).toContain('运行总览'); expect(host.textContent).toContain('导入 → 客户库'); expect(host.textContent).toContain('当前邮件分析'); expect(host.textContent).toContain('需要动作');
     await act(async () => { root.render(<ProductManagement identity={identity} product="navigator" />); });
     expect(host.textContent).toContain('有效运价'); expect(host.textContent).toContain('待核问题'); expect(host.textContent).toContain('打开 Navigator 运价库'); expect(host.textContent).not.toContain('导入 → 客户库');
     await act(async () => { root.render(<ProductManagement identity={identity} product="prospector" />); });
     expect(host.textContent).toContain('运行总览');
     await act(async () => { (Array.from(host.querySelectorAll('button')).find(button => button.textContent === '数据流') as HTMLButtonElement).click(); });
-    expect(host.textContent).toContain('文件解析'); expect(host.textContent).toContain('字段校验');
+    expect(host.textContent).toContain('文件解析'); expect(host.textContent).toContain('字段校验'); expect(host.textContent).toContain('客户邮件 → AI 分析 → 待办建议'); expect(host.textContent).toContain('人工修正');
     vi.mocked(api.dashboard).mockRejectedValue(new ApiError('无数据看板权限',403));
     await act(async () => { (Array.from(host.querySelectorAll('button')).find(button => button.textContent?.replace(/\s/g,'') === '刷新') as HTMLButtonElement).click(); });
     expect(host.textContent).toContain('无数据看板权限'); expect(host.textContent).not.toContain('文件解析');

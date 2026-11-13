@@ -1,5 +1,96 @@
 # IPC 契约
 
+## 2026-11-12 收件箱置顶与文件夹
+
+收件箱把用户可见的“标签”统一改为“文件夹”，内部继续复用本地标签关联，避免两套数据重复。新增通道统一返回 `{ success, data?, error? }`：
+
+| 通道 | 输入 | 输出 | 说明 |
+|---|---|---|---|
+| `inbox:folderSuggest` | `InboxFolderSuggestionRequest` | `{ created: number }` | 保存按公司名称聚合出的 AI 建议文件夹；同建议幂等，用户删除后会记录忽略项 |
+| `inbox:folderConfirm` | `InboxFolderConfirmRequest` | `{ labelId, assigned }` | 将 AI 建议转为正式文件夹，并把候补邮件写入文件夹关联 |
+| `inbox:pinMessage` | `InboxPinMessageRequest` | `{ pinned: boolean }` | 置顶或取消置顶一封本地邮件 |
+| `inbox:setReadState` | `InboxReadStateRequest` | `{ updated: number }` | 批量设置本地已读/未读；标为已读会继续写 IMAP Seen outbox，标为未读只改本地界面状态 |
+
+`inbox:labels` 的 `InboxLabel` 新增可选 `source=user|ai`、`status=active|suggested` 和 `candidateCount`。建议文件夹只在本地保存，确认前不会写入普通文件夹关系；`inbox:list` 的邮件附加字段新增 `_pinned`。这些通道只写当前账号 SQLite，不修改中心 CRM、邮件分类、已读状态或联系人标签。
+
+## 2026-11-12 任务列表仅本人过滤
+
+`TaskQuery` 增加可选 `mine?: boolean`，经 `online:task-list` 转成 `GET /api/crm/tasks?...&mine=true|false`。`mine=true` 只能在账号原有可见范围内进一步筛选当前负责人，不能扩大授权；非法值返回 `INVALID_INPUT`。个人工作台固定使用 `mine=true`，管理页原有任务读取不传该字段。
+
+当前中心未加载此参数时，桌面端会收到 `INVALID_INPUT` 并临时降级为单页 100 条读取后按 `responsibleUserId` 客户端过滤；这条兼容路径只用于中心升级过渡，不能替代服务端范围裁剪。
+
+## 2026-11-12 联系人团队可见
+
+| 通道 | 入参 | 返回 | 说明 |
+|---|---|---|---|
+| `online:contact-share-team` | `ContactTeamShareCreate { contactId, customerId, expectedVersion, idempotencyKey }` | `ContactTeamShareReceipt` | 当前联系负责人一次性为本团队有效销售建立只读共享；重复请求幂等 |
+
+服务端路由为 `POST /api/crm/contact-shares/team`。团队可见不会授予编辑、跟进或改阶段能力；逐人共享继续使用 `online:contact-share-create/decide/update`。两者都返回统一 `Result`，共享事件写入中心 outbox。
+
+## 2026-11-09 个人收件 AI 分析
+
+| 通道 | 入参 | 返回 | 说明 |
+|---|---|---|---|
+| `inbox:analysisStatus` | 无 | `InboxAnalysisStatus` | 返回本地分析开关、待处理、完成、失败数量；只读 |
+| `inbox:analysisRun` | `messageId?: number` | `{ queued: number }` | 不传时回填最近 200 封；传单封时重试该邮件；只写本机 SQLite |
+| `inbox:analysisUpdated` | 推送 `{ messageId }` | 无 | 分析落库后通知收件箱刷新；批量结果按 500ms 合并推送，不逐封触发全列表刷新 |
+
+`inbox:list` 的本地分析附加字段为 `_analysis: InboxAnalysisView | null`。分析结果不改变中心联系人、线索归属、任务或发件队列；个人邮件分析不调用中心邮件分析接口。
+
+`inbox:analysisUpdated` 已登记在 `src/main/events.ts` 的统一 `EVENTS`，由 preload 白名单自动放行；业务模块不能只用独立事件常量声明主进程推送。
+
+## 2026-11-09 换机数据连续性（0.72.0-alpha.1 工作区）
+
+换机相关通道统一返回当前在线契约的 `{ ok, data?, error? }`。Handoff token、登录密码和 refresh token 不进入日志或普通页面状态；renderer 只持有 handoff token 和公开的换机状态。
+
+| IPC | 输入 | 输出 | 服务端路由 |
+|---|---|---|---|
+| `online:handoff-begin` | `OnlineHandoffBegin { baseUrl,email,password,remember,autoLogin?,requestKey }` | `OnlineHandoffBeginResult { handoffToken,state }` | `POST /api/auth/desktop/handoff/begin` |
+| `online:handoff-status` | `{ handoffToken }` | `DeviceHandoffState` | `POST /api/auth/desktop/handoff/status` |
+| `online:handoff-complete` | `{ handoffToken,remember,autoLogin? }` | `Identity` | `POST /api/auth/desktop/handoff/complete` |
+| `online:handoff-takeover` | `{ handoffToken,reason,remember,autoLogin? }` | `Identity` | `POST /api/auth/desktop/handoff/takeover` |
+| `online:handoff-cancel` | `{ handoffToken }` | `void` | `POST /api/auth/desktop/handoff/cancel` |
+
+主进程内部还使用 `POST /api/auth/desktop/handoff/pending` 查询旧电脑待处理请求，使用 `POST /api/auth/desktop/handoff/prepare` 上报盘点摘要；这两个路由不开放 renderer IPC。旧电脑在有窗口可见时通过既有 `online:status` 轮询发现请求，随后暂停自动发送和后台任务、补传客户数据并上报摘要。请求结束、取消或失效后恢复后台工作。
+
+`DeviceHandoffState.status` 为 `waiting_old_device / ready / blocked / completed / cancelled / expired`。普通完成只接受 `ready`；`blocked` 或等待超时只能由用户明确选择“旧电脑不可用，继续接管”后调用 takeover，且中心记录原因与审计。新登录流程不得恢复 `replaceActiveDevice:true` 的直接替换路径。
+
+## 2026-11-06 收件箱自定义标签
+
+新增本地收件箱标签通道，统一返回 `{ success, data?, error? }`：
+
+| 通道 | 输入 | 输出 |
+|---|---|---|
+| `inbox:labels` | 无 | `InboxLabel[]`，包含标签 ID、名称、颜色、邮件数和时间戳 |
+| `inbox:labelSave` | `InboxLabelSaveRequest` | 新建或更新后的 `InboxLabel` |
+| `inbox:labelDelete` | `InboxLabelDeleteRequest` | `{ deleted: boolean }` |
+| `inbox:messageLabels` | `InboxMessageLabelsRequest` | 保存后的 `{ labelIds: number[] }` |
+
+写请求必须携带 `idempotencyKey`。`inbox:list` 的邮件附加字段新增 `_labelIds: number[]`；标签只用于本地邮件分类，不修改联系人标签、邮件分类、已读状态或中心 CRM 事实。
+
+新增本地内联待办状态通道，统一返回 `{ success, data?, error? }`：
+
+| 通道 | 输入 | 输出 |
+|---|---|---|
+| `inbox:todoState` | `InboxTodoStateRequest`：`messageId`、`state=open/done`、`idempotencyKey` | `{ messageId, state }` |
+| `inbox:todoStateBatch` | `InboxTodoBatchRequest`：`messageIds`、`state=open/done`、`idempotencyKey` | `{ updated, state }` |
+
+`inbox:list` 的邮件附加字段新增 `_todoState: 'open'|'done'|null`。待办状态与 `isRead` 独立；`done` 只让邮件从待办队列中消失，不删除邮件、不修改 AI 分析，也不修改中心 CRM 事实。批量通道去重后最多接收 5000 个邮件 ID，在一个本地 SQLite 事务内写入；每个 ID 从批次幂等键派生独立 `operation_key`，重复请求不会重复改写。待办反馈在 renderer 复用同一 message key，快速连续操作只更新当前提示，不纵向堆叠。
+
+## 2026-11-03 联系人导入大文件与稀疏 Excel（0.71.0-alpha.16）
+
+`online:preview` 的 `ImportFileContent` 形状不变，但不再设置 10 MiB 文件字节上限；CSV/XLS/XLSX 内容仍只在主进程解析，返回原 `ImportPreview`。单表预览最多 100000 行。Base64 上传必须使用线性字符校验，不能对多兆字节字符串应用重复分组正则。解析只遍历工作表真实非空单元格，不使用可能包含巨大空白矩形的 `!ref.e.c` 推导有效列；表头取第一个非空行，表头范围外的孤立单元格忽略，表头为空但有数据的列以 `未命名列N` 返回。
+
+进入联系人预览时，多邮箱单元格取首个有效地址，其余地址随原始行进入备注；同一公司在后续行留空时，公司、国家、客户类型、业务类型和网站续接当前公司，遇到新公司值立即重置。货代等业务同义词归一到代理/直客，原始值写入备注。`online:import` 请求形状不变。
+
+同名公司按公司名和国家共同区分；无联系人身份的行在 renderer 本地标记为跳过，中心请求不再包含这些行。预览删除同样只传递本地跳过索引，不新增 IPC 或 HTTP 字段。
+
+`online:import` 返回无候选的 `restricted_conflict` 时，客户端将对应行计为跳过并继续处理回执中的其他行；只有有候选、可进入冲突处理的回执才打开冲突抽屉。该行为不扩大权限，也不修改受限记录归属。
+
+`online:import` 不改请求结构，继续按既有中心契约把预览行拆成每批最多 200 行、约 1 MiB 的请求，并复用原批次幂等键。取消文件大小限制不改变冲突处理、字段校验、权限或失败回执。
+
+`online:import` 回执行增加可选 `overlapCount`：跨范围命中同邮箱或同公司国家时仍返回 `created`，同时记录重叠并由客户端提示数量。通知 feed 新增事件 `crm.deal.overlap_detected`，只在 `closed_won` 后发给其他范围负责人；不新增导入 IPC/HTTP 路由。
+
 ## 2026-10-30 团队解散
 
 `online:team-dissolve` 接收 `teamId + { expectedVersion, idempotencyKey }`，对应 `POST /api/crm/teams/:teamId/dissolve`。服务端只允许公司根之外的 primary leader、运营管理员或超级管理员执行；有活动下级时返回冲突，要求先移动或解散下级。未知传输结果必须复用同一个幂等键，成功后返回新的 `TeamContext`。
@@ -25,7 +116,7 @@
 |---|---|---|---|
 | `online:team-context` | 无 | `GET /api/crm/team-context` | canonical 公司树、当前团队摘要、可管理团队、邀请 |
 | `online:team-detail` | `teamId` | `GET /api/crm/teams/:teamId` | 按服务端可见范围裁剪成员；普通销售只拿本人成员行 |
-| `online:team-candidates` | `search,limit,offset,role?,unitType?` | `GET /api/crm/team-invite-candidates` | 负责人/成员候选按数据库角色和现有关系过滤 |
+| `online:team-candidates` | `search,limit,offset,role?,unitType?,purpose?` | `GET /api/crm/team-invite-candidates` | 负责人/成员候选按数据库角色和现有关系过滤；`purpose=create` 仅用于尚未加入销售团队的创建者搜索首批成员，普通邀请不得使用该用途绕过负责人权限 |
 | `online:team-create` | `{name,parentTeamId,unitType?,leaderUserId?,inviteeUserIds,idempotencyKey}` | `POST /api/crm/teams` | `company/operations_group/sales_team`；管理角色必须显式给有效负责人 |
 | `online:team-invite` | `teamId,{userIds,idempotencyKey}` | `POST /api/crm/teams/:teamId/invitations` | 邀请有 7 天到期；撤回保留历史 |
 | `online:team-invitation-accept` / `decline` / `cancel` | `invitationId,{expectedVersion,idempotencyKey}` | `POST /api/crm/team-invitations/:id/{accept,decline,cancel}` | 迟到操作被拒绝；按钮只信服务端 `canAccept/canDecline/canCancel` |
@@ -98,11 +189,11 @@
 | `online:team-invitation-cancel` | `invitationId`, `TeamInvitationDecision` | `TeamContext` | `POST /api/crm/team-invitations/:id/cancel` |
 | `online:team-move` | `teamId`, `TeamMoveInput {parentTeamId,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/move` |
 | `online:team-leader` | `teamId`, `TeamLeaderInput {leaderUserId,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/leader` |
-| `online:team-member` | `teamId`, `TeamMemberAdjustmentInput {userId,action,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/members` |
+| `online:team-member` | `teamId`, `TeamMemberAdjustmentInput {userId,action:'add'|'remove'|'leave',expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/members` |
 | `online:team-group-save` | `teamId`, `TeamMemberGroupInput {groupId,name,memberIds,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/groups` |
 | `online:team-group-delete` | `teamId`, `groupId`, `TeamMemberGroupDeleteInput {groupId,expectedVersion,idempotencyKey}` | `TeamContext` | `POST /api/crm/teams/:teamId/groups/:groupId/delete` |
 
-`TeamSnapshot.memberCount` 是服务端派生的完整人数，普通成员仍只返回本人成员行；`TeamMemberGroup.version` 可用于后续更新和删除。负责人可管理多个销售团队，普通成员只能属于一个叶子团队；邀请的 `canCancel` 只对当前主负责人、组织管理员或超级管理员为真，取消保留历史状态。未知结果重试必须复用同一 `idempotencyKey`，相同请求会重放首次缓存结果。完整字段、权限和数据库表见 [团队中心交付](team-foundation-delivery-20261029.md)。
+`TeamSnapshot.memberCount` 是服务端派生的完整人数；本团队成员可读取本团队完整名册，但不能枚举其他团队。`add` 只发送待接受邀请，不能直接写成员关系；`remove` 仅负责人或管理角色可用；`leave` 仅普通成员退出自己，负责人必须先转交负责人或解散团队。`TeamMemberGroup.version` 可用于后续更新和删除。负责人可管理多个销售团队，普通成员只能属于一个叶子团队；邀请的 `canCancel` 只对当前主负责人、组织管理员或超级管理员为真，取消保留历史状态。未知结果重试必须复用同一 `idempotencyKey`，相同请求会重放首次缓存结果。完整字段、权限和数据库表见 [团队中心交付](team-foundation-delivery-20261029.md)。
 
 ## 2026-10-27 消息留档、联系人分组与分配组
 

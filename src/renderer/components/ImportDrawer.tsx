@@ -1,11 +1,12 @@
-import {LEAD_IMPORT_FIELDS} from '../../../server/core/lead-import-fields';
+import {LEAD_IMPORT_FIELDS, normalizeImportCustomerType, normalizeImportEmail} from '../../../server/core/lead-import-fields';
+import { isSkippableImportIssue } from '../../../server/core/leads';
 import { invalidateDomain } from "../lib/cacheDeps";
-import { useState, useRef, useContext } from "react";
+import { useState, useRef, useContext, useMemo, useEffect } from "react";
 import { Drawer, Tabs, Upload, Input, Button, Table, Select, message, Tag, Space } from "antd";
-import { InboxOutlined } from "@ant-design/icons";
+import { DeleteOutlined, InboxOutlined } from "@ant-design/icons";
 import { QueryClientContext } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
-import { ONLINE_LIMITS, type ImportFileContent } from "../../shared/online-crm";
+import { ONLINE_LIMITS, importRowIssue, type ImportFileContent, type ImportRow } from "../../shared/online-crm";
 import { LeadIngressConflictDrawer, type LeadIngressConflictNotice } from "../pages/customers/LeadIngressConflictDrawer";
 
 const { TextArea } = Input;
@@ -14,13 +15,11 @@ const FILE_ENCODING_CHUNK = 0x8000;
 
 /** Center preview decodes original CSV bytes; local legacy import keeps its text contract. */
 export async function readImportFile(file: File, center: boolean): Promise<ImportFileContent> {
-  if (file.size > ONLINE_LIMITS.fileBytes) throw new Error('文件超过 10 MiB');
   const extension = file.name.split('.').pop()?.toLowerCase();
   if (!['csv', 'xls', 'xlsx'].includes(extension ?? '')) throw new Error('请选择 CSV / XLSX 文件');
   const type = extension === 'csv' ? 'csv' : 'xlsx';
   if (type === 'csv' && !center) return { type, data: await file.text() };
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (bytes.length > ONLINE_LIMITS.fileBytes) throw new Error('文件超过 10 MiB');
   const parts: string[] = [];
   for (let index = 0; index < bytes.length; index += FILE_ENCODING_CHUNK) parts.push(String.fromCharCode(...bytes.subarray(index, index + FILE_ENCODING_CHUNK)));
   return { type, data: btoa(parts.join('')), ...(center ? { encoding: 'base64' as const } : {}) };
@@ -68,19 +67,56 @@ const CENTER_FIELD_OPTIONS = [{value:'',label:'— 忽略 —'},...LEAD_IMPORT_F
 export interface PreviewData {
   headers: string[];
   previewRows: string[][];
+  rows?: string[][];
+  rowNumbers?: number[];
   totalRows: number;
   suggestedMapping: Record<string, string>;
   duplicateEmails: string[];
+}
+
+type EditedRows = Record<number, Record<string, string>>;
+type RowReview = { index: number; values: Record<string, string>; issue?: string; skip?: boolean };
+
+function rowValuesAt(preview: PreviewData, index: number, editedRows: EditedRows = {}): Record<string, string> {
+  const rows = preview.rows?.length ? preview.rows : preview.previewRows;
+  return Object.fromEntries(preview.headers.map((header, column) => [header, (editedRows[index]?.[header] ?? rows[index]?.[column] ?? '').trim()]));
+}
+
+function reviewRows(preview: PreviewData, mapping: Record<string, string>, editedRows: EditedRows = {}): RowReview[] {
+  const rows = preview.rows?.length ? preview.rows : preview.previewRows;
+  const reviews = rows.map((_, index) => {
+    const values = rowValuesAt(preview, index, editedRows);
+    const fields = Object.fromEntries(Object.entries(mapping).filter(([, field]) => field).map(([header, field]) => [field, values[header] ?? '']));
+    const row = { ...fields, customerKey: `row-${index + 1}`, companyName: fields.companyName ?? '', email: normalizeImportEmail(fields.email ?? '').email, customerType: normalizeImportCustomerType(fields.customerType ?? '') } as ImportRow;
+    const issue = importRowIssue(row);
+    return { index, values, issue, skip: isSkippableImportIssue(issue) };
+  });
+  const companyFields = new Map<string, Record<string, string>>();
+  for (const review of reviews) {
+    const companyHeader = preview.headers.find(header => mapping[header] === 'companyName');
+    const countryHeader = preview.headers.find(header => mapping[header] === 'country');
+    const company = companyHeader ? `${review.values[companyHeader]?.trim().toLowerCase()}\u0000${countryHeader ? review.values[countryHeader]?.trim().toLowerCase() : ''}` : '';
+    if (!company) continue;
+    const current = companyFields.get(company) ?? {};
+    for (const field of ['customerType', 'businessType', 'website']) {
+      const header = preview.headers.find(item => mapping[item] === field);
+      const value = header ? review.values[header]?.trim() : '';
+      if (value && current[field] && current[field] !== value && !review.issue) review.issue = `同公司的${field === 'country' ? '国家' : field === 'customerType' ? '客户类型' : field === 'businessType' ? '业务类型' : '网站'}不一致`;
+      if (value) current[field] = value;
+    }
+    companyFields.set(company, current);
+  }
+  return reviews;
 }
 
 type Step = "input" | "preview";
 
 export interface ImportDrawerPort {
   preview(input:ImportFileContent):Promise<{success:boolean;data?:PreviewData;error?:string}>;
-  execute(input:ImportFileContent & {mapping:Record<string,string>}):Promise<ImportExecutionResult>;
+  execute(input:ImportFileContent & {mapping:Record<string,string>;rows?:Array<Record<string,string>>;skippedRows?:number[]}):Promise<ImportExecutionResult>;
   continueAfterConflict?(conflict:LeadIngressConflictNotice):Promise<ImportExecutionResult>;
 }
-export interface ImportExecutionResult { success:boolean;data?:{imported:number;skipped:number};error?:string;conflict?:LeadIngressConflictNotice; }
+export interface ImportExecutionResult { success:boolean;data?:{imported:number;skipped:number;overlaps?:number};error?:string;conflict?:LeadIngressConflictNotice; }
 export function ImportDrawer({ open, onClose, port, disabled = false }: { open: boolean; onClose: () => void; port?:ImportDrawerPort; disabled?: boolean }) {
   const qc = useContext(QueryClientContext);
   const [step, setStep] = useState<Step>("input");
@@ -90,6 +126,9 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [editedRows, setEditedRows] = useState<EditedRows>({});
+  const [removedRows, setRemovedRows] = useState<Set<number>>(() => new Set());
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [conflict, setConflict] = useState<LeadIngressConflictNotice | null>(null);
   // 缓存原始数据，execute 时重新送后端解析全部行
   const rawDataRef = useRef<ImportFileContent | null>(null);
@@ -99,6 +138,9 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
     setPasteText("");
     setPreview(null);
     setMapping({});
+    setEditedRows({});
+    setRemovedRows(new Set());
+    setSelectedRowKeys([]);
     setLoading(false);
     setImporting(false);
     setConflict(null);
@@ -122,6 +164,9 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
       if (r.success && r.data) {
         setPreview(r.data);
         setMapping(r.data.suggestedMapping);
+        setEditedRows({});
+        setRemovedRows(new Set());
+        setSelectedRowKeys([]);
         setStep("preview");
       } else {
         message.error(r.error || "解析失败");
@@ -146,6 +191,9 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
       if (r.success && r.data) {
         setPreview(r.data);
         setMapping(r.data.suggestedMapping);
+        setEditedRows({});
+        setRemovedRows(new Set());
+        setSelectedRowKeys([]);
         setStep("preview");
       } else {
         message.error(r.error || "解析失败");
@@ -160,7 +208,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
   // 确认导入 — 重新送原始数据 + 最终 mapping
   const acceptExecution = (r: ImportExecutionResult) => {
     if (r.success && r.data) {
-      message.success(`导入 ${r.data.imported} 条，跳过 ${r.data.skipped} 条（重复）`);
+      message.success(`导入 ${r.data.imported} 条，跳过 ${r.data.skipped} 条（重复）${r.data.overlaps ? `，标记 ${r.data.overlaps} 条范围重叠` : ''}`);
       if (!port && qc) void invalidateDomain(qc, "contacts");
       handleClose();
       return;
@@ -171,13 +219,26 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
     }
     message.error(r.error || "导入失败");
   };
+  const allRows = preview?.rows?.length ? preview.rows : preview?.previewRows ?? [];
+  const rowReviews=preview?reviewRows(preview,mapping,editedRows):[];
+  const activeRowReviews=rowReviews.filter(review=>!removedRows.has(review.index));
+  const originalProblemRows=useMemo(()=>new Set((preview?reviewRows(preview,mapping):[]).filter(review=>review.issue&&!review.skip).map(review=>review.index)),[preview,mapping]);
+  const problemCount=activeRowReviews.filter(review=>review.issue&&!review.skip).length;
+  const skipCount=activeRowReviews.filter(review=>review.skip).length;
+  const removedCount=removedRows.size;
+  const skippedRows=[...removedRows,...activeRowReviews.filter(review=>review.skip).map(review=>review.index)];
+  const rowsForExecution=preview?allRows.map((_,index)=>rowValuesAt(preview,index,editedRows)):[];
+  const toTsv=(headers:string[],rows:Array<Record<string,string>>)=>[headers.join('\t'),...rows.map(row=>headers.map(header=>(row[header]??'').replace(/[\t\r\n]+/g,' ')).join('\t'))].join('\n');
   const executeImport = async () => {
     if (disabled) { message.error('导入需要连接服务器'); return; }
     if (!rawDataRef.current) return;
     setImporting(true);
     try {
-      const r = await (port ? port.execute({...rawDataRef.current,mapping}) : window.api.invoke("contacts:import", {
-        mode: "execute", ...rawDataRef.current, mapping,
+      const skippedRowSet=new Set(skippedRows);
+      const activeRowsForExecution=rowsForExecution.filter((_,index)=>!skippedRowSet.has(index));
+      const legacyInput={...rawDataRef.current,type:'tsv' as const,data:toTsv(preview?.headers??[],activeRowsForExecution),encoding:undefined};
+      const r = await (port ? port.execute({...rawDataRef.current,mapping,rows:rowsForExecution,skippedRows}) : window.api.invoke("contacts:import", {
+        mode: "execute", ...legacyInput, mapping,
       })) as ImportExecutionResult;
       acceptExecution(r);
     } catch (err) {
@@ -203,10 +264,35 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
       setImporting(false);
     }
   };
+  const removeRows = (indexes: number[]) => {
+    if (!indexes.length) return;
+    setRemovedRows(previous => {
+      const next = new Set(previous);
+      indexes.forEach(index => next.add(index));
+      return next;
+    });
+    setSelectedRowKeys([]);
+  };
+  useEffect(() => {
+    if (!open || step !== 'preview') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        setSelectedRowKeys(activeRowReviews.map(review => review.index));
+      } else if (event.key === 'Delete' && selectedRowKeys.length) {
+        event.preventDefault();
+        removeRows(selectedRowKeys);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, step, activeRowReviews, selectedRowKeys]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const columns: ColumnsType<any> = preview
-    ? preview.headers.map((h) => ({
+    ? [{title:'检查',key:'__issue',dataIndex:'__issue',width:240,fixed:'left' as const,render:(issue:string,row:Record<string,unknown>)=>row.__skip?<Tag color="default" style={{whiteSpace:'normal',lineHeight:'18px',margin:0}}>未填写联系人，将跳过</Tag>:issue?<Tag color="red" style={{whiteSpace:'normal',lineHeight:'18px',margin:0}}>{issue}</Tag>:<Tag color="green">可导入</Tag>},...preview.headers.map((h) => ({
         title: (
           <Select
             size="small"
@@ -222,27 +308,25 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
         dataIndex: h,
         width: 130,
         ellipsis: true,
-        render: (v: string) => (
-          <span className={`contact-import-value text-xs ${!v ? "text-gray-300" : "text-gray-700"}`} title={v || undefined}>
-            {v || "—"}
-          </span>
-        ),
-      }))
+        render: (v: string, row: Record<string,unknown>) => <Input size="small" value={v}
+          status={!row.__skip&&row.__issue?'warning':undefined}
+          onChange={event=>setEditedRows(previous=>({...previous,[Number(row.__idx)]:{...(previous[Number(row.__idx)]??{}),[h]:event.target.value}}))} />,
+      }))]
     : [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dataSource: any[] = preview
-    ? preview.previewRows.map((row, idx) => {
-        const obj: Record<string, string | number> = { __idx: idx };
-        preview.headers.forEach((h, i) => { obj[h] = row[i] || ""; });
-        return obj;
-      })
+    ? [...activeRowReviews].sort((left,right)=>{
+      const rank=(review:RowReview)=>review.skip?2:review.issue?0:1;
+      return rank(left)-rank(right)||Number(originalProblemRows.has(right.index))-Number(originalProblemRows.has(left.index))||left.index-right.index;
+    }).map(review=>({...review.values,__idx:review.index,__issue:review.issue,__skip:review.skip}))
     : [];
 
   const dupCount = preview?.duplicateEmails.length || 0;
   const newCount = preview ? preview.totalRows - dupCount : 0;
+  const importableCount = Math.max(0, newCount - skipCount - removedCount);
   const emailMapped = preview?.headers.some(h => mapping[h] === "email");
-  const readyToImport = port ? Object.values(mapping).includes('companyName') && ['email','name','firstName','lastName','phone','whatsapp'].some(field=>Object.values(mapping).includes(field)) : emailMapped;
+  const readyToImport = (port ? Object.values(mapping).includes('companyName') && ['email','name','firstName','lastName','phone','whatsapp'].some(field=>Object.values(mapping).includes(field)) : emailMapped) && problemCount===0 && importableCount>0;
   const drawerWidth = step === "input" ? "min(620px, calc(100vw - 24px))" : "min(1180px, calc(100vw - 24px))";
 
   return (
@@ -250,12 +334,15 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
       width={drawerWidth}
       footer={step === "preview" && preview ? <div className="flex justify-end">
         <Space>
+          <Button size="small" danger icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={() => removeRows(selectedRowKeys)}>
+            删除所选 {selectedRowKeys.length ? `(${selectedRowKeys.length})` : ''}
+          </Button>
           <Button size="small" onClick={() => setStep("input")}>返回</Button>
           <Button type="primary" size="small"
             loading={importing}
             disabled={!readyToImport || disabled}
             onClick={executeImport}>
-            确认导入 {newCount} 条
+            确认导入 {importableCount} 条
           </Button>
         </Space>
       </div> : undefined}
@@ -336,23 +423,27 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
             <Tag color="blue">共 {preview.totalRows} 行</Tag>
             <Tag color="green">{port ? "待处理" : "新增"} {newCount} 条</Tag>
             {dupCount > 0 && <Tag color="orange">重复 {dupCount} 条（跳过）</Tag>}
-            {!readyToImport && <Tag color="red">{port ? "请选择公司及联系人姓名或联系方式" : "未映射邮箱列"}</Tag>}
+            {problemCount > 0 && <Tag color="red">待修正 {problemCount} 条</Tag>}
+            {skipCount > 0 && <Tag>未填写联系人 {skipCount} 条（将跳过）</Tag>}
+            {removedCount > 0 && <Tag>已删除 {removedCount} 条</Tag>}
+            {!readyToImport && <Tag color="red">{problemCount ? "请先修正问题行" : importableCount ? port ? "请选择公司及联系人姓名或联系方式" : "未映射邮箱列" : "没有可导入条目"}</Tag>}
           </div>
 
-          {preview.previewRows.length < preview.totalRows && (
+          {allRows.length < preview.totalRows ? (
             <div className="text-[11px] text-gray-400">
-              预览前 {preview.previewRows.length} 行（共 {preview.totalRows} 行），每列下拉可调整字段映射
+              当前可编辑 {allRows.length} 行（共 {preview.totalRows} 行），问题行已置顶；每列下拉可调整字段映射
             </div>
-          )}
+          ) : <div className="text-[11px] text-gray-400">当前显示 {activeRowReviews.length} 行；问题行已置顶，可直接修改单元格内容，Ctrl/Cmd+A 全选，Delete 删除</div>}
 
           <Table
             columns={columns}
             dataSource={dataSource}
             rowKey="__idx"
+            rowSelection={{ selectedRowKeys, preserveSelectedRowKeys: true, onChange: keys => setSelectedRowKeys(keys.map(Number)) }}
             size="small"
             tableLayout="fixed"
-            scroll={{ x: preview.headers.length * 130 }}
-            pagination={false}
+            scroll={{ x: 120 + preview.headers.length * 160 }}
+            pagination={{pageSize:20,showSizeChanger:false,hideOnSinglePage:true}}
             className="contact-import-preview-table [&_.ant-table-thead>tr>th]:!text-[10px] [&_.ant-table-thead>tr>th]:!p-1"
           />
 

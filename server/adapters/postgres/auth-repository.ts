@@ -7,15 +7,17 @@ import { assertCenterDatabasePool } from "./config";
 import { PostgresAdminRepository } from "./admin-repository";
 import {PASSWORD_SCHEMA_LOCK,PASSWORD_SCHEMA_SQL,PASSWORD_SCHEMA_VERSION} from './password-schema';
 import {ADMIN_LOCK} from './admin-schema';
-import type { DesktopSessionDraft, DesktopRotation, RegistrationProduct } from '../../core/desktop-session';
+import type { DesktopSessionDraft, DesktopHandoffSessionDraft, DesktopRotation, RegistrationProduct } from '../../core/desktop-session';
 import { DESKTOP_SCHEMA_LOCK, DESKTOP_SCHEMA_SQL, DESKTOP_SCHEMA_VERSION } from './desktop-session-schema';
 import { DESKTOP_DEVICE_SCHEMA_LOCK, DESKTOP_DEVICE_SCHEMA_SQL, DESKTOP_DEVICE_SCHEMA_VERSION } from './desktop-device-schema';
 import { ACCOUNT_PROFILE_SCHEMA_LOCK, ACCOUNT_PROFILE_SCHEMA_SQL, ACCOUNT_PROFILE_SCHEMA_VERSION } from './account-profile-schema';
 import { ACCOUNT_GROWTH_SCHEMA_LOCK, ACCOUNT_GROWTH_SCHEMA_SQL, ACCOUNT_GROWTH_SCHEMA_VERSION } from './account-growth-schema';
 import { PASSWORD_COMPAT_SCHEMA_LOCK, PASSWORD_COMPAT_SCHEMA_SQL, PASSWORD_COMPAT_SCHEMA_VERSION } from './password-compat-schema';
 import { LEGACY_ACCOUNT_MAPPING_SCHEMA_LOCK, LEGACY_ACCOUNT_MAPPING_SCHEMA_SQL, LEGACY_ACCOUNT_MAPPING_SCHEMA_VERSION } from './legacy-account-mapping-schema';
+import { DEVICE_HANDOFF_AUDIT_SCHEMA_LOCK, DEVICE_HANDOFF_AUDIT_SCHEMA_SQL, DEVICE_HANDOFF_AUDIT_SCHEMA_VERSION, DEVICE_HANDOFF_SCHEMA_LOCK, DEVICE_HANDOFF_SCHEMA_SQL, DEVICE_HANDOFF_SCHEMA_VERSION } from './device-handoff-schema';
 import type { AccountProfile, AccountProfilePatch } from '../../core/account-profile';
 import { growthEventRule, growthSummary, type GrowthEventInput, type GrowthEventReceipt } from '../../core/account-growth';
+import type { DeviceHandoffState, DeviceHandoffBeginInput, DeviceHandoffPreparation } from '../../core/device-handoff';
 
 const IDENTITY_COLUMNS = `u.user_id AS "userId",u.display_name AS "displayName",e.email,
   (e.verified_at IS NOT NULL) AS "emailVerified",u.identity_admin AS "identityAdmin",u.must_change_password AS "mustChangePassword",
@@ -25,6 +27,21 @@ const IDENTITY_COLUMNS = `u.user_id AS "userId",u.display_name AS "displayName",
 const SESSION_FILTER = `s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now()
   AND u.active AND s.security_revision=u.security_revision`;
 const GROWTH_RULE_VERSION = 2;
+const HANDOFF_COLUMNS = `h.handoff_id AS "handoffId",h.status,h.expires_at AS "expiresAt",
+  COALESCE(h.old_device_name,'原电脑') AS "oldDeviceName",h.new_device_name AS "newDeviceName",
+  h.summary,h.takeover_reason AS "takeoverReason"`;
+const HANDOFF_RETURNING = `handoff_id AS "handoffId",status,expires_at AS "expiresAt",
+  COALESCE(old_device_name,'原电脑') AS "oldDeviceName",new_device_name AS "newDeviceName",
+  summary,takeover_reason AS "takeoverReason"`;
+function handoffState(row: Record<string, unknown>): DeviceHandoffState {
+  return {
+    handoffId:String(row.handoffId), status:row.status as DeviceHandoffState['status'],
+    expiresAt:row.expiresAt instanceof Date ? row.expiresAt.toISOString() : String(row.expiresAt),
+    oldDeviceName:String(row.oldDeviceName), newDeviceName:String(row.newDeviceName),
+    ...(row.summary && typeof row.summary === 'object' ? { summary: row.summary as DeviceHandoffState['summary'] } : {}),
+    ...(row.takeoverReason == null ? {} : { takeoverReason: String(row.takeoverReason) }),
+  };
+}
 function profileFromRow(row: Record<string, unknown> | undefined): AccountProfile | null {
   if (!row) return null;
   return {
@@ -111,6 +128,34 @@ export class PostgresAuthRepository implements AuthRepository {
           await client.query(DESKTOP_DEVICE_SCHEMA_SQL);
           await client.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)', [DESKTOP_DEVICE_SCHEMA_VERSION, checksum]);
           this.log.write('INFO', 'identity.pg.migrate', `迁移完成 version=${DESKTOP_DEVICE_SCHEMA_VERSION}`);
+        }
+        return success(undefined);
+      }));
+    }).then(async result => {
+      if (!result.ok) return result;
+      return this.execute(() => this.tx(async client => {
+        await client.query('SELECT pg_advisory_xact_lock($1)', [DEVICE_HANDOFF_SCHEMA_LOCK]);
+        const checksum = createHash('sha256').update(DEVICE_HANDOFF_SCHEMA_SQL).digest('hex');
+        const existing = await client.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1', [DEVICE_HANDOFF_SCHEMA_VERSION]);
+        if (existing.rows.length && existing.rows[0].checksum !== checksum) return failure('CONFLICT', '换机交接迁移校验不一致');
+        if (!existing.rows.length) {
+          await client.query(DEVICE_HANDOFF_SCHEMA_SQL);
+          await client.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)', [DEVICE_HANDOFF_SCHEMA_VERSION, checksum]);
+          this.log.write('INFO', 'identity.pg.migrate', `迁移完成 version=${DEVICE_HANDOFF_SCHEMA_VERSION}`);
+        }
+        return success(undefined);
+      }));
+    }).then(async result => {
+      if (!result.ok) return result;
+      return this.execute(() => this.tx(async client => {
+        await client.query('SELECT pg_advisory_xact_lock($1)', [DEVICE_HANDOFF_AUDIT_SCHEMA_LOCK]);
+        const checksum = createHash('sha256').update(DEVICE_HANDOFF_AUDIT_SCHEMA_SQL).digest('hex');
+        const existing = await client.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1', [DEVICE_HANDOFF_AUDIT_SCHEMA_VERSION]);
+        if (existing.rows.length && existing.rows[0].checksum !== checksum) return failure('CONFLICT', '换机审计迁移校验不一致');
+        if (!existing.rows.length) {
+          await client.query(DEVICE_HANDOFF_AUDIT_SCHEMA_SQL);
+          await client.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)', [DEVICE_HANDOFF_AUDIT_SCHEMA_VERSION, checksum]);
+          this.log.write('INFO', 'identity.pg.migrate', `迁移完成 version=${DEVICE_HANDOFF_AUDIT_SCHEMA_VERSION}`);
         }
         return success(undefined);
       }));
@@ -373,6 +418,131 @@ export class PostgresAuthRepository implements AuthRepository {
       return success(identity.rows[0]);
     }));
   }
+  beginDesktopHandoff(input: DeviceHandoffBeginInput): Promise<Result<DeviceHandoffState>> {
+    return this.execute(() => this.tx(async client => {
+      const user = await client.query('SELECT user_id FROM public.identity_users WHERE user_id=$1 AND active AND security_revision IS NOT NULL FOR UPDATE', [input.userId]);
+      if (!user.rows.length) return failure('UNAUTHORIZED', '账号不可用');
+      await client.query(`UPDATE public.identity_device_handoffs SET status='expired',updated_at=now()
+        WHERE user_id=$1 AND desktop_product=$2 AND status IN ('waiting_old_device','ready','blocked') AND expires_at<=now()`, [input.userId, input.desktop.product]);
+      const previous = await client.query(`SELECT ${HANDOFF_COLUMNS} FROM public.identity_device_handoffs h
+        WHERE h.user_id=$1 AND h.desktop_product=$2 AND h.request_key=$3 FOR UPDATE`, [input.userId, input.desktop.product, input.requestKey]);
+      if (previous.rows.length) {
+        const row = previous.rows[0];
+        if (!['waiting_old_device','ready','blocked'].includes(String(row.status))) return failure('CONFLICT', '本次换机请求已经结束，请重新发起');
+        const renewed = await client.query(`UPDATE public.identity_device_handoffs h SET token_hash=$2,expires_at=$3,updated_at=now()
+          WHERE h.handoff_id=$1 RETURNING ${HANDOFF_RETURNING}`, [row.handoffId, input.tokenHash, input.expiresAt]);
+        return success(handoffState(renewed.rows[0]));
+      }
+      const active = await client.query(`SELECT s.session_id,s.desktop_device_id,s.desktop_device_name
+        FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
+        WHERE s.user_id=$1 AND s.desktop_product=$2 AND s.revoked_at IS NULL AND s.expires_at>now()
+          AND u.active AND u.security_revision=s.security_revision
+        ORDER BY s.created_at DESC LIMIT 1 FOR UPDATE OF s`, [input.userId, input.desktop.product]);
+      if (!active.rows.length) return failure('CONFLICT', '原电脑已经退出，请重新登录');
+      if (String(active.rows[0].desktop_device_id ?? '') === input.desktop.deviceId) return failure('CONFLICT', '当前电脑已经是活跃设备');
+      const pending = await client.query(`SELECT handoff_id FROM public.identity_device_handoffs
+        WHERE user_id=$1 AND desktop_product=$2 AND status IN ('waiting_old_device','ready','blocked') FOR UPDATE`, [input.userId, input.desktop.product]);
+      if (pending.rows.length) return failure('CONFLICT', '已有一台新电脑正在发起换机，请稍后重试');
+      const inserted = await client.query(`INSERT INTO public.identity_device_handoffs(
+        handoff_id,token_hash,request_key,user_id,desktop_product,old_session_id,old_device_id,old_device_name,
+        new_device_id,new_device_name,new_platform,new_app_version,status,expires_at
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'waiting_old_device',$13)
+      RETURNING ${HANDOFF_RETURNING}`, [
+        input.handoffId,input.tokenHash,input.requestKey,input.userId,input.desktop.product,active.rows[0].session_id,
+        active.rows[0].desktop_device_id,active.rows[0].desktop_device_name,input.desktop.deviceId,input.desktop.deviceName,
+        input.desktop.platform,input.desktop.appVersion,input.expiresAt,
+      ]);
+      await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,'device.handoff.begin')", [input.userId]);
+      return success(handoffState(inserted.rows[0]));
+    }));
+  }
+  desktopHandoffStatus(tokenHash: string): Promise<Result<DeviceHandoffState>> {
+    return this.execute(() => this.tx(async client => {
+      await client.query(`UPDATE public.identity_device_handoffs SET status='expired',updated_at=now()
+        WHERE token_hash=$1 AND status IN ('waiting_old_device','ready','blocked') AND expires_at<=now()`, [tokenHash]);
+      const result = await client.query(`SELECT ${HANDOFF_COLUMNS} FROM public.identity_device_handoffs h
+        JOIN public.identity_users u USING(user_id) WHERE h.token_hash=$1 AND u.active FOR UPDATE OF h`, [tokenHash]);
+      return result.rows.length ? success(handoffState(result.rows[0])) : failure('UNAUTHORIZED', '换机请求已失效');
+    }));
+  }
+  pendingDesktopHandoff(refreshHash: string): Promise<Result<{ handoffId: string; newDeviceName: string; expiresAt: string } | null>> {
+    return this.execute(() => this.tx(async client => {
+      await client.query(`UPDATE public.identity_device_handoffs h SET status='expired',updated_at=now()
+        FROM public.identity_desktop_refresh_tokens r
+        WHERE h.old_session_id=r.session_id AND r.token_hash=$1
+          AND h.status IN ('waiting_old_device','ready','blocked') AND h.expires_at<=now()`, [refreshHash]);
+      const result = await client.query(`SELECT h.handoff_id AS "handoffId",h.new_device_name AS "newDeviceName",h.expires_at AS "expiresAt"
+        FROM public.identity_desktop_refresh_tokens r JOIN public.identity_sessions s USING(session_id)
+        JOIN public.identity_device_handoffs h ON h.old_session_id=s.session_id
+        WHERE r.token_hash=$1 AND r.consumed_at IS NULL AND r.idle_expires_at>now() AND r.absolute_expires_at>now()
+          AND s.revoked_at IS NULL AND s.expires_at>now() AND h.status IN ('waiting_old_device','ready','blocked')
+        ORDER BY h.created_at DESC LIMIT 1`, [refreshHash]);
+      if (!result.rows.length) return success(null);
+      const row = result.rows[0];
+      return success({ handoffId:String(row.handoffId), newDeviceName:String(row.newDeviceName), expiresAt:row.expiresAt instanceof Date ? row.expiresAt.toISOString() : String(row.expiresAt) });
+    }));
+  }
+  prepareDesktopHandoff(refreshHash: string, input: DeviceHandoffPreparation): Promise<Result<DeviceHandoffState>> {
+    return this.execute(() => this.tx(async client => {
+      const result = await client.query(`SELECT ${HANDOFF_COLUMNS},s.user_id
+        FROM public.identity_desktop_refresh_tokens r JOIN public.identity_sessions s USING(session_id)
+        JOIN public.identity_device_handoffs h ON h.old_session_id=s.session_id
+        WHERE r.token_hash=$1 AND r.consumed_at IS NULL AND r.idle_expires_at>now() AND r.absolute_expires_at>now()
+          AND s.revoked_at IS NULL AND s.expires_at>now() AND h.status IN ('waiting_old_device','ready','blocked')
+        ORDER BY h.created_at DESC LIMIT 1 FOR UPDATE OF h`, [refreshHash]);
+      if (!result.rows.length) return failure('CONFLICT', '当前没有等待处理的换机请求');
+      const row = result.rows[0];
+      if (new Date(row.expiresAt).getTime() <= Date.now()) {
+        await client.query("UPDATE public.identity_device_handoffs SET status='expired',updated_at=now() WHERE handoff_id=$1", [row.handoffId]);
+        return failure('UNAUTHORIZED', '换机请求已过期');
+      }
+      const status = input.summary.blockers.length ? 'blocked' : 'ready';
+      const updated = await client.query(`UPDATE public.identity_device_handoffs h SET status=$2,summary=$3::jsonb,prepared_at=now(),updated_at=now()
+        WHERE h.handoff_id=$1 RETURNING ${HANDOFF_RETURNING}`, [row.handoffId,status,JSON.stringify(input.summary)]);
+      await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,$2)", [row.user_id,status === 'ready' ? 'device.handoff.ready' : 'device.handoff.blocked']);
+      return success(handoffState(updated.rows[0]));
+    }));
+  }
+  completeDesktopHandoff(tokenHash: string, input: DesktopHandoffSessionDraft, takeoverReason?: string): Promise<Result<Identity | null>> {
+    return this.execute(() => this.tx(async client => {
+      const handoff = await client.query(`SELECT ${HANDOFF_COLUMNS},h.user_id,u.security_revision AS "securityRevision",h.old_session_id,h.new_device_id,h.new_device_name,h.new_platform,h.new_app_version,h.desktop_product
+        FROM public.identity_device_handoffs h JOIN public.identity_users u USING(user_id)
+        WHERE h.token_hash=$1 AND u.active FOR UPDATE OF h,u`, [tokenHash]);
+      if (!handoff.rows.length) return success(null);
+      const row = handoff.rows[0];
+      if (new Date(row.expiresAt).getTime() <= Date.now()) {
+        await client.query("UPDATE public.identity_device_handoffs SET status='expired',updated_at=now() WHERE handoff_id=$1", [row.handoffId]);
+        return failure('UNAUTHORIZED', '换机请求已过期');
+      }
+      if (row.status === 'completed') return failure('CONFLICT', '本次换机已经完成，请直接登录新电脑');
+      if (!['waiting_old_device','ready','blocked'].includes(String(row.status))) return failure('UNAUTHORIZED', '换机请求已失效');
+      if (row.status !== 'ready' && !takeoverReason) return failure('CONFLICT', '原电脑尚未完成数据准备');
+      await client.query(`UPDATE public.identity_sessions SET revoked_at=now(),revocation_reason=$2
+        WHERE user_id=$1 AND desktop_product=$3 AND revoked_at IS NULL`, [row.user_id,takeoverReason?'device-takeover':'device-handoff',row.desktop_product]);
+      const session = await client.query(`INSERT INTO public.identity_sessions(
+        token_hash,user_id,security_revision,expires_at,client,desktop_product,desktop_device_id,
+        desktop_device_name,desktop_platform,desktop_app_version
+      ) VALUES($1,$2,$3,$4,'api',$5,$6,$7,$8,$9) RETURNING session_id`, [
+        input.tokenHash,row.user_id,row.securityRevision,input.expiresAt,row.desktop_product,row.new_device_id,row.new_device_name,
+        row.new_platform,row.new_app_version,
+      ]);
+      await client.query('INSERT INTO public.identity_desktop_refresh_tokens(token_hash,session_id,idle_expires_at,absolute_expires_at) VALUES($1,$2,$3,$4)', [input.refreshHash, session.rows[0].session_id, input.idleExpiresAt, input.absoluteExpiresAt]);
+      await client.query(`UPDATE public.identity_device_handoffs SET status='completed',takeover_reason=$2,completed_at=now(),updated_at=now()
+        WHERE handoff_id=$1`, [row.handoffId,takeoverReason ?? null]);
+      await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,$2)", [row.user_id,takeoverReason ? 'device.handoff.takeover' : 'device.handoff.completed']);
+      const identity = await client.query(`SELECT ${IDENTITY_COLUMNS} FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) WHERE u.user_id=$1`, [row.user_id]);
+      return success(identity.rows[0]);
+    }));
+  }
+  cancelDesktopHandoff(tokenHash: string): Promise<Result<void>> {
+    return this.execute(() => this.tx(async client => {
+      const cancelled = await client.query(`UPDATE public.identity_device_handoffs SET status='cancelled',cancelled_at=now(),updated_at=now()
+        WHERE token_hash=$1 AND status IN ('waiting_old_device','ready','blocked') RETURNING user_id`, [tokenHash]);
+      if (!cancelled.rows.length) return success(undefined);
+      await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,'device.handoff.cancelled')", [cancelled.rows[0].user_id]);
+      return success(undefined);
+    }));
+  }
   rotateDesktopSession(refreshHash: string, input: DesktopRotation): Promise<Result<{ identity: Identity; expiresAt: string; absoluteExpiresAt: string } | null>> {
     return this.execute(() => this.tx(async client => {
       // Lock the same stable session that admin revoke targets. No independent refresh grant can survive it.
@@ -383,7 +553,7 @@ export class PostgresAuthRepository implements AuthRepository {
       if (!session.rows.length) {
         const replaced = await client.query(`SELECT 1 FROM public.identity_desktop_refresh_tokens r
           JOIN public.identity_sessions s USING(session_id) JOIN public.identity_users u USING(user_id)
-          WHERE r.token_hash=$1 AND s.revocation_reason='replaced' AND u.active`, [refreshHash]);
+          WHERE r.token_hash=$1 AND s.revocation_reason IN ('replaced','device-handoff','device-takeover') AND u.active`, [refreshHash]);
         return replaced.rows.length ? failure('DEVICE_REPLACED', '该账号已在另一台电脑登录') : success(null);
       }
       const row = session.rows[0];
@@ -401,7 +571,7 @@ export class PostgresAuthRepository implements AuthRepository {
         WHERE ${SESSION_FILTER} AND s.client='api' AND EXISTS(SELECT 1 FROM public.identity_desktop_refresh_tokens r WHERE r.session_id=s.session_id AND r.consumed_at IS NULL AND r.idle_expires_at>now() AND r.absolute_expires_at>now())`, [tokenHash]);
       if (result.rows[0]) return success(result.rows[0]);
       const replaced = await this.pool.query(`SELECT 1 FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
-        WHERE s.token_hash=$1 AND s.client='api' AND s.revocation_reason='replaced' AND u.active`, [tokenHash]);
+        WHERE s.token_hash=$1 AND s.client='api' AND s.revocation_reason IN ('replaced','device-handoff','device-takeover') AND u.active`, [tokenHash]);
       return replaced.rows.length ? failure('DEVICE_REPLACED', '该账号已在另一台电脑登录') : success(null);
     });
   }

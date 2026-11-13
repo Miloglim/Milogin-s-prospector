@@ -444,7 +444,7 @@ export class PostgresTeamMonitoringRepository implements TeamMonitoringRepositor
       const filter = `WHERE ($2::uuid IS NULL OR "teamId"=$2) AND ($3::uuid IS NULL OR "userId"=$3)`;
       const memberRows = await client.query(`${ctes}
         SELECT * FROM member_stats ${filter}
-        ORDER BY "displayName","userId" LIMIT $4 OFFSET $5`,
+        ORDER BY COALESCE("lastActivityAt","latestImportantReplyAt") DESC NULLS LAST,"displayName","userId" LIMIT $4 OFFSET $5`,
       [actor.userId, query.teamId ?? null, query.memberUserId ?? null, query.limit, query.offset]);
       const totalMembers = await client.query(`${ctes} SELECT count(*)::int AS total FROM member_stats ${filter}`,
         [actor.userId, query.teamId ?? null, query.memberUserId ?? null]);
@@ -482,7 +482,7 @@ export class PostgresTeamMonitoringRepository implements TeamMonitoringRepositor
         LEFT JOIN member_stats member ON member."teamId"=unit.unit_id
         WHERE ($2::uuid IS NULL OR unit.unit_id=$2) AND ($3::uuid IS NULL OR member."userId"=$3)
         GROUP BY unit.unit_id,unit.name,unit.kind,unit.parent_unit_id
-        ORDER BY unit.name,unit.unit_id LIMIT $4 OFFSET $5`,
+        ORDER BY max(COALESCE(member."lastActivityAt",member."latestImportantReplyAt")) DESC NULLS LAST,unit.name,unit.unit_id LIMIT $4 OFFSET $5`,
       [actor.userId, query.teamId ?? null, query.memberUserId ?? null, query.unitLimit, query.unitOffset]);
       const totalUnits = await client.query(`${ctes}
         SELECT count(DISTINCT unit.unit_id)::int AS total FROM visible_units unit

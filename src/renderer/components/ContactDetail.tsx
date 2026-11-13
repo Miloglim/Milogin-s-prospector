@@ -7,6 +7,7 @@ import { centerContactRemark } from "../../shared/online-crm";
 import { CompanyBackcheck, COMPANY_BACKCHECK_UI_ENABLED } from "./CompanyBackcheck";
 import { DiamondLogo } from "./DiamondLogo";
 import { askAssistant } from "../lib/ask-ai";
+import { isPermissionDenied } from "../lib/permissionGate";
 
 /* ---------- 展示元数据（列表/详情共用） ---------- */
 export const CLIENT_TYPE: Record<string, { label: string; color: string }> = {
@@ -201,7 +202,7 @@ function EditSelect({ value, onSave, options, allowClear, readNode, disabled, re
 export function InfoTab({ contact, onSaveField, canEdit = true, canEditField }: {
   contact: Contact; onSaveField: (field: string, value: string | null) => SaveFieldResult; canEdit?: boolean; canEditField?: (field: string) => boolean;
 }) {
-  const allowed = (field: string) => canEdit && (canEditField?.(field) ?? true);
+  const allowed = (field: string) => !isPermissionDenied(canEdit) && (canEditField?.(field) ?? true);
   const clientMeta = contact.clientType ? CLIENT_TYPE[contact.clientType] : null;
   const statusMeta = STATUS_META[contact.status || ""];
   const reachedOutcome = contact.dataSource === 'center' && ['replied', 'bounced', 'autoreply'].includes(contact.status || '');
@@ -211,7 +212,7 @@ export function InfoTab({ contact, onSaveField, canEdit = true, canEditField }: 
   const remark = importedRemark(contact.extra);
 
   return (
-    <fieldset disabled={!canEdit} className="px-1 pb-2 border-0 m-0 min-w-0">
+    <fieldset disabled={isPermissionDenied(canEdit)} className="px-1 pb-2 border-0 m-0 min-w-0">
       <SectionTitle>身份信息</SectionTitle>
       <FieldRow label="名"><EditText readOnly={!allowed("firstName")} value={contact.firstName} onSave={v => onSaveField("firstName", v)} /></FieldRow>
       <FieldRow label="姓"><EditText readOnly={!allowed("lastName")} value={contact.lastName} onSave={v => onSaveField("lastName", v)} /></FieldRow>

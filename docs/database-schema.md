@@ -1,5 +1,59 @@
 # Prospector Database Schema
 
+## 2026-11-12 收件箱置顶与文件夹（本地 SQLite）
+
+| 表/字段 | 变更与用途 |
+|---|---|
+| `inbox_labels.source/status` | 区分用户文件夹和 AI 建议文件夹；`source=user|ai`，`status=active|suggested` |
+| `inbox_label_candidates` | 保存 AI 建议文件夹的候选邮件；用户确认后才转入 `inbox_message_labels` |
+| `inbox_pinned_messages` | 当前账号置顶邮件；`message_id` 主键并随邮件级联删除 |
+| `inbox_folder_suggestion_dismissals` | 用户删除 AI 建议后记录规范化名称，避免下次启动重复建议 |
+
+迁移名：`v0.72-inbox-folders`。旧标签默认补为 `source=user/status=active`，不丢失原有邮件关联；所有数据只存在当前账号本机 SQLite。
+
+## 2026-11-09 个人收件 AI 分析（本地 SQLite）
+
+| 表 | 字段 | 约束与用途 |
+|---|---|---|
+| `inbox_mail_analyses` | `message_id`、`content_hash`、`category`、`priority`、`requires_action`、`summary`、`next_action`、`due_hint`、`confidence`、`evidence_json`、`source`、`analyzer_version`、`status`、`error`、`updated_at` | 每封本地邮件一行；`message_id` 主键并随邮件级联删除；`status` 为 `pending/ready/failed`；人工结果以 `source=human` 标记且不会被 AI 覆盖 |
+| `mail_analysis_jobs` | `job_key`、`payload_json`、`status`、`attempt`、`next_attempt_at`、`last_error`、`created_at`、`updated_at`、`completed_at` | 客户邮件 AI 分析的本地可恢复队列；主键为幂等任务键；状态为 `pending/running/retrying/completed/failed`；启动时 `running` 恢复为 `pending`，完成记录保留7天、失败记录保留30天 |
+| `inbox_todo_states` | `message_id`、`state`、`operation_key`、`updated_at` | 单封邮件内联待办状态；`message_id` 主键并随邮件级联删除；`state=open/done`；`operation_key` 唯一用于幂等；与邮件已读状态独立 |
+| `inbox_seen_outbox` | `account_id`、`message_id`、`attempts`、`last_error`、`created_at`、`updated_at` | 程序内已读待回写 IMAP `\Seen` 的持久 outbox；`(account_id,message_id)` 主键；服务器确认前保留，重启或回写失败不会恢复未读 |
+
+迁移名：`v0.72-inbox-mail-analyses`、`v0.72-mail-analysis-queue`、`v0.72-inbox-todo-states`。三张表只存在当前账号本机 SQLite，不同步中心，不保存正文、附件或模型原始响应；最近 200 封只作为回填起点，不是固定能力上限。分析任务表只保存恢复所需输入和状态，重启后恢复 `pending/retrying`，崩溃遗留的 `running` 回到 `pending` 后重新提交。待办状态表只记录用户已处理/重新打开，不修改原邮件或 AI 分析记录。
+
+## 2026-11-09 换机事务（066-067，工作区已实现，正式未部署）
+
+| 迁移 | 主要对象 | 事实与边界 |
+|---|---|---|
+| `066-device-handoff` | `public.identity_device_handoffs` | 记录换机请求、旧/新设备、旧 session、状态、盘点摘要、接管原因和过期时间 |
+| `067-device-handoff-audit` | `public.identity_audit` 事件约束 | 允许记录 begin、ready、blocked、completed、takeover、cancelled 六类换机审计 |
+
+`identity_device_handoffs` 的唯一键为 `(user_id,desktop_product,request_key)`，同一用户同一产品同时只能存在一个 `waiting_old_device / ready / blocked` 请求。token 只保存哈希；摘要只保存计数、阻断项与检查时间，不保存密码、邮件正文、邮件凭据、OAuth、会话令牌或 `master.key`。完成事务锁住请求和用户，在一个事务内撤销旧 session、创建新 session、标记请求完成并写审计；旧 access/refresh 后续返回 `DEVICE_REPLACED`。
+
+运行 SQL 在 `server/adapters/postgres/device-handoff-schema.ts`，正式库可单独执行 `deployment-templates/company-postgres-device-handoff-066-067.sql`。独立脚本不写迁移 checksum；中心启动时仍按运行 SQL 的 SHA-256 校验并记录迁移版本。
+
+## 2026-11-06 收件箱自定义标签（本地 SQLite）
+
+| 表 | 字段 | 约束与用途 |
+|---|---|---|
+| `inbox_labels` | `id`、`name`、`color`、`created_at`、`updated_at` | 本地用户标签；名称忽略大小写唯一，颜色为 `#rrggbb` |
+| `inbox_message_labels` | `message_id`、`label_id`、`created_at` | 邮件与标签多对多；`(message_id,label_id)` 主键；邮件或标签删除时级联清理关系 |
+| `inbox_label_operations` | `operation_key`、`result_json`、`created_at` | 标签写操作幂等回执；保留 30 天，重复请求返回同一结果 |
+
+迁移名：`v0.71-inbox-labels`。该能力只写本机业务 SQLite，不同步中心，也不替代邮件分类或联系人标签。
+
+## 2026-11-03 线索范围重叠（065，工作区已实现，正式未部署）
+
+| 对象 | 变更 |
+|---|---|
+| `contacts` | 移除全局 `idx_contacts_email`，保留普通邮箱查询索引；同邮箱可跨运营/个人范围并存 |
+| `crm_customers` | 唯一索引改为 `source + customer_key + origin + owner_user_id`，不同范围客户键互不冲突 |
+| `crm_lead_overlaps` | 新增重叠记录：两端联系人/客户、`same_email`/`same_company_country`/`similar_company`、状态和时间 |
+| `crm_deal_overlap_notices` | 新增成交通知：重叠、成交联系人、接收负责人、商机、确认状态和版本 |
+
+迁移版本 `065-lead-scope-overlaps`，运行 SQL 在 `server/adapters/postgres/lead-overlap-schema.ts`，公司库模板在 `deployment-templates/company-postgres-lead-overlap-065.sql`。导入不因跨范围相同邮箱失败，只记录重叠；同范围仍由现线索冲突流程判重。成交 `closed_won` 生成幂等通知，不修改历史归属。
+
 ## 2026-10-30 团队解散与软删除（064-organization-dissolution）
 
 `064` 为中心组织树增加软解散生命周期：`crm_org_units` 增加 `dissolved_at/dissolved_by`，`crm_org_assignments` 增加 `ended_at`，新增追加式 `crm_org_dissolution_audits`。解散事务只结束当前组织关系、取消 pending 邀请、删除展示分组并递增单元版本；组织行、联系人、联系人归属、当前分配、导入批次和来源组织快照全部保留。

@@ -1,14 +1,9 @@
-import { useEffect, useState } from 'react';
 import { AlertCircle, Clock3, ExternalLink, Mail, Target, UserRound, X } from 'lucide-react';
-import { Empty, Spin } from 'antd';
-import type { Result, TeamMonitoringMailSummary, TeamMonitoringMemberDetail as TeamMonitoringMemberDetailDto } from '../../../shared/online-crm';
-import { ONLINE_CHANNELS } from '../../../shared/online-crm';
+import { Spin } from 'antd';
+import type { TeamMonitoringMailSummary } from '../../../shared/online-crm';
+import { useTeamMonitoringMember } from './team-data';
 
 const DETAIL_MAIL_PAGE_SIZE = 10;
-
-function invoke<T>(channel: string, ...args: unknown[]): Promise<Result<T>> {
-  return window.api.invoke(channel, ...args) as Promise<Result<T>>;
-}
 
 function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
@@ -25,38 +20,22 @@ function priorityLabel(value: string): string {
   return '普通';
 }
 
-export function TeamMonitoringMemberDetail({ userId, online, onClose, onOpenMail }: {
+export function TeamMonitoringMemberDetail({ userId, online, onClose, onOpenMail, embedded = false }: {
   userId: string;
   online: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   onOpenMail: (mail: TeamMonitoringMailSummary) => void;
+  embedded?: boolean;
 }) {
-  const [detail, setDetail] = useState<TeamMonitoringMemberDetailDto | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const query = useTeamMonitoringMember(userId, online, DETAIL_MAIL_PAGE_SIZE);
+  const detail = query.data?.ok ? query.data.data : null;
+  const loading = query.isLoading;
+  const error = query.data && !query.data.ok ? query.data.error.message : query.error instanceof Error ? query.error.message : '';
 
-  useEffect(() => {
-    let active = true;
-    setDetail(null);
-    setError('');
-    if (!online) {
-      setLoading(false);
-      return () => { active = false; };
-    }
-    setLoading(true);
-    void invoke<TeamMonitoringMemberDetailDto>(ONLINE_CHANNELS.TEAM_MONITORING_MEMBER, userId, DETAIL_MAIL_PAGE_SIZE, 0).then(result => {
-      if (!active) return;
-      setLoading(false);
-      if (result.ok) setDetail(result.data);
-      else setError(result.error.message);
-    });
-    return () => { active = false; };
-  }, [online, userId]);
-
-  return <section className="team-monitoring-member-detail" aria-label="成员监控详情">
+  return <section className={`team-monitoring-member-detail${embedded ? ' is-embedded' : ''}`} aria-label="成员监控详情">
     <header>
       <div><span>成员</span><h2>{detail?.member.displayName ?? '成员详情'}</h2><small>{detail?.member.teamName ?? '正在读取范围'}</small></div>
-      <button type="button" onClick={onClose} aria-label="关闭成员详情" title="关闭"><X aria-hidden="true" /></button>
+      {onClose && <button type="button" onClick={onClose} aria-label="关闭成员详情" title="关闭"><X aria-hidden="true" /></button>}
     </header>
     {!online && <div className="team-monitoring-inline-state">联网后读取成员详情</div>}
     {loading && <div className="team-monitoring-inline-state"><Spin size="small" /> 正在读取</div>}
@@ -71,7 +50,7 @@ export function TeamMonitoringMemberDetail({ userId, online, onClose, onOpenMail
       <div className="team-monitoring-member-rates"><span>触达 {percent(detail.member.rates.contactRate)}</span><span>回复 {percent(detail.member.rates.replyRate)}</span><span>最近活动 {dateTime(detail.member.lastActivityAt)}</span></div>
       <section className="team-monitoring-detail-section">
         <div className="team-monitoring-detail-heading"><Target aria-hidden="true" /><h3>近期动作</h3><span>{detail.recentActions.length}</span></div>
-        {detail.recentActions.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待办或关注项" /> : detail.recentActions.map(action => <div key={action.actionId} className="team-monitoring-detail-row">
+        {detail.recentActions.length === 0 ? <div className="team-monitoring-inline-state">暂无待办或关注项</div> : detail.recentActions.map(action => <div key={action.actionId} className="team-monitoring-detail-row">
           <span className={`team-monitoring-priority is-${action.priority}`}>{priorityLabel(action.priority)}</span>
           <span><strong>{action.title}</strong><small>{action.customerName}{action.contactName ? ` · ${action.contactName}` : ''}</small></span>
           <small>{dateTime(action.dueAt ?? action.occurredAt)}</small>
@@ -79,7 +58,7 @@ export function TeamMonitoringMemberDetail({ userId, online, onClose, onOpenMail
       </section>
       <section className="team-monitoring-detail-section">
         <div className="team-monitoring-detail-heading"><UserRound aria-hidden="true" /><h3>关注项</h3><span>{detail.attention.length}</span></div>
-        {detail.attention.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关注项" /> : detail.attention.map(item => <div key={item.itemId} className="team-monitoring-detail-row">
+        {detail.attention.length === 0 ? <div className="team-monitoring-inline-state">暂无关注项</div> : detail.attention.map(item => <div key={item.itemId} className="team-monitoring-detail-row">
           <span className={`team-monitoring-priority is-${item.priority}`}>{priorityLabel(item.priority)}</span>
           <span><strong>{item.reason}</strong><small>{item.customerName} · {item.contactName}</small></span>
           <small>{dateTime(item.updatedAt)}</small>
@@ -87,7 +66,7 @@ export function TeamMonitoringMemberDetail({ userId, online, onClose, onOpenMail
       </section>
       <section className="team-monitoring-detail-section">
         <div className="team-monitoring-detail-heading"><Mail aria-hidden="true" /><h3>近期邮件</h3><span>{detail.recentMail.length}</span></div>
-        {detail.recentMail.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无邮件记录" /> : detail.recentMail.map(mail => <button key={mail.eventId} type="button" className="team-monitoring-mail-row" onClick={() => onOpenMail(mail)}>
+        {detail.recentMail.length === 0 ? <div className="team-monitoring-inline-state">暂无邮件记录</div> : detail.recentMail.map(mail => <button key={mail.eventId} type="button" className="team-monitoring-mail-row" onClick={() => onOpenMail(mail)}>
           <span className={`team-monitoring-mail-kind is-${mail.classification ?? 'other'}`}><Clock3 aria-hidden="true" /></span>
           <span><strong>{mail.subject || '无主题'}</strong><small>{mail.summary || mail.nextAction || '仅结构化摘要'}</small></span>
           <ExternalLink aria-hidden="true" />

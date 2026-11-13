@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Identity } from '../../server/core/auth';
 import {
@@ -12,6 +13,11 @@ import {
   type TeamMonitoringMemberDetail,
   type TeamMonitoringOverview,
 } from '../../src/shared/online-crm';
+
+vi.mock('../../src/renderer/IdentityContext', () => ({
+  useIdentity: () => ({ identity: { userId: '55555555-5555-4555-8555-555555555555', displayName: 'Leader', email: 'leader@example.invalid', emailVerified: true, identityAdmin: false, crmRoles: ['sales'] }, baseUrl: 'http://fixture.invalid', status: 'authenticated' }),
+  useOptionalIdentity: () => ({ identity: { userId: '55555555-5555-4555-8555-555555555555', displayName: 'Leader', email: 'leader@example.invalid', emailVerified: true, identityAdmin: false, crmRoles: ['sales'] }, baseUrl: 'http://fixture.invalid', status: 'authenticated' }),
+}));
 
 vi.mock('antd', async () => {
   const React = await import('react');
@@ -60,6 +66,7 @@ const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 describe('team monitoring renderer', () => {
   let root: Root;
   let host: HTMLDivElement;
+  let queryClient: QueryClient;
 
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,6 +74,7 @@ describe('team monitoring renderer', () => {
     host = document.createElement('div');
     document.body.append(host);
     root = createRoot(host);
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   });
 
   afterEach(async () => {
@@ -83,7 +91,7 @@ describe('team monitoring renderer', () => {
     return { ok: false as const, error: { code: 'UNEXPECTED', message: `${channel}:${args.length}` } };
   })) {
     Object.defineProperty(window, 'api', { configurable: true, value: { invoke } });
-    await act(async () => { root.render(<TeamMonitoringView identity={identity} teams={[team]} online />); await flush(); });
+    await act(async () => { root.render(<QueryClientProvider client={queryClient}><TeamMonitoringView identity={identity} teams={[team]} online /></QueryClientProvider>); await flush(); });
     await act(flush);
     return invoke;
   }

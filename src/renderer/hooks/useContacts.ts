@@ -1,5 +1,5 @@
 import { invalidateDomain } from "../lib/cacheDeps";
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { ONLINE_LIMITS } from '../../shared/online-crm';
 
 // 客户页离开后短时间内返回，直接使用查询缓存；挂载中的 5 秒轮询和写入失效仍负责保持内容新鲜。
@@ -54,7 +54,7 @@ export interface ContactDataPort {
   upsert(input: Record<string, unknown>): Promise<ContactDataResult>;
   export?(kind: "contacts" | "notes", filters: { search?: string } & ContactFilters): Promise<ContactDataResult<string>>;
   canDelete?(id:number):boolean;
-  deleteBatch?(ids:number[]):Promise<ContactDataResult<void>>;
+  deleteBatch?(ids:number[], loaded?:Contact[]):Promise<ContactDataResult<void>>;
   delete(id: number): Promise<ContactDataResult<void>>;
 }
 
@@ -70,6 +70,32 @@ export function useContacts(params?: { search?: string; page?: number } & Contac
     placeholderData: keepPreviousData,
     staleTime: port ? CONTACT_CACHE_STALE_MS : 0,
     refetchInterval: port ? ONLINE_LIMITS.pollMs : false,
+  });
+}
+
+/** Incrementally appends pages for the customer contact table; write invalidation still refreshes every loaded page. */
+export function useInfiniteContacts(params?: { search?: string } & ContactFilters, port?: ContactDataPort) {
+  return useInfiniteQuery({
+    queryKey: [port ? "center-contacts" : "contacts", port?.key, params],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => port
+      ? port.list({ ...params, page: pageParam })
+      : window.api.invoke("contacts:list", { ...params, page: pageParam }) as Promise<{
+        success: boolean;
+        data?: { items: Contact[]; total: number };
+        error?: string;
+      }>,
+    getNextPageParam: (lastPage, pages) => {
+      if (!lastPage.success || !lastPage.data) return undefined;
+      const loaded = pages.reduce((sum, page) => sum + (page.success ? page.data?.items.length ?? 0 : 0), 0);
+      return loaded < lastPage.data.total ? pages.length + 1 : undefined;
+    },
+    staleTime: port ? CONTACT_CACHE_STALE_MS : 0,
+    refetchInterval: port
+      ? query => (query.state.data?.pages.length ?? 0) <= 1 ? ONLINE_LIMITS.pollMs : false
+      : false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 

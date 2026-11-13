@@ -142,6 +142,16 @@ const ADMIN_TEAM_SELECT = `
     (SELECT count(*)::int FROM crm_org_assignments a WHERE a.unit_id=u.unit_id AND a.ended_at IS NULL) AS "memberCount",
     (SELECT count(*)::int FROM crm_org_invitations i WHERE i.unit_id=u.unit_id AND i.status='pending') AS "pendingInvitationCount",
     (SELECT count(*)::int FROM crm_org_units c WHERE c.parent_unit_id=u.unit_id AND c.dissolved_at IS NULL) AS "childCount",
+    COALESCE((SELECT count(DISTINCT r.request_id)::int
+      FROM crm_contact_assignment_requests r
+      JOIN crm_org_assignments target_membership ON target_membership.user_id=r.target_user_id
+        AND target_membership.unit_id=u.unit_id AND target_membership.ended_at IS NULL
+      WHERE u.kind='sales_team' AND r.status IN ('pending','accepted','pending_transfer')),0) AS "assignedLeadCount",
+    COALESCE((SELECT array_agg(DISTINCT r.source_org_unit_id::text)
+      FROM crm_contact_assignment_requests r
+      JOIN crm_org_assignments target_membership ON target_membership.user_id=r.target_user_id
+        AND target_membership.unit_id=u.unit_id AND target_membership.ended_at IS NULL
+      WHERE u.kind='sales_team' AND r.status IN ('pending','accepted','pending_transfer') AND r.source_org_unit_id IS NOT NULL),ARRAY[]::text[]) AS "assignmentSourceTeamIds",
     u.created_at AS "createdAt"
   FROM crm_org_units u
   LEFT JOIN crm_org_units p ON p.unit_id=u.parent_unit_id
@@ -158,10 +168,6 @@ function superAdmin(actor: TeamActor): boolean {
 
 function manager(actor: TeamActor): boolean {
   return canGovernOrganization({ userId: actor.userId, identityAdmin: actor.identityAdmin, roles: actor.roles });
-}
-
-function participant(actor: TeamActor): boolean {
-  return superAdmin(actor) || actor.roles.some(role => role === 'operations' || role === 'sales');
 }
 
 function mapInvitation(row: InvitationRow, actor: TeamActor, canCancel: boolean): TeamInvitation {
@@ -183,7 +189,7 @@ function treeOrder(rows: AdminTeamRow[]): TeamAdminSummary[] {
     const parent = row.parentTeamId && byId.has(row.parentTeamId) ? row.parentTeamId : null;
     children.set(parent, [...(children.get(parent) ?? []), row]);
   }
-  for (const group of children.values()) group.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN') || left.teamId.localeCompare(right.teamId));
+  for (const group of children.values()) group.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || left.teamId.localeCompare(right.teamId));
   const result: TeamAdminSummary[] = [];
   const seen = new Set<string>();
   const visit = (parent: string | null, depth: number) => {
@@ -195,7 +201,9 @@ function treeOrder(rows: AdminTeamRow[]): TeamAdminSummary[] {
     }
   };
   visit(null, 0);
-  for (const row of rows) if (!seen.has(row.teamId)) result.push({ ...row, createdAt: row.createdAt.toISOString(), depth: 0 });
+  for (const row of rows.filter(row => !seen.has(row.teamId)).sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || left.teamId.localeCompare(right.teamId))) {
+    result.push({ ...row, createdAt: row.createdAt.toISOString(), depth: 0 });
+  }
   return result;
 }
 
@@ -290,24 +298,23 @@ export class PostgresTeamRepository implements TeamRepository {
     if (!row || !row.identityAdmin && row.scope === null) return null;
     const roles = (row.roles ?? []) as CrmRole[];
     const actor: TeamActor = { ...row, roles, scope: (row.scope ?? 'own') as DataScope, capabilities: [] };
-    if (!participant(actor)) return null;
     return { ...actor, capabilities: effectiveCapabilitiesFor(roles, row.capabilities) };
   }
 
-  private async members(client: PoolClient, unitId: string, full: boolean, viewerUserId: string): Promise<TeamMember[]> {
+  private async members(client: PoolClient, unitId: string, _full: boolean, _viewerUserId: string): Promise<TeamMember[]> {
     return (await client.query(`
       SELECT a.user_id AS "userId",u.display_name AS "displayName",e.email,a.role,a.created_at AS "joinedAt"
       FROM crm_org_assignments a
       JOIN public.identity_users u ON u.user_id=a.user_id
       LEFT JOIN public.identity_login_emails e ON e.user_id=a.user_id
-      WHERE a.unit_id=$1 AND a.ended_at IS NULL AND ($2::boolean OR a.user_id=$3)
-      ORDER BY CASE a.role WHEN 'leader' THEN 0 ELSE 1 END,a.created_at,a.user_id
-    `, [unitId, full, viewerUserId])).rows.map(member => ({ ...member, joinedAt: (member.joinedAt as Date).toISOString() })) as TeamMember[];
+      WHERE a.unit_id=$1 AND a.ended_at IS NULL
+      ORDER BY a.created_at DESC,a.user_id
+    `, [unitId])).rows.map(member => ({ ...member, joinedAt: (member.joinedAt as Date).toISOString() })) as TeamMember[];
   }
 
   private async memberGroups(client: PoolClient, unitId: string, full: boolean): Promise<TeamMemberGroup[]> {
     if (!full) return [];
-    const groups = (await client.query('SELECT group_id AS "groupId",unit_id AS "teamId",name,version FROM crm_org_member_groups WHERE unit_id=$1 ORDER BY name,group_id', [unitId])).rows as Array<Pick<TeamMemberGroup, 'groupId' | 'teamId' | 'name' | 'version'>>;
+    const groups = (await client.query('SELECT group_id AS "groupId",unit_id AS "teamId",name,version FROM crm_org_member_groups WHERE unit_id=$1 ORDER BY created_at DESC,group_id', [unitId])).rows as Array<Pick<TeamMemberGroup, 'groupId' | 'teamId' | 'name' | 'version'>>;
     if (!groups.length) return [];
     const members = (await client.query('SELECT group_id AS "groupId",user_id AS "userId" FROM crm_org_member_group_members WHERE unit_id=$1 ORDER BY group_id,user_id', [unitId])).rows as Array<{ groupId: string; userId: string }>;
     return groups.map(group => ({ ...group, memberIds: members.filter(member => member.groupId === group.groupId).map(member => member.userId) }));
@@ -356,13 +363,14 @@ export class PostgresTeamRepository implements TeamRepository {
   private async teamById(client: PoolClient, unitId: string, actor: TeamActor): Promise<{ row: OrganizationRow; team: TeamSnapshot } | null> {
     const row = (await client.query(`${TEAM_SELECT} WHERE u.unit_id=$1 AND u.dissolved_at IS NULL`, [unitId])).rows[0] as OrganizationRow | undefined;
     if (!row) return null;
-    const full = await this.canManageUnit(client, actor, unitId);
+    const own = await this.assignment(client, actor.userId, unitId);
+    const full = !!own || await this.canManageUnit(client, actor, unitId);
     return { row, team: await this.snapshot(client, row, full, actor.userId, await this.canDissolveUnit(client, actor, unitId)) };
   }
 
   private async teamForUser(client: PoolClient, actor: TeamActor): Promise<TeamSnapshot | null> {
     const row = (await client.query(`${TEAM_SELECT} JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.kind='sales_team' AND u.dissolved_at IS NULL ORDER BY a.is_primary DESC,a.created_at,a.unit_id LIMIT 1`, [actor.userId])).rows[0] as OrganizationRow | undefined;
-    return row ? this.snapshot(client, row, row.leaderUserId === actor.userId, actor.userId, await this.canDissolveUnit(client, actor, row.teamId)) : null;
+    return row ? this.snapshot(client, row, true, actor.userId, await this.canDissolveUnit(client, actor, row.teamId)) : null;
   }
 
   private async expireInvitations(client: PoolClient): Promise<void> {
@@ -377,11 +385,11 @@ export class PostgresTeamRepository implements TeamRepository {
 
   private async invitations(client: PoolClient, actor: TeamActor, teamId: string | null, canManageCurrent: boolean): Promise<{ incoming: TeamInvitation[]; outgoing: TeamInvitation[] }> {
     await this.expireInvitations(client);
-    const incoming = (await client.query(`${INVITATION_SELECT} WHERE i.invitee_user_id=$1 AND i.status IN ('pending','expired') ORDER BY CASE i.status WHEN 'pending' THEN 0 ELSE 1 END,i.created_at DESC`, [actor.userId])).rows as InvitationRow[];
+    const incoming = (await client.query(`${INVITATION_SELECT} WHERE i.invitee_user_id=$1 AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [actor.userId])).rows as InvitationRow[];
     const outgoing = manager(actor)
-      ? (await client.query(`${INVITATION_SELECT} WHERE ($1::uuid IS NULL OR i.unit_id=$1) AND i.status IN ('pending','expired') ORDER BY CASE i.status WHEN 'pending' THEN 0 ELSE 1 END,i.created_at DESC`, [teamId])).rows as InvitationRow[]
+      ? (await client.query(`${INVITATION_SELECT} WHERE ($1::uuid IS NULL OR i.unit_id=$1) AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [teamId])).rows as InvitationRow[]
       : teamId && canManageCurrent
-        ? (await client.query(`${INVITATION_SELECT} WHERE i.unit_id=$1 AND i.status IN ('pending','expired') ORDER BY CASE i.status WHEN 'pending' THEN 0 ELSE 1 END,i.created_at DESC`, [teamId])).rows as InvitationRow[]
+        ? (await client.query(`${INVITATION_SELECT} WHERE i.unit_id=$1 AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [teamId])).rows as InvitationRow[]
         : [];
     return {
       incoming: incoming.map(row => mapInvitation(row, actor, manager(actor) || (canManageCurrent && row.teamId === teamId))),
@@ -397,8 +405,8 @@ export class PostgresTeamRepository implements TeamRepository {
     const companyRow = (await client.query("SELECT unit_id AS \"unitId\",kind,parent_unit_id AS \"parentUnitId\",name,version FROM crm_org_units WHERE kind='company'")).rows[0] as OrganizationUnitSummary | undefined;
     if (!companyRow) throw new Error('company root missing');
     const rows = manager(actor)
-      ? (await client.query("SELECT unit_id AS \"unitId\",kind,parent_unit_id AS \"parentUnitId\",name,version FROM crm_org_units WHERE kind<>'company' AND dissolved_at IS NULL ORDER BY kind,name,unit_id")).rows
-      : (await client.query("SELECT u.unit_id AS \"unitId\",u.kind,u.parent_unit_id AS \"parentUnitId\",u.name,u.version FROM crm_org_units u JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.dissolved_at IS NULL ORDER BY u.kind,u.name,u.unit_id", [actor.userId])).rows;
+      ? (await client.query("SELECT unit_id AS \"unitId\",kind,parent_unit_id AS \"parentUnitId\",name,version FROM crm_org_units WHERE kind<>'company' AND dissolved_at IS NULL ORDER BY created_at DESC,unit_id")).rows
+      : (await client.query("SELECT u.unit_id AS \"unitId\",u.kind,u.parent_unit_id AS \"parentUnitId\",u.name,u.version FROM crm_org_units u JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.dissolved_at IS NULL ORDER BY u.created_at DESC,u.unit_id", [actor.userId])).rows;
     return { company: companyRow, visibleUnits: rows as OrganizationUnitSummary[] };
   }
 
@@ -435,9 +443,12 @@ export class PostgresTeamRepository implements TeamRepository {
       if (!manager(actor) && !own) return failure('NOT_FOUND', '团队不存在');
       const found = await this.teamById(client, teamId, actor);
       if (!found || found.row.organizationKind === 'company') return failure('NOT_FOUND', '团队不存在');
-      const full = await this.canManageUnit(client, actor, teamId);
+      const canManage = await this.canManageUnit(client, actor, teamId);
       const invitations = await this.invitations(client, actor, teamId, await this.canManageInvitation(client, actor, teamId));
-      const children = full ? treeOrder(await this.adminTeamRows(client, 'AND u.parent_unit_id=$1', [teamId])).filter(row => row.depth === 0) : [];
+      const allTeams = canManage ? treeOrder(await this.adminTeamRows(client)) : [];
+      const children = found.row.organizationKind === 'operations_group'
+        ? allTeams.filter(row => row.unitType === 'sales_team' && (row.assignmentSourceTeamIds ?? []).includes(teamId))
+        : allTeams.filter(row => row.parentTeamId === teamId);
       return success({ team: found.team, outgoingInvitations: invitations.outgoing, children });
     });
   }
@@ -448,7 +459,12 @@ export class PostgresTeamRepository implements TeamRepository {
       const role = query.role ?? 'member';
       const kind: OrganizationUnitKind = role === 'leader' && query.unitType === 'operations' ? 'operations_group' : 'sales_team';
       if (role === 'leader' && !manager(actor)) return failure('FORBIDDEN', '只有管理角色可以调整负责人');
-      if (role === 'member' && !manager(actor) && !leads) return failure('FORBIDDEN', '只有团队负责人可以邀请成员');
+      const creatingSalesTeam = query.purpose === 'create' && role === 'member';
+      if (creatingSalesTeam && !manager(actor)) {
+        const assignments = await this.assignmentsForUser(client, actor.userId);
+        if (assignments.some(item => item.role === 'member')) return failure('CONFLICT', '当前账号已经加入销售团队');
+      }
+      if (role === 'member' && !manager(actor) && !leads && !creatingSalesTeam) return failure('FORBIDDEN', '只有团队负责人可以邀请成员');
       const search = `%${query.search.replace(/[!%_]/g, '!$&')}%`;
       const access = "u.active AND NOT u.must_change_password AND EXISTS(SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND a.active)";
       const searchable = "(u.display_name ILIKE $1 ESCAPE '!' OR COALESCE(e.email,'') ILIKE $1 ESCAPE '!')";
@@ -517,11 +533,16 @@ export class PostgresTeamRepository implements TeamRepository {
       if (cached.state === 'replay' && cached.response) return success(cached.response);
       if (cached.state === 'conflict') return failure('CONFLICT', '幂等键已用于不同请求');
       const kind: OrganizationUnitKind = (input.unitType ?? DEFAULT_TEAM_UNIT_TYPE) === 'operations' ? 'operations_group' : 'sales_team';
-      const privileged = manager(actor);
-      if (!privileged && (kind !== 'sales_team' || input.parentTeamId || input.leaderUserId && input.leaderUserId !== actor.userId)) return failure('FORBIDDEN', '只有管理角色可以创建运营组或指派团队负责人');
-      if (privileged && !input.leaderUserId) return failure('INVALID_INPUT', '管理角色创建组织时必须明确指定负责人');
-      const leaderUserId = input.leaderUserId ?? actor.userId;
-      if (!privileged && (await this.assignmentsForUser(client, actor.userId)).some(item => item.role === 'member')) return failure('CONFLICT', '当前账号已经加入销售团队');
+      const admin = superAdmin(actor);
+      const roleAllowsKind = admin
+        || kind === 'operations_group' && actor.roles.includes('operations')
+        || kind === 'sales_team' && actor.roles.includes('sales');
+      if (!roleAllowsKind) return failure('FORBIDDEN', kind === 'operations_group' ? '只有运营账号可以创建运营组' : '只有销售账号可以创建销售团队');
+      if (kind === 'sales_team' && input.parentTeamId) return failure('INVALID_INPUT', '销售团队不能挂在运营组；请通过分配线索建立团队关系');
+      if (!admin && input.leaderUserId && input.leaderUserId !== actor.userId) return failure('FORBIDDEN', '只能把当前账号设为负责人');
+      if (admin && !input.leaderUserId) return failure('INVALID_INPUT', '管理角色创建组织时必须明确指定负责人');
+      const leaderUserId = admin ? input.leaderUserId! : actor.userId;
+      if (!admin && (await this.assignmentsForUser(client, actor.userId)).some(item => item.role === 'member')) return failure('CONFLICT', '当前账号已经加入销售团队');
       if (input.inviteeUserIds.includes(leaderUserId)) return failure('INVALID_INPUT', '负责人不能同时作为受邀普通成员');
       if (!(await this.validLeader(client, leaderUserId, kind))) return failure('INVALID_INPUT', kind === 'sales_team' ? '销售团队负责人必须是可用销售账号' : '运营组负责人必须是管理账号');
       const company = (await client.query("SELECT unit_id AS \"unitId\" FROM crm_org_units WHERE kind='company' AND dissolved_at IS NULL")).rows[0] as { unitId: string } | undefined;
@@ -613,6 +634,7 @@ export class PostgresTeamRepository implements TeamRepository {
       if (current.version !== input.expectedVersion) return failure('CONFLICT', '团队版本已变化');
       const company = (await client.query("SELECT unit_id AS \"unitId\" FROM crm_org_units WHERE kind='company' AND dissolved_at IS NULL")).rows[0] as { unitId: string } | undefined;
       if (!company) return failure('DATABASE_ERROR', '组织根不存在');
+      if (current.kind === 'sales_team' && input.parentTeamId && input.parentTeamId !== company.unitId) return failure('INVALID_INPUT', '销售团队不能挂在运营组；请通过分配线索建立团队关系');
       const parentUnitId = input.parentTeamId ?? company.unitId;
       const parent = await this.unit(client, parentUnitId);
       if (!parent || !canPlaceOrganizationUnit(parent.kind, current.kind)) return failure('INVALID_INPUT', '目标上级不符合组织层级');
@@ -708,19 +730,19 @@ export class PostgresTeamRepository implements TeamRepository {
       if (cached.state === 'conflict') return failure('CONFLICT', '幂等键已用于不同请求');
       const team = (await client.query('SELECT unit_id AS "unitId",kind,version FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0] as UnitRow | undefined;
       if (!team || team.kind !== 'sales_team') return failure('INVALID_INPUT', '只有销售团队可以调整普通成员');
-      if (!(await this.canManageUnit(client, actor, teamId))) return failure('FORBIDDEN', '只有负责人或管理角色可以调整成员');
       if (team.version !== input.expectedVersion) return failure('CONFLICT', '团队版本已变化');
+      if (input.action === 'leave' && input.userId !== actor.userId) return failure('FORBIDDEN', '只能退出自己的团队');
+      if (input.action !== 'leave' && !(await this.canManageUnit(client, actor, teamId))) return failure('FORBIDDEN', '只有负责人或管理角色可以调整成员');
       if (input.action === 'add') {
         if (!(await this.validInvitees(client, [input.userId]))) return failure('INVALID_INPUT', '成员已有归属或不可用');
-        const assigned = await this.insertAssignment(client, input.userId, teamId, team.kind, 'member');
-        if (!assigned.ok) return assigned;
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [randomUUID(), teamId, actor.userId, input.userId]);
       } else {
         const existing = await this.assignment(client, input.userId, teamId);
         if (existing?.role !== 'member') return failure('NOT_FOUND', '团队成员不存在');
         await client.query('DELETE FROM crm_org_member_group_members WHERE unit_id=$1 AND user_id=$2', [teamId, input.userId]);
         await client.query("DELETE FROM crm_org_assignments WHERE unit_id=$1 AND user_id=$2 AND role='member' AND ended_at IS NULL", [teamId, input.userId]);
+        await client.query('UPDATE crm_org_units SET version=version+1,updated_at=now() WHERE unit_id=$1', [teamId]);
       }
-      await client.query('UPDATE crm_org_units SET version=version+1,updated_at=now() WHERE unit_id=$1', [teamId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok) return context;
       await this.remember(client, actor.userId, operation, input.idempotencyKey, cached.digest, context.data);

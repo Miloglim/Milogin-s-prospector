@@ -5,6 +5,7 @@ import { OPPORTUNITY_EVENTS,OPPORTUNITY_LIMITS,OPPORTUNITY_STAGES,type Opportuni
 import { authorizeLeadActor,type LeadActor } from './lead-repository';
 import { ADMIN_LOCK } from './admin-schema';
 import { assertCenterDatabasePool } from './config';
+import { createDealOverlapNoticesIn } from './lead-overlap-repository';
 import { OPPORTUNITY_LOCK,OPPORTUNITY_SQL,OPPORTUNITY_VERSION } from './opportunity-schema';
 type Customer={customer_id:string;created_by:string;owner_user_id:string|null;origin:string;state:string;version:number};
 function administrator(a:LeadActor){return a.roles.includes('admin')&&['shared','summary'].includes(a.scope)&&a.capabilities.includes('leads.read.all');}
@@ -52,7 +53,9 @@ export class PostgresOpportunityRepository implements OpportunityRepository {
    const amount=input.amount??o.amount,currency=input.currency??o.currency,evidence=input.stage==='closed_won'?input.evidence?.trim()??null:null,lostReason=input.stage==='closed_lost'?input.lostReason?.trim()??null:null;
    if(input.stage==='closed_won'&&(!amount||!currency||!evidence)||input.stage==='closed_lost'&&!lostReason)return failure('INVALID_INPUT','成交需金额、币种和证据；丢单需原因');
    await db.query(`UPDATE crm_opportunities SET stage=$2,amount=$3,currency=$4,evidence=$5,lost_reason=$6,version=version+1,updated_at=clock_timestamp(),closed_at=CASE WHEN $2 IN ('closed_won','closed_lost') THEN clock_timestamp() ELSE NULL END,closed_by=CASE WHEN $2 IN ('closed_won','closed_lost') THEN $7::uuid ELSE NULL END WHERE opportunity_id=$1 AND version=$8`,[input.opportunityId,input.stage,amount,currency,evidence,lostReason,a.userId,input.expectedVersion]);
-   const changed=await this.one(db,input.opportunityId,a);if(!changed.ok)return changed;await this.record(db,a,changed.data,o.stage);return this.one(db,input.opportunityId,a);
+   const changed=await this.one(db,input.opportunityId,a);if(!changed.ok)return changed;await this.record(db,a,changed.data,o.stage);
+   if(input.stage==='closed_won'){const details=await db.query(`SELECT co.name AS company_name,COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),ct.email,'联系人') AS contact_name FROM crm_customers c JOIN companies co ON co.id=c.company_id LEFT JOIN crm_customer_contacts cc ON cc.customer_id=c.customer_id LEFT JOIN contacts ct ON ct.id=cc.contact_id WHERE c.customer_id=$1 ORDER BY ct.id LIMIT 1`,[changed.data.customerId]);const row=details.rows[0];if(row)await createDealOverlapNoticesIn(db,{customerId:changed.data.customerId,opportunityId:input.opportunityId,actorId:a.userId,version:Number(changed.data.version),companyName:String(row.company_name),contactName:String(row.contact_name)});}
+   return this.one(db,input.opportunityId,a);
   });
  });}
 }

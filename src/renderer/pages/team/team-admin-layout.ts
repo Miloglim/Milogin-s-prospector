@@ -27,12 +27,20 @@ function buildTeamTree(teams: readonly TeamAdminSummary[]) {
   const known = new Set(teams.map(team => team.teamId));
   const children = new Map<string | null, TeamAdminSummary[]>();
   for (const team of teams) {
-    const parentId = team.parentTeamId && known.has(team.parentTeamId) ? team.parentTeamId : null;
+    const parentId = effectiveTeamParentId(team, known);
     const group = children.get(parentId) ?? [];
     group.push(team);
     children.set(parentId, group);
   }
   return children;
+}
+
+/** Sales teams only join an operations group through accepted lead assignments. */
+export function effectiveTeamParentId(team: TeamAdminSummary, known: ReadonlySet<string>): string | null {
+  if (team.unitType === 'sales_team') {
+    return (team.assignmentSourceTeamIds ?? []).find(teamId => known.has(teamId)) ?? null;
+  }
+  return team.parentTeamId && known.has(team.parentTeamId) ? team.parentTeamId : null;
 }
 
 export function layoutTeamTree(teams: readonly TeamAdminSummary[], collapsedTeamIds: ReadonlySet<string>, nodeHeights?: ReadonlyMap<string, number>) {
@@ -78,11 +86,13 @@ export function layoutTeamTree(teams: readonly TeamAdminSummary[], collapsedTeam
 
 export function pathToTeam(teams: readonly TeamAdminSummary[], teamId: string): Set<string> {
   const byId = new Map(teams.map(team => [team.teamId, team]));
+  const known = new Set(byId.keys());
   const path = new Set<string>();
   let current = byId.get(teamId);
   while (current) {
     path.add(current.teamId);
-    current = current.parentTeamId ? byId.get(current.parentTeamId) : undefined;
+    const parentId = effectiveTeamParentId(current, known);
+    current = parentId ? byId.get(parentId) : undefined;
   }
   return path;
 }

@@ -30,6 +30,8 @@ describe('application login boundary', () => {
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
+    vi.clearAllMocks();
+    router.state.location.pathname = '/customers';
     host = document.createElement('div'); document.body.append(host); root = createRoot(host); query = new QueryClient();
   });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); query.clear(); vi.restoreAllMocks(); });
@@ -82,17 +84,56 @@ describe('application login boundary', () => {
     expect(invoke).toHaveBeenCalledWith(CHANNEL.PASSWORD, { currentPassword: 'synthetic-original', newPassword: 'synthetic-replacement' });
     expect(host.textContent).toContain('密码已修改，请使用新密码登录');
   });
-  it('requires an explicit second request before replacing another Prospector device', async () => {
+  it('starts a handoff instead of replacing another Prospector device, then requires explicit takeover confirmation', async () => {
     const loginInputs: Array<Record<string, unknown>> = [];
+    const handoffInputs: Array<Record<string, unknown>> = [];
     const invoke = vi.fn(async (channel: string, input?: Record<string, unknown>) => {
       if (channel === CHANNEL.RESTORE) return { ok: true, data: { identity: null, remembered: false, baseUrl: 'http://127.0.0.1:55844' } };
       if (channel === CHANNEL.ACCOUNT_LIST) return { ok: true, data: { accounts: [] } };
       if (channel === CHANNEL.LOGIN) {
         loginInputs.push(input ?? {});
-        return input?.replaceActiveDevice
-          ? { ok: true, data: identity }
-          : { ok: false, error: { code: 'DEVICE_REPLACEMENT_REQUIRED', message: '该账号正在另一台电脑使用。继续登录会退出原电脑。' } };
+        return { ok: false, error: { code: 'DEVICE_REPLACEMENT_REQUIRED', message: '该账号正在另一台电脑使用。' } };
       }
+      if (channel === CHANNEL.HANDOFF_BEGIN) {
+        handoffInputs.push(input ?? {});
+        return { ok: true, data: { handoffToken: 'handoff-token', state: { handoffId: 'handoff-1', status: 'waiting_old_device', expiresAt: new Date(Date.now() + 600000).toISOString(), oldDeviceName: 'Office PC', newDeviceName: 'Home PC' } } };
+      }
+      if (channel === CHANNEL.HANDOFF_STATUS) return { ok: true, data: { handoffId: 'handoff-1', status: 'blocked', expiresAt: new Date(Date.now() + 600000).toISOString(), oldDeviceName: 'Office PC', newDeviceName: 'Home PC', summary: { checkedAt: new Date().toISOString(), blockers: ['有 1 个自动开发任务仍在运行'], counts: { contactPending: 0, contactFailed: 0, offlinePending: 0, offlineFailed: 0, templates: 0, inboxLabels: 0, queuedSends: 0, activeCampaigns: 1, pendingMailChanges: 0 } } } };
+      if (channel === CHANNEL.HANDOFF_TAKEOVER) return { ok: true, data: identity };
+      return { ok: true, data: { identity, remembered: false, baseUrl: 'http://127.0.0.1:55844' } };
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await mount(invoke);
+    for (const [id, value] of [['email', identity.email], ['password', 'synthetic-password']]) {
+      await act(async () => {
+        const input = host.querySelector<HTMLInputElement>(`#${id}`)!;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+    await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await new Promise(resolve => setTimeout(resolve, 20)); });
+    expect(host.textContent).toContain('该账号正在另一台电脑使用');
+    const startHandoff = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '检查原电脑后换机')!;
+    expect(startHandoff).toBeTruthy();
+    expect(loginInputs[0]).not.toHaveProperty('replaceActiveDevice');
+    await act(async () => { startHandoff.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
+    expect(handoffInputs[0]).toMatchObject({ email: identity.email, password: 'synthetic-password' });
+    expect(handoffInputs[0]).not.toHaveProperty('replaceActiveDevice');
+    expect(host.textContent).toContain('有 1 个自动开发任务仍在运行');
+    const takeover = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '旧电脑不可用，继续接管')!;
+    await act(async () => { takeover.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); await new Promise(resolve => setTimeout(resolve, 20)); });
+    expect(window.confirm).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith(CHANNEL.HANDOFF_TAKEOVER, expect.objectContaining({ handoffToken: 'handoff-token', reason: expect.stringContaining('用户确认') }));
+    expect(host.querySelector('[data-testid="business-router"]')).not.toBeNull();
+  });
+  it('completes a handoff automatically after the old device is ready', async () => {
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === CHANNEL.RESTORE) return { ok: true, data: { identity: null, remembered: false, baseUrl: 'http://127.0.0.1:55844' } };
+      if (channel === CHANNEL.ACCOUNT_LIST) return { ok: true, data: { accounts: [] } };
+      if (channel === CHANNEL.LOGIN) return { ok: false, error: { code: 'DEVICE_REPLACEMENT_REQUIRED', message: '该账号正在另一台电脑使用。' } };
+      if (channel === CHANNEL.HANDOFF_BEGIN) return { ok: true, data: { handoffToken: 'handoff-token', state: { handoffId: 'handoff-1', status: 'waiting_old_device', expiresAt: new Date(Date.now() + 600000).toISOString(), oldDeviceName: 'Office PC', newDeviceName: 'Home PC' } } };
+      if (channel === CHANNEL.HANDOFF_STATUS) return { ok: true, data: { handoffId: 'handoff-1', status: 'ready', expiresAt: new Date(Date.now() + 600000).toISOString(), oldDeviceName: 'Office PC', newDeviceName: 'Home PC' } };
+      if (channel === CHANNEL.HANDOFF_COMPLETE) return { ok: true, data: identity };
       return { ok: true, data: { identity, remembered: false, baseUrl: 'http://127.0.0.1:55844' } };
     });
     await mount(invoke);
@@ -104,12 +145,10 @@ describe('application login boundary', () => {
       });
     }
     await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await new Promise(resolve => setTimeout(resolve, 20)); });
-    expect(host.textContent).toContain('该账号正在另一台电脑使用');
-    const replace = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '退出原电脑并登录')!;
-    expect(replace).toBeTruthy();
-    expect(loginInputs[0]).not.toHaveProperty('replaceActiveDevice');
-    await act(async () => { replace.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
-    expect(loginInputs[1]).toMatchObject({ email: identity.email, password: 'synthetic-password', replaceActiveDevice: true });
+    const startHandoff = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '检查原电脑后换机')!;
+    await act(async () => { startHandoff.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
+    expect(invoke).toHaveBeenCalledWith(CHANNEL.HANDOFF_COMPLETE, expect.objectContaining({ handoffToken: 'handoff-token' }));
+    expect(invoke).not.toHaveBeenCalledWith(CHANNEL.HANDOFF_TAKEOVER, expect.anything());
     expect(host.querySelector('[data-testid="business-router"]')).not.toBeNull();
   });
   it('mounts business routes only after main restores an unrestricted identity', async () => {
@@ -117,6 +156,13 @@ describe('application login boundary', () => {
     expect(host.querySelector('[data-testid="business-router"]')).not.toBeNull();
     expect(host.querySelector('form')).toBeNull();
     expect(router.navigate).toHaveBeenCalledWith({to:'/customers',replace:true});
+  });
+  it('keeps a restored online route instead of covering it with an initial-route mask', async () => {
+    router.state.location.pathname = '/assistant';
+    await mount(vi.fn(async () => ({ ok: true, data: { identity, baseUrl: 'http://127.0.0.1:55844', remembered: true, localAvailable: true, connection: 'online' } })));
+    expect(host.querySelector('[data-testid="business-router"]')).not.toBeNull();
+    expect(host.querySelector('.identity-route-loading')).toBeNull();
+    expect(router.navigate).not.toHaveBeenCalled();
   });
   it('shows one global prompt for an available update and opens settings', async () => {
     let updateHandler: ((value: unknown) => void) | undefined;

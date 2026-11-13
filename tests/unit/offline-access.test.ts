@@ -35,7 +35,7 @@ describe('center signed local-only access', () => {
     expect(JSON.parse(signer.issue(identity,NOW,deadline)!.payload).expiresAt).toBe(new Date(deadline).toISOString());
     expect(()=>signer.issue(identity,NOW,NOW)).toThrow();
   });
-  it('signs the exact JSON identity, audience and 72 hour bound with SPKI public key', () => {
+  it('signs the exact JSON identity, audience and fixed offline bound with SPKI public key', () => {
     const grant = signingIssuer().issue(identity, NOW)!;
     expect(grant.publicKey).toContain('BEGIN PUBLIC KEY');
     expect(verify(null, Buffer.from(grant.payload), grant.publicKey, Buffer.from(grant.signature, 'base64url'))).toBe(true);

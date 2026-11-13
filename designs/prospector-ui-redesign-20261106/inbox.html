@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prospector · 收件箱管理 Demo</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="app-rail" aria-label="主导航">
+      <a class="brand-mark" href="#" aria-label="Prospector">P</a>
+      <nav>
+        <button class="rail-button" type="button" title="工作台" aria-label="工作台"><i data-lucide="layout-dashboard"></i></button>
+        <button class="rail-button is-active" type="button" title="收件箱" aria-label="收件箱"><i data-lucide="inbox"></i></button>
+        <a class="rail-button" href="./team.html" title="团队" aria-label="团队"><i data-lucide="users-round"></i></a>
+        <button class="rail-button" type="button" title="客户" aria-label="客户"><i data-lucide="building-2"></i></button>
+        <button class="rail-button" type="button" title="发送中心" aria-label="发送中心"><i data-lucide="send"></i></button>
+      </nav>
+      <button class="rail-avatar" type="button" aria-label="账号">YQ</button>
+    </aside>
+
+    <main class="app-main">
+      <div class="app-topbar">
+        <div class="product-name">Prospector <span>Inbox Management</span></div>
+        <div class="topbar-meta"><span class="online-dot"></span><span>中心已连接</span><span class="topbar-divider"></span><span>11:02</span></div>
+      </div>
+
+      <section class="page-frame">
+        <div class="context-bar">
+          <nav class="section-tabs" aria-label="收件箱视图">
+            <button type="button" class="is-active">收件箱</button>
+            <button type="button">未读 12</button>
+            <button type="button">待处理 7</button>
+            <button type="button">已发送</button>
+          </nav>
+          <div class="context-tools">
+            <label class="search-field"><i data-lucide="search"></i><input id="mail-global-search" placeholder="搜索发件人、主题、正文" /></label>
+            <button class="icon-button" type="button" title="同步邮件" aria-label="同步邮件"><i data-lucide="refresh-cw"></i></button>
+            <a class="button primary" href="./team.html"><i data-lucide="users-round"></i>团队协作 Demo</a>
+          </div>
+        </div>
+
+        <div class="workspace inbox-workspace">
+          <aside class="panel inbox-sidebar">
+            <div class="panel-heading"><div><span class="eyebrow">邮件管理</span><h2>收件箱</h2></div><button class="icon-button" type="button" title="更多" aria-label="更多"><i data-lucide="settings-2"></i></button></div>
+            <div class="sidebar-compose"><button class="button primary" type="button"><i data-lucide="square-pen"></i>写邮件</button></div>
+
+            <section class="sidebar-section"><h3>邮箱 <span>128</span></h3>
+              <button class="sidebar-item is-active" data-filter="all" type="button"><i data-lucide="inbox"></i><span>全部邮件</span><em>128</em></button>
+              <button class="sidebar-item" data-filter="unread" type="button"><i data-lucide="mail"></i><span>未读</span><em>12</em></button>
+              <button class="sidebar-item" data-filter="replied" type="button"><i data-lucide="reply"></i><span>已收到</span><em>18</em></button>
+              <button class="sidebar-item" data-filter="bounce" type="button"><i data-lucide="mail-x"></i><span>退信</span><em>3</em></button>
+              <button class="sidebar-item" data-filter="sent" type="button"><i data-lucide="send"></i><span>已发送</span><em>25</em></button>
+            </section>
+
+            <section class="sidebar-section"><h3>联系人分组 <span>3</span></h3>
+              <button class="sidebar-item" type="button"><i data-lucide="building-2"></i><span>重点客户</span><em>24</em></button>
+              <button class="sidebar-item" type="button"><i data-lucide="user-plus"></i><span>新客户</span><em>18</em></button>
+              <button class="sidebar-item" type="button"><i data-lucide="user-search"></i><span>未匹配发件人</span><em>7</em></button>
+            </section>
+
+            <section class="sidebar-section"><h3>我的标签 <button type="button" title="新增标签"><i data-lucide="plus"></i></button></h3>
+              <button class="sidebar-item" type="button"><span class="sidebar-swatch"></span><span>询价</span><em>16</em></button>
+              <button class="sidebar-item" type="button"><span class="sidebar-swatch green"></span><span>订单</span><em>9</em></button>
+              <button class="sidebar-item" type="button"><span class="sidebar-swatch red"></span><span>投诉</span><em>2</em></button>
+            </section>
+
+            <section class="sidebar-section"><h3>待办 <span>10</span></h3>
+              <button class="sidebar-item" data-filter="today" type="button"><i data-lucide="calendar-clock"></i><span>今天</span><em>5</em></button>
+              <button class="sidebar-item" data-filter="overdue" type="button"><i data-lucide="alarm-clock"></i><span>逾期</span><em>2</em></button>
+              <button class="sidebar-item" type="button"><i data-lucide="clock-3"></i><span>稍后</span><em>3</em></button>
+            </section>
+
+            <section class="sidebar-section"><h3>分级</h3>
+              <button class="sidebar-item" data-filter="urgent" type="button"><span class="sidebar-swatch red"></span><span>紧急</span><em>3</em></button>
+              <button class="sidebar-item" data-filter="important" type="button"><span class="sidebar-swatch orange"></span><span>重要</span><em>8</em></button>
+              <button class="sidebar-item" data-filter="normal" type="button"><span class="sidebar-swatch slate"></span><span>普通</span><em>117</em></button>
+            </section>
+          </aside>
+
+          <section class="panel mail-list-panel">
+            <div class="mail-list-toolbar"><label class="search-field"><i data-lucide="search"></i><input placeholder="搜索当前视图" /></label><button class="icon-button" type="button" title="筛选" aria-label="筛选"><i data-lucide="list-filter"></i></button></div>
+            <div class="mail-chips"><button class="mail-chip is-active" type="button">全部</button><button class="mail-chip" type="button">未读</button><button class="mail-chip" type="button">置顶</button><button class="mail-chip" type="button">待处理</button></div>
+            <div class="mail-list" id="mail-list">
+              <button class="mail-row is-selected is-pinned" data-mail="santos" data-kind="replied" data-priority="urgent" data-unread="1" data-task="today" type="button">
+                <span class="mail-priority urgent"></span><span class="mail-row-main"><span class="mail-row-top"><strong>Ana Lima · Santos Logistics</strong><time>10:42</time></span><span class="mail-subject">Re: Santos 2×40HQ rate request</span><span class="mail-preview">客户确认 2×40HQ 报价，请今天 16:00 前确认舱位。</span></span><span class="mail-row-side"><i class="pin" data-lucide="pin"></i><span class="mini-label quote">询价</span></span>
+              </button>
+              <button class="mail-row" data-mail="blue" data-kind="replied" data-priority="important" data-unread="1" data-task="today" type="button">
+                <span class="mail-priority important"></span><span class="mail-row-main"><span class="mail-row-top"><strong>Mia Chen · Blue Ocean Trading</strong><time>09:56</time></span><span class="mail-subject">Quote confirmation · Ningbo → Jebel Ali</span><span class="mail-preview">Please keep the space for 2×40HQ before Friday.</span></span><span class="mail-row-side"><span class="mini-label order">订单</span></span>
+              </button>
+              <button class="mail-row" data-mail="north" data-kind="bounce" data-priority="important" data-unread="0" data-task="overdue" type="button">
+                <span class="mail-priority important"></span><span class="mail-row-main"><span class="mail-row-top"><strong>Mail Delivery System</strong><time>昨天</time></span><span class="mail-subject">Delivery Status Notification (Failure)</span><span class="mail-preview">buyer@northport.example 邮箱不存在，自动开发已暂停。</span></span><span class="mail-row-side"><span class="mini-label complaint">退信</span></span>
+              </button>
+              <button class="mail-row" data-mail="pacific" data-kind="sent" data-priority="normal" data-unread="0" data-task="" type="button">
+                <span class="mail-priority normal"></span><span class="mail-row-main"><span class="mail-row-top"><strong>发给 Pacific Foods Ltd.</strong><time>昨天</time></span><span class="mail-subject">Ningbo → Los Angeles weekly rate</span><span class="mail-preview">报价发送后 3 天，建议今天补充跟进。</span></span><span class="mail-row-side"><span class="mini-label quote">报价</span></span>
+              </button>
+              <button class="mail-row" data-mail="auto" data-kind="autoreply" data-priority="normal" data-unread="0" data-task="" type="button">
+                <span class="mail-priority normal"></span><span class="mail-row-main"><span class="mail-row-top"><strong>Auto Reply · Orchid Freight</strong><time>周一</time></span><span class="mail-subject">Automatic reply: Holiday schedule</span><span class="mail-preview">We will return on Monday and reply as soon as possible.</span></span><span class="mail-row-side"><span class="mini-label normal">自动回复</span></span>
+              </button>
+              <button class="mail-row" data-mail="unmatched" data-kind="replied" data-priority="normal" data-unread="1" data-task="today" type="button">
+                <span class="mail-priority normal"></span><span class="mail-row-main"><span class="mail-row-top"><strong>hello@seabridge.example</strong><time>周一</time></span><span class="mail-subject">New enquiry from website</span><span class="mail-preview">发件人尚未匹配联系人，可能属于新客户线索。</span></span><span class="mail-row-side"><i data-lucide="user-search"></i></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="panel mail-detail-panel">
+            <div class="mail-detail-head">
+              <div class="mail-detail-title"><h1 id="mail-detail-subject">Re: Santos 2×40HQ rate request</h1><div class="mail-detail-actions"><button class="icon-button" type="button" title="置顶" aria-label="置顶"><i data-lucide="pin"></i></button><button class="icon-button" type="button" title="标记待办" aria-label="标记待办"><i data-lucide="circle-check-big"></i></button><button class="icon-button" type="button" title="更多" aria-label="更多"><i data-lucide="ellipsis"></i></button></div></div>
+              <div class="mail-detail-meta"><span class="avatar">AL</span><span class="sender-block"><strong id="mail-detail-sender">Ana Lima · Santos Logistics</strong><small id="mail-detail-sender-meta">ana@santos.example · 发给我</small></span><span class="mini-label quote" id="mail-detail-label">询价</span><span>今天 10:42</span></div>
+            </div>
+            <div class="mail-body" id="mail-detail-body">
+              <p>Hi Jade,</p>
+              <p>We confirm the rate for Ningbo → Santos, 2×40HQ at USD 2,480 per container. Please secure the space before 16:00 today.</p>
+              <blockquote>Original request: Ningbo → Santos · 2×40HQ · preferred ETD 18 Nov.</blockquote>
+              <p>Best regards,<br />Ana Lima</p>
+              <div class="matched-card"><span><strong>Santos Logistics</strong><small>Brazil · 重点客户 · 3 位联系人</small></span><button class="button" type="button">打开客户</button></div>
+              <div class="ai-summary"><header><i data-lucide="sparkles"></i>AI 建议</header><p>客户已确认价格，核心动作是确认舱位并在今日 16:00 前回复。</p><footer><span class="mini-label quote">报价请求</span><button class="button primary" type="button"><i data-lucide="list-todo"></i>生成待办</button></footer></div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="./demo.js"></script>
+</body>
+</html>

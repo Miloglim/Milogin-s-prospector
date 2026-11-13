@@ -38,6 +38,7 @@ import { TASK_ROUTES } from '../../../server/core/tasks';
 import type { ContactIncrementalPage } from '../core/contact-incremental-sync';
 import { createMailAnalysisQueueService, type MailAnalysisAnalyzerPort } from '../services/mail-analysis-queue.service';
 import type { ContactMailEventReceipt } from '../../../server/core/contact-mail';
+import { createMailAnalysisQueueStore } from './mail-analysis-queue-store.adapter';
 
 const REFRESH_INTERVAL_MS=60000;
 const MAIL_FLUSH_DELAY_MS=500;
@@ -51,8 +52,15 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
   const legacyContactSync=createLegacyContactSyncStore(getRawDb());
   const legacyMailSync=createLegacyMailSyncStore(getRawDb());
   let legacySyncBusy=false;
-  const mailAnalysisQueue=createMailAnalysisQueueService({analyzer:mailAnalysisAnalyzer});
+  const mailAnalysisQueue=createMailAnalysisQueueService({analyzer:mailAnalysisAnalyzer,store:createMailAnalysisQueueStore()});
   const enqueueMailAnalysis=(receipt:ContactMailEventReceipt)=>mailAnalysisQueue.enqueue({event:receipt.event,analysis:receipt.analysis,contactState:receipt.analysis.contactState},analysis=>adapter.submitContactMailAnalysis(analysis));
+  let mailAnalysisRestored=false;
+  const recoverMailAnalysisQueue=()=>{
+    if(mailAnalysisRestored||!adapter.isOnline())return;
+    mailAnalysisRestored=true;
+    const restored=mailAnalysisQueue.restore(analysis=>adapter.submitContactMailAnalysis(analysis));
+    if(restored)Log.info('mail.analysis.queue',`已恢复 ${restored} 个待提交分析任务`);
+  };
   const flushLegacyContacts=async():Promise<void>=>{
     if (legacySyncBusy || !adapter.isOnline() || !adapter.legacyPersonalImportAllowed()) return;
     legacySyncBusy=true;
@@ -212,8 +220,9 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
       },
     },
   });
-  const reader=createContactLocalReadService({context,ready:ctx=>mirror.store.ready(ctx),contacts:ctx=>mirror.store.contacts(ctx),page:(ctx,query)=>mirror.store.page(ctx,query),refresh:()=>sync.sync(),report:error=>Log.error('contact.localRead','联系人本地读取失败',error instanceof Error?error.stack:undefined)});
+  const reader=createContactLocalReadService({context,ready:ctx=>mirror.store.ready(ctx),contacts:ctx=>mirror.store.contacts(ctx),page:(ctx,query)=>mirror.store.page(ctx,query),groups:(ctx,query)=>mirror.store.groups(ctx,query),refresh:()=>sync.sync(),report:error=>Log.error('contact.localRead','联系人本地读取失败',error instanceof Error?error.stack:undefined)});
   adapter.setContactReader(query=>reader.read(query));
+  adapter.setContactGroupReader(query=>reader.readGroups(query));
   const detailReader=createContactDetailReadService({
     revision,
     context,ready:ctx=>mirror.store.ready(ctx),contact:(ctx,ref)=>mirror.store.contact(ctx,ref),detail:(ctx,ref)=>mirror.store.detail(ctx,ref),
@@ -287,6 +296,11 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
     getLinks:(ctx,id)=>mirror.store.linksForLocalMessage(ctx,id).flatMap(link=>{
       const row=mirror.store.ready(ctx)?mirror.store.contact(ctx,link):undefined;return row?[{...link,status:centerContactDisplayStatus(row),tags:row.relationshipStage?row.relationshipStage==='cold'?[]:[row.relationshipStage]:row.tags,email:row.email??undefined,companyName:row.companyName,contactVersion:row.contactVersion,canDelete:row.canDelete}]:[];
     }),
+    localMessageIdForMessageKey:(ctx,messageKey)=>{
+      const link=mirror.store.linksForMessage(ctx,messageKey)[0];
+      if(!link||!Number.isSafeInteger(link.localMailId)||Number(link.localMailId)<=0)return null;
+      return Number(link.localMailId);
+    },
     storeMail:(ctx,input)=>{
       try {
         const current=context();if(!current?.active()||current.userId!==ctx.userId||current.baseUrl!==ctx.baseUrl||current.permissionKey!==ctx.permissionKey)return failResult('账号或权限已变化');
@@ -330,8 +344,9 @@ export function startContactMailRuntime(parent:string,adapter:OnlineCrmAdapter,c
       if(!commandReceipt&&/^\/api\/crm\/(contacts|contact-assignments|contact-shares|imports|leads)(?:[/?]|$)/.test(path))void sync.sync().then(report);
     }
   });
-  const timer=setInterval(()=>{void centerSender.replay();void replayInboxCenterClassificationChanges();if(adapter.isOnline())void sync.sync().then(report);},REFRESH_INTERVAL_MS);
+  const timer=setInterval(()=>{void centerSender.replay();void replayInboxCenterClassificationChanges();if(adapter.isOnline()){recoverMailAnalysisQueue();void sync.sync().then(report);}},REFRESH_INTERVAL_MS);
   const commandTimer=setInterval(()=>{if(adapter.isOnline())void commands.sync().then(report);},OFFLINE_CRM_LIMITS.sync_interval_seconds*MILLISECONDS_PER_SECOND);
+  recoverMailAnalysisQueue();
   void sync.sync().then(report);
-  return {refresh:()=>sync.sync(),mailAnalysisQueueStatus:()=>mailAnalysisQueue.status(),close(){stopped=true;mailAnalysisQueue.stop();centerSender.close();clearInterval(timer);clearInterval(commandTimer);if(flushTimer)clearTimeout(flushTimer);observe();adapter.setContactReader(undefined);adapter.setDetailReader(undefined);adapter.setContactWriter(undefined);adapter.setContactSync(undefined);setAgentContactPort(null);setInboxCenterContactPort(null);mirror.close();}};
+  return {refresh:()=>{recoverMailAnalysisQueue();return sync.sync();},mailAnalysisQueueStatus:()=>mailAnalysisQueue.status(),close(){stopped=true;mailAnalysisQueue.stop();centerSender.close();clearInterval(timer);clearInterval(commandTimer);if(flushTimer)clearTimeout(flushTimer);observe();adapter.setContactReader(undefined);adapter.setContactGroupReader(undefined);adapter.setDetailReader(undefined);adapter.setContactWriter(undefined);adapter.setContactSync(undefined);setAgentContactPort(null);setInboxCenterContactPort(null);mirror.close();}};
 }

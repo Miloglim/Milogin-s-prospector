@@ -14,7 +14,7 @@ function grant(change:Record<string,unknown>={}) {
 }
 const verify=(value=grant(),lastSeenAt=now,clock=now)=>verifyOfflineAccess(value,{trustedPublicKey,baseUrl,userId:identity.userId,lastSeenAt,now:clock});
 describe('offline local authority signature verification',()=>{
-  it('accepts exact authenticated Ed25519 identity for 72 hours',()=>expect(verify()?.identity.userId).toBe(identity.userId));
+  it('accepts exact authenticated Ed25519 identity for the configured offline window',()=>expect(verify()?.identity.userId).toBe(identity.userId));
   it('rejects modified signed bytes and substituted self-signed keys',()=>{
     const valid=grant();expect(verify({...valid,payload:valid.payload+' '})).toBeNull();
     const attacker=generateKeyPairSync('ed25519');expect(verify({...valid,signature:sign(null,Buffer.from(valid.payload),attacker.privateKey).toString('base64url'),publicKey:attacker.publicKey.export({format:'pem',type:'spki'}).toString()})).toBeNull();

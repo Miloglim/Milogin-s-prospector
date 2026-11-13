@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { okResult, failResult, type Result } from "../errors";
 import { Log } from "../logger";
 import { getMasterKey } from "../secret-store";
+import { describeMailError } from "../core/mail-error";
 
 // ── 密钥管理（P0-1）────────────────────────────────────────────
 // 主密钥来自 secret-store（safeStorage/DPAPI 或机器指纹派生），不再硬编码。
@@ -90,30 +91,6 @@ interface ValidateResult {
   imapConfigured: boolean; imapOk: boolean; imapError?: string;
 }
 
-/** 把 nodemailer / imapflow 的原始报错归类成人话，重点区分"认证失败(授权码错)" */
-function classifyMailError(err: unknown): string {
-  const e = err as { code?: string; responseCode?: string | number; hostname?: string; message?: string };
-  const msg = e?.message || String(err);
-  const code = e?.code || "";
-  // 认证失败：nodemailer EAUTH / imapflow AuthenticationFailed / SMTP 535
-  if (code === "EAUTH" || /authenticat|invalid\s+(login|credentials?)|AUTHENTICATIONFAILED|password|\b535\b|LOGIN failed|\[ALERT\].*login/i.test(msg)) {
-    return "认证失败：密码或第三方客户端授权码不正确/已失效";
-  }
-  if (code === "ETIMEDOUT" || /timeout|timed out/i.test(msg)) return "连接超时";
-  // ImapFlow 的 greeting 超时文本自带 "Maybe should use TLS?"，会被下面的 TLS 正则误判成握手问题——
-  // 真实语义是连上了但服务器不应答（多设备高频轮询、POP3 并发会话占坑被限流居多），单独归类说清楚
-  if (/greeting/i.test(msg)) {
-    return "服务器无响应（连接被限流：多设备高频轮询或 POP3 并发会话占坑常见，改用 IMAP 993 并降低轮询频率）";
-  }
-  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|getaddrinfo|EAI_AGAIN|socket hang up/i.test(msg + code)) {
-    return `无法连接服务器${e?.hostname ? `（${e.hostname}）` : ""}`;
-  }
-  if (/certificate|self-signed|unable to verify|SSL|TLS|handshake/i.test(msg)) {
-    return `加密握手失败：${msg}`;
-  }
-  return msg;
-}
-
 /** 验证 SMTP：真实建立连接并 AUTH LOGIN 认证（不只是 TCP 握手） */
 async function validateSmtp(host: string, port: number, email: string, password: string): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -130,7 +107,7 @@ async function validateSmtp(host: string, port: number, email: string, password:
     transporter.close();
     return { ok: true };
   } catch (err: unknown) {
-    return { ok: false, error: classifyMailError(err) };
+    return { ok: false, error: describeMailError(err, 'SMTP') };
   }
 }
 
@@ -150,7 +127,7 @@ async function validateImap(host: string, port: number, email: string, password:
     await client.logout();
     return { ok: true };
   } catch (err: unknown) {
-    return { ok: false, error: classifyMailError(err) };
+    return { ok: false, error: describeMailError(err, 'IMAP') };
   } finally {
     try { client?.close(); } catch { /* 已关闭 */ }
   }

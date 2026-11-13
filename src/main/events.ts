@@ -12,6 +12,8 @@ export const EVENTS = {
   INBOX_FETCH_PROGRESS: "inbox:fetchProgress",
   /** 账号收信健康度变化（每轮抓取后推送 [{accountId,email,ok,error}]） */
   INBOX_HEALTH: "inbox:health",
+  /** 本地收件分析结果更新 */
+  INBOX_ANALYSIS_UPDATED: "inbox:analysisUpdated",
   /** 熔断器状态变化 */
   CIRCUIT_CHANGED: "accounts:circuitChanged",
   /** 更新可用 */

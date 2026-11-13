@@ -28,11 +28,12 @@ describe('formal customer page reuses original presentation with center identity
     await vi.waitFor(() => expect(host.querySelector('.ant-table-row')).not.toBeNull(), { timeout: 2000 });
     expect(host.querySelector('.contact-group-panel-row.is-active')?.textContent).toContain('Fixture batch');
   });
-  it('reads center IPC with original columns, pagination, selection, detail and compact origin filter', async () => {
+  it('reads center IPC with original columns, incremental scrolling, selection, detail and compact origin filter', async () => {
     await mount(); await openTable(); expect(host.textContent).toContain('Preview Company'); expect(host.textContent).toContain('Alice'); expect(host.textContent).toContain('Manager');
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.CONTACT_LIST, expect.objectContaining({ search: '', scope: 'all', groupDimension: 'batch', groupKey: 'fixture-batch', limit: 50, offset: 0 }));
-    await act(async () => { host.querySelector('.ant-pagination-item-2')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
-    expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.CONTACT_LIST, expect.objectContaining({ search: '', scope: 'all', groupDimension: 'batch', groupKey: 'fixture-batch', limit: 50, offset: 50 }));
+    await vi.waitFor(() => expect(host.querySelector('.ant-table-content')).not.toBeNull(), { timeout: 2000 });
+    await act(async () => { host.querySelector('.ant-table-content')!.dispatchEvent(new Event('scroll')); await flush(); });
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.CONTACT_LIST, expect.objectContaining({ search: '', scope: 'all', groupDimension: 'batch', groupKey: 'fixture-batch', limit: 50, offset: 50 })), { timeout: 2000 });
     await act(async () => { host.querySelector('.ant-table-row')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
     await act(flush);
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.CONTACT_DETAIL, { contactId: 1, customerId: fixture.customerId });

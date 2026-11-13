@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContactPicker } from "./ContactPicker";
 import { takeDevLetterPreset } from "../../lib/homeCards";
 import { nextCampaignName } from "../../../shared/campaign-name";
+import { RichTextEditor } from "../../components/RichTextEditor";
 
 /**
  * 开发任务创建向导（定时器式任务组营销）：子窗口内完成 5 步 —— 选人 → 发送模式 → 触点计划 → 定时与账号 → 确认。
@@ -102,6 +103,9 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
   });
   const templates = templateData?.success ? templateData.data || [] : [];
   const accounts = accountsData?.success ? accountsData.data || [] : [];
+  const activeAccounts = accounts.filter(account => account.isActive !== false);
+  const activeAccountIds = new Set(activeAccounts.map(account => account.id));
+  const accountReady = activeAccounts.length > 0 && (acctMode === "rotate" || acctIds.some(id => activeAccountIds.has(id)));
   const { data: campaignsData } = useQuery({
     queryKey: ["campaigns"],
     queryFn: () => window.api.invoke("send:campaigns") as Promise<{ success: boolean; data?: Array<{ name: string }> }>,
@@ -164,7 +168,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
     selectedIds.length > 0,                                          // 1 选人
     true,                                                            // 2 模式
     rounds.length > 0 && rounds.every(r => r.stage),                 // 3 计划
-    acctMode === "rotate" || acctIds.length > 0,                       // 4 定时账号
+    accountReady,                                                     // 4 定时账号
     true,                                                            // 5 确认
   ][step] ?? false;
 
@@ -174,7 +178,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
     if (i === 1) return selectedIds.length > 0;
     if (i === 2) return true;
     if (i === 3) return rounds.length > 0 && rounds.every(r => !!r.stage && !roundInvalid(r));
-    return (acctMode === "rotate" || acctIds.length > 0)
+    return accountReady
       && rounds.length > 0 && rounds.every(r => !!r.stage && !roundInvalid(r));
   };
   const goStep = (i: number) => {
@@ -210,6 +214,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
 
   /** 添加任务 = 创建草稿（不排触点）；启动由用户在任务卡片上手动点（startNow 恒 false） */
   const submit = async () => {
+    if (!accountReady) { message.warning("没有可用发信账号，请先在设置中启用邮箱账号"); return; }
     if (rounds.some(roundInvalid)) { message.warning("有轮次的内容/模板未填完（第 3 步）"); setStep(2); return; }
     setSubmitting(true);
     try {
@@ -351,8 +356,12 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
                   <div className="mt-2 space-y-2">
                     <Input size="small" placeholder="邮件主题（支持 {{firstName}} {{company}} 变量）"
                       value={r.subject} onChange={e => setRound(i, { subject: e.target.value })} />
-                    <Input.TextArea size="small" rows={6} placeholder="邮件正文…（变量：{{firstName}} {{lastName}} {{company}} {{title}} {{email}}）"
-                      value={r.body} onChange={e => setRound(i, { body: e.target.value })} />
+                    <RichTextEditor
+                      placeholder="粘贴正文、HTML 或图片（变量：{{firstName}} {{lastName}} {{company}} {{title}} {{email}}）"
+                      value={r.body}
+                      onChange={body => setRound(i, { body })}
+                      style={{ minHeight: 110, maxHeight: 260, overflowY: "auto", border: "1px solid #d9d9d9", borderRadius: 6, padding: 8 }}
+                    />
                     <Input size="small" placeholder="抄送（可选，多个用逗号分隔；抄送方对客户可见）"
                       value={r.cc ?? ""} onChange={e => setRound(i, { cc: e.target.value })} />
                   </div>
@@ -408,7 +417,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
                 {acctMode === "fixed" && (
                   <Select mode="multiple" size="small" style={{ minWidth: 280 }} allowClear
                     placeholder="选择发信账号（可多选）" value={acctIds} onChange={setAcctIds}
-                    options={accounts.map(a => ({ value: a.id, label: a.email }))} />
+                    options={activeAccounts.map(a => ({ value: a.id, label: a.email }))} />
                 )}
               </div>
               <div className="text-[10px] text-gray-400 mt-1">
@@ -452,6 +461,7 @@ export function CampaignWizard({ open, draftId, onClose, onDone }: {
               </div>
             </div>
             <div className="flex justify-end pt-1">
+              {!accountReady && <div className="mr-auto text-[11px] text-red-500">没有可用发信账号，请先在设置中启用邮箱账号</div>}
               <Button type="primary" size="small" disabled={!canNext} onClick={() => setStep(4)}>下一步</Button>
             </div>
           </div>

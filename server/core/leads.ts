@@ -10,12 +10,14 @@ export const LEAD_ROUTES={bootstrap:'/api/crm/bootstrap',imports:'/api/crm/impor
 export type LeadState='draft'|'published'|'owned'|'paused';
 export interface ImportRow {customerKey:string;companyName:string;email:string;name?:string;country?:string;customerType?:string;businessType?:string;website?:string;firstName?:string;lastName?:string;title?:string;phone?:string;whatsapp?:string;linkedinUrl?:string;language?:string;clientType?:string;sourceLevel1?:string;sourceLevel2?:string;stage?:string;status?:string;tags?:string[];rawRow?:JsonObject;remark?:string;}
 const IMPORT_EMAIL_MAX = 254;
+export const IMPORT_CONTACT_IDENTITY_ISSUE = '至少填写联系人姓名、电话、WhatsApp或邮箱之一';
+export const isSkippableImportIssue = (issue?: string): boolean => issue === IMPORT_CONTACT_IDENTITY_ISSUE;
 /** Display and center validation share one rule; row errors do not invalidate unrelated rows. */
 export function importRowIssue(row: ImportRow): string | undefined {
  if (!row.customerKey.trim()) return '缺少客户编号';
  if (!row.companyName.trim()) return '缺少公司名称';
  if (row.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) return '邮箱格式无效';
- if (!row.email.trim() && ![row.name,row.firstName,row.lastName,row.phone,row.whatsapp].some(value=>value?.trim())) return '至少填写联系人姓名、电话、WhatsApp或邮箱之一';
+  if (!row.email.trim() && ![row.name,row.firstName,row.lastName,row.phone,row.whatsapp].some(value=>value?.trim())) return IMPORT_CONTACT_IDENTITY_ISSUE;
  if (row.customerKey.length > LEAD_LIMITS.key) return '客户编号过长';
  if (row.email.length > IMPORT_EMAIL_MAX) return '邮箱过长';
  if (row.customerType?.trim() && !['代理','直客'].includes(row.customerType.trim())) return '客户类型只能填写代理或直客';
@@ -31,7 +33,15 @@ export interface CustomerCreate extends CustomerProfile {companyName:string;coun
 export interface CustomerUpdate extends LeadCommand,CustomerProfile {companyName:string;country?:string;contacts:Array<CustomerContactInput & {contactId?:number}>;}
 export interface LeadCommand {customerId:string;expectedVersion:number;idempotencyKey:string;}
 export interface AssignRequest extends LeadCommand {salesUserId:string;notifyUserIds:string[];}
-export interface CrmMember {userId:string;displayName:string;assignable:boolean;}
+export interface CrmMember {
+  userId:string;
+  displayName:string;
+  assignable:boolean;
+  email?:string|null;
+  teamNames?:string[];
+  supervisorNames?:string[];
+  isSupervisor?:boolean;
+}
 export interface MemberQuery {search:string;limit:number;offset:number;}
 export interface MemberPage {items:CrmMember[];total:number;}
 export interface PublishRequest {rowIds:string[];expectedVersion:number;idempotencyKey:string;}
@@ -53,7 +63,7 @@ export type CustomerStage = CrmStage | 'cold';
 export const FOLLOWUP_TIME_LIMITS = {future_skew_seconds:60} as const;
 export interface FollowupRequest extends LeadCommand {opportunityId?:string;note:string;stage?:CustomerStage;method?:FollowupMethod;occurredAt?:string;contactId?:number;contactStatus?:ContactTouchStatus;}
 export interface ImportConflictSummary {decisionId:string;level:LeadConflictLevel;candidates:LeadIngressCandidateDTO[];}
-export interface ImportReceiptRow {rowId:string;index:number;status:'created'|'duplicate'|'invalid'|'restricted_conflict';customerId?:string;message?:string;conflict?:ImportConflictSummary;}
+export interface ImportReceiptRow {rowId:string;index:number;status:'created'|'duplicate'|'invalid'|'restricted_conflict';customerId?:string;message?:string;conflict?:ImportConflictSummary;overlapCount?:number;}
 export interface ImportReceipt {batchId:string;version:number;rows:ImportReceiptRow[];}
 export interface LeadPreview {customerId:string;companyName:string;country:string|null;state:LeadState;version:number;contactCount:number;origin?:'personal'|'operations';stage?:CrmStage|'cold';ownerUserId?:string|null;source?:string;primaryContactName?:string|null;primaryContactEmail?:string|null;ownerName?:string|null;recentActivityAt?:string|null;hasContacted?:boolean;}
 export interface LeadContact {contactId:number;email:string;name:string|null;country:string|null;phone?:string|null;whatsapp?:string|null;title?:string|null;touchStatus?:ContactTouchStatus;}

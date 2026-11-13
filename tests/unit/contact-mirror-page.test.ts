@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync as NativeDatabase } from 'node:sqlite';
 import type { Database } from 'better-sqlite3';
-import type { CenterContact, CenterContactQuery } from '../../server/core/center-contacts';
-import { contactDetailSnapshot, contactMirrorPage } from '../../src/main/core/contact-mirror';
+import type { CenterContact, CenterContactGroupQuery, CenterContactQuery } from '../../server/core/center-contacts';
+import { contactDetailSnapshot, contactMirrorGroups, contactMirrorPage } from '../../src/main/core/contact-mirror';
 import { SqliteContactMirrorStore } from '../../src/main/adapters/contact-mirror-store.adapter';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
@@ -121,6 +121,20 @@ describe('indexed SQLite contact pages', () => {
     expect(store.page(ctx, grouped[0]!).items.map(item => item.contactId)).toEqual([1]);
     expect(store.page(ctx, grouped[1]!).items.map(item => item.contactId)).toEqual([2]);
     expect(store.page(ctx, grouped[3]!).items.map(item => item.contactId)).toEqual([2]);
+  });
+  it('builds the same first-level groups from authorized mirror rows while the center is unavailable', () => {
+    const rows = [
+      row(1, { sourceDetail: 'batch-a.xlsx', sourceLevel1: '阿里国际站', country: 'Brazil', companyId: 11, companyName: 'Alpha', clientType: 'agent', touchStatus: 'contacted' }),
+      row(2, { sourceDetail: 'batch-a.xlsx', sourceLevel1: '阿里国际站', country: 'Brazil', companyId: 11, companyName: 'Alpha', clientType: 'agent', touchStatus: 'replied' }),
+      row(3, { sourceDetail: 'batch-b.xlsx', sourceLevel1: '展会', country: 'Chile', companyId: 12, companyName: 'Beta', clientType: 'direct', ownerUserId: 'bob' }),
+    ];
+    const groupQuery: CenterContactGroupQuery = { dimension: 'batch', scope: 'personal', search: '', limit: 24, offset: 0 };
+    const groups = contactMirrorGroups(rows, groupQuery, 'alice');
+    expect(groups).toMatchObject({ total: 1, items: [{ key: 'batch-a.xlsx', label: 'batch-a.xlsx', count: 2, companyCount: 1, countryCount: 1, touchedCount: 2, companies: ['Alpha'], countries: ['Brazil'], clientTypes: ['代理'], sourceLevel1: ['阿里国际站'] }] });
+    const store = fixture().store; store.replaceContacts(ctx, rows);
+    expect(store.page(ctx, { ...query, scope: 'personal', limit: 50 }).total).toBe(2);
+    expect(store.groups(ctx, { ...groupQuery, scope: 'all' }).total).toBe(2);
+    expect(store.groups(ctx, groupQuery)).toEqual(groups);
   });
   it('keeps indexes current through upsert, stale writes, details, deletion and reopen', () => {
     const { raw, store } = fixture(); const initial = row(1); store.replaceContacts(ctx, [initial]);

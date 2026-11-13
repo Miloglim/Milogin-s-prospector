@@ -15,9 +15,10 @@ describe('team workspace access', () => {
     expect(teamAccessFor(identity([], true))).toBe('manager');
   });
 
-  it('maps sales to the personal workbench and rejects unrelated roles', () => {
+  it('lets every signed-in account enter the collaboration workspace', () => {
     expect(teamAccessFor(identity(['sales']))).toBe('member');
-    expect(teamAccessFor(identity(['auditor']))).toBe('none');
+    expect(teamAccessFor(identity(['auditor']))).toBe('member');
+    expect(teamAccessFor(identity([]))).toBe('member');
     expect(teamAccessFor(null)).toBe('none');
   });
 

@@ -19,14 +19,14 @@ vi.mock('antd', () => ({
   Select: ({ options, onChange, mode, ...props }: { options: Array<{ value: string; label: string }>; onChange: (value: unknown) => void; mode?: string; [key: string]: unknown }) => <select aria-label={props['aria-label'] as string} onChange={event => onChange(mode ? [event.target.value] : event.target.value)}><option value="" />{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
   message: { success: vi.fn(), error: vi.fn() },
 }));
-const contact = { contactId: 17, customerId: 'customer-a', companyName: 'Synthetic', contactVersion: 3, customerVersion: 9 } as CenterContact;
+const contact = { contactId: 17, customerId: 'customer-a', companyName: 'Synthetic', contactVersion: 3, customerVersion: 9, origin: 'operations' } as CenterContact;
 describe('contact assignment modal snapshots', () => {
   let root: Root; let host: HTMLDivElement; let invoke: ReturnType<typeof vi.fn>; let closed: ReturnType<typeof vi.fn>; let queryClient: QueryClient;
   const flush = () => new Promise(resolve => setTimeout(resolve, 30));
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
-    invoke = vi.fn(async channel => channel === CHANNEL.MEMBERS ? { ok: true, data: { items: [{ userId: 'sales-a', displayName: 'Sales A', assignable: true }, { userId: 'sales-b', displayName: 'Sales B', assignable: true }, { userId: 'ops-a', displayName: 'Operations A', assignable: false }], total: 3 } } : { ok: false, error: { code: 'UNAVAILABLE', message: 'Lost response' } });
+    invoke = vi.fn(async channel => channel === CHANNEL.MEMBERS ? { ok: true, data: { items: [{ userId: 'sales-a', displayName: 'Sales A', assignable: true, email: 'sales-a@example.invalid', teamNames: ['Overseas Team'], supervisorNames: ['Leader A'], isSupervisor: false }, { userId: 'sales-b', displayName: 'Sales B', assignable: true }, { userId: 'leader-a', displayName: 'Leader A', assignable: true, email: 'leader-a@example.invalid', isSupervisor: true }, { userId: 'ops-a', displayName: 'Operations A', assignable: false }], total: 4 } } : { ok: false, error: { code: 'UNAVAILABLE', message: 'Lost response' } });
     Object.defineProperty(window, 'api', { configurable: true, value: { invoke } }); closed = vi.fn(); queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }); host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   });
   afterEach(async () => { await act(async () => root.unmount()); queryClient.clear(); host.remove(); });
@@ -34,13 +34,37 @@ describe('contact assignment modal snapshots', () => {
   const mount = async (value = contact) => mountNode(<AssignmentModal contacts={[value]} close={closed} />);
   const choose = async (label: string, value: string) => act(async () => { const element = host.querySelector<HTMLSelectElement>(`[aria-label="${label}"]`)!; element.value = value; element.dispatchEvent(new Event('change', { bubbles: true })); });
   const submit = async () => act(async () => { host.querySelector<HTMLButtonElement>('button')!.click(); });
-  it('limits recipients to assignable sales and removes arbitrary notification selection', async () => {
-    await mount(); expect(host.querySelector('[aria-label="接收人"]')!.textContent).toContain('Sales A'); expect(host.querySelector('[aria-label="接收人"]')!.textContent).not.toContain('Operations A'); expect(host.querySelector('[aria-label="通知人"]')).toBeNull();
+  it('limits assignees to assignable sales and allows arbitrary notification users', async () => {
+    await mount(); expect(host.querySelector('[aria-label="接收人"]')!.textContent).toContain('Sales A'); expect(host.querySelector('[aria-label="接收人"]')!.textContent).toContain('sales-a@example.invalid'); expect(host.querySelector('[aria-label="接收人"]')!.textContent).toContain('Overseas Team'); expect(host.querySelector('[aria-label="接收人"]')!.textContent).not.toContain('Operations A'); expect(host.querySelector('[aria-label="通知人"]')).toBeNull();
+    await choose('接收人', 'sales-a');
+    expect(host.querySelector('.assignment-recipient-summary')?.textContent).toContain('销售');
+    expect(host.querySelector('.assignment-recipient-summary')?.textContent).toContain('将通知主管 Leader A');
+    await choose('通知用户', 'ops-a');
+    expect(host.querySelector('.assignment-recipient-summary.is-compact')?.textContent).toContain('Operations A');
   });
-  it('loads every authorized directory page without dropping later sales choices', async () => {
-    invoke.mockResolvedValueOnce({ ok: true, data: { items: [{ userId: 'ops-a', displayName: 'Operations A', assignable: false }], total: 2 } });
-    invoke.mockResolvedValueOnce({ ok: true, data: { items: [{ userId: 'sales-later', displayName: 'Later Sales', assignable: true }], total: 2 } });
-    await mount(); expect(invoke).toHaveBeenNthCalledWith(1, CHANNEL.MEMBERS, { search: '', limit: 100, offset: 0 }); expect(invoke).toHaveBeenNthCalledWith(2, CHANNEL.MEMBERS, { search: '', limit: 100, offset: 1 }); expect(host.querySelector('[aria-label="接收人"]')!.textContent).toContain('Later Sales');
+  it('uses server-search pages instead of loading the complete member directory', async () => {
+    await mount();
+    const reads = invoke.mock.calls.filter(call => call[0] === CHANNEL.MEMBERS);
+    expect(reads).toHaveLength(2);
+    expect(reads[0][1]).toEqual({ search: '', limit: 100, offset: 0 });
+  });
+  it('includes explicitly selected notification users in the assignment command', async () => {
+    await mount();
+    await choose('接收人', 'sales-a');
+    await choose('通知用户', 'ops-a');
+    await submit();
+    const write = invoke.mock.calls.find(call => call[0] === CHANNEL.ASSIGNMENT_CREATE)![1];
+    expect(write).toMatchObject({ targetUserId: 'sales-a', supervisorUserIds: ['ops-a'] });
+  });
+  it('closes stale-version conflicts after refreshing instead of retrying the same snapshot', async () => {
+    invoke.mockImplementation(async channel => channel === CHANNEL.MEMBERS
+      ? { ok: true, data: { items: [{ userId: 'sales-a', displayName: 'Sales A', assignable: true }], total: 1 } }
+      : channel === CHANNEL.ASSIGNMENT_CREATE
+        ? { ok: false, error: { code: 'CONFLICT', message: '联系人信息已更新，请刷新后重试' } }
+        : { ok: true, data: { items: [], total: 0 } });
+    await mount(); await choose('接收人', 'sales-a'); await submit();
+    expect(closed).toHaveBeenCalledOnce();
+    expect(invoke.mock.calls.filter(call => call[0] === CHANNEL.ASSIGNMENT_CREATE)).toHaveLength(1);
   });
   it('retains inspected contact versions and exact request across lost-response retries and background refresh', async () => {
     await mount(); await choose('接收人', 'sales-a'); await submit(); await mount({ ...contact, contactVersion: 4 }); await submit();
@@ -73,6 +97,6 @@ describe('contact assignment modal snapshots', () => {
     expect(invoke).toHaveBeenCalledWith(CHANNEL.CONTACT_MONITOR_DETAIL, { contactId: 9, customerId: 'customer-a' });
     expect(invoke).toHaveBeenCalledWith(CHANNEL.READ, item.id);
     expect(invoke.mock.calls.some(call => call[0] === CHANNEL.CONTACT_DETAIL)).toBe(false);
-    expect(notificationResourceHash(item, 'customer-a', 'manager-a')).toBe('#/customers?monitorContact=9&centerCustomer=customer-a');
+    expect(notificationResourceHash(item, 'customer-a', 'manager-a')).toBe('#/customers?monitorContact=9&centerCustomer=customer-a&highlight=monitor-notice');
   });
 });

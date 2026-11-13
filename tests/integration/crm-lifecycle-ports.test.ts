@@ -9,6 +9,16 @@ describe('original CRM lifecycle adapters',()=>{
   const invoke=vi.fn(async(channel,input)=>{if(channel===ONLINE_CHANNELS.CONTACT_LIST)return {ok:true,data:{items:[row],total:1}};calls.push(input);return ++attempts===1?{ok:false,error:{code:'UNAVAILABLE',message:'unknown'}}:{ok:true,data:{deleted:[{contactId:42,customerId:row.customerId,contactVersion:8}]}};});
   const port=createCenterContactPort({key:'k',invoke:invoke as never});await port.list();expect(await port.delete(42)).toMatchObject({success:false});expect(await port.delete(42)).toMatchObject({success:true});expect(calls[0]).toEqual(calls[1]);expect(calls[0]).toMatchObject({contacts:[{contactId:42,customerId:row.customerId,expectedVersion:7}]});expect(port.records.has(42)).toBe(false);expect(invoke.mock.calls.some(([channel])=>channel.startsWith('contacts:'))).toBe(false);
  });
+ it('uses the visible row reference without scanning the full contact list first',async()=>{
+  const invoke=vi.fn(async(channel)=>channel===ONLINE_CHANNELS.CONTACT_DELETE
+    ? {ok:true,data:{deleted:[{contactId:42,customerId:row.customerId,contactVersion:8}]}}
+    : {ok:false,error:{code:'UNEXPECTED',message:'不应重新扫描联系人'}});
+  const port=createCenterContactPort({key:'k',invoke:invoke as never});
+  const visible={...row,id:42,dataSource:'center',canDelete:undefined} as never;
+  expect(await port.deleteBatch!([42],[visible])).toMatchObject({success:true});
+  expect(invoke).toHaveBeenCalledTimes(1);
+  expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.CONTACT_DELETE,expect.objectContaining({contacts:[{contactId:42,customerId:row.customerId,expectedVersion:7}]}));
+ });
  it('rejects mixed protected batches and stale-account operations before IPC',async()=>{
   let active=true;const invoke=vi.fn(async()=>({ok:true,data:{items:[row,{...row,contactId:43,canDelete:false}],total:2}}));const port=createCenterContactPort({key:'k',invoke:invoke as never,isCurrent:()=>active});await port.list();expect(await port.deleteBatch!([42,43])).toMatchObject({success:false});active=false;expect(await port.delete(42)).toMatchObject({success:false});expect(invoke).toHaveBeenCalledTimes(1);
  });

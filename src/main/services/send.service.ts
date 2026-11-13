@@ -1547,7 +1547,7 @@ async function runBatchLoop(): Promise<void> {
     }
 
     if (isCenterItem(item) && !sendNetworkAllowed()) {
-      // 中心线索等待中心恢复；本地线索继续走本机 SMTP。
+      // 已在运行的队列遇到中心断线时只保留中心线索待发；新发送和恢复由离线通道白名单阻断。
       await sleep(1000);
       if (item.campaignId) releaseAccount(accountId);
       i--; // Keep the item pending until an explicit online resume.

@@ -99,6 +99,8 @@
   background: var(--workspace-surface-soft);
 }
 
+.team-attention-drawer .ant-drawer-body .team-attention-panel { height: 100%; max-height: none; border-bottom: 0; }
+
 .team-attention-heading {
   min-height: 43px;
   display: flex;
@@ -269,4 +271,132 @@
   .team-attention-title-line strong { flex-basis: 100%; }
   .team-attention-meta { flex-wrap: wrap; white-space: normal; }
   .team-attention-meta span { flex: 1 1 130px; }
+}
+
+/* Personal workspace v2: operational hierarchy using shared Prospector tokens. */
+.personal-workspace-body { gap: 10px; padding: 10px 12px 12px; background: var(--workspace-canvas); }
+.personal-workspace-body.has-tasks { grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); grid-template-rows: auto minmax(0, 1fr) auto; }
+.personal-workspace-body.has-tasks .personal-overview { grid-column: 1; grid-row: 1; }
+.personal-workspace-body.has-tasks .personal-actions-panel { grid-column: 1; grid-row: 2 / 4; }
+.personal-workspace-body.has-tasks .personal-task-panel { grid-column: 2; grid-row: 1 / 3; }
+.personal-workspace-body.has-tasks .personal-team-panel { grid-column: 2; grid-row: 3; }
+.personal-workspace-body:not(.has-tasks) { grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); grid-template-rows: auto minmax(0, 1fr); }
+.personal-workspace-body:not(.has-tasks) .personal-overview { grid-column: 1; grid-row: 1; }
+.personal-workspace-body:not(.has-tasks) .personal-actions-panel { grid-column: 1; grid-row: 2; }
+.personal-workspace-body:not(.has-tasks) .personal-team-panel { grid-column: 2; grid-row: 1 / 3; }
+.personal-overview { min-height: 88px; border: 1px solid var(--workspace-line); border-radius: 6px; box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 8px 22px rgba(16,24,40,.03); overflow: hidden; }
+.personal-overview-actions { padding: 13px 16px; background: color-mix(in srgb, var(--workspace-surface) 78%, var(--workspace-canvas)); }
+.personal-overview-actions > span { font-size: 10px; }
+.personal-overview-actions a { font-size: 12px; }
+.personal-metrics > div { min-width: 142px; padding: 12px 18px; }
+.personal-metrics span { font-size: 10px; }
+.personal-metrics strong { font-size: 24px; font-weight: 600; }
+.personal-metrics a { font-size: 10px; }
+.personal-refresh { width: 32px; height: 32px; }
+.personal-actions-panel, .personal-task-panel { border: 1px solid var(--workspace-line); border-radius: 6px; box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 8px 22px rgba(16,24,40,.03); overflow: hidden; background: var(--workspace-surface); }
+.personal-team-panel { min-width: 0; align-self: end; display: flex; flex-direction: column; border: 1px solid var(--workspace-line); border-radius: 6px; box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 8px 22px rgba(16,24,40,.03); overflow: hidden; background: var(--workspace-surface); }
+.personal-team-body { display: flex; flex-direction: column; gap: 4px; padding: 14px 15px; }
+.personal-team-body strong { font-size: 12px; }
+.personal-team-body small { color: var(--workspace-muted); font-size: 10px; }
+.personal-task-panel { background: var(--workspace-surface); }
+.personal-panel-heading { min-height: 56px; padding: 10px 15px; background: color-mix(in srgb, var(--workspace-surface) 78%, var(--workspace-canvas)); }
+.personal-panel-heading h2 { font-size: 13px; }
+.personal-panel-heading span { font-size: 10px; }
+.personal-action-row { min-height: 68px; padding: 10px 15px; }
+.personal-action-main strong { font-size: 12px; }
+.personal-action-main small { font-size: 10px; }
+.personal-contact-status { min-height: 22px; font-size: 9px; }
+.personal-action-next small { font-size: 9px; }
+.personal-action-next strong { font-size: 11px; }
+.personal-task-row { min-height: 54px; padding: 10px 14px; }
+.personal-task-row strong { font-size: 11px; }
+.personal-task-row small { font-size: 9px; }
+.team-attention-panel { border: 1px solid var(--workspace-line); border-radius: 6px; box-shadow: 0 1px 2px rgba(16,24,40,.04); margin-bottom: 10px; background: var(--workspace-surface); }
+.team-attention-heading { min-height: 48px; padding: 8px 14px; background: color-mix(in srgb, var(--workspace-surface) 78%, var(--workspace-canvas)); }
+.team-attention-heading h2 { font-size: 12px; }
+.team-attention-heading > div:first-child span { font-size: 10px; }
+.team-attention-filters button { min-height: 26px; font-size: 9px; }
+.team-attention-row { min-height: 62px; }
+.team-attention-title-line strong { font-size: 11px; }
+.team-attention-copy p { font-size: 10px; }
+
+@media (max-width: 1050px) {
+  .personal-workspace-body { grid-template-columns: minmax(0, 1fr) 250px; }
+}
+
+@media (max-width: 900px) {
+  .personal-workspace-body { grid-template-columns: minmax(0, 1fr); overflow: auto; padding: 8px; }
+  .personal-workspace-body.has-tasks, .personal-workspace-body:not(.has-tasks) { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  .personal-workspace-body.has-tasks .personal-overview, .personal-workspace-body:not(.has-tasks) .personal-overview,
+  .personal-workspace-body.has-tasks .personal-actions-panel, .personal-workspace-body:not(.has-tasks) .personal-actions-panel,
+  .personal-workspace-body.has-tasks .personal-task-panel, .personal-workspace-body.has-tasks .personal-team-panel,
+  .personal-workspace-body:not(.has-tasks) .personal-team-panel { grid-column: 1; grid-row: auto; }
+  .personal-task-panel { min-height: 300px; }
+}
+
+/* Personal workspace v2 parity: one priority work area plus a narrow task/team side. */
+.personal-workspace-body,
+.personal-workspace-body.has-tasks,
+.personal-workspace-body:not(.has-tasks) {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  background: var(--workspace-canvas);
+}
+.personal-workspace-body .personal-overview,
+.personal-workspace-body .personal-actions-panel,
+.personal-workspace-body .personal-task-panel,
+.personal-workspace-body .personal-team-panel {
+  grid-column: auto;
+  grid-row: auto;
+}
+.personal-workspace-body.has-tasks .personal-actions-panel.personal-main-panel,
+.personal-workspace-body:not(.has-tasks) .personal-actions-panel.personal-main-panel {
+  flex: 1 1 auto;
+}
+.personal-workspace-body .personal-side { flex: 0 0 min(300px, 28%); }
+.personal-main-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--workspace-line);
+  border-radius: 6px;
+  background: var(--workspace-surface);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 22px rgba(16, 24, 40, .03);
+  overflow: hidden;
+}
+.personal-workspace-heading { min-height: 58px; flex: 0 0 auto; }
+.personal-workspace-heading > div > span { display: block; margin-bottom: 3px; color: var(--workspace-muted); font-size: 10px; font-weight: 600; }
+.personal-workspace-heading h2 { font-size: 15px; }
+.personal-main-panel .personal-overview { min-height: 88px; flex: 0 0 auto; border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; box-shadow: none; }
+.personal-main-panel .team-attention-panel { flex: 0 1 auto; margin: 10px; }
+.personal-main-panel > .personal-panel-heading:not(.personal-workspace-heading) { flex: 0 0 auto; border-top: 1px solid var(--workspace-line); }
+.personal-main-panel .personal-action-list { min-height: 0; flex: 1; overflow: auto; }
+.personal-side { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.personal-side .personal-task-panel { min-height: 0; flex: 1; }
+.personal-side .personal-panel-state { flex: 1; }
+.personal-side .personal-team-panel { flex: 0 0 auto; align-self: stretch; }
+.personal-team-body { display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 12px 14px 8px; }
+.personal-team-body > span:last-child { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.personal-team-body strong { display: block; font-size: 11px; }
+.personal-team-body small { display: block; color: var(--workspace-muted); font-size: 9px; }
+.personal-team-avatar { width: 34px; height: 34px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: #1556b8; background: color-mix(in srgb, #1677ff 9%, var(--workspace-surface)); }
+.personal-team-avatar svg { width: 16px; height: 16px; }
+.personal-team-structure { display: flex; gap: 7px; padding: 6px 14px 14px; }
+.personal-team-structure span { min-height: 26px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border: 1px solid var(--workspace-line); border-radius: 4px; color: var(--workspace-muted); background: var(--workspace-surface-soft); font-size: 9px; }
+.personal-team-structure b { color: var(--workspace-text); }
+
+@media (max-width: 1050px) {
+  .personal-workspace-body .personal-side { flex-basis: 260px; }
+}
+
+@media (max-width: 900px) {
+  .personal-workspace-body,
+  .personal-workspace-body.has-tasks,
+  .personal-workspace-body:not(.has-tasks) { align-items: stretch; flex-direction: column; overflow: auto; padding: 8px; }
+  .personal-workspace-body .personal-side { flex: 0 0 auto; }
+  .personal-main-panel { min-height: 460px; }
+  .personal-side { min-height: 300px; }
 }

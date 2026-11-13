@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { DownOutlined, CloseOutlined } from '@ant-design/icons';
-import type { LoginAccount, OnlineLogin, Result } from '../../shared/online-crm';
+import type { LoginAccount, OnlineHandoffBeginResult, OnlineLogin, Result } from '../../shared/online-crm';
 import { AUTH_LIMITS } from '../../shared/online-crm';
 import { useIdentity } from '../IdentityContext';
 import { DotPattern } from './ui/dot-pattern';
@@ -12,6 +12,33 @@ import { subscribeWorkspaceDark, workspaceDarkEnabled } from '../lib/workspace-p
 
 const PASSWORD_MIN_LENGTH = AUTH_LIMITS.passwordMin;
 const MASCOT_SIZE = 52;
+const HANDOFF_POLL_MS = 2000;
+const HANDOFF_REQUEST_KEY_PREFIX = 'prospector.handoff.request.';
+type PendingReplacement = { login: OnlineLogin; requestKey: string };
+
+function handoffRequestStorageKey(baseUrl: string, email: string) {
+  return `${HANDOFF_REQUEST_KEY_PREFIX}${encodeURIComponent(baseUrl)}:${encodeURIComponent(email.trim().toLowerCase())}`;
+}
+
+function createHandoffRequestKey() {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  return uuid ?? `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+}
+
+function handoffRequestKey(baseUrl: string, email: string) {
+  const storageKey = handoffRequestStorageKey(baseUrl, email);
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (saved && /^[A-Za-z0-9_-]{8,128}$/.test(saved)) return saved;
+  } catch { /* Local storage can be unavailable in hardened test shells; a per-login key still works. */ }
+  const created = createHandoffRequestKey();
+  try { localStorage.setItem(storageKey, created); } catch { /* Do not fail login only because idempotency cannot be persisted. */ }
+  return created;
+}
+
+function clearHandoffRequestKey(baseUrl: string, email: string) {
+  try { localStorage.removeItem(handoffRequestStorageKey(baseUrl, email)); } catch { /* Cleanup is best effort; the server still expires stale requests. */ }
+}
 
 /** The original onboarding surface, adapted only for product authentication. */
 export function ProductLogin() {
@@ -21,18 +48,33 @@ export function ProductLogin() {
   const [creating, setCreating] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(false);
-  const [autoLogin, setAutoLogin] = useState(false);
+  // Desktop work must survive a center outage. Users can still opt out before login.
+  const [remember, setRemember] = useState(true);
+  const [autoLogin, setAutoLogin] = useState(true);
   const [accountId, setAccountId] = useState<string>();
   const [accountsOpen, setAccountsOpen] = useState(false);
-  const [pendingReplacement, setPendingReplacement] = useState<OnlineLogin>();
+  const [pendingReplacement, setPendingReplacement] = useState<PendingReplacement>();
+  const [handoff, setHandoff] = useState<OnlineHandoffBeginResult>();
+  const [handoffPolling, setHandoffPolling] = useState(false);
   const initialAccountChosen = useRef(false);
+  const handoffRun = useRef(0);
   const accountField = useRef<HTMLDivElement>(null);
   const accounts = (session.accounts ?? []).filter(account => !!account.email);
   const selected = accounts.find(account => account.accountId === accountId && account.email === email);
   const savedCredential = Boolean(!creating && selected?.remembered && remember && !password);
-  const loginMessage = pendingReplacement ? '该账号正在另一台电脑使用。继续登录会退出原电脑。' : session.error || notice;
+  const blockers = handoff?.state.summary?.blockers ?? [];
+  const blockedMessage = blockers.length > 1 ? `${blockers[0]}（共 ${blockers.length} 项）` : blockers[0];
+  const loginMessage = handoff ? handoff.state.status === 'ready'
+    ? '原电脑已完成数据准备，正在切换。'
+    : handoff.state.status === 'blocked'
+      ? blockedMessage || '原电脑还有内容没有处理完。'
+      : handoff.state.status === 'waiting_old_device'
+        ? `正在等待 ${handoff.state.oldDeviceName || '原电脑'} 整理数据。原电脑上线后会自动继续。`
+        : '本次换机已结束，请重新登录。'
+    : pendingReplacement ? '该账号正在另一台电脑使用。换机前会先检查原电脑的数据。' : session.error || notice;
+  const canTakeOver = Boolean(pendingReplacement && handoff && ['waiting_old_device', 'blocked'].includes(handoff.state.status));
   useEffect(() => subscribeWorkspaceDark(setWorkspaceDark), []);
+  useEffect(() => () => { handoffRun.current++; }, []);
   function chooseAccount(account: LoginAccount) {
     initialAccountChosen.current = true;setEmail(account.email);setPassword('');setAccountId(account.accountId);
     setRemember(account.remembered);setAutoLogin(account.autoLogin);setAccountsOpen(false);setNotice('');setPendingReplacement(undefined);
@@ -50,11 +92,63 @@ export function ProductLogin() {
     return () => {document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',escape);};
   }, [accountsOpen]);
   const restricted = Boolean(session.identity?.mustChangePassword);
+  function resetHandoff(login?: OnlineLogin) {
+    handoffRun.current++;
+    if (login) clearHandoffRequestKey(login.baseUrl, login.email);
+    setHandoff(undefined);
+    setPendingReplacement(undefined);
+    setHandoffPolling(false);
+  }
+  async function pollHandoff(token: string, login: OnlineLogin, run: number) {
+    setHandoffPolling(true);
+    try {
+      while (handoffRun.current === run) {
+        const current = await session.handoffStatus({ handoffToken: token });
+        if (handoffRun.current !== run) return;
+        if (!current.ok) { setNotice(current.error.message); resetHandoff(); return; }
+        if (['completed', 'cancelled', 'expired'].includes(current.data.status)) {
+          setNotice(current.data.status === 'completed' ? '换机已完成，请重新登录。' : '本次换机已失效，请重新登录。');
+          resetHandoff(login);
+          return;
+        }
+        setHandoff((value: OnlineHandoffBeginResult | undefined) => value ? { ...value, state: current.data } : value);
+        if (current.data.status === 'ready') {
+          const completed = await session.completeHandoff({ handoffToken: token, remember: login.remember, autoLogin: login.autoLogin });
+          if (handoffRun.current !== run) return;
+          if (completed.ok) clearHandoffRequestKey(login.baseUrl, login.email);
+          else setNotice(completed.error.message);
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, HANDOFF_POLL_MS));
+      }
+    } finally { if (handoffRun.current === run) setHandoffPolling(false); }
+  }
   async function replaceActiveDevice() {
-    const pending=pendingReplacement;if(!pending||session.busy)return;
-    setPendingReplacement(undefined);setNotice('');
-    const result=await session.login({...pending,replaceActiveDevice:true});
-    if(!result.ok&&result.error.code==='DEVICE_REPLACEMENT_REQUIRED')setPendingReplacement(pending);
+    const pending=pendingReplacement;if(!pending)return;
+    if (handoff) {
+      if (!canTakeOver) return;
+      const confirmed = window.confirm(`原电脑仍可能在同步数据。确定已经无法使用 ${handoff.state.oldDeviceName || '原电脑'}，并在这台电脑继续吗？`);
+      if (!confirmed) return;
+      handoffRun.current++;
+      setHandoffPolling(false);
+      setNotice('');
+      const result = await session.takeoverHandoff({
+        handoffToken: handoff.handoffToken,
+        reason: '旧电脑无法使用，用户确认继续接管',
+        remember: pending.login.remember,
+        autoLogin: pending.login.autoLogin,
+      });
+      if (result.ok) clearHandoffRequestKey(pending.login.baseUrl, pending.login.email);
+      else setNotice(result.error.message);
+      return;
+    }
+    if (session.busy || handoffPolling) return;
+    setNotice('');
+    const started = await session.beginHandoff({ ...pending.login, requestKey: pending.requestKey });
+    if (!started.ok) { setNotice(started.error.message); return; }
+    setHandoff(started.data);
+    const run = ++handoffRun.current;
+    void pollHandoff(started.data.handoffToken, pending.login, run);
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,7 +170,9 @@ export function ProductLogin() {
     } else {
       setNotice('');
       setAccountsOpen(false);
+      handoffRun.current++;
       setPendingReplacement(undefined);
+      setHandoff(undefined);
       if(savedCredential && selected) void session.loginAccount({accountId:selected.accountId,autoLogin});
       else {
         const accountEmail = String(form.get('email') ?? '').trim();
@@ -84,7 +180,7 @@ export function ProductLogin() {
         const result = await session.login({ baseUrl: session.baseUrl, email: accountEmail, password: accountPassword, remember, autoLogin:remember&&autoLogin }) as Result<void>|boolean|undefined;
         const failureCode = result && typeof result === 'object' && 'ok' in result && !result.ok ? result.error.code : undefined;
         if (failureCode === 'DEVICE_REPLACEMENT_REQUIRED') {
-          setPendingReplacement({baseUrl:session.baseUrl,email:accountEmail,password:accountPassword,remember,autoLogin:remember&&autoLogin});
+          setPendingReplacement({login:{baseUrl:session.baseUrl,email:accountEmail,password:accountPassword,remember,autoLogin:remember&&autoLogin},requestKey:handoffRequestKey(session.baseUrl,accountEmail)});
         } else if (result === true || result && typeof result === 'object' && result.ok) setNotice('登录成功。发信邮箱请在设置中单独配置。');
       }
     }
@@ -101,7 +197,7 @@ export function ProductLogin() {
           <div className="product-login-brand"><span className="product-login-brand-owner">Milogin’s</span><span className="product-login-brand-name">Prospector<span className="product-login-brand-dot">.</span></span></div>
           <h2 id="product-login-title" className={restricted || creating ? 'ob-h2' : 'sr-only'}>{restricted ? '设置您的新密码' : creating ? '创建账号' : '登录'}</h2>
           <form key={`${restricted}:${creating}`} onSubmit={event => void submit(event)} aria-busy={session.busy}>
-            <fieldset className="product-login-fields" disabled={session.busy}>
+            <fieldset className="product-login-fields" disabled={session.busy || Boolean(handoff)}>
               <div className="ob-form">
                 {restricted ? <>
                   <p className="product-login-account">{session.identity?.email}</p>
@@ -126,8 +222,8 @@ export function ProductLogin() {
                   {creating && <LoginField name="confirmation" label="确认密码" type="password" autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} />}
                 </>}
               </div>
-              {loginMessage && <div className="ob-error product-login-error" role="alert"><span>{loginMessage}</span>{pendingReplacement&&<button className="product-login-replace" type="button" disabled={session.busy} onClick={()=>void replaceActiveDevice()}>{session.busy?'正在切换…':'退出原电脑并登录'}</button>}</div>}
-              <div className="ob-actions"><button className="ob-btn" type="submit" aria-busy={session.busy}>{session.busy ? busyLabel : restricted ? '修改密码并重新登录' : creating ? '创建账号' : '登录'}</button></div>
+              {loginMessage && <div className="ob-error product-login-error" role="alert"><span>{loginMessage}</span>{pendingReplacement&&(!handoff||canTakeOver)&&<button className="product-login-replace" type="button" disabled={session.busy} onClick={()=>void replaceActiveDevice()}>{session.busy?'正在切换…':handoff?'旧电脑不可用，继续接管':'检查原电脑后换机'}</button>}</div>}
+              <div className="ob-actions"><button className="ob-btn" type="submit" disabled={session.busy || Boolean(handoff)} aria-busy={session.busy}>{session.busy ? busyLabel : handoff ? '正在换机…' : restricted ? '修改密码并重新登录' : creating ? '创建账号' : '登录'}</button></div>
               {restricted ? <button className="ob-skip" type="button" onClick={() => void session.logout()}>返回登录</button> : <>
                 <div className="product-login-links">
                   {!creating && <div className="product-login-options">

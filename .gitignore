@@ -39,3 +39,7 @@ send/config.json
 # 编码助手本地痕迹（不入库）
 .serena/
 .superpowers/
+.codex/
+.agents/
+# 开发端本机中心地址；正式包使用打包脚本生成的临时 assets
+assets/center.json

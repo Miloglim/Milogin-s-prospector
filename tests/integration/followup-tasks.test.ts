@@ -103,6 +103,7 @@ describe.skipIf(!enabled)('followup tasks PostgreSQL rollback-only',()=>{
   expect(await service.detail(other.token,t.taskId)).toMatchObject({error:{code:'NOT_FOUND'}});
   expect(await service.complete(ops.token,{...command(t),feedback:'no'})).toMatchObject({error:{code:'FORBIDDEN'}});
   expect(unwrap(await service.list(admin.token,{customerId:id,limit:25,offset:0})).total).toBe(1);
+  expect(unwrap(await service.list(admin.token,{customerId:id,mine:true,limit:25,offset:0}))).toEqual({items:[],total:0});
   await c.query("UPDATE public.identity_product_access SET capabilities='[\"leads.import\"]' WHERE user_id=$1 AND product_id='crm'",[ops.id]);
   expect(unwrap(await service.list(ops.token,{customerId:id,limit:25,offset:0}))).toEqual({items:[],total:0});
  });

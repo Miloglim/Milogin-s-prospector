@@ -14,6 +14,7 @@ import { createDesktopAuthHandler } from '../../server/transport/desktop-auth-ht
 import { createOnlineServer } from '../../server/transport/http';
 import { API_ROUTES, ONLINE_DEFAULTS } from '../../server/core/auth';
 import { DESKTOP_AUTH_ROUTES as ROUTES } from '../../server/core/desktop-session';
+import { DESKTOP_HANDOFF_ROUTES } from '../../server/core/device-handoff';
 
 const TIMEOUT_MS = 30000;
 const SECOND_MS = 1000;
@@ -21,7 +22,7 @@ const logs: string[] = [];
 const log = { write: (_level: string, _context: string, message: string) => { logs.push(message); } };
 const password = randomBytes(24).toString('hex');
 const clock = { now: () => Date.now() };
-const users = { a: randomUUID(), b: randomUUID(), restricted: randomUUID(), admin: randomUUID() };
+const users = { a: randomUUID(), b: randomUUID(), restricted: randomUUID(), admin: randomUUID(), handoff: randomUUID(), handoff_ready: randomUUID() };
 const prefix = `desktop-${Date.now()}`;
 const email = (key: keyof typeof users) => `${prefix}-${key}@example.invalid`;
 let pool: Pool, repo: PostgresAuthRepository, passwords: PasswordAdapter;
@@ -48,9 +49,17 @@ async function login(key: keyof typeof users = 'a', suppliedPassword = password)
   return result.body.data as { token: string; refreshToken: string; expiresAt: string; identity: any };
 }
 const refresh = (refreshToken: string) => request(ROUTES.refresh, { refreshToken });
-const desktopLogin = (deviceId: string, replaceActiveDevice = false) => request(ROUTES.login, {
-  email: email('a'), password,
-  desktop: { product: 'crm', deviceId, deviceName: `desktop-${deviceId}`, platform: 'win32', appVersion: '0.67.0', replaceActiveDevice },
+const desktopContext = (deviceId: string) => ({ product: 'crm' as const, deviceId, deviceName: `desktop-${deviceId}`, platform: 'win32', appVersion: '0.67.0' });
+const desktopLoginFor = (key: keyof typeof users, deviceId: string, replaceActiveDevice = false) => request(ROUTES.login, {
+  email: email(key), password, desktop: { ...desktopContext(deviceId), replaceActiveDevice },
+});
+const desktopLogin = (deviceId: string, replaceActiveDevice = false) => desktopLoginFor('a', deviceId, replaceActiveDevice);
+const beginHandoff = (key: keyof typeof users, deviceId: string, requestKey: string) => request(DESKTOP_HANDOFF_ROUTES.begin, {
+  email: email(key), password, requestKey, desktop: desktopContext(deviceId),
+});
+const handoffSummary = (blockers: string[] = []) => ({
+  checkedAt: new Date().toISOString(), blockers,
+  counts: { contactPending: 0, contactFailed: 0, offlinePending: 0, offlineFailed: 0, templates: 0, inboxLabels: 0, queuedSends: 0, activeCampaigns: 0, pendingMailChanges: 0 },
 });
 
 describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions real HTTP + isolated PostgreSQL', () => {
@@ -63,7 +72,10 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
     passwords = new PasswordAdapter(ONLINE_DEFAULTS.password_concurrency);
     await passwords.initialize();
     const hash = await passwords.hash(password);
-    for (const key of Object.keys(users) as (keyof typeof users)[]) expect((await repo.ensureFixture({ userId: users[key], email: email(key), displayName: key, identityAdmin: key === 'admin', crmRoles: [key === 'admin' ? 'admin' : 'sales'], passwordHash: hash, mustChangePassword: key === 'restricted' })).ok).toBe(true);
+    for (const key of Object.keys(users) as (keyof typeof users)[]) {
+      const fixture = await repo.ensureFixture({ userId: users[key], email: email(key), displayName: key, identityAdmin: key === 'admin', crmRoles: [key === 'admin' ? 'admin' : 'sales'], passwordHash: hash, mustChangePassword: key === 'restricted' });
+      if (!fixture.ok) throw new Error(`${key}: ${fixture.error.code} ${fixture.error.message}`);
+    }
     await start();
   }, TIMEOUT_MS);
   afterAll(async () => { if (server?.listening) await close(); await pool?.end(); });
@@ -130,6 +142,52 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
       WHERE user_id=$1 AND desktop_product='crm' AND revoked_at IS NULL`, [users.a]);
     expect(active.rows).toEqual([{ desktop_device_id: 'desktop-device-b' }]);
   });
+  it('keeps the old device active while a handoff waits, blocks unsafe completion, and audits explicit takeover', async () => {
+    const old = await desktopLoginFor('handoff', 'handoff-old-device');
+    expect(old.status).toBe(200);
+    const started = await beginHandoff('handoff', 'handoff-new-device', 'handoff-blocked-request');
+    if (started.status !== 200) throw new Error(`handoff begin failed: ${JSON.stringify(started.body)} logs=${logs.slice(-5).join(' | ')}`);
+    expect(started.status).toBe(200);
+    const handoffToken = started.body.data.handoffToken as string;
+    expect(started.body.data.state).toMatchObject({ status: 'waiting_old_device', oldDeviceName: 'desktop-handoff-old-device', newDeviceName: 'desktop-handoff-new-device' });
+    expect((await request(ROUTES.me, undefined, old.body.data.token)).status).toBe(200);
+    expect((await request(DESKTOP_HANDOFF_ROUTES.complete, { handoffToken })).body.error.code).toBe('CONFLICT');
+    const pending = await request(DESKTOP_HANDOFF_ROUTES.pending, { refreshToken: old.body.data.refreshToken });
+    expect(pending.body.data.handoffId).toBe(started.body.data.state.handoffId);
+    const blocked = await request(DESKTOP_HANDOFF_ROUTES.prepare, { refreshToken: old.body.data.refreshToken, summary: handoffSummary(['有 1 个自动开发任务仍在运行']) });
+    expect(blocked.body.data).toMatchObject({ status: 'blocked', summary: { blockers: ['有 1 个自动开发任务仍在运行'] } });
+    expect((await request(DESKTOP_HANDOFF_ROUTES.complete, { handoffToken })).body.error.code).toBe('CONFLICT');
+    expect((await request(ROUTES.me, undefined, old.body.data.token)).status).toBe(200);
+    const takeover = await request(DESKTOP_HANDOFF_ROUTES.takeover, { handoffToken, reason: '旧电脑无法开机，用户确认继续接管' });
+    expect(takeover.status).toBe(200);
+    expect((await request(ROUTES.me, undefined, old.body.data.token)).body.error.code).toBe('DEVICE_REPLACED');
+    expect((await refresh(old.body.data.refreshToken)).body.error.code).toBe('DEVICE_REPLACED');
+    expect((await pool.query("SELECT count(*)::int AS count FROM public.identity_audit WHERE user_id=$1 AND event='device.handoff.takeover'", [users.handoff])).rows[0].count).toBe(1);
+  }, TIMEOUT_MS);
+  it('completes a ready handoff exactly once and never revives the old refresh family', async () => {
+    const old = await desktopLoginFor('handoff_ready', 'handoff-ready-old');
+    expect(old.status).toBe(200);
+    const started = await beginHandoff('handoff_ready', 'handoff-ready-new', 'handoff-ready-request');
+    if (started.status !== 200) throw new Error(`ready handoff begin failed: ${JSON.stringify(started.body)} logs=${logs.slice(-5).join(' | ')}`);
+    expect(started.status).toBe(200);
+    const secondStart = await beginHandoff('handoff_ready', 'handoff-ready-other', 'handoff-ready-other-request');
+    expect(secondStart.body.error.code).toBe('CONFLICT');
+    const prepared = await request(DESKTOP_HANDOFF_ROUTES.prepare, { refreshToken: old.body.data.refreshToken, summary: handoffSummary() });
+    expect(prepared.body.data.status).toBe('ready');
+    const completions = await Promise.all([
+      request(DESKTOP_HANDOFF_ROUTES.complete, { handoffToken: started.body.data.handoffToken }),
+      request(DESKTOP_HANDOFF_ROUTES.complete, { handoffToken: started.body.data.handoffToken }),
+    ]);
+    expect(completions.map(result => result.status).sort()).toEqual([200, 409]);
+    const winner = completions.find(result => result.status === 200)!.body.data;
+    expect(winner.identity.userId).toBe(users.handoff_ready);
+    expect((await request(ROUTES.me, undefined, winner.token)).status).toBe(200);
+    expect((await request(ROUTES.me, undefined, old.body.data.token)).body.error.code).toBe('DEVICE_REPLACED');
+    expect((await refresh(old.body.data.refreshToken)).body.error.code).toBe('DEVICE_REPLACED');
+    const active = await pool.query(`SELECT desktop_device_id FROM public.identity_sessions
+      WHERE user_id=$1 AND desktop_product='crm' AND revoked_at IS NULL`, [users.handoff_ready]);
+    expect(active.rows).toEqual([{ desktop_device_id: 'handoff-ready-new' }]);
+  }, TIMEOUT_MS);
   it('allows renewal after bearer expires but enforces idle and absolute expiry', async () => {
     const expiredBearer = await login();
     await pool.query("UPDATE public.identity_sessions SET created_at=now()-interval '2 seconds',expires_at=now()-interval '1 second' WHERE token_hash=$1", [tokenAdapter.hash(expiredBearer.token)]);

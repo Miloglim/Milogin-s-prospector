@@ -126,7 +126,7 @@ export const TOOL_MANIFEST: ToolMeta[] = [
   {
     name: "campaign_create", label: "创建发信任务",
     route: "创建发信任务（写，需确认）：对一批联系人按触点计划自动跟进——首信后隔 N 天自动发下一轮，"
-      + "回复/退订/bounce 自动止损。用户从首页建议卡进来要「批量开发/自动跟进」时用：先 search_contacts 筛人，"
+      + "回复/自动回复/退订/bounce 自动止损。用户从首页建议卡进来要「批量开发/自动跟进」时用：先 search_contacts 筛人，"
       + "再把 id 传进来；已收到/已触达如实列出，由用户决定。中心联系人任务先保存草稿，由用户到发送中心启动。内容=用户模板库对应阶段模板，支持无人值守；",
     spec: { sideEffect: "write", requiresApproval: true, budgetPerTurn: 2 },
   },

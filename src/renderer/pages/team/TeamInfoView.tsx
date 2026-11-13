@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Crown, MailPlus, Trash2, UserRound } from 'lucide-react';
 import { Modal } from 'antd';
 import type { TeamAdminSummary, TeamInvitation, TeamSnapshot } from '../../../shared/online-crm';
+import { useIdentity } from '../../IdentityContext';
 import { teamActions } from './team-data';
 import { TeamCandidatePicker } from './TeamCandidatePicker';
 
@@ -9,17 +10,19 @@ function key(): string {
   return crypto.randomUUID();
 }
 
-export function TeamInfoView({ team, outgoingInvitations, managedTeams, selectedTeamId, onSelectTeam, canInvite, online, onChanged, onDissolved }: {
+export function TeamInfoView({ team, outgoingInvitations, managedTeams, selectedTeamId, onSelectTeam, canInvite, canLeave, online, onChanged, onDissolved }: {
   team: TeamSnapshot;
   outgoingInvitations: TeamInvitation[];
   managedTeams: TeamAdminSummary[];
   selectedTeamId: string;
   onSelectTeam: (teamId: string) => void;
   canInvite: boolean;
+  canLeave: boolean;
   online: boolean;
   onChanged: () => void;
   onDissolved: () => void;
 }) {
+  const { identity } = useIdentity();
   const [inviting, setInviting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [inviteKey, setInviteKey] = useState(key);
@@ -65,6 +68,27 @@ export function TeamInfoView({ team, outgoingInvitations, managedTeams, selected
       },
     });
   };
+  const leave = () => {
+    const self = team.members.find(member => member.userId === identity?.userId && member.role === 'member');
+    if (!self) return;
+    const signature = `leave:${team.teamId}:${team.version}`;
+    Modal.confirm({
+      title: `退出 ${team.name}？`,
+      content: '退出后需要重新接受邀请才能再次加入，客户与历史记录不会删除。',
+      okText: '退出团队',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        setBusy(true);
+        setError('');
+        const result = await teamActions.adjustMember(team.teamId, { userId: self.userId, action: 'leave', expectedVersion: team.version, idempotencyKey: commandKey(signature) });
+        setBusy(false);
+        if (!result.ok) { setError(result.error.message); return; }
+        commandKeys.current.delete(signature);
+        onDissolved();
+      },
+    });
+  };
 
   const memberCount = team.memberCount ?? team.members.length;
   const leaders = team.members.filter(member => member.role === 'leader');
@@ -74,7 +98,7 @@ export function TeamInfoView({ team, outgoingInvitations, managedTeams, selected
   const memberRow = (member: TeamSnapshot['members'][number]) => <article key={member.userId} className="team-member-row"><span className="team-member-avatar">{member.role === 'leader' ? <Crown aria-hidden="true" /> : <UserRound aria-hidden="true" />}</span><div><strong>{member.displayName}</strong><small>{member.email || '中心账号'}</small></div><span>{member.role === 'leader' ? '负责人' : '成员'}</span></article>;
 
   return <div className="team-info-view">
-    <div className="team-info-head"><div><span>团队</span><h2>{team.name}</h2><small>{team.parentTeamName ? `上级团队：${team.parentTeamName}` : '根团队'}</small></div><div><span>负责人</span><strong>{team.leaderName}</strong></div><div><span>成员</span><strong>{memberCount} 人</strong></div>{(team.canDissolve || canInvite) && <span className="team-form-footer" style={{ marginLeft: 'auto' }}>{team.canDissolve && <button type="button" className="team-action-secondary" disabled={!online || busy} onClick={dissolve}><Trash2 aria-hidden="true" />解散</button>}{canInvite && <button type="button" className="team-action-primary" disabled={!online || inviting} onClick={() => setInviting(value => !value)}><MailPlus aria-hidden="true" />邀请成员</button>}</span>}</div>
+    <div className="team-info-head"><div><span>团队</span><h2>{team.name}</h2><small>{team.parentTeamName ? `上级团队：${team.parentTeamName}` : '根团队'}</small></div><div><span>负责人</span><strong>{team.leaderName}</strong></div><div><span>成员</span><strong>{memberCount} 人</strong></div>{(team.canDissolve || canInvite || canLeave) && <span className="team-form-footer" style={{ marginLeft: 'auto' }}>{team.canDissolve && <button type="button" className="team-action-secondary" disabled={!online || busy} onClick={dissolve}><Trash2 aria-hidden="true" />解散</button>}{canLeave && <button type="button" className="team-action-secondary" disabled={!online || busy} onClick={leave}>退出团队</button>}{canInvite && <button type="button" className="team-action-primary" disabled={!online || inviting} onClick={() => setInviting(value => !value)}><MailPlus aria-hidden="true" />邀请成员</button>}</span>}</div>
     {managedTeams.length > 1 && <section className="team-managed-panel"><div className="team-section-heading"><div><h2>负责团队</h2><span>{managedTeams.length} 个</span></div></div><label className="team-managed-switcher"><span>当前团队</span><select value={selectedTeamId} onChange={event => onSelectTeam(event.target.value)}>{managedTeams.map(item => <option key={item.teamId} value={item.teamId}>{item.name} · {item.memberCount} 人</option>)}</select></label></section>}
     {inviting && canInvite && <section className="team-invite-panel"><TeamCandidatePicker selected={selected} onChange={changeSelected} enabled={online} /><div className="team-form-footer"><button type="button" className="team-action-primary" disabled={!online || busy || !selected.length} onClick={() => void invite()}>{busy ? '处理中' : `发送邀请${selected.length ? `（${selected.length}）` : ''}`}</button></div></section>}
     {error && <div className="team-form-error">{error}</div>}

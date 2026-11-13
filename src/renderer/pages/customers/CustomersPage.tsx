@@ -320,7 +320,8 @@ export function CustomersPage() {
         return {success:false,error:'文件或字段映射已改变，请返回重新预览'};
       }
       if(!originalImportBatches.current){
-        const rows=mappedImportRows(file,mapping).map(row=>({...row,customerKey:row.customerKey||row.email}));
+        const skipped=new Set(input.skippedRows??[]);
+        const rows=mappedImportRows(file,mapping).filter((_,index)=>!skipped.has(index)).map(row=>({...row,customerKey:row.customerKey||row.email}));
         const prepared=prepareImportRequests({source:'desktop-import',sourceDetail:'',kind:canImportOperations?'operations':'personal',mapping},rows);
         if(!prepared.ok)return {success:false,error:prepared.error.message};
         originalImportBatches.current={signature,batches:prepared.data};

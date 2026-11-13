@@ -1,5 +1,6 @@
 import type { Credential, Identity, LoginRequest, LoginResponse, SessionDraft } from './auth';
 import type { Result } from './crm';
+import type { DesktopHandoffRepository } from './device-handoff';
 
 export const DESKTOP_AUTH_ROUTES = {
   register: '/api/auth/desktop/register', login: '/api/auth/desktop/login', refresh: '/api/auth/desktop/refresh',
@@ -24,11 +25,14 @@ export interface DesktopRefreshRequest { refreshToken: string; }
 export interface DesktopPasswordRequest { currentPassword: string; newPassword: string; }
 export interface DesktopLoginResponse extends LoginResponse { refreshToken: string; offlineAccess?: import('./offline-access').OfflineAccessGrant; }
 export interface DesktopSessionDraft extends SessionDraft { refreshHash: string; idleExpiresAt: string; absoluteExpiresAt: string; desktop?: DesktopDeviceContext; }
+export interface DesktopHandoffSessionDraft { tokenHash: string; refreshHash: string; expiresAt: string; idleExpiresAt: string; absoluteExpiresAt: string; }
 export interface DesktopRotation { tokenHash: string; refreshHash: string; expiresAt: string; idleExpiresAt: string; }
-export interface DesktopSessionRepository {
+export interface DesktopSessionRepository extends DesktopHandoffRepository {
   createSalesAccount?(input: { email: string; passwordHash: string; product: RegistrationProduct }): Promise<Result<RegisteredAccount>>;
   credential(email: string): Promise<Result<Credential | null>>;
   createDesktopSession(input: DesktopSessionDraft): Promise<Result<Identity | null>>;
+  completeDesktopHandoff(tokenHash: string, input: DesktopHandoffSessionDraft, takeoverReason?: string): Promise<Result<Identity | null>>;
+  cancelDesktopHandoff(tokenHash: string): Promise<Result<void>>;
   rotateDesktopSession(refreshHash: string, input: DesktopRotation): Promise<Result<{ identity: Identity; expiresAt: string; absoluteExpiresAt?: string } | null>>;
   desktopIdentity(tokenHash: string): Promise<Result<Identity | null>>;
   revokeDesktopSession(refreshHash: string): Promise<Result<void>>;

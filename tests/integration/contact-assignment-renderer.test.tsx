@@ -44,12 +44,15 @@ vi.mock('antd', () => ({
 describe('contact assignment decisions and selected row identity', () => {
   let root: Root, host: HTMLDivElement, qc: QueryClient, invoke: ReturnType<typeof vi.fn>;
   const flush = () => new Promise(resolve => setTimeout(resolve, 30));
+  const requestA = '11111111-1111-4111-8111-111111111111';
+  const expiredA = '22222222-2222-4222-8222-222222222222';
+  const transferA = '33333333-3333-4333-8333-333333333333';
   beforeEach(() => { window.location.hash = '#/customers'; (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; qc = new QueryClient({ defaultOptions: { queries: { retry: false } } }); invoke = vi.fn(); Object.defineProperty(window, 'api', { configurable: true, value: { invoke } }); host = document.createElement('div'); document.body.append(host); root = createRoot(host); });
   afterEach(async () => { await act(async () => root.unmount()); qc.clear(); host.remove(); });
   const mount = async (node: ReactNode) => { await act(async () => root.render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>)); await act(flush); };
   it('creates requests only for selected contact IDs and preserves exact version and key on lost-response retry', async () => {
     invoke.mockImplementation(async channel => channel === C.MEMBERS ? { ok: true, data: { items: [{ userId: 'target', displayName: '用户甲', assignable: true }], total: 1 } } : { ok: false, error: { code: 'UNAVAILABLE', message: '响应丢失' } });
-    const contacts = [{ contactId: 9, customerId: 'customer-a', contactVersion: 7, customerVersion: 99 }] as CenterContact[];
+    const contacts = [{ contactId: 9, customerId: 'customer-a', contactVersion: 7, customerVersion: 99, origin: 'operations' }] as CenterContact[];
     await mount(<AssignmentModal contacts={contacts} close={() => {}} />);
     await act(async () => { const selector = host.querySelector('select')!; selector.value = 'target'; selector.dispatchEvent(new Event('change', { bubbles: true })); });
     await act(async () => host.querySelector('button')!.click()); await act(async () => host.querySelector('button')!.click());
@@ -73,18 +76,28 @@ describe('contact assignment decisions and selected row identity', () => {
     expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_LIST, expect.objectContaining({ groupId: 'group-a', limit: 200, offset: 0 }));
     expect(host.textContent).toContain('Alice');expect(host.textContent).toContain('接受');expect(host.textContent).toContain('返回分组');
   });
-  it('an old requested notification opens the current accepted request without scanning unrelated pages', async () => {
-    window.location.hash = '#/customers?view=assignments&requestId=request-a&assignmentStatus=pending';
-    invoke.mockImplementation(async () => ({ ok: true, data: { items: [{ requestId: 'request-a', contactId: 9, customerId: 'customer-a', version: 5, contactName: 'Alice', companyName: 'Fixture Company', targetName: '用户甲', actorName: '管理员', createdAt: '2026-10-14', status: 'accepted', canAccept: false, canReject: false, canCancel: false }], total: 1 } }));
+  it('ignores malformed group deep links and falls back to the assignment group list', async () => {
+    window.location.hash = '#/customers?view=assignments&groupId=not-a-uuid';
+    invoke.mockImplementation(async channel => channel === C.ASSIGNMENT_GROUPS
+      ? { ok: true, data: { items: [], total: 0 } }
+      : { ok: false, error: { code: 'INVALID_INPUT', message: '联系人或分配参数无效' } });
     await mount(<ContactAssignments operations={false} />);
-    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_LIST, { view: 'incoming', status: 'pending', search: '', limit: 1, offset: 0, requestId: 'request-a' });
-    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_LIST, { view: 'incoming', status: 'accepted', search: '', limit: 1, offset: 0, requestId: 'request-a' });
+    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_GROUPS, expect.objectContaining({ view: 'incoming', status: 'pending', offset: 0 }));
+    expect(invoke.mock.calls.some(call => call[0] === C.ASSIGNMENT_LIST)).toBe(false);
+    expect(host.textContent).not.toContain('联系人或分配参数无效');
+  });
+  it('an old requested notification opens the current accepted request without scanning unrelated pages', async () => {
+    window.location.hash = `#/customers?view=assignments&requestId=${requestA}&assignmentStatus=pending`;
+    invoke.mockImplementation(async () => ({ ok: true, data: { items: [{ requestId: requestA, contactId: 9, customerId: 'customer-a', version: 5, contactName: 'Alice', companyName: 'Fixture Company', targetName: '用户甲', actorName: '管理员', createdAt: '2026-10-14', status: 'accepted', canAccept: false, canReject: false, canCancel: false }], total: 1 } }));
+    await mount(<ContactAssignments operations={false} />);
+    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_LIST, { view: 'incoming', status: 'pending', search: '', limit: 1, offset: 0, requestId: requestA });
+    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_LIST, { view: 'incoming', status: 'accepted', search: '', limit: 1, offset: 0, requestId: requestA });
     expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent === '接受')).toBe(false);
     expect(host.textContent).toContain('跟进');
-    expect(invoke.mock.calls.every(call => call[1].offset === 0 && call[1].requestId === 'request-a')).toBe(true);
+    expect(invoke.mock.calls.every(call => call[1].offset === 0 && call[1].requestId === requestA)).toBe(true);
   });
   it('renders every lifecycle filter and keeps expired assignments read-only', async () => {
-    window.location.hash = '#/customers?view=assignments&requestId=expired-a&assignmentStatus=expired';
+    window.location.hash = `#/customers?view=assignments&requestId=${expiredA}&assignmentStatus=expired`;
     invoke.mockImplementation(async channel => channel === C.ASSIGNMENT_LIST ? { ok: true, data: { items: [{
       requestId: 'expired-a', groupId: 'group-a', contactId: 9, customerId: 'customer-a', version: 3,
       contactName: 'Expired contact', email: 'expired@example.invalid', companyName: 'Fixture Company',
@@ -107,7 +120,7 @@ describe('contact assignment decisions and selected row identity', () => {
     expect(actionLabels).not.toContain('跟进');
   });
   it('shows pending transfer labels and a concise remaining time', async () => {
-    window.location.hash = '#/customers?view=assignments&requestId=transfer-a&assignmentStatus=pending_transfer';
+    window.location.hash = `#/customers?view=assignments&requestId=${transferA}&assignmentStatus=pending_transfer`;
     invoke.mockImplementation(async channel => channel === C.ASSIGNMENT_LIST ? { ok: true, data: { items: [{
       requestId: 'transfer-a', groupId: 'group-a', contactId: 9, customerId: 'customer-a', version: 4,
       contactName: 'Transfer contact', email: null, companyName: 'Fixture Company', targetUserId: 'sales-a', targetName: 'Sales A',

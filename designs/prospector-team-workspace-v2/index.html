@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prospector Team Workspace v2</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="app-rail" aria-label="主导航">
+      <a class="brand-mark" href="#" aria-label="Prospector">P</a>
+      <nav>
+        <button class="rail-button" type="button" title="工作台" aria-label="工作台"><i data-lucide="layout-dashboard"></i></button>
+        <button class="rail-button" type="button" title="收件箱" aria-label="收件箱"><i data-lucide="inbox"></i></button>
+        <button class="rail-button is-active" type="button" title="团队" aria-label="团队"><i data-lucide="users-round"></i></button>
+        <button class="rail-button" type="button" title="客户" aria-label="客户"><i data-lucide="building-2"></i></button>
+        <button class="rail-button" type="button" title="发送中心" aria-label="发送中心"><i data-lucide="send"></i></button>
+      </nav>
+      <button class="rail-avatar" type="button" aria-label="账号">YQ</button>
+    </aside>
+
+    <main class="app-main">
+      <div class="app-topbar">
+        <div class="product-name">Prospector <span>Team Workspace</span></div>
+        <div class="topbar-meta"><span class="online-dot"></span>中心已连接 <span class="topbar-divider"></span> 11:02</div>
+      </div>
+
+      <section class="workspace-shell">
+        <header class="page-header">
+          <div class="page-heading">
+            <div class="page-kicker">团队 / 组织工作区</div>
+            <div class="page-title-row">
+              <h1 id="page-title">团队管理</h1>
+              <span class="role-chip" id="role-chip">管理员视图</span>
+              <span class="page-meta" id="page-meta">9 个运营组 · 26 个销售团队</span>
+            </div>
+          </div>
+          <div class="page-actions">
+            <div class="identity-switch" role="group" aria-label="切换演示身份">
+              <button type="button" class="is-active" data-role="admin"><i data-lucide="shield-check"></i>管理员</button>
+              <button type="button" data-role="leader"><i data-lucide="route"></i>主管</button>
+              <button type="button" data-role="member"><i data-lucide="user-round"></i>成员</button>
+            </div>
+            <button class="button primary" id="primary-action" type="button"><i data-lucide="plus"></i><span>新建组织</span></button>
+          </div>
+        </header>
+
+        <div class="context-bar">
+          <nav class="section-tabs" id="section-tabs" aria-label="团队视图">
+            <button type="button" class="is-active" data-section="admin">团队管理</button>
+            <button type="button" data-section="monitor">监控</button>
+            <button type="button" data-section="performance">绩效</button>
+          </nav>
+          <div class="context-tools">
+            <label class="search-field">
+              <i data-lucide="search"></i>
+              <input id="global-search" placeholder="搜索团队、负责人或成员" />
+            </label>
+            <button class="icon-button" type="button" title="刷新" aria-label="刷新"><i data-lucide="refresh-cw"></i></button>
+          </div>
+        </div>
+
+        <div class="role-view is-active" data-view="admin">
+          <div class="admin-toolbar">
+            <div class="org-summary">
+              <span class="eyebrow">当前组织</span>
+              <strong>Milogin Logistics</strong>
+              <small>华东总部 · 37 位成员</small>
+            </div>
+            <div class="segmented" role="group" aria-label="团队显示方式">
+              <button type="button" class="is-active" data-admin-mode="directory"><i data-lucide="list-tree"></i>团队列表</button>
+              <button type="button" data-admin-mode="canvas"><i data-lucide="network"></i>组织画布</button>
+            </div>
+            <div class="toolbar-stats"><span><b>9</b> 运营组</span><span><b>26</b> 销售团队</span><span><b>3</b> 待处理邀请</span></div>
+          </div>
+
+          <div class="admin-workspace">
+            <aside class="directory-panel panel">
+              <div class="panel-heading">
+                <div><span class="eyebrow">组织结构</span><h2>全部团队</h2></div>
+                <button class="icon-button small" type="button" title="筛选" aria-label="筛选"><i data-lucide="list-filter"></i></button>
+              </div>
+              <div class="directory-list" id="team-directory">
+                <button type="button" class="team-row is-selected" data-team="east"><span class="team-icon"><i data-lucide="building-2"></i></span><span><strong>华东运营组</strong><small>陈诚 · 6 个销售团队</small></span><em>18</em></button>
+                <button type="button" class="team-row child" data-team="south"><span class="team-icon"><i data-lucide="git-branch"></i></span><span><strong>南美销售组</strong><small>林玥 · 负责人</small></span><em>7</em></button>
+                <button type="button" class="team-row child" data-team="europe"><span class="team-icon"><i data-lucide="git-branch"></i></span><span><strong>欧洲销售组</strong><small>周航 · 负责人</small></span><em>6</em></button>
+                <button type="button" class="team-row" data-team="direct"><span class="team-icon"><i data-lucide="users-round"></i></span><span><strong>直属销售组</strong><small>杨岚 · 负责人</small></span><em>5</em></button>
+                <button type="button" class="team-row" data-team="support"><span class="team-icon"><i data-lucide="life-buoy"></i></span><span><strong>客户支持组</strong><small>刘睿 · 负责人</small></span><em>4</em></button>
+              </div>
+              <div class="directory-foot"><i data-lucide="shield-check"></i><span>超级管理员自动拥有所有团队审计权限</span></div>
+            </aside>
+
+            <section class="canvas-panel panel">
+              <div class="panel-heading">
+                <div><span class="eyebrow">组织关系</span><h2>Milogin Logistics</h2></div>
+                <div class="panel-actions">
+                  <button class="icon-button small" type="button" title="缩小" aria-label="缩小"><i data-lucide="minus"></i></button>
+                  <button class="icon-button small" type="button" title="适应视图" aria-label="适应视图"><i data-lucide="scan"></i></button>
+                  <button class="icon-button small" type="button" title="放大" aria-label="放大"><i data-lucide="plus"></i></button>
+                </div>
+              </div>
+              <div class="admin-view is-active" data-admin-view="directory">
+                <div class="team-table">
+                  <div class="table-head"><span>团队</span><span>负责人</span><span>成员</span><span>最近活动</span><span>状态</span></div>
+                  <button type="button" class="table-row is-selected" data-team="east"><span><strong>华东运营组</strong><small>运营组</small></span><span>陈诚</span><span>18</span><span>刚刚</span><span class="status good">活跃</span></button>
+                  <button type="button" class="table-row" data-team="south"><span><strong>南美销售组</strong><small>华东运营组下级</small></span><span>林玥</span><span>7</span><span>8 分钟前</span><span class="status good">活跃</span></button>
+                  <button type="button" class="table-row" data-team="europe"><span><strong>欧洲销售组</strong><small>华东运营组下级</small></span><span>周航</span><span>6</span><span>24 分钟前</span><span class="status warn">待关注</span></button>
+                  <button type="button" class="table-row" data-team="direct"><span><strong>直属销售组</strong><small>公司直属</small></span><span>杨岚</span><span>5</span><span>1 小时前</span><span class="status neutral">正常</span></button>
+                </div>
+                <div class="activity-strip">
+                  <div class="strip-heading"><strong>组织动态</strong><span>最近 30 分钟</span></div>
+                  <div class="strip-item"><i data-lucide="mail-check"></i><span><b>林玥</b> 完成 12 封跟进</span><em>8 分钟前</em></div>
+                  <div class="strip-item"><i data-lucide="reply"></i><span><b>南美销售组</b> 新增 3 条客户回复</span><em>16 分钟前</em></div>
+                </div>
+              </div>
+              <div class="admin-view" data-admin-view="canvas">
+                <div class="org-canvas">
+                  <div class="canvas-root"><i data-lucide="building-2"></i><strong>Milogin Logistics</strong><small>公司根节点</small></div>
+                  <div class="canvas-connector v"></div>
+                  <div class="canvas-row">
+                    <button type="button" class="canvas-node is-selected" data-team="east"><i data-lucide="shield-check"></i><strong>华东运营组</strong><small>陈诚 · 18 人</small></button>
+                    <button type="button" class="canvas-node" data-team="direct"><i data-lucide="users-round"></i><strong>直属销售组</strong><small>杨岚 · 5 人</small></button>
+                  </div>
+                  <div class="canvas-connector v short"></div>
+                  <div class="canvas-row lower">
+                    <button type="button" class="canvas-node child" data-team="south"><i data-lucide="git-branch"></i><strong>南美销售组</strong><small>林玥 · 7 人</small></button>
+                    <button type="button" class="canvas-node child" data-team="europe"><i data-lucide="git-branch"></i><strong>欧洲销售组</strong><small>周航 · 6 人</small></button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <aside class="inspector-panel panel" id="admin-inspector"></aside>
+          </div>
+        </div>
+
+        <div class="role-view" data-view="leader">
+          <div class="metric-band">
+            <div class="metric"><span>今日发出</span><strong>128</strong><small>+18 对比昨日</small></div>
+            <div class="metric"><span>收到回复</span><strong>24</strong><small>18.8% 回复率</small></div>
+            <div class="metric"><span>自动回复 / 退信</span><strong>9</strong><small>业务正常波动</small></div>
+            <div class="metric"><span>已回复处理</span><strong>17</strong><small>剩余 7 条待处理</small></div>
+          </div>
+          <div class="monitor-workspace">
+            <aside class="member-panel panel">
+              <div class="panel-heading"><div><span class="eyebrow">负责团队</span><h2>成员近况</h2></div><span class="panel-count">7 人</span></div>
+              <div class="member-list" id="member-list">
+                <button type="button" class="member-row is-selected" data-member="lin"><span class="member-avatar">LY</span><span><strong>林玥</strong><small>南美销售组 · 7 人</small></span><span class="member-signal good">3 回复</span></button>
+                <button type="button" class="member-row" data-member="zhou"><span class="member-avatar">ZH</span><span><strong>周航</strong><small>欧洲销售组 · 6 人</small></span><span class="member-signal warn">待跟进 5</span></button>
+                <button type="button" class="member-row" data-member="yang"><span class="member-avatar">YL</span><span><strong>杨岚</strong><small>直属销售组 · 5 人</small></span><span class="member-signal good">2 回复</span></button>
+                <button type="button" class="member-row" data-member="liu"><span class="member-avatar">LR</span><span><strong>刘睿</strong><small>客户支持组 · 4 人</small></span><span class="member-signal muted">今日未触达</span></button>
+              </div>
+              <div class="panel-footnote"><i data-lucide="eye"></i><span>仅展示当前负责人授权范围内成员</span></div>
+            </aside>
+
+            <section class="activity-panel panel">
+              <div class="panel-heading"><div><span class="eyebrow" id="member-eyebrow">林玥 · 南美销售组</span><h2>需要关注的活动</h2></div><button class="button secondary small" type="button"><i data-lucide="filter"></i>筛选</button></div>
+              <div class="activity-list">
+                <article class="activity-item urgent"><span class="activity-icon"><i data-lucide="reply"></i></span><div><header><strong>收到客户回复</strong><time>10:42</time></header><p>Santos 客户确认 20GP 报价，等待下一步舱位确认。</p><footer><span class="status good">已回复</span><span>ABC Logistics · Brazil</span></footer></div><button class="icon-button small" type="button" title="查看" aria-label="查看"><i data-lucide="arrow-up-right"></i></button></article>
+                <article class="activity-item"><span class="activity-icon"><i data-lucide="mail-check"></i></span><div><header><strong>完成邮件跟进</strong><time>10:16</time></header><p>向 12 位联系人发送欧洲线报价，3 封进入后续跟进。</p><footer><span class="status neutral">已发送</span><span>欧洲销售组</span></footer></div><button class="icon-button small" type="button" title="查看" aria-label="查看"><i data-lucide="arrow-up-right"></i></button></article>
+                <article class="activity-item warn"><span class="activity-icon"><i data-lucide="clock-3"></i></span><div><header><strong>线索超过 3 天未跟进</strong><time>09:30</time></header><p>5 条分配线索停留在报价阶段，建议负责人上午处理。</p><footer><span class="status warn">待处理</span><span>南美销售组</span></footer></div><button class="icon-button small" type="button" title="查看" aria-label="查看"><i data-lucide="arrow-up-right"></i></button></article>
+                <article class="activity-item"><span class="activity-icon"><i data-lucide="undo-2"></i></span><div><header><strong>退信需要核对邮箱</strong><time>08:58</time></header><p>2 个邮箱地址已暂停自动开发，未进入后续发送。</p><footer><span class="status danger">退信</span><span>客户支持组</span></footer></div><button class="icon-button small" type="button" title="查看" aria-label="查看"><i data-lucide="arrow-up-right"></i></button></article>
+              </div>
+            </section>
+
+            <aside class="insight-panel panel" id="leader-insight"></aside>
+          </div>
+        </div>
+
+        <div class="role-view" data-view="member">
+          <div class="personal-layout">
+            <main class="personal-main panel">
+              <div class="panel-heading"><div><span class="eyebrow">个人工作台</span><h2>今天先处理这些</h2></div><span class="panel-count">按优先级排序</span></div>
+              <div class="metric-band compact">
+                <div class="metric"><span>我的线索</span><strong>86</strong><small>本周新增 12</small></div>
+                <div class="metric"><span>分配线索</span><strong>42</strong><small>待首次跟进 8</small></div>
+                <div class="metric"><span>开放待办</span><strong>7</strong><small>今日到期 3</small></div>
+              </div>
+              <div class="action-queue">
+                <button type="button" class="queue-row is-priority"><span class="queue-icon"><i data-lucide="reply"></i></span><span class="queue-copy"><strong>ABC Logistics</strong><small>客户回复了 Santos 报价，需要继续推进</small></span><span class="queue-meta"><span class="status good">已回复</span><small>10 分钟前</small></span><i data-lucide="chevron-right"></i></button>
+                <button type="button" class="queue-row"><span class="queue-icon"><i data-lucide="clock-3"></i></span><span class="queue-copy"><strong>Blue Ocean Trading</strong><small>分配线索超过 48 小时未首次触达</small></span><span class="queue-meta"><span class="status warn">待跟进</span><small>昨天 16:20</small></span><i data-lucide="chevron-right"></i></button>
+                <button type="button" class="queue-row"><span class="queue-icon"><i data-lucide="mail-x"></i></span><span class="queue-copy"><strong>North Port GmbH</strong><small>退信，需要核对邮箱后继续</small></span><span class="queue-meta"><span class="status danger">退信</span><small>昨天 11:08</small></span><i data-lucide="chevron-right"></i></button>
+                <button type="button" class="queue-row"><span class="queue-icon"><i data-lucide="send"></i></span><span class="queue-copy"><strong>Pacific Foods Ltd.</strong><small>报价发送后 3 天，建议今天补充跟进</small></span><span class="queue-meta"><span class="status neutral">已发送</span><small>周一 09:40</small></span><i data-lucide="chevron-right"></i></button>
+              </div>
+            </main>
+            <aside class="personal-side">
+              <section class="task-panel panel"><div class="panel-heading"><div><span class="eyebrow">今日</span><h2>待办</h2></div><span class="panel-count">7 项</span></div><div class="task-list"><label><input type="checkbox" checked /><span>回复 Santos 客户报价确认</span><time>10:30</time></label><label><input type="checkbox" /><span>整理欧洲线本周发送名单</span><time>14:00</time></label><label><input type="checkbox" /><span>核对 2 个退信邮箱</span><time>今天</time></label></div></section>
+              <section class="team-note panel"><div class="panel-heading"><div><span class="eyebrow">团队</span><h2>我的团队</h2></div></div><div class="team-note-body"><span class="member-avatar large">LY</span><div><strong>南美销售组</strong><small>主管 林玥 · 7 位成员</small></div></div><div class="team-structure"><span>主管 <b>林玥</b></span><span>组员 <b>6 人</b></span></div></section>
+            </aside>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

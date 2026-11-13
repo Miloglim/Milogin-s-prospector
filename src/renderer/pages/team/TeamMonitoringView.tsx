@@ -62,7 +62,7 @@ function teamOptions(teams: readonly TeamAdminSummary[]): TeamAdminSummary[] {
     if (seen.has(team.teamId)) return false;
     seen.add(team.teamId);
     return true;
-  });
+  }).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
 }
 
 function inputDate(value: Date): string {
@@ -138,9 +138,10 @@ interface PerformanceDraft {
   country: string;
 }
 
-export function TeamPerformanceView({ teams = [], online }: {
+export function TeamPerformanceView({ teams = [], online, search = '' }: {
   teams?: readonly TeamAdminSummary[];
   online: boolean;
+  search?: string;
 }) {
   const selection = useMemo(() => teamOptions(teams), [teams]);
   const today = useMemo(() => new Date(), []);
@@ -161,6 +162,7 @@ export function TeamPerformanceView({ teams = [], online }: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const requestVersion = useRef(0);
+  const normalizedSearch = search.trim().toLocaleLowerCase('zh-CN');
 
   useEffect(() => {
     const version = ++requestVersion.current;
@@ -203,6 +205,12 @@ export function TeamPerformanceView({ teams = [], online }: {
     setApplied({ ...draft });
   };
 
+  const visibleItems = data
+    ? normalizedSearch
+      ? data.items.filter(row => [row.label, row.memberName, row.teamName].filter(Boolean).some(value => value!.toLocaleLowerCase('zh-CN').includes(normalizedSearch)))
+      : data.items
+    : [];
+
   return <div className="team-performance-view">
     <div className="team-performance-toolbar">
       <div className="team-performance-heading"><TrendingUp aria-hidden="true" /><span><strong>{performanceScopeLabel(data?.scope)}</strong><small>{data ? `${data.total} 个分组` : '实时业务指标'}</small></span></div>
@@ -221,19 +229,20 @@ export function TeamPerformanceView({ teams = [], online }: {
     {!online && <div className="team-performance-state">联网后读取销售绩效</div>}
     {loading && !data && <div className="team-performance-state"><Spin size="small" /> 正在读取绩效</div>}
     {error && <div className="team-performance-state is-error"><AlertCircle aria-hidden="true" />{error}</div>}
-    {data && data.items.length === 0 && !loading && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前范围暂无绩效数据" />}
-    {data && data.items.length > 0 && <>
-      <div className="team-performance-list" aria-label="销售绩效">{data.items.map(performanceRow)}</div>
+    {data && visibleItems.length === 0 && !loading && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={normalizedSearch ? '没有匹配的绩效数据' : '当前范围暂无绩效数据'} />}
+    {data && visibleItems.length > 0 && <>
+      <div className="team-performance-list" aria-label="销售绩效">{visibleItems.map(performanceRow)}</div>
       {data.total > PERFORMANCE_PAGE_SIZE && <div className="team-performance-pagination"><Pagination size="small" current={page} pageSize={PERFORMANCE_PAGE_SIZE} total={data.total} showSizeChanger={false} onChange={setPage} /></div>}
     </>}
     {data && <div className="team-performance-footnote"><Timer aria-hidden="true" />样本不足不展示排名或分配建议</div>}
   </div>;
 }
 
-export function TeamMonitoringView({ identity, teams, online }: {
+export function TeamMonitoringView({ identity, teams, online, search = '' }: {
   identity: Identity;
   teams: readonly TeamAdminSummary[];
   online: boolean;
+  search?: string;
 }) {
   const selection = useMemo(() => teamOptions(teams), [teams]);
   const [teamId, setTeamId] = useState('');
@@ -251,6 +260,7 @@ export function TeamMonitoringView({ identity, teams, online }: {
   const [mailLoading, setMailLoading] = useState(false);
   const [mailError, setMailError] = useState('');
   const requestVersion = useRef(0);
+  const normalizedSearch = search.trim().toLocaleLowerCase('zh-CN');
 
   useEffect(() => {
     const version = ++requestVersion.current;
@@ -316,6 +326,27 @@ export function TeamMonitoringView({ identity, teams, online }: {
   };
 
   const hintScope = overview?.scope ?? (identity.identityAdmin || identity.crmRoles.includes('admin') ? 'superadmin' : identity.crmRoles.includes('operations') ? 'operations' : 'leader');
+  const visibleMembers = overview
+    ? normalizedSearch
+      ? overview.members.items.filter(member => [member.displayName, member.teamName].some(value => value.toLocaleLowerCase('zh-CN').includes(normalizedSearch)))
+      : overview.members.items
+    : [];
+  visibleMembers.sort((left, right) => {
+    const leftTime = Date.parse(left.lastActivityAt ?? left.latestImportantReplyAt ?? '') || 0;
+    const rightTime = Date.parse(right.lastActivityAt ?? right.latestImportantReplyAt ?? '') || 0;
+    return rightTime - leftTime;
+  });
+  const visibleReplies = overview
+    ? normalizedSearch
+      ? overview.importantReplies.filter(mail => [mail.subject, mail.summary, mail.nextAction].filter(Boolean).some(value => value!.toLocaleLowerCase('zh-CN').includes(normalizedSearch)))
+      : overview.importantReplies
+    : [];
+  visibleReplies.sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt));
+  const visibleUnits = overview
+    ? normalizedSearch
+      ? overview.units.items.filter(unit => unit.name.toLocaleLowerCase('zh-CN').includes(normalizedSearch))
+      : overview.units.items
+    : [];
   return <div className="team-monitoring-view">
     <div className="team-monitoring-toolbar">
       <div className="team-monitoring-heading"><Activity aria-hidden="true" /><span><strong>{scopeLabel(hintScope)}</strong><small>{overview ? `${overview.members.total} 位成员` : '团队经营概览'}</small></span></div>
@@ -343,8 +374,8 @@ export function TeamMonitoringView({ identity, teams, online }: {
       <div className="team-monitoring-body">
         <section className="team-monitoring-members" aria-label="成员监控">
           <div className="team-monitoring-section-heading"><div><UsersRound aria-hidden="true" /><h2>成员</h2><span>{overview.members.total}</span></div><small>第 {page} 页</small></div>
-          {overview.members.items.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前范围暂无成员" /> : <div className="team-monitoring-member-list">
-            {overview.members.items.map(member => <button type="button" key={member.userId} className={`team-monitoring-member-row${selectedMemberId === member.userId ? ' is-selected' : ''}`} onClick={() => setSelectedMemberId(member.userId)}>
+          {visibleMembers.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={normalizedSearch ? '没有匹配的成员' : '当前范围暂无成员'} /> : <div className="team-monitoring-member-list">
+            {visibleMembers.map(member => <button type="button" key={member.userId} className={`team-monitoring-member-row${selectedMemberId === member.userId ? ' is-selected' : ''}`} onClick={() => setSelectedMemberId(member.userId)}>
               <span className="team-monitoring-avatar"><UsersRound aria-hidden="true" /></span>
               <span><strong>{member.displayName}</strong><small>{member.teamName}</small></span>
               <span><strong>{member.counts.openActions}</strong><small>动作</small></span>
@@ -355,22 +386,27 @@ export function TeamMonitoringView({ identity, teams, online }: {
           </div>}
           {overview.members.total > MONITORING_PAGE_SIZE && <Pagination size="small" current={page} pageSize={MONITORING_PAGE_SIZE} total={overview.members.total} showSizeChanger={false} onChange={setPage} />}
         </section>
+        <section className="team-monitoring-activity" aria-label="重点活动">
+          <div className="team-monitoring-section-heading"><div><Mail aria-hidden="true" /><h2>需要关注的活动</h2><span>{visibleReplies.length}</span></div></div>
+          {visibleReplies.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={normalizedSearch ? '没有匹配的活动' : '暂无重点回复'} /> : visibleReplies.map(mail => <button key={mail.eventId} type="button" className="team-monitoring-reply-row" onClick={() => void openContact(mail.contactId, mail.customerId, mail)}>
+            <span className="team-monitoring-mail-icon"><Mail aria-hidden="true" /></span>
+            <span><strong>{mail.subject || '无主题'}</strong><small>{mail.summary || mail.nextAction || '客户回复'}</small></span>
+            <small>{dateTime(mail.occurredAt)}</small>
+          </button>)}
+        </section>
         <aside className="team-monitoring-inspector">
           {selectedMemberId
             ? <TeamMonitoringMemberDetail userId={selectedMemberId} online={online} onClose={() => setSelectedMemberId(null)} onOpenMail={mail => void openContact(mail.contactId, mail.customerId, mail)} />
-            : <section className="team-monitoring-replies" aria-label="重点回复">
-              <div className="team-monitoring-section-heading"><div><Mail aria-hidden="true" /><h2>重点回复</h2><span>{overview.importantReplies.length}</span></div></div>
-              {overview.importantReplies.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无重点回复" /> : overview.importantReplies.map(mail => <button key={mail.eventId} type="button" className="team-monitoring-reply-row" onClick={() => void openContact(mail.contactId, mail.customerId, mail)}>
-                <span className="team-monitoring-mail-icon"><Mail aria-hidden="true" /></span>
-                <span><strong>{mail.subject || '无主题'}</strong><small>{mail.summary || mail.nextAction || '客户回复'}</small></span>
-                <small>{dateTime(mail.occurredAt)}</small>
-              </button>)}
+            : <section className="team-monitoring-overview-summary" aria-label="成员选择提示">
+              <div className="team-monitoring-section-heading"><div><UsersRound aria-hidden="true" /><h2>成员近况</h2><span>{overview.members.total}</span></div></div>
+              <div className="team-monitoring-overview-copy"><Activity aria-hidden="true" /><strong>选择成员查看近况</strong><p>查看负责人、近期待办、客户回复和最近邮件。</p></div>
+              <div className="team-monitoring-overview-lines"><div><span>联系人</span><strong>{overview.counts.contacts}</strong></div><div><span>已触达</span><strong>{overview.counts.contacted + overview.counts.replied}</strong></div><div><span>待处理动作</span><strong>{overview.counts.openActions}</strong></div><div><span>待关注</span><strong>{overview.counts.openAttention}</strong></div></div>
             </section>}
         </aside>
       </div>
-      <section className="team-monitoring-units" aria-label="组织汇总">
+      <section className="team-monitoring-units" aria-label="团队汇总">
         <div className="team-monitoring-section-heading"><div><Building2 aria-hidden="true" /><h2>范围</h2><span>{overview.units.total}</span></div></div>
-        <div>{overview.units.items.map(unit => <button type="button" key={unit.unitId} className="team-monitoring-unit" onClick={() => changeTeam(unit.unitId)}>
+        <div>{visibleUnits.map(unit => <button type="button" key={unit.unitId} className="team-monitoring-unit" onClick={() => changeTeam(unit.unitId)}>
           <span><strong>{unit.name}</strong><small>{unit.memberCount} 人 · {unit.kind === 'operations_group' ? '运营组' : '销售团队'}</small></span>
           <span><strong>{unit.counts.replied}</strong><small>回复</small></span>
           <span><strong>{unit.counts.openActions}</strong><small>动作</small></span>

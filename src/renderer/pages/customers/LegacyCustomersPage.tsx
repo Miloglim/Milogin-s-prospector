@@ -4,6 +4,8 @@ import { BankOutlined, BarChartOutlined, LeftOutlined, ShareAltOutlined, Unorder
 import { ContactList } from '../contacts/ContactList';
 import { useQueryClient } from '@tanstack/react-query';
 import { useIdentity } from '../../IdentityContext';
+import { invalidateDomain } from '../../lib/cacheDeps';
+import { isPermissionDenied } from '../../lib/permissionGate';
 import { CONTACT_ASSIGNMENT_LIMITS, type CenterContact, type CenterContactGroup, type CenterContactGroupDimension, type CenterContactQuery, type CenterContactRef } from '../../../shared/online-crm';
 import { createCenterContactPort, createCenterImportPort, centerInvoke } from './centerContactPort';
 import { CenterContactDetail } from './CenterContactDetail';
@@ -17,9 +19,9 @@ type LegacyView = 'groups' | 'table' | 'board' | 'company' | 'assignments';
 const CUSTOMER_TABLE_DEFER_MS = 180;
 const CUSTOMER_TABLE_SKELETON_ROWS = 8;
 
-function MonitorDetailSlot({ reference, onClose }: { reference: CenterContactRef; onClose: () => void }) {
+function MonitorDetailSlot({ reference, onClose, highlight }: { reference: CenterContactRef; onClose: () => void; highlight?: boolean }) {
   const MonitorDetail = ContactDetailViews.ContactMonitorDetail;
-  return MonitorDetail ? <MonitorDetail reference={reference} onClose={onClose} /> : null;
+  return MonitorDetail ? <MonitorDetail reference={reference} onClose={onClose} highlight={highlight} /> : null;
 }
 
 function ContactTableSkeleton() {
@@ -67,6 +69,10 @@ function readMonitorReference(): CenterContactRef | null {
   const customerId = params.get('centerCustomer');
   return Number.isSafeInteger(contactId) && contactId > 0 && customerId ? { contactId, customerId } : null;
 }
+function readNotificationHighlight(): string | null {
+  const value = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('highlight');
+  return value && value.length <= 128 ? value : null;
+}
 
 /** Original customer shell/presentation, explicitly backed by center contacts. */
 export function LegacyCustomersPage() {
@@ -80,6 +86,7 @@ export function LegacyCustomersPage() {
   const [scope, setScope] = useState<NonNullable<CenterContactQuery['scope']>>('all');
   const [assigning, setAssigning] = useState<CenterContact[]>([]);
   const [deepReference, setDeepReference] = useState<CenterContactRef | null>(null);
+  const [notificationHighlight, setNotificationHighlight] = useState<string | null>(readNotificationHighlight);
   const [monitorReference, setMonitorReference] = useState<CenterContactRef | null>(readMonitorReference);
   const [headerActionsTarget, setHeaderActionsTarget] = useState<HTMLDivElement | null>(null);
   const identityKey = JSON.stringify([baseUrl,identity?.userId,identity?.crmRoles?.slice().sort(),identity?.crmCapabilities?.slice().sort(),identity?.identityAdmin,identity?.mustChangePassword]);
@@ -89,8 +96,9 @@ export function LegacyCustomersPage() {
   const currentSession = useRef(''); currentSession.current = `${baseUrl}:${identity?.userId}`;
   const port = useMemo(() => createCenterContactPort({ key, scope: activeScope, group:contactGroup?{groupDimension:contactGroup.dimension,groupKey:contactGroup.key}:undefined, isCurrent: () => currentIdentity.current === identityKey }), [key, activeScope, contactGroup?.dimension, contactGroup?.key]);
   const importPort = useMemo(() => { const session = `${baseUrl}:${identity?.userId}`; return createCenterImportPort(centerInvoke, operations, () => {
-    void qc.invalidateQueries({ queryKey: ['center-contacts'] });
-    void qc.invalidateQueries({ queryKey: ['center-contact-groups'] });
+    void invalidateDomain(qc, 'contacts', 'companies');
+    void qc.refetchQueries({ queryKey: ['center-companies'], type: 'inactive' });
+    void qc.refetchQueries({ queryKey: ['center-company-detail'], type: 'inactive' });
   }, () => currentSession.current === session); }, [key, operations, qc]);
   useEffect(() => {
     if (view !== 'table' && view !== 'groups') { setTableReady(false); return; }
@@ -109,6 +117,7 @@ export function LegacyCustomersPage() {
       const customerId = params.get('centerCustomer');
       const monitor = readMonitorReference();
       setMonitorReference(monitor);
+      setNotificationHighlight(readNotificationHighlight());
       if (monitor) setDeepReference(null);
       else if (Number.isSafeInteger(contactId) && contactId > 0 && customerId) setDeepReference({ contactId, customerId });
       else setDeepReference(null);
@@ -120,11 +129,18 @@ export function LegacyCustomersPage() {
   const priorSession = useRef(`${baseUrl}:${identity?.userId}`);
   useEffect(() => { const session = `${baseUrl}:${identity?.userId}`; if (priorSession.current !== session) { priorSession.current = session; setAssigning([]); setDeepReference(null); setMonitorReference(null); setScope('all'); } }, [identity?.userId, baseUrl]);
   const sourceFilter = !operations ? <Select size="small" style={{ width: 120 }} aria-label="线索来源" value={scope} onChange={setScope} options={[{ value: 'all', label: '全部' }, { value: 'personal', label: '自有线索' }, { value: 'assigned', label: '分配线索' }]} /> : null;
-  const assign = (ids: number[]) => {
+  const assign = async (ids: number[]) => {
     if (status === 'offline') { message.error('分配需要连接服务器'); return; }
-    const rows = ids.map(id => port.records.get(id));
-    if (rows.some(row => !row?.canAssign)) { message.error('所选联系人包含不可分配项，请刷新后重选'); return; }
-    setAssigning(rows as CenterContact[]);
+    let rows = ids.map(id => port.records.get(id));
+    if (rows.some(row => !row)) {
+      const all = await port.readAll();
+      if (!all.success) { message.error(all.error ?? '联系人读取失败'); return; }
+      rows = ids.map(id => port.records.get(id));
+    }
+    const contacts = rows.filter((row): row is CenterContact => !!row);
+    if (contacts.length !== ids.length) { message.error('联系人选择已变化，请刷新后重选'); return; }
+    if (contacts.some(row => isPermissionDenied(row.canAssign))) { message.error('所选联系人包含不可分配项，请刷新后重选'); return; }
+    setAssigning(contacts);
   };
   const assignGroups = async (dimension:CenterContactGroupDimension, groups:CenterContactGroup[]) => {
     if (status === 'offline') { message.error('分配需要连接服务器'); return false; }
@@ -143,7 +159,7 @@ export function LegacyCustomersPage() {
       const rows = [...contacts.values()];
       if (!rows.length) { message.error('所选分组没有可分配联系人'); return false; }
       if (rows.length>CONTACT_ASSIGNMENT_LIMITS.batch) { message.error(`每次最多分配 ${CONTACT_ASSIGNMENT_LIMITS.batch} 人`); return false; }
-      if (rows.some(row=>!row.canAssign)) { message.error('所选联系人包含不可分配项，请刷新后重选'); return false; }
+      if (rows.some(row=>isPermissionDenied(row.canAssign))) { message.error('所选联系人包含不可分配项，请刷新后重选'); return false; }
       setAssigning(rows);
       return true;
     } catch (error) {
@@ -184,7 +200,7 @@ export function LegacyCustomersPage() {
     {(view === 'board' || view === 'company') && <div className="space-y-3">{sourceFilter}<CenterContactViews key={key} port={port} view={view} /></div>}
     {view === 'assignments' && <ContactAssignments key={`${baseUrl}:${identity?.userId}`} operations={operations} />}
     {assigning.length > 0 && <AssignmentModal key={assigning.map(row => row.contactId).join(',')} contacts={assigning} close={() => setAssigning([])} />}
-    <CenterContactDetail reference={deepReference} onClose={() => setDeepReference(null)} />
-    {monitorReference && <MonitorDetailSlot reference={monitorReference} onClose={() => setMonitorReference(null)} />}
+    <CenterContactDetail key={notificationHighlight ?? 'contact-detail'} reference={deepReference} highlight={!!notificationHighlight} onClose={() => { setDeepReference(null); setNotificationHighlight(null); }} />
+    {monitorReference && <MonitorDetailSlot reference={monitorReference} highlight={!!notificationHighlight} onClose={() => setMonitorReference(null)} />}
   </div>;
 }

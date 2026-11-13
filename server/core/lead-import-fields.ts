@@ -27,6 +27,50 @@ export function leadImportMapping(headers:string[]):Record<string,string> {
 }
 
 export const IMPORT_REMARK_MAX = 20000;
+const IMPORT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const IMPORT_EMAIL_CANDIDATE = /[^\s<>()@,;:"'，；：]+@[^\s<>()@,;:"'，；：]+\.[^\s<>()@,;:"'，；：]+/g;
+export interface NormalizedImportEmail { email: string; extras: string[] }
+/** Use the first valid address as the contact email and retain all distinct alternatives for the import note. */
+export function normalizeImportEmail(value: string): NormalizedImportEmail {
+  const trimmed = value.trim();
+  if (!trimmed) return { email: '', extras: [] };
+  if (IMPORT_EMAIL_PATTERN.test(trimmed)) return { email: trimmed.toLowerCase(), extras: [] };
+  const candidates = (trimmed.match(IMPORT_EMAIL_CANDIDATE) ?? [])
+    .map(candidate => candidate.trim().replace(/[.,;:!?]+$/g, '').toLowerCase())
+    .filter(candidate => IMPORT_EMAIL_PATTERN.test(candidate));
+  const distinct = [...new Set(candidates)];
+  return distinct.length ? { email: distinct[0]!, extras: distinct.slice(1) } : { email: trimmed, extras: [] };
+}
+const CUSTOMER_TYPE_ALIASES: Record<string, '代理' | '直客'> = {
+  '代理': '代理', '货代': '代理', '代理公司': '代理', '货运代理': '代理',
+  '直客': '直客', '直接客户': '直客', '直接客人': '直客',
+};
+export function normalizeImportCustomerType(value: string): string {
+  if (!value.trim()) return '';
+  const parts = value.split(/[;,，；、|/]+/).map(part => part.trim()).filter(Boolean);
+  return parts.map(part => CUSTOMER_TYPE_ALIASES[part]).find(Boolean) ?? value.trim();
+}
+const GROUPED_COMPANY_FIELDS = ['companyName', 'country', 'customerType', 'businessType', 'website'] as const;
+/** Spreadsheet contact blocks often leave company fields blank for rows that belong to the previous company. */
+export function fillForwardImportCompanyFields(rows: Record<string,string>[], fieldToHeader: Record<string,string>): Record<string,string>[] {
+  let previous: Record<string,string> = {};
+  return rows.map(row => {
+    const next = { ...row };
+    const companyHeader = fieldToHeader.companyName;
+    const hasCompany = Boolean(companyHeader && row[companyHeader]?.trim());
+    const context: Record<string,string> = {};
+    for (const field of GROUPED_COMPANY_FIELDS) {
+      const header = fieldToHeader[field];
+      if (!header) continue;
+      const current = next[header]?.trim();
+      if (!hasCompany && !current && previous[field]) next[header] = previous[field];
+      const effective = next[header]?.trim();
+      if (effective) context[field] = effective;
+    }
+    previous = context;
+    return next;
+  });
+}
 const EMPTY_IMPORT_VALUES = new Set(['', 'n/a', 'na', '(n/a)', 'null', 'none', 'nil', '-', '--', '—', '暂无', '无', '未提供']);
 const DIRECT_REMARK_HEADERS = new Set(['备注', 'remark', 'note', 'notes', '说明']);
 function remarkValue(value: unknown): string {

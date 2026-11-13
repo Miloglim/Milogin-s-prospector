@@ -521,12 +521,14 @@ describe("推进与止损（onCampaignSendSent / onContactSignal）", () => {
     expect(rows.find(row => row.contactId === 2)?.status).toBe("bounced");
   });
 
-  it("OOO 自动回复：不止损，待发触点顺延 3 天", async () => {
+  it("自动回复止损：不再顺延或继续发送", async () => {
     const cid = seedCampaign([1], true);
-    campaign.onContactSignal(1, "autoreply");                   // 尚未入队，pending
+    campaign.onContactSignal(1, "autoreply");
     const t = h.db!.select().from(schema.sendCampaignTargets).where(eq(schema.sendCampaignTargets.campaignId, cid)).get()!;
-    expect(t.status).toBe("pending");
-    expect(new Date(t.nextTouchAt!).getTime()).toBeGreaterThan(new Date(daysAheadIso(2.9)).getTime());
+    expect(t.status).toBe("autoreply");
+    expect(t.nextTouchAt).toBeNull();
+    const c = h.db!.select().from(schema.sendCampaigns).where(eq(schema.sendCampaigns.id, cid)).get()!;
+    expect(c.status).toBe("done");
   });
 
   it("bounce 止损", async () => {
@@ -577,20 +579,22 @@ describe("再启动新周期（restartCampaign + 完结清空固定内容）", (
     }
   });
 
-  it("完结任务再启动：sent/replied/skipped 重置待发，退信保持终态不重置", () => {
-    const cid = seedCampaign([1, 2, 3, 4], true);
+  it("完结任务再启动：sent/replied/skipped 重置待发，退信和自动回复保持终态", () => {
+    h.db!.insert(schema.contacts).values({ id: 5, email: "e@x.com", firstName: "E", status: "autoreply", stage: "cold", language: "EN" }).run();
+    const cid = seedCampaign([1, 2, 3, 4, 5], true);
     h.db!.update(schema.sendCampaignTargets).set({ status: "sent" }).where(eq(schema.sendCampaignTargets.contactId, 1)).run();
     h.db!.update(schema.sendCampaignTargets).set({ status: "replied" }).where(eq(schema.sendCampaignTargets.contactId, 2)).run();
     h.db!.update(schema.sendCampaignTargets).set({ status: "skipped" }).where(eq(schema.sendCampaignTargets.contactId, 3)).run();
     h.db!.update(schema.sendCampaignTargets).set({ status: "bounced" }).where(eq(schema.sendCampaignTargets.contactId, 4)).run();
+    h.db!.update(schema.sendCampaignTargets).set({ status: "autoreply" }).where(eq(schema.sendCampaignTargets.contactId, 5)).run();
     h.db!.update(schema.sendCampaigns).set({ status: "done" }).where(eq(schema.sendCampaigns.id, cid)).run();
 
     const r = campaign.restartCampaign(cid);
     expect(r.success).toBe(true);
-    expect(r.data.reset).toBe(3);                                   // sent/replied/skipped；bounced 不动
+    expect(r.data.reset).toBe(3);                                   // sent/replied/skipped；bounced/autoreply 不动
     const ts = h.db!.select().from(schema.sendCampaignTargets).all();
     const by = Object.fromEntries(ts.map(t => [t.contactId, t.status]));
-    expect(by).toEqual({ 1: "pending", 2: "pending", 3: "pending", 4: "bounced" });
+    expect(by).toEqual({ 1: "pending", 2: "pending", 3: "pending", 4: "bounced", 5: "autoreply" });
     const t1 = ts.find(t => t.contactId === 1)!;
     expect(t1.round).toBe(0);
     expect(new Date(t1.nextTouchAt!).getTime()).toBeLessThanOrEqual(Date.now() + 1000);  // 立即到期

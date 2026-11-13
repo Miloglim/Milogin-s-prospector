@@ -648,7 +648,7 @@ export async function execCampaignStatus(ctx: ToolCtx, args: z.infer<typeof camp
     return okOut({
       campaign: data.campaign,
       targets: data.targets.slice(0, 20),
-      notice: `名单共 ${data.campaign?.total ?? 0} 人，本表展示前 20。进度看 touchesSent/touchesPlanned（封数，多轮已计入），人数总量看 total。status 口径：pending=待发，queued=已入队，sent=计划走完，replied/bounced/unsubscribed=止损，skipped=排除。`,
+      notice: `名单共 ${data.campaign?.total ?? 0} 人，本表展示前 20。进度看 touchesSent/touchesPlanned（封数，多轮已计入），人数总量看 total。status 口径：pending=待发，queued=已入队，sent=计划走完，replied/bounced/autoreply/unsubscribed=止损，skipped=排除。`,
     });
   }
   const campaigns = getCampaignOverview();

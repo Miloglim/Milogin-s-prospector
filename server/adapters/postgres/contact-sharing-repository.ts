@@ -2,11 +2,12 @@ import {randomUUID} from 'node:crypto';
 import type {PoolClient} from 'pg';
 import {failure,success,type Result} from '../../core/crm';
 import {globalContactActor,sourceContactManager} from '../../core/contact-permissions';
-import {CONTACT_SHARED_FIELDS,CONTACT_SHARING_EVENTS as EVENTS,type ContactShare,type ContactShareCreate,type ContactShareDecision,type ContactShareUpdate,type ContactShareQuery,type ContactShareGrant} from '../../core/contact-sharing';
+import {CONTACT_SHARED_FIELDS,CONTACT_SHARING_EVENTS as EVENTS,CONTACT_TEAM_VISIBILITY_EVENT,type ContactShare,type ContactShareCreate,type ContactShareDecision,type ContactShareUpdate,type ContactShareQuery,type ContactShareGrant,type ContactTeamShareCreate,type ContactTeamShareReceipt} from '../../core/contact-sharing';
 import type {LeadActor} from './lead-repository';
 import {CONTACT_OWNER_SQL,loadContactIn,canReadContact,contactPermissionsFor,lifecycleCached,recordContactEventIn} from './contact-assignment-repository';
 import {validShareSql} from './contact-sharing-sql';
 import {effectiveCapabilitiesFor} from '../../core/admin';
+import type {CrmRole} from '../../core/auth';
 const SELECT=`SELECT sh.share_id AS "shareId",sh.contact_id AS "contactId",sh.customer_id AS "customerId",sh.grantor_user_id AS "grantorUserId",gu.display_name AS "grantorName",sh.target_user_id AS "targetUserId",tu.display_name AS "targetName",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'联系人') AS "contactName",co.name AS "companyName",sh.editable_fields AS "editableFields",sh.can_followup AS "canFollowup",sh.can_change_stage AS "canChangeStage",sh.status,sh.version,sh.created_at AS "createdAt",(${validShareSql(CONTACT_OWNER_SQL)}) AS valid,c.created_by,c.origin FROM crm_contact_shares sh JOIN contacts ct ON ct.id=sh.contact_id JOIN crm_customers c ON c.customer_id=sh.customer_id JOIN companies co ON co.id=c.company_id JOIN public.identity_users gu ON gu.user_id=sh.grantor_user_id JOIN public.identity_users tu ON tu.user_id=sh.target_user_id`;
 type Row=ContactShare&{valid:boolean;created_by:string;origin:string};
 function manage(a:LeadActor,r:Row):boolean{return globalContactActor(a)||sourceContactManager(a,{...r,ownerUserId:r.grantorUserId})||r.grantorUserId===a.userId&&r.valid;}
@@ -67,4 +68,32 @@ export async function updateShareIn(c:PoolClient,a:LeadActor,input:ContactShareU
   await c.query('UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1',[r.contactId]);
   const next=await result(c,a,r.shareId);if(next.ok)await event(c,a,next.data,EVENTS.updated);return next;
  },old=>result(c,a,old.shareId));
+}
+
+export async function shareTeamIn(c:PoolClient,a:LeadActor,input:ContactTeamShareCreate):Promise<Result<ContactTeamShareReceipt>>{
+ const ct=await loadContactIn(c,input,true);if(!ct||!canReadContact(a,ct)||!contactPermissionsFor(a,ct).canShare)return failure('FORBIDDEN','当前联系人不能设为团队可见');
+ const team=(await c.query(`SELECT team.unit_id AS "teamId",team.name AS "teamName" FROM crm_org_assignments mine JOIN crm_org_units team ON team.unit_id=mine.unit_id AND team.kind='sales_team' AND team.dissolved_at IS NULL WHERE mine.user_id=$1 AND mine.role IN ('member','leader') AND mine.ended_at IS NULL ORDER BY mine.is_primary DESC,mine.created_at,team.unit_id LIMIT 1`,[a.userId])).rows[0] as {teamId:string;teamName:string}|undefined;
+ if(!team)return failure('INVALID_INPUT','当前账号未加入销售团队');
+ const candidates=(await c.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",pa.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM crm_org_assignments member JOIN public.identity_users u ON u.user_id=member.user_id LEFT JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE member.unit_id=$1 AND member.ended_at IS NULL AND member.user_id<>$2 AND u.active AND NOT u.must_change_password`,[team.teamId,a.userId])).rows as Array<{userId:string;displayName:string;capabilities:string[]|null;roles:CrmRole[]}>;
+ const eligible=candidates.filter(member=>member.roles.includes('sales')&&effectiveCapabilitiesFor(member.roles,member.capabilities).includes('leads.develop')).map(member=>member.userId);
+ if(!eligible.length)return failure('INVALID_INPUT','团队暂无可共享成员');
+ return lifecycleCached(c,a,'contact-share:team',input,async()=>{
+  const current=await loadContactIn(c,input,true);if(!current||!contactPermissionsFor(a,current).canShare)return failure('FORBIDDEN','当前联系人不能设为团队可见');
+  if(current.contactVersion!==input.expectedVersion)return failure('CONFLICT','联系人已变化，请刷新重试');
+  const existing=(await c.query("SELECT target_user_id,status FROM crm_contact_shares WHERE contact_id=$1 AND target_user_id=ANY($2::uuid[]) AND status IN ('pending','accepted')",[input.contactId,eligible])).rows as Array<{target_user_id:string;status:string}>;
+  const active=new Map(existing.map(row=>[row.target_user_id,row.status])),created:string[]=[];
+  let alreadyShared=0,pendingCount=0;
+  for(const targetUserId of eligible){
+   const status=active.get(targetUserId);
+   if(status==='accepted'){alreadyShared++;continue;}
+   if(status==='pending'){pendingCount++;continue;}
+   await c.query("INSERT INTO crm_contact_shares(share_id,contact_id,customer_id,grantor_user_id,target_user_id,editable_fields,can_followup,can_change_stage,status,version,decided_at) VALUES($1,$2,$3,$4,$5,'[]'::jsonb,false,false,'accepted',1,now())",[randomUUID(),input.contactId,input.customerId,a.userId,targetUserId]);
+   created.push(targetUserId);
+  }
+  if(created.length){
+   await c.query('UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1',[input.contactId]);
+   const latest=await loadContactIn(c,input);if(latest)await recordContactEventIn(c,a,latest,CONTACT_TEAM_VISIBILITY_EVENT,latest.contactVersion??input.expectedVersion+1,undefined,undefined,{teamId:team.teamId,teamName:team.teamName,sharedCount:created.length},created);
+  }
+  return success({teamId:team.teamId,teamName:team.teamName,sharedCount:created.length,alreadyShared,pendingCount});
+ });
 }

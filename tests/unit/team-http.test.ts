@@ -100,7 +100,7 @@ describe('team HTTP contract', () => {
   });
 
   it('validates candidate role and unit combinations before touching the repository', async () => {
-    const candidates = vi.fn();
+    const candidates = vi.fn(async () => ({ ok: true, data: { items: [], total: 0 } }));
     const repo = { candidates } as unknown as TeamRepository;
     const strictHandler = createTeamHandler(createTeamService(repo, { hash: () => 'hashed-token' }));
     const strictServer = createServer((request, response) => { void strictHandler(request, response); });
@@ -113,7 +113,9 @@ describe('team HTTP contract', () => {
       expect(await memberOperations.json()).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
       const unknownRole = await fetch(`${strictBase}/api/crm/team-invite-candidates?role=boss&unitType=sales_team`, { headers });
       expect(await unknownRole.json()).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
-      expect(candidates).not.toHaveBeenCalled();
+      const createPurpose = await fetch(`${strictBase}/api/crm/team-invite-candidates?search=first&limit=20&offset=0&role=member&unitType=sales_team&purpose=create`, { headers });
+      expect(await createPurpose.json()).toMatchObject({ ok: true });
+      expect(candidates).toHaveBeenCalledWith('hashed-token', { search: 'first', limit: 20, offset: 0, role: 'member', unitType: 'sales_team', purpose: 'create' });
     } finally {
       strictServer.closeAllConnections();
       await new Promise<void>(resolve => strictServer.close(() => resolve()));

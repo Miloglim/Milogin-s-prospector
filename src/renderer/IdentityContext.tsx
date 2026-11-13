@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ONLINE_CHANNELS, ONLINE_LIMITS } from '../shared/online-crm';
-import type { Identity, OnlineLogin, OnlineSessionSnapshot, Result, OnlineRegistration, RegisteredAccount } from '../shared/online-crm';
+import type { Identity, OnlineLogin, OnlineSessionSnapshot, Result, OnlineRegistration, RegisteredAccount, OnlineHandoffBegin, OnlineHandoffBeginResult, OnlineHandoffComplete, OnlineHandoffState, OnlineHandoffTakeover, OnlineHandoffToken } from '../shared/online-crm';
 import type { LoginAccount, LoginAccountQuery, SavedAccountLogin, OnlineLogout } from '../shared/online-crm';
 import { clearSessionTranscript } from './hooks/useAgentTranscript';
 import { useVisiblePolling } from './hooks/useVisiblePolling';
@@ -21,6 +21,11 @@ export interface IdentityContextValue {
   localAvailable: boolean;
   busy: boolean;
   login: (input: OnlineLogin) => Promise<Result<void>>;
+  beginHandoff: (input: OnlineHandoffBegin) => Promise<Result<OnlineHandoffBeginResult>>;
+  handoffStatus: (input: OnlineHandoffToken) => Promise<Result<OnlineHandoffState>>;
+  completeHandoff: (input: OnlineHandoffComplete) => Promise<Result<void>>;
+  takeoverHandoff: (input: OnlineHandoffTakeover) => Promise<Result<void>>;
+  cancelHandoff: (input: OnlineHandoffToken) => Promise<Result<void>>;
   register: (input: OnlineRegistration) => Promise<boolean>;
   logout: (input?: OnlineLogout) => Promise<void>;
   refresh: () => Promise<void>;
@@ -42,7 +47,13 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<Result<T>
   }
 }
 const activeStatus = (identity: Identity | null): IdentityStatus => identity?.mustChangePassword ? 'password-required' : identity ? 'authenticated' : 'anonymous';
-const scopeKey = (identity: Identity | null) => identity ? JSON.stringify([identity.userId, identity.identityAdmin, identity.crmRoles, identity.crmCapabilities, identity.mustChangePassword]) : '';
+const scopeKey = (identity: Identity | null) => identity ? JSON.stringify([
+  identity.userId,
+  identity.identityAdmin,
+  identity.crmRoles.slice().sort(),
+  identity.crmCapabilities?.slice().sort() ?? [],
+  identity.mustChangePassword,
+]) : '';
 
 /** Main owns every credential; only the current public identity enters renderer memory. */
 export function IdentityProvider({ children }: { children: React.ReactNode }) {
@@ -146,6 +157,32 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if(result.data.connection==='offline'&&result.data.identity&&!result.data.identity.mustChangePassword)setStatus('offline');
     setBusy(false);actionPending.current=false;void refresh();return true;
   }, [apply,refresh,refreshAccounts]);
+  const beginHandoff = useCallback(async (input: OnlineHandoffBegin) => {
+    if (actionPending.current) return { ok: false as const, error: { code: 'CONFLICT' as const, message: '正在处理登录请求' } };
+    actionPending.current = true; setBusy(true); setError('');
+    const result = await invoke<OnlineHandoffBeginResult>(ONLINE_CHANNELS.HANDOFF_BEGIN, input);
+    actionPending.current = false; setBusy(false);
+    if (!result.ok) setError(result.error.message);
+    return result;
+  }, []);
+  const handoffStatus = useCallback((input: OnlineHandoffToken) => invoke<OnlineHandoffState>(ONLINE_CHANNELS.HANDOFF_STATUS, input), []);
+  const finishHandoff = useCallback(async (channel: string, input: OnlineHandoffComplete | OnlineHandoffTakeover): Promise<Result<void>> => {
+    if (actionPending.current) return { ok: false, error: { code: 'CONFLICT', message: '正在处理换机请求' } };
+    actionPending.current = true;
+    const version = ++epoch.current;
+    setBusy(true); setError('');
+    const result = await invoke<Identity>(channel, input);
+    actionPending.current = false;
+    if (version !== epoch.current) return { ok: false, error: { code: 'UNAUTHORIZED', message: '登录已取消' } };
+    setBusy(false);
+    if (!result.ok) { setError(result.error.message); return result; }
+    setRemembered(Boolean(input.remember)); apply(result.data);
+    void refreshAccounts(); void refresh();
+    return { ok: true, data: undefined };
+  }, [apply, refresh, refreshAccounts]);
+  const completeHandoff = useCallback((input: OnlineHandoffComplete) => finishHandoff(ONLINE_CHANNELS.HANDOFF_COMPLETE, input), [finishHandoff]);
+  const takeoverHandoff = useCallback((input: OnlineHandoffTakeover) => finishHandoff(ONLINE_CHANNELS.HANDOFF_TAKEOVER, input), [finishHandoff]);
+  const cancelHandoff = useCallback(async (input: OnlineHandoffToken) => invoke<void>(ONLINE_CHANNELS.HANDOFF_CANCEL, input), []);
   const removeAccount = useCallback(async (accountId:string) => {
     if(actionPending.current)return false;
     actionPending.current=true;setBusy(true);setError('');
@@ -206,5 +243,5 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     void refreshAccounts();
     return true;
   }, [apply,refreshAccounts]);
-  return <IdentityContext.Provider value={{ identity, status, ready: status !== 'restoring', error, baseUrl, remembered, accounts, selectedAccountId, loginAccount, removeAccount, localAvailable, busy, register, login: login as IdentityContextValue['login'], logout, refresh, reconnect, changePassword }}>{children}</IdentityContext.Provider>;
+  return <IdentityContext.Provider value={{ identity, status, ready: status !== 'restoring', error, baseUrl, remembered, accounts, selectedAccountId, loginAccount, removeAccount, localAvailable, busy, register, login: login as IdentityContextValue['login'], beginHandoff, handoffStatus, completeHandoff, takeoverHandoff, cancelHandoff, logout, refresh, reconnect, changePassword }}>{children}</IdentityContext.Provider>;
 }

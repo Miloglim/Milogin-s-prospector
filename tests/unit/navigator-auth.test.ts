@@ -42,6 +42,7 @@ describe('Navigator authorized client', () => {
   it.each([true,false])('supports trusted private LAN HTTP in packaged=%s', packaged => {
     for (const host of ['192.168.190.244','10.0.0.2','172.16.0.2','172.31.255.254','127.0.0.1','localhost','[::1]'])
       expect(validateNavigatorBase(`http://${host}:8795/`, packaged)).toBe(`http://${host}:8795`);
+    expect(validateNavigatorBase('http://22125.qa4.yqn.corp:22125', packaged)).toBe('http://22125.qa4.yqn.corp:22125');
     for (const host of ['203.0.113.10','172.15.0.2','172.32.0.2','192.169.0.2','navigator.example','169.254.1.2'])
       expect(() => validateNavigatorBase(`http://${host}:8795`, packaged)).toThrow();
   });

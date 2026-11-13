@@ -23,10 +23,10 @@ describe('task HTTP routing through service validation',()=>{
   expect((await request(`/api/crm/tasks/${ID}/complete`,complete)).status).toBe(200);expect(repo.complete).toHaveBeenCalledWith('session-hash',complete);
  });
  it('maps list and detail and rejects invalid paging/status/customer filters',async()=>{
-  expect((await request(`/api/crm/tasks?customerId=${ID}&status=open&limit=10&offset=20`)).status).toBe(200);
-  expect(repo.list).toHaveBeenCalledWith('session-hash',{customerId:ID,status:'open',limit:10,offset:20});
+  expect((await request(`/api/crm/tasks?customerId=${ID}&status=open&mine=true&limit=10&offset=20`)).status).toBe(200);
+  expect(repo.list).toHaveBeenCalledWith('session-hash',{customerId:ID,status:'open',mine:true,limit:10,offset:20});
   expect((await request(`/api/crm/tasks/${ID}`)).status).toBe(200);expect(repo.detail).toHaveBeenCalledWith('session-hash',ID);
-  for(const path of ['/api/crm/tasks?limit=101','/api/crm/tasks?offset=-1','/api/crm/tasks?status=pending','/api/crm/tasks?customerId=bad'])expect((await request(path)).status).toBe(400);
+  for(const path of ['/api/crm/tasks?limit=101','/api/crm/tasks?offset=-1','/api/crm/tasks?status=pending','/api/crm/tasks?mine=maybe','/api/crm/tasks?customerId=bad'])expect((await request(path)).status).toBe(400);
   expect(repo.list).toHaveBeenCalledTimes(1);
  });
  it('rejects conflicting path/body ID, unknown fields and malformed completion before repository IO',async()=>{

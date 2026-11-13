@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { autoMapping, importFingerprint, mappedImportRows, prepareImportRequests } from '../../src/renderer/pages/customers/customerImport';
 import { importRowIssue } from '../../server/core/leads';
-import { IMPORT_REMARK_MAX, unmatchedImportRemark } from '../../server/core/lead-import-fields';
+import { IMPORT_REMARK_MAX, fillForwardImportCompanyFields, normalizeImportCustomerType, normalizeImportEmail, unmatchedImportRemark } from '../../server/core/lead-import-fields';
 
 describe('customer import preparation', () => {
   it('does not silently choose between ambiguous aliases and trims header whitespace', () => {
@@ -11,6 +11,27 @@ describe('customer import preparation', () => {
   it('normalizes mapped values while preserving original evidence and optional columns', () => {
     const raw = { id: ' A ', company: ' Test ', email: ' TEST@example.invalid ' };
     expect(mappedImportRows({ headers: Object.keys(raw), rows: [raw], fileName: 'a.csv' }, { customerKey: 'id', companyName: 'company', email: 'email' })).toEqual([{ customerKey: 'A', companyName: 'Test', email: 'test@example.invalid', name: '', country: '', rawRow: raw }]);
+  });
+  it('uses the first valid address from wrapped or multi-email cells and retains distinct alternatives', () => {
+    expect(normalizeImportEmail('Primary <FIRST@example.invalid>; SECOND@example.invalid')).toEqual({ email: 'first@example.invalid', extras: ['second@example.invalid'] });
+    expect(normalizeImportEmail('same@example.invalid<same@example.invalid>')).toEqual({ email: 'same@example.invalid', extras: [] });
+    expect(normalizeImportEmail('not-an-email')).toEqual({ email: 'not-an-email', extras: [] });
+    const raw = { company: 'Test', email: 'A@example.invalid<label>B@example.invalid' };
+    expect(mappedImportRows({ headers: Object.keys(raw), rows: [raw], fileName: 'a.csv' }, { companyName: 'company', email: 'email' })[0]?.email).toBe('a@example.invalid');
+  });
+  it('fills grouped company fields only until the next explicit company and normalizes type synonyms', () => {
+    const rows = [
+      { company: 'A', country: 'US', type: '货代' },
+      { company: '', country: '', type: '' },
+      { company: 'B', country: '', type: '直客/基础设施' },
+    ];
+    expect(fillForwardImportCompanyFields(rows, { companyName: 'company', country: 'country', customerType: 'type' })).toEqual([
+      { company: 'A', country: 'US', type: '货代' },
+      { company: 'A', country: 'US', type: '货代' },
+      { company: 'B', country: '', type: '直客/基础设施' },
+    ]);
+    expect(normalizeImportCustomerType('货代')).toBe('代理');
+    expect(normalizeImportCustomerType('直客/基础设施')).toBe('直客');
   });
   it('matches row validation for missing, invalid and oversized values', () => {
     const row = { customerKey: 'A', companyName: 'Test', email: 'test@example.invalid' };

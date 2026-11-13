@@ -7,11 +7,19 @@ import { CENTER_SEND_AUTHORIZATION_DDL } from '../core/center-send-storage';
 import { LEGACY_CONTACT_MAP_DDL } from '../core/legacy-contact-map';
 import { LEGACY_CONTACT_SYNC_DDL } from '../core/legacy-contact-sync';
 import { LEGACY_MAIL_SYNC_DDL } from '../core/legacy-mail-sync';
+import { INBOX_LABEL_DDL } from '../core/inbox-label-storage';
+import { MAIL_ANALYSIS_QUEUE_DDL } from '../core/mail-analysis-queue-storage';
+import { INBOX_TODO_DDL } from '../core/inbox-todo-storage';
+import { INBOX_SEEN_OUTBOX_DDL } from '../core/inbox-seen-outbox-storage';
 export const BASE_SCHEMA_SQL = `${MAIL_CLASSIFICATION_CHANGES_DDL}
 ${CENTER_SEND_AUTHORIZATION_DDL}
 ${LEGACY_CONTACT_MAP_DDL}
 ${LEGACY_CONTACT_SYNC_DDL}
 ${LEGACY_MAIL_SYNC_DDL}
+${INBOX_LABEL_DDL}
+${MAIL_ANALYSIS_QUEUE_DDL}
+${INBOX_TODO_DDL}
+${INBOX_SEEN_OUTBOX_DDL}
 CREATE TABLE IF NOT EXISTS email_accounts (
   id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
   email text NOT NULL UNIQUE,

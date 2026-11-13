@@ -80,6 +80,45 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
  }
  private async execute<T>(action:()=>Promise<Result<T>>):Promise<Result<T>> {try{return await action();}catch(error){const code=error&&typeof error==='object'&&'code'in error&&typeof error.code==='string'&&/^[A-Z0-9]+$/.test(error.code)?error.code:'UNKNOWN';this.log.write('ERROR','management.pg',`数据库操作失败 code=${code}`);return failure('DATABASE_ERROR','管理服务暂不可用');}}
  private async tx<T>(action:(c:PoolClient)=>Promise<Result<T>>):Promise<Result<T>> {const c=await this.pool.connect();try{await c.query('BEGIN');const r=await action(c);await c.query(r.ok?'COMMIT':'ROLLBACK');return r;}catch(error){try{await c.query('ROLLBACK');}catch{this.log.write('ERROR','management.rollback','回滚失败');}throw error;}finally{c.release();}}
+ private async detachUserFromOrganizations(c:PoolClient,targetId:string,actorId:string):Promise<void>{
+  const ready=await c.query(`SELECT to_regclass('crm_org_units') AS units,to_regclass('crm_org_assignments') AS assignments,
+   EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='crm_org_units' AND column_name='dissolved_at') AS dissolvable,
+   to_regclass('crm_org_invitations') AS invitations,to_regclass('crm_org_member_group_members') AS group_members,
+   to_regclass('crm_org_dissolution_audits') AS dissolution_audits`);
+  if(!ready.rows[0].units||!ready.rows[0].assignments)return;
+  const affected=(await c.query('SELECT DISTINCT unit_id AS "unitId" FROM crm_org_assignments WHERE user_id=$1 AND ended_at IS NULL',[targetId])).rows as Array<{unitId:string}>;
+  if(!affected.length)return;
+  if(ready.rows[0].group_members)await c.query('DELETE FROM crm_org_member_group_members WHERE user_id=$1',[targetId]);
+  if(ready.rows[0].invitations)await c.query("UPDATE crm_org_invitations SET status='cancelled',version=version+1,decided_at=now() WHERE status='pending' AND (inviter_user_id=$1 OR invitee_user_id=$1)",[targetId]);
+  await c.query('UPDATE crm_org_assignments SET ended_at=now(),version=version+1,updated_at=now() WHERE user_id=$1 AND ended_at IS NULL',[targetId]);
+  for(const {unitId} of affected){
+   const state=(await c.query(`SELECT u.kind,u.version,u.dissolved_at AS "dissolvedAt",
+    count(a.user_id) FILTER(WHERE a.ended_at IS NULL)::int AS active,
+    count(a.user_id) FILTER(WHERE a.ended_at IS NULL AND a.role='leader')::int AS leaders,
+    count(a.user_id) FILTER(WHERE a.ended_at IS NULL AND a.role='leader' AND a.is_primary)::int AS primary_leaders,
+    (SELECT count(*)::int FROM crm_org_units child WHERE child.parent_unit_id=u.unit_id AND child.dissolved_at IS NULL) AS children
+    FROM crm_org_units u LEFT JOIN crm_org_assignments a ON a.unit_id=u.unit_id
+    WHERE u.unit_id=$1 GROUP BY u.unit_id`,[unitId])).rows[0];
+   if(!state||state.kind==='company'||state.dissolvedAt)continue;
+   if(+state.leaders===0&&+state.active>0&&state.kind==='sales_team'){
+    const candidate=(await c.query("SELECT user_id AS \"userId\" FROM crm_org_assignments WHERE unit_id=$1 AND ended_at IS NULL AND role='member' ORDER BY created_at,user_id LIMIT 1",[unitId])).rows[0]?.userId;
+    if(candidate){
+     await c.query('DELETE FROM crm_org_member_group_members WHERE unit_id=$1 AND user_id=$2',[unitId,candidate]);
+     await c.query("DELETE FROM crm_org_assignments WHERE unit_id=$1 AND user_id=$2 AND role='member' AND ended_at IS NULL",[unitId,candidate]);
+     await c.query("INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'leader',true)",[candidate,unitId]);
+    }
+   }else if(+state.primary_leaders===0&&+state.leaders>0){
+    await c.query(`UPDATE crm_org_assignments SET is_primary=true,version=version+1,updated_at=now()
+     WHERE user_id=(SELECT user_id FROM crm_org_assignments WHERE unit_id=$1 AND ended_at IS NULL AND role='leader' ORDER BY created_at,user_id LIMIT 1)
+     AND unit_id=$1 AND role='leader' AND ended_at IS NULL`,[unitId]);
+   }
+   if(ready.rows[0].dissolvable&&+state.active===0&&+state.children===0){
+    const dissolved=(await c.query('UPDATE crm_org_units SET dissolved_at=now(),dissolved_by=$2,version=version+1,updated_at=now() WHERE unit_id=$1 RETURNING unit_id',[unitId,actorId])).rows[0];
+    if(dissolved&&ready.rows[0].dissolution_audits)await c.query(`INSERT INTO crm_org_dissolution_audits(audit_id,unit_id,actor_user_id,unit_kind,unit_name,unit_version,ended_assignment_count,cancelled_invitation_count,dissolved_at)
+     SELECT gen_random_uuid(),u.unit_id,$2,u.kind,u.name,u.version,0,0,u.dissolved_at FROM crm_org_units u WHERE u.unit_id=$1 ON CONFLICT(unit_id) DO NOTHING`,[unitId,actorId]);
+   }
+  }
+ }
  migrate():Promise<Result<void>> {return this.execute(()=>this.tx(async c=>{
   await c.query('SELECT pg_advisory_xact_lock($1)',[ADMIN_LOCK]);const hash=createHash('sha256').update(ADMIN_SQL).digest('hex');
   const existing=await c.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1',[ADMIN_VERSION]);
@@ -156,7 +195,7 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
  });}
  dashboard(hash:string):Promise<Result<ManagementDashboard>> {return this.read(hash,async(c,actor)=>{
   if(!canReadManagementDashboard(actor))return failure('FORBIDDEN','无数据看板权限');
-  const [users,customers,tasks,pending,imports,deliveries,batchReceipts,eventReceipts,taskReceipts]=await Promise.all([
+  const [users,customers,tasks,pending,imports,deliveries,batchReceipts,eventReceipts,taskReceipts,mailEvents,mailAnalyses,mailSuggestions,analysisReceipts]=await Promise.all([
    c.query("SELECT count(*)::int AS n FROM public.identity_users WHERE active AND deleted_at IS NULL"),
    c.query("SELECT count(*)::int AS n,max(created_at) AS updated_at FROM crm_customers"),
    c.query("SELECT count(*)::int AS n,count(*) FILTER (WHERE due_at<=now())::int AS overdue,min(due_at) AS next_due FROM crm_followup_tasks WHERE status='open'"),
@@ -166,31 +205,40 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
    c.query(`SELECT b.batch_id::text AS id,b.created_at,count(r.row_id)::int AS total,count(r.row_id) FILTER (WHERE r.status='created')::int AS created,count(r.row_id) FILTER (WHERE r.status='duplicate')::int AS duplicate,count(r.row_id) FILTER (WHERE r.status IN ('invalid','restricted_conflict'))::int AS review FROM (SELECT batch_id,created_at FROM crm_import_batches ORDER BY created_at DESC,batch_id LIMIT $1) b LEFT JOIN crm_import_rows r USING(batch_id) GROUP BY b.batch_id,b.created_at ORDER BY b.created_at DESC,b.batch_id`,[DASHBOARD_LIMITS.receipts]),
    c.query(`SELECT o.event_id::text AS id,o.created_at,x.consumed_at,(SELECT count(*)::int FROM crm_event_deliveries d WHERE d.event_id=o.event_id) AS deliveries FROM public.identity_outbox o LEFT JOIN crm_notification_consumed x USING(event_id) WHERE o.product_id='crm' AND o.customer_id IS NOT NULL ORDER BY o.created_at DESC,o.event_id LIMIT $1`,[DASHBOARD_LIMITS.receipts]),
    c.query(`SELECT t.task_id::text AS id,t.updated_at AS created_at,t.status,t.due_at,EXISTS(SELECT 1 FROM crm_task_due_receipts r WHERE r.task_id=t.task_id AND r.task_version=t.version) AS reminded FROM crm_followup_tasks t ORDER BY t.updated_at DESC,t.task_id LIMIT $1`,[DASHBOARD_LIMITS.receipts]),
+   c.query("SELECT count(*)::int AS n,max(occurred_at) AS updated_at FROM crm_contact_mail_events WHERE NOT archive_only"),
+   c.query("SELECT count(*)::int AS n,count(*) FILTER (WHERE requires_action)::int AS actions,count(*) FILTER (WHERE human_locked)::int AS human_locked,max(created_at) AS updated_at FROM crm_contact_mail_analyses WHERE is_current"),
+   c.query("SELECT count(*)::int AS n,count(*) FILTER (WHERE status='suggested')::int AS suggested,max(updated_at) AS updated_at FROM crm_contact_mail_task_suggestions"),
+   c.query("SELECT analysis_id::text AS id,created_at,source,confidence,requires_action,human_locked FROM crm_contact_mail_analyses WHERE is_current ORDER BY created_at DESC,analysis_id LIMIT $1",[DASHBOARD_LIMITS.receipts]),
   ]);
   const value=(r:any)=>Number(r.rows[0]?.n??0);
   const iso=(v:unknown)=>v instanceof Date?v.toISOString():typeof v==='string'?new Date(v).toISOString():null;
   const customerCount=value(customers), taskCount=value(tasks), pendingCount=value(pending), overdueCount=Number(tasks.rows[0]?.overdue??0), staleCount=Number(pending.rows[0]?.stale??0);
+  const mailEventCount=value(mailEvents), mailAnalysisCount=value(mailAnalyses), mailActionCount=Number(mailAnalyses.rows[0]?.actions??0), humanLockedCount=Number(mailAnalyses.rows[0]?.human_locked??0), mailSuggestionCount=value(mailSuggestions), suggestedCount=Number(mailSuggestions.rows[0]?.suggested??0);
   const databases:ManagementDashboard['databases']=[
 {id:'identity',name:'身份数据区',kind:'中心 PostgreSQL · public.identity_*',state:'healthy',records:value(users),updatedAt:null,detail:'与业务区共用 public schema；账号表使用 identity_ 前缀',recordLabel:'启用账号'},
    {id:'crm',name:'Prospector 业务数据区',kind:'中心 PostgreSQL · public',state:'healthy',records:customerCount,updatedAt:iso(customers.rows[0]?.updated_at),detail:'客户、联系人、跟进与协作事件；时间为最近客户创建时间',recordLabel:'客户'},
+   {id:'mail-analysis',name:'Prospector 邮件分析区',kind:'中心 PostgreSQL · 邮件事件与分析',state:mailEventCount>0&&mailAnalysisCount===0?'attention':'healthy',records:mailEventCount,updatedAt:iso(mailAnalyses.rows[0]?.updated_at)??iso(mailEvents.rows[0]?.updated_at),detail:`${mailAnalysisCount} 封当前分析，${mailActionCount} 封需要动作，${humanLockedCount} 封人工锁定`,recordLabel:'邮件事件'},
    {id:'local',name:'桌面个人数据',kind:'SQLite',state:'not_connected',records:null,updatedAt:null,detail:'尚未接入中心遥测',recordLabel:'记录'},
   ];
   const flows:ManagementDashboard['flows']=[
    {id:'import',label:'导入 → 客户库',state:'healthy',records:value(imports),updatedAt:iso(imports.rows[0]?.updated_at),detail:'已记录的中心导入批次',recordLabel:'导入批次',timeLabel:'最近导入',stages:['文件解析','字段校验','客户入库']},
    {id:'events',label:'业务事件 → 通知',state:staleCount>0?'attention':'healthy',records:value(deliveries),updatedAt:iso(deliveries.rows[0]?.updated_at),detail:pendingCount>0?`有 ${pendingCount} 条事件等待处理，${staleCount} 条超过一分钟`:'待处理队列为空',recordLabel:'通知记录',timeLabel:'最近投递',stages:['业务事件','权限投影','通知投递']},
    {id:'tasks',label:'跟进任务 → 到期提醒',state:overdueCount>0?'attention':'healthy',records:taskCount,updatedAt:iso(tasks.rows[0]?.next_due),detail:`${taskCount} 条开放任务，${overdueCount} 条已到期`,recordLabel:'开放任务',timeLabel:'最近到期',stages:['任务创建','到期扫描','提醒投递']},
+   {id:'mail-analysis',label:'客户邮件 → AI 分析 → 待办建议',state:mailEventCount>0&&mailAnalysisCount===0?'attention':'healthy',records:mailAnalysisCount,updatedAt:iso(mailAnalyses.rows[0]?.updated_at),detail:`${mailActionCount} 封需要动作，${humanLockedCount} 封人工锁定，${suggestedCount} 条建议待确认`,recordLabel:'当前分析',timeLabel:'最近分析',stages:['邮件事件','规则/AI 分拣','人工修正','任务建议']},
   ];
   const alerts:ManagementDashboard['alerts']=[
    ...(staleCount>0?[{id:'pending-events',level:'warning' as const,title:'事件等待超过一分钟',detail:`${staleCount} 条事件尚未完成消费；消费回执不等于用户已读`}]:[]),
    ...(overdueCount>0?[{id:'open-tasks',level:'warning' as const,title:'有跟进任务已到期',detail:`${overdueCount} 条任务待处理`}]:[]),
+   ...(mailEventCount>0&&mailAnalysisCount===0?[{id:'mail-analysis-missing',level:'warning' as const,title:'有邮件事件但无当前分析',detail:`${mailEventCount} 封客户邮件事件尚未形成中心分析结果`}]:[]),
    {id:'local-telemetry',level:'warning',title:'桌面个人数据未接入',detail:'邮件库、运价镜像等本地数据暂不纳入中心健康判断'},
   ];
   const receipts:ManagementDashboard['receipts']=[
    ...batchReceipts.rows.map(r=>({id:r.id,flowId:'import',createdAt:iso(r.created_at)!,status:r.review?'待核对':r.total?'已有回执':'暂无行回执',detail:`${r.total} 行：新增 ${r.created}，重复 ${r.duplicate}，待核对 ${r.review}`})),
    ...eventReceipts.rows.map(r=>({id:r.id,flowId:'events',createdAt:iso(r.created_at)!,status:r.consumed_at?'已消费':'待消费',detail:`${r.deliveries} 份通知投影；消费不代表已读`})),
    ...taskReceipts.rows.map(r=>({id:r.id,flowId:'tasks',createdAt:iso(r.created_at)!,status:r.status==='completed'?'已完成':r.reminded?'提醒已入队':'开放',detail:`到期 ${iso(r.due_at)}；当前版本${r.reminded?'有':'无'}提醒回执`})),
+   ...analysisReceipts.rows.map(r=>({id:r.id,flowId:'mail-analysis',createdAt:iso(r.created_at)!,status:r.human_locked?'人工锁定':r.requires_action?'需要动作':'已分析',detail:`${r.source} · 置信度 ${Math.round(Number(r.confidence??0)*100)}%`})),
   ];
-  return success({generatedAt:new Date().toISOString(),overview:{databases:databases.length,healthy:databases.filter(row=>row.state==='healthy').length,activeUsers:value(users),customers:customerCount,openTasks:taskCount,pendingEvents:pendingCount},databases,flows,alerts,receipts});
+  return success({generatedAt:new Date().toISOString(),overview:{databases:databases.length,healthy:databases.filter(row=>row.state==='healthy').length,activeUsers:value(users),customers:customerCount,openTasks:taskCount,pendingEvents:pendingCount,mailAnalyses:mailAnalysisCount,mailActions:mailActionCount,humanLockedMail:humanLockedCount},databases,flows,alerts,receipts});
  });}
   operations(hash:string):Promise<Result<OperationsSummary>> {return this.read(hash,async(c,actor)=>{
    if(!canReadManagementDashboard(actor))return failure('FORBIDDEN','无系统运行读取权限');
@@ -284,6 +332,7 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
      const requests=await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE status IN ('pending','accepted') AND (actor_id=$1 OR target_user_id=$1) LIMIT 1",[targetId]);
      if(requests.rows.length)return failure('CONFLICT','该用户仍有有效联系人分配，请先处理分配归属');
     }
+    await this.detachUserFromOrganizations(c,targetId,actor.userId);
     await c.query('UPDATE public.identity_users SET deleted_at=now(),active=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1',[targetId]);
     await c.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
     await c.query('UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
@@ -310,10 +359,12 @@ export class PostgresAdminRepository implements AdminRepository, ManagementDashb
     if(target.rows[0].active&&target.rows[0].identity_admin&&(!cmd.active||!cmd.identityAdmin)){
      const count=await c.query(`SELECT count(*)::int AS n FROM public.identity_users u JOIN public.identity_credentials c USING(user_id) JOIN public.identity_login_emails e USING(user_id) WHERE u.active AND u.identity_admin`);if(count.rows[0].n<=1)return failure('CONFLICT','必须保留至少一名有效超级管理员');
     }
+    if(!cmd.active)await this.detachUserFromOrganizations(c,targetId,actor.userId);
     await c.query('UPDATE public.identity_users SET active=$2,identity_admin=$3,management_revision=management_revision+1,security_revision=security_revision+1 WHERE user_id=$1',[targetId,cmd.active,cmd.identityAdmin]);
     await c.query('UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',[targetId]);
     await c.query('UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[targetId]);
    }else if(cmd.action==='product.update'){
+    if(!cmd.active)await this.detachUserFromOrganizations(c,targetId,actor.userId);
     productId='crm';await c.query('DELETE FROM public.identity_product_grants WHERE user_id=$1 AND product_id=$2',[targetId,productId]);
     for(const role of cmd.roles)await c.query('INSERT INTO public.identity_product_grants(user_id,product_id,role,active) VALUES($1,$2,$3,$4)',[targetId,productId,role,cmd.active]);
     await c.query(`INSERT INTO public.identity_product_access(user_id,product_id,active,scope,capabilities) VALUES($1,$2,$3,$4,$5) ON CONFLICT(user_id,product_id) DO UPDATE SET active=EXCLUDED.active,scope=EXCLUDED.scope,capabilities=EXCLUDED.capabilities`,[targetId,productId,cmd.active,cmd.scope,JSON.stringify(cmd.capabilities)]);

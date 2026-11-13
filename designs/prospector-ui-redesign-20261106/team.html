@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prospector · 团队协作 Demo</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="app-rail" aria-label="主导航">
+      <a class="brand-mark" href="#" aria-label="Prospector">P</a>
+      <nav>
+        <button class="rail-button" type="button" title="工作台" aria-label="工作台"><i data-lucide="layout-dashboard"></i></button>
+        <a class="rail-button" href="./inbox.html" title="收件箱" aria-label="收件箱"><i data-lucide="inbox"></i></a>
+        <button class="rail-button is-active" type="button" title="团队" aria-label="团队"><i data-lucide="users-round"></i></button>
+        <button class="rail-button" type="button" title="客户" aria-label="客户"><i data-lucide="building-2"></i></button>
+        <button class="rail-button" type="button" title="发送中心" aria-label="发送中心"><i data-lucide="send"></i></button>
+      </nav>
+      <button class="rail-avatar" type="button" aria-label="账号">YQ</button>
+    </aside>
+
+    <main class="app-main">
+      <div class="app-topbar">
+        <div class="product-name">Prospector <span>Team Collaboration</span></div>
+        <div class="topbar-meta"><span class="online-dot"></span><span>中心已连接</span><span class="topbar-divider"></span><span>11:02</span></div>
+      </div>
+
+      <section class="page-frame">
+        <div class="context-bar">
+          <nav class="section-tabs" aria-label="团队视图">
+            <button type="button">个人</button>
+            <button type="button" class="is-active">我的团队</button>
+            <button type="button">监控</button>
+            <button type="button">团队管理</button>
+            <button type="button">绩效</button>
+          </nav>
+          <div class="context-tools">
+            <label class="search-field"><i data-lucide="search"></i><input placeholder="搜索团队、负责人或成员" /></label>
+            <button class="icon-button" type="button" title="刷新" aria-label="刷新"><i data-lucide="refresh-cw"></i></button>
+            <a class="button primary" href="./inbox.html"><i data-lucide="inbox"></i>收件箱 Demo</a>
+          </div>
+        </div>
+
+        <div class="workspace team-workspace">
+          <aside class="panel team-tree">
+            <div class="panel-heading"><div><span class="eyebrow">团队结构</span><h2>我的团队</h2></div><span class="panel-count">1 个团队</span></div>
+            <div class="tree-group">
+              <button class="tree-group-main" type="button"><i data-lucide="building-2"></i><span><strong>海外运营组</strong><small>陈诚 · 3 个销售团队</small></span><span class="panel-count">18</span></button>
+              <div class="tree-team"><i data-lucide="git-branch"></i><span><strong>南美销售组</strong><small>Milo Chen · 6 人</small></span><span class="panel-count">6</span></div>
+              <div class="member-list">
+                <button class="team-member" type="button"><span class="avatar">MC</span><span><strong>Milo Chen</strong><small>主管 · milo@yqn.com</small></span></button>
+                <button class="team-member is-selected" type="button"><span class="avatar">JZ</span><span><strong>Jade Zhou</strong><small>成员 · jade@yqn.com</small></span></button>
+                <button class="team-member" type="button"><span class="avatar">AL</span><span><strong>Anna Lee</strong><small>成员 · anna@yqn.com</small></span></button>
+                <button class="team-member" type="button"><span class="avatar">KW</span><span><strong>Kai Wu</strong><small>成员 · kai@yqn.com</small></span></button>
+              </div>
+            </div>
+          </aside>
+
+          <section class="panel chat-panel">
+            <div class="chat-member-head">
+              <span class="avatar">JZ</span>
+              <div><strong>Jade Zhou</strong><small>南美销售组 · jade@yqn.com</small></div>
+              <span class="presence">在线</span>
+              <button class="icon-button" type="button" title="更多" aria-label="更多"><i data-lucide="ellipsis"></i></button>
+            </div>
+
+            <div class="chat-log" id="team-chat-log">
+              <div class="system-line">今天 · 线索分配已接受</div>
+              <div class="message">
+                <div class="message-meta"><span>Jade Zhou</span><time>10:42</time></div>
+                <div class="bubble">Santos 刚回复了，2×40HQ 接受当前报价。我把邮件带过来，你帮我看一下有没有遗漏。</div>
+              </div>
+              <div class="message">
+                <div class="message-meta"><span>Jade Zhou</span><time>10:43</time></div>
+                <div class="message-card mail-ref">
+                  <header><i data-lucide="mail"></i>引用邮件</header>
+                  <div class="message-card-body"><strong>Re: Santos rate request · Brazil</strong><small>客户确认 2×40HQ 报价，要求确认 11 月 18 日前的舱位。</small><span class="status-pill good">已收到</span></div>
+                </div>
+              </div>
+              <div class="message is-mine">
+                <div class="message-meta"><time>10:47</time><span>我</span></div>
+                <div class="bubble">我看了，报价条件没问题。舱位还要确认，我把 Navigator 里的运价发给你，先让主管确认可用性。</div>
+              </div>
+              <div class="message is-mine">
+                <div class="message-meta"><time>10:48</time><span>我</span></div>
+                <div class="message-card" id="rate-review-card">
+                  <header><i data-lucide="badge-dollar-sign"></i>运价确认请求 <span class="status-pill warn" data-rate-status>待主管确认</span></header>
+                  <div class="message-card-body">
+                    <div class="rate-grid">
+                      <div><span>线路</span><strong>Ningbo → Santos</strong></div>
+                      <div><span>船司 / 柜型</span><strong>MSC · 40HQ</strong></div>
+                      <div><span>价格</span><strong>$2,480</strong></div>
+                      <div><span>有效期</span><strong>11/12–11/18</strong></div>
+                      <div><span>来源</span><strong>Navigator</strong></div>
+                      <div><span>确认人</span><strong>Milo Chen</strong></div>
+                    </div>
+                  </div>
+                  <div class="request-actions"><button class="button request-rate-action" data-action="reject" type="button">驳回</button><button class="button request-rate-action" data-action="approve" type="button">确认可用</button></div>
+                </div>
+              </div>
+              <div class="message">
+                <div class="message-meta"><span>Jade Zhou</span><time>10:51</time></div>
+                <div class="message-card">
+                  <header><i data-lucide="eye"></i>关注申请</header>
+                  <div class="message-card-body"><strong>Santos Logistics · Ana Lima</strong><small>客户要求今天 16:00 前确认舱位，申请主管关注。</small><span class="status-pill warn">待处理</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="activity-drawer">
+              <div class="activity-head"><strong>团队动态</strong><span>Jade Zhou · 近期</span></div>
+              <div class="activity-row"><span><strong>客户确认 Santos 报价</strong><small>邮件引用 · Brazil</small></span><time>10:42</time></div>
+              <div class="activity-row"><span><strong>提交运价确认请求</strong><small>Ningbo → Santos · MSC 40HQ</small></span><time>10:48</time></div>
+              <div class="activity-row"><span><strong>申请主管关注 Santos 舱位</strong><small>关注申请 · 今日 16:00 前</small></span><time>10:51</time></div>
+            </div>
+
+            <div class="composer">
+              <div class="composer-tools">
+                <button type="button"><i data-lucide="mail-plus"></i>邮件引用</button>
+                <button type="button"><i data-lucide="badge-dollar-sign"></i>运价确认</button>
+                <button type="button"><i data-lucide="eye"></i>关注申请</button>
+                <button type="button"><i data-lucide="paperclip"></i>附件</button>
+              </div>
+              <div class="composer-box">
+                <textarea id="team-message-input" placeholder="给 Jade Zhou 发消息"></textarea>
+                <button class="button primary" id="team-send-button" type="button"><i data-lucide="send"></i>发送</button>
+              </div>
+            </div>
+          </section>
+
+          <aside class="panel team-overview">
+            <div class="panel-heading"><div><span class="eyebrow">概览</span><h2>Jade Zhou</h2></div><span class="panel-count">成员</span></div>
+            <div class="overview-metrics">
+              <div><span>联系人</span><strong>18</strong></div>
+              <div><span>已收到</span><strong>7</strong></div>
+              <div><span>开放动作</span><strong>4</strong></div>
+              <div><span>关注项</span><strong>2</strong></div>
+            </div>
+            <div class="overview-rates">
+              <div><span>触达率</span><strong>67%</strong></div>
+              <div><span>回复率</span><strong>39%</strong></div>
+              <div><span>最近活动</span><strong>11/06 11:20</strong></div>
+            </div>
+            <div class="overview-section"><h3>近期重点</h3>
+              <div class="overview-row"><span class="status-pill warn">重要</span><span><strong>回复 Santos 报价</strong><small>Santos Logistics · Ana</small></span><time>16:00</time></div>
+              <div class="overview-row"><span class="status-pill danger">退信</span><span><strong>核对邮箱地址</strong><small>North Port GmbH</small></span><time>今天</time></div>
+              <div class="overview-row"><span class="status-pill good">已收到</span><span><strong>客户确认报价</strong><small>Blue Ocean Trading</small></span><time>10:16</time></div>
+            </div>
+          </aside>
+        </div>
+
+      </section>
+    </main>
+  </div>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="./demo.js"></script>
+</body>
+</html>

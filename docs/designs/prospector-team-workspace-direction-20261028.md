@@ -18,6 +18,7 @@
 - 工作台复用 `online:contact-list`，读取 `scope=personal` 与 `scope=assigned` 的总数及最多 8 条摘要，合并为最多 6 条待处理行动。
 - 点击行动通过客户页深链携带 `centerContact` 与 `centerCustomer`，由客户页打开原有 `CenterContactDetail`；团队页不复制详情实现。
 - 销售复用 `online:task-list?status=open` 展示本人最近开放待办。管理员不展示待办，因为现有接口没有本人过滤条件。
+- 2026-11-12 更新：`TaskQuery` 已增加 `mine`，个人工作台对所有角色统一展示本人开放待办；上一条仅保留当时决策背景。
 - `online:members` 不再由团队页调用。团队邀请使用独立 `online:team-candidates`，不把分配目录冒充团队关系。
 - 创建页提供取消和“返回团队树”；团队详情提供“返回团队树”，树页始终保留“新建根团队”入口。
 - 本节点新增 8 个 IPC/HTTP 接口、4 张 PostgreSQL 表和 052 父团队迁移，没有新增依赖；完整表格见 [团队中心交付](../team-foundation-delivery-20261029.md)。

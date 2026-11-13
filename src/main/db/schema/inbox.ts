@@ -36,6 +36,44 @@ export const inboxClassificationChanges = sqliteTable('inbox_classification_chan
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const inboxLabels = sqliteTable('inbox_labels', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  color: text('color').notNull(),
+  source: text('source').notNull().default('user'),
+  status: text('status').notNull().default('active'),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const inboxMessageLabels = sqliteTable('inbox_message_labels', {
+  messageId: integer('message_id').notNull().references(() => inboxMessages.id, { onDelete: 'cascade' }),
+  labelId: integer('label_id').notNull().references(() => inboxLabels.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const inboxLabelOperations = sqliteTable('inbox_label_operations', {
+  operationKey: text('operation_key').primaryKey(),
+  resultJson: text('result_json').notNull(),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const inboxLabelCandidates = sqliteTable('inbox_label_candidates', {
+  labelId: integer('label_id').notNull().references(() => inboxLabels.id, { onDelete: 'cascade' }),
+  messageId: integer('message_id').notNull().references(() => inboxMessages.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const inboxPinnedMessages = sqliteTable('inbox_pinned_messages', {
+  messageId: integer('message_id').primaryKey().references(() => inboxMessages.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const inboxFolderSuggestionDismissals = sqliteTable('inbox_folder_suggestion_dismissals', {
+  normalizedName: text('normalized_name').primaryKey(),
+  dismissedAt: text('dismissed_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 /**
  * 退信 ↔ 被退联系人（多对多，规范：docs/bounce-multi-match-spec.md）。
  * 一封群发退信可通知多个失败收件人，inbox_messages.matched_contact_id 单列只装得下第一个（留作兼容旧读取），

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Building2, Check, UserPlus, UsersRound, X } from 'lucide-react';
 import type { TeamContext, TeamCreateReceipt, TeamUnitType } from '../../../shared/online-crm';
+import { useIdentity } from '../../IdentityContext';
 import { teamActions } from './team-data';
 import { LeaderCandidatePicker } from './TeamAdminInspector';
 import { TeamCandidatePicker } from './TeamCandidatePicker';
@@ -9,47 +10,40 @@ function key(): string {
   return crypto.randomUUID();
 }
 
-function unitName(context: TeamContext, teamId: string | null): string {
-  if (!teamId) return context.organization?.company.name ?? '公司';
-  return context.adminTeams.find(team => team.teamId === teamId)?.name ?? '公司';
-}
-
-export function TeamSetupView({ context, online, parentTeamId: initialParentTeamId, onBack, onContext, onCreated }: {
+export function TeamSetupView({ context, online, onBack, onContext, onCreated }: {
   context: TeamContext;
   online: boolean;
-  parentTeamId?: string | null;
   onBack?: () => void;
   onContext: (next: TeamContext) => void;
   onCreated: (receipt: TeamCreateReceipt) => void;
 }) {
+  const { identity } = useIdentity();
   const manager = context.canAdmin;
-  const initialParent = initialParentTeamId ? context.adminTeams.find(team => team.teamId === initialParentTeamId) : null;
-  const initialType: TeamUnitType = manager && initialParent?.unitType !== 'operations' ? 'operations' : 'sales_team';
+  const canCreateOperations = context.isSuperAdmin || !!identity?.crmRoles.includes('operations');
+  const canCreateSales = context.isSuperAdmin || !!identity?.crmRoles.includes('sales');
+  const availableTypes: TeamUnitType[] = [canCreateOperations ? 'operations' : null, canCreateSales ? 'sales_team' : null].filter((value): value is TeamUnitType => !!value);
+  const initialType: TeamUnitType = canCreateOperations ? 'operations' : 'sales_team';
   const [unitType, setUnitType] = useState<TeamUnitType>(initialType);
   const [name, setName] = useState('');
-  const [parentTeamId, setParentTeamId] = useState<string | null>(initialParentTeamId ?? null);
-  const [leaderUserId, setLeaderUserId] = useState('');
+  const [leaderUserId, setLeaderUserId] = useState(manager ? identity?.userId ?? '' : '');
   const [selected, setSelected] = useState<string[]>([]);
   const [createKey, setCreateKey] = useState(key);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const decisionKeys = useRef(new Map<string, string>());
-  const parentOptions = useMemo(() => context.adminTeams.filter(team => (team.unitType ?? 'sales_team') === 'operations'), [context.adminTeams]);
+  const creator = identity ? { userId: identity.userId, displayName: identity.displayName, email: identity.email } : null;
+  const activeUnitType: TeamUnitType = availableTypes.includes(unitType) ? unitType : initialType;
 
   useEffect(() => {
-    const parent = initialParentTeamId ? context.adminTeams.find(team => team.teamId === initialParentTeamId) : null;
-    setParentTeamId(initialParentTeamId ?? null);
-    setUnitType(manager && parent?.unitType !== 'operations' ? 'operations' : 'sales_team');
-    setLeaderUserId('');
+    setUnitType(initialType);
+    setLeaderUserId(manager ? identity?.userId ?? '' : '');
     setSelected([]);
     setCreateKey(key());
-  }, [initialParentTeamId, manager]);
+  }, [identity?.userId, manager, initialType]);
 
   const resetKey = () => setCreateKey(key());
   const changeType = (next: TeamUnitType) => {
     setUnitType(next);
-    if (next === 'operations') setParentTeamId(null);
-    setLeaderUserId('');
     setSelected([]);
     resetKey();
   };
@@ -59,16 +53,16 @@ export function TeamSetupView({ context, online, parentTeamId: initialParentTeam
     setError('');
     const result = await teamActions.create({
       name: name.trim(),
-      parentTeamId: manager ? parentTeamId : null,
-      unitType: manager ? unitType : 'sales_team',
+      parentTeamId: null,
+      unitType: activeUnitType,
       leaderUserId: manager ? leaderUserId : undefined,
-      inviteeUserIds: unitType === 'sales_team' ? selected : [],
+      inviteeUserIds: activeUnitType === 'sales_team' ? selected : [],
       idempotencyKey: createKey,
     });
     setBusy(false);
     if (!result.ok) { setError(result.error.message); return; }
     setName('');
-    setLeaderUserId('');
+    setLeaderUserId(manager ? identity?.userId ?? '' : '');
     setSelected([]);
     setCreateKey(key());
     onCreated(result.data);
@@ -108,21 +102,17 @@ export function TeamSetupView({ context, online, parentTeamId: initialParentTeam
       })}</div>
     </section>}
     {context.canCreate && <section className="team-setup-section">
-      <div className="team-section-heading"><div><h2>{manager ? '创建组织' : '创建团队'}</h2></div></div>
+      <div className="team-section-heading"><div><h2>创建团队</h2></div></div>
       <div className="team-create-form">
-        {manager && <div className="team-create-type" role="group" aria-label="组织类型">
-          <button type="button" aria-pressed={unitType === 'operations'} onClick={() => changeType('operations')}><Building2 aria-hidden="true" />运营组</button>
-          <button type="button" aria-pressed={unitType === 'sales_team'} onClick={() => changeType('sales_team')}><UsersRound aria-hidden="true" />销售团队</button>
+        {availableTypes.length > 1 && <div className="team-create-type" role="group" aria-label="团队类型">
+          <button type="button" aria-pressed={activeUnitType === 'operations'} onClick={() => changeType('operations')}><Building2 aria-hidden="true" />运营组</button>
+          <button type="button" aria-pressed={activeUnitType === 'sales_team'} onClick={() => changeType('sales_team')}><UsersRound aria-hidden="true" />销售团队</button>
         </div>}
-        <label><span>名称</span><input value={name} maxLength={80} onChange={event => { setName(event.target.value); resetKey(); }} placeholder={unitType === 'operations' ? '运营组名称' : '团队名称'} /></label>
-        {manager && <label><span>上级</span><select value={parentTeamId ?? ''} onChange={event => { setParentTeamId(event.target.value || null); resetKey(); }}>
-          <option value="">{unitName(context, null)}</option>
-          {unitType === 'sales_team' && parentOptions.map(team => <option key={team.teamId} value={team.teamId}>{team.name}</option>)}
-        </select></label>}
-        {manager && <div className="team-create-members"><span>负责人</span><LeaderCandidatePicker selected={leaderUserId} onChange={value => { setLeaderUserId(value); resetKey(); }} unitType={unitType} enabled={online} /></div>}
-        {(!manager || unitType === 'sales_team') && <div className="team-create-members"><span>邀请成员</span><TeamCandidatePicker selected={selected} onChange={ids => { setSelected(ids); resetKey(); }} enabled={online} /></div>}
+        <label><span>名称</span><input value={name} maxLength={80} onChange={event => { setName(event.target.value); resetKey(); }} placeholder={activeUnitType === 'operations' ? '运营组名称' : '团队名称'} /></label>
+        {manager && <div className="team-create-members"><span>负责人</span><LeaderCandidatePicker selected={leaderUserId} onChange={value => { setLeaderUserId(value); resetKey(); }} unitType={activeUnitType} enabled={online} lockedUser={creator} /></div>}
+        {(!manager || activeUnitType === 'sales_team') && <div className="team-create-members"><span>邀请成员</span><TeamCandidatePicker selected={selected} onChange={ids => { setSelected(ids); resetKey(); }} enabled={online} purpose="create" /></div>}
         {error && <div className="team-form-error">{error}</div>}
-        <div className="team-form-footer">{onBack && <button type="button" className="team-action-secondary" disabled={busy} onClick={onBack}>取消</button>}<button type="button" className="team-action-primary" disabled={!online || busy || !name.trim() || manager && !leaderUserId} onClick={() => void create()}>{busy ? '处理中' : manager ? '创建组织' : '创建团队'}</button></div>
+        <div className="team-form-footer">{onBack && <button type="button" className="team-action-secondary" disabled={busy} onClick={onBack}>取消</button>}<button type="button" className="team-action-primary" disabled={!online || busy || !name.trim() || manager && !leaderUserId} onClick={() => void create()}>{busy ? '处理中' : '创建团队'}</button></div>
       </div>
     </section>}
   </div>;

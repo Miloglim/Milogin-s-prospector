@@ -1,4 +1,4 @@
-import type { CenterContact, CenterContactPage, CenterContactQuery } from '../../../server/core/center-contacts';
+import type { CenterContact, CenterContactGroup, CenterContactGroupPage, CenterContactGroupQuery, CenterContactPage, CenterContactQuery } from '../../../server/core/center-contacts';
 import { FOLLOWUP_TOUCH_STATUSES } from '../../../server/core/leads';
 import type { CenterContactRef, CenterContactDetail } from '../../../server/core/contact-assignments';
 import { CONTACT_MAIL_LIMITS, type ContactMailEventInput } from '../../../server/core/contact-mail';
@@ -24,6 +24,7 @@ export interface ContactMirrorStore {
   replaceContacts(context: ContactMirrorContext, contacts: CenterContact[]): void;
   upsertContacts(context: ContactMirrorContext, contacts: CenterContact[]): void;
   contacts(context: ContactMirrorContext): CenterContact[];
+  groups?(context: ContactMirrorContext, query: CenterContactGroupQuery): CenterContactGroupPage;
   contact(context: ContactMirrorContext, reference: CenterContactRef): CenterContact | undefined;
   detail(context: ContactMirrorContext, reference: CenterContactRef): CenterContactDetail | undefined;
   saveDetail(context: ContactMirrorContext, detail: CenterContactDetail): void;
@@ -60,6 +61,58 @@ export function mirrorContactGroupKey(row: CenterContact, dimension: NonNullable
   if (dimension === 'country') return row.country || 'unset';
   if (dimension === 'company') return String(row.companyId);
   return row.clientType || 'unset';
+}
+
+function clientTypeLabel(key: string): string {
+  if (key === 'agent') return '代理';
+  if (key === 'direct') return '直客';
+  return key === 'unset' ? '未设置' : key;
+}
+
+function groupLabel(row: CenterContact, dimension: CenterContactGroupQuery['dimension'], key: string): string {
+  if (dimension === 'batch') return key === 'unset' ? '未标记' : key;
+  if (dimension === 'country') return key === 'unset' ? '未标记' : key;
+  if (dimension === 'company') return row.companyName || '未命名公司';
+  return clientTypeLabel(key);
+}
+
+/** Offline groups use the same authorized mirror rows as the contact list. */
+export function contactMirrorGroups(rows: CenterContact[], query: CenterContactGroupQuery, userId: string): CenterContactGroupPage {
+  const search = query.search.trim().toLowerCase();
+  const grouped = new Map<string, CenterContactGroup & { companyIdSet: Set<number>; companyNameSet: Set<string>; countrySet: Set<string>; sourceSet: Set<string>; clientLabelSet: Set<string> }>();
+  for (const row of rows) {
+    if (query.scope === 'personal' && (row.origin !== 'personal' || row.ownerUserId !== userId)) continue;
+    if (query.scope === 'assigned' && ((row.origin !== 'operations' || row.ownerUserId !== userId) && row.isShared !== true)) continue;
+    const key = mirrorContactGroupKey(row, query.dimension);
+    const label = groupLabel(row, query.dimension, key);
+    const memberMatch = [row.email, row.firstName, row.lastName, row.companyName, row.title, row.phone].some(value => value?.toLowerCase().includes(search));
+    if (search && !label.toLowerCase().includes(search) && !memberMatch) continue;
+    const current = grouped.get(key) ?? {
+      key, label, count: 0, companyCount: 0, countryCount: 0, touchedCount: 0,
+      companies: [], countries: [], clientTypes: [], sourceLevel1: [], latestImportedAt: null, latestUpdatedAt: null,
+      companyIdSet: new Set<number>(), companyNameSet: new Set<string>(), countrySet: new Set<string>(), sourceSet: new Set<string>(), clientLabelSet: new Set<string>(),
+    };
+    current.count += 1;
+    current.companyIdSet.add(row.companyId);
+    if (row.companyName) current.companyNameSet.add(row.companyName);
+    if (row.country) current.countrySet.add(row.country);
+    if (row.sourceLevel1) current.sourceSet.add(row.sourceLevel1);
+    if (row.clientType) current.clientLabelSet.add(clientTypeLabel(row.clientType));
+    if (FOLLOWUP_TOUCH_STATUSES.includes(row.touchStatus)) current.touchedCount = (current.touchedCount ?? 0) + 1;
+    if (!current.latestImportedAt || row.createdAt > current.latestImportedAt) current.latestImportedAt = row.createdAt;
+    if (!current.latestUpdatedAt || row.updatedAt > current.latestUpdatedAt) current.latestUpdatedAt = row.updatedAt;
+    grouped.set(key, current);
+  }
+  const items = [...grouped.values()].map(item => ({
+    key: item.key, label: item.label, count: item.count,
+    companyCount: item.companyIdSet.size, countryCount: item.countrySet.size, touchedCount: item.touchedCount,
+    companies: [...item.companyNameSet].sort((a, b) => a.localeCompare(b, 'zh-CN')).slice(0, 3),
+    countries: [...item.countrySet].sort((a, b) => a.localeCompare(b, 'zh-CN')).slice(0, 3),
+    clientTypes: [...item.clientLabelSet].slice(0, 3),
+    sourceLevel1: [...item.sourceSet].sort((a, b) => a.localeCompare(b, 'zh-CN')).slice(0, 3),
+    latestImportedAt: item.latestImportedAt, latestUpdatedAt: item.latestUpdatedAt,
+  })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'zh-CN'));
+  return { items: items.slice(query.offset, query.offset + query.limit), total: items.length };
 }
 
 /** The input is already the account-authorized projection, never an unfiltered center dump. */

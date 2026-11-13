@@ -1,8 +1,8 @@
 import { htmlToText } from "../core/html-text";
-import { INBOX_FETCH_PHASES, INBOX_SYNC_PHASES, type InboxFetchPhase, type InboxHistoryRequest, type InboxListRequest, type InboxSyncAccountState, type InboxSyncSnapshot } from "../../shared/inbox";
+import { INBOX_FETCH_PHASES, INBOX_SYNC_PHASES, type InboxFetchPhase, type InboxFolderConfirmRequest, type InboxFolderSuggestionRequest, type InboxHistoryRequest, type InboxLabel, type InboxLabelDeleteRequest, type InboxLabelSaveRequest, type InboxListRequest, type InboxMessageLabelsRequest, type InboxPinMessageRequest, type InboxReadStateRequest, type InboxSyncAccountState, type InboxSyncSnapshot, type InboxTodoBatchRequest, type InboxTodoState, type InboxTodoStateRequest } from "../../shared/inbox";
 import { INBOX_FOLDER, INBOX_HISTORY_MONTHS_DEFAULT, INBOX_HISTORY_MONTHS_MAX, INBOX_HISTORY_MONTHS_MIN, INBOX_INITIAL_HISTORY_DAYS } from "../core/inbox-fetch";
 import { getDb } from "../db";
-import { inboxMessages, inboxBounceMatches, type InboxMessageRow, type InsertInboxMessageRow } from "../db/schema/inbox";
+import { inboxMessages, inboxBounceMatches, inboxLabels, inboxMessageLabels, type InboxMessageRow, type InsertInboxMessageRow } from "../db/schema/inbox";
 import { emailAccounts } from "../db/schema/accounts";
 import { contacts, type ContactRow } from "../db/schema/contacts";
 import { companies } from "../db/schema/companies";
@@ -27,6 +27,11 @@ import { readMailboxSnapshot, readMailboxSnapshots, latestMailboxId, MAILBOX_REC
 import { matchCenterMailboxMessage, type InboxCenterContactPort, type CenterMailboxMatchOptions } from './inbox-center-contact.service';
 import { centerContactDisplayStatus } from '../../shared/online-crm';
 import { latestInboxClassificationChange, recordInboxClassificationChange, replayInboxClassificationChanges } from './inbox-classification.service';
+import { listInboxAnalysisViews } from './inbox-analysis.service';
+
+const PENDING_SEEN_BATCH = 300;
+const INBOX_READ_STATE_BATCH_MAX = 5000;
+const INBOX_FOLDER_COLORS = ['#2563eb', '#0f766e', '#9a6700', '#c2413b', '#7c3aed', '#475569'] as const;
 
 let inboxCenterContactPort: InboxCenterContactPort | null = null;
 /** Center references use their own port and never enter the legacy SQLite contact FK columns. */
@@ -438,6 +443,11 @@ export function setInboxPushFn(fn: (channel: string, data: unknown) => void) {
   pushFn = fn;
 }
 
+let afterFetchAnalysis: (() => void) | null = null;
+export function setInboxAfterFetchAnalysis(fn: (() => void) | null) {
+  afterFetchAnalysis = fn;
+}
+
 function pushFetchProgress(
   account: { id: number; email: string },
   phase: InboxFetchPhase,
@@ -467,10 +477,15 @@ interface PostFetchAdapters {
 }
 
 let postFetchAdapters: PostFetchAdapters | null = null;
+const POST_FETCH_MIN_INTERVAL_MS = 10 * 60_000;
+let postFetchInFlight: Promise<void> | null = null;
+let postFetchCompletedAt = 0;
 
 /** 由 transport 注入协议层操作，避免收件箱服务反向依赖 IMAP/POP3 实现。 */
 export function setPostFetchAdapters(adapters: PostFetchAdapters): void {
   postFetchAdapters = adapters;
+  postFetchInFlight = null;
+  postFetchCompletedAt = 0;
 }
 
 interface SyncStateRow {
@@ -792,7 +807,7 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
             // 更新联系人状态
             if (m.classification === "bounce") markAsBounced(cid);
             else updateContactStatus(cid, m.classification);
-              // 发信任务止损联动（docs/smart-send-spec.md §3.3）：回复/退订/bounce 止损，OOO 顺延。
+              // 发信任务止损联动（docs/smart-send-spec.md §3.3）：回复/自动回复/退订/bounce 都止损。
               // 惰性 import 防循环依赖；失败绝不影响收信主流程。
               try {
                 const kind = m.classification === "bounce" ? "bounce"
@@ -810,12 +825,24 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
       newCount: newItems.length,
       message: `本轮已保存 ${newItems.length} 封新邮件`,
     });
+    pushFetchProgress(account, INBOX_FETCH_PHASES.COMPLETE, {
+      newCount: newItems.length,
+      message: "邮件拉取完成",
+    });
   }
 
   // 收信健康度落库并推送（前端设置页状态列 / 账号列表据此点亮异常）
   if (health.length > 0) {
     saveDatabase();
     try { pushFn?.(EVENTS.INBOX_HEALTH, health); } catch { /* 静默 */ }
+  }
+  const failures = health.filter(item => !item.ok);
+  if (accounts.length > 0 && failures.length === accounts.length) {
+    return failResult(
+      failures.length === 1
+        ? failures[0]!.error || '收信失败'
+        : `${failures.length} 个邮箱收信失败：${failures.map(item => `${item.email} ${item.error || '收信失败'}`).join('；')}`,
+    );
   }
 
   // 推送新邮件通知（含详细分类数目）
@@ -850,48 +877,58 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
     void prefetchRecentBodies();
   }
 
+  try { afterFetchAnalysis?.(); }
+  catch (error) { Log.warn('inbox.analysis', `抓取后分析入队失败: ${error instanceof Error ? error.message : String(error)}`); }
   return okResult(allNew);
 }
 
 /** 用户手动抓取：抓取完成后异步补齐退信关联、正文缓存和 Sent 文件夹。 */
 export async function refreshInbox(accountId?: number): Promise<Result<InboxMessageRow[]>> {
   if (!inboxNetworkAllowed()) return failResult('当前离线，无法刷新邮件。');
-  await fetchInbox(accountId);
-  await continuePendingInboxSync(accountId);
-  if (!inboxNetworkAllowed()) return failResult('当前离线，无法刷新邮件。');
-  cleanupInbox();
-
   const accounts = accountId
     ? getDb().select().from(emailAccounts).where(eq(emailAccounts.id, accountId)).all()
     : getDb().select().from(emailAccounts).where(eq(emailAccounts.isActive, 1)).all();
   const receivingAccounts = accounts.filter(account => !!account.imapHost);
-  for (const account of receivingAccounts) {
-    pushFetchProgress(account, INBOX_FETCH_PHASES.POST_PROCESSING, { message: "正在补齐退信关联和已发送记录" });
-  }
+  if (receivingAccounts.length === 0) return failResult('没有可收取的邮箱账号，请先在设置中添加并启用收发信账号');
 
-  try {
-    // Body caching stays off the refresh critical path; the visible post-processing
-    // phase covers bounded network work that affects inbox facts.
-    void prefetchRecentBodies(20);
-    const postFetchTasks: Promise<unknown>[] = [];
-    if (postFetchAdapters) {
-      postFetchTasks.push(backfillAfterFetch(accountId, postFetchAdapters));
-      postFetchTasks.push(detectSentAfterFetch(postFetchAdapters));
-    } else {
-      Log.warn("inbox.refresh", "抓取后网络适配器未配置，跳过退信与 Sent 补齐");
-    }
-    await Promise.all(postFetchTasks);
-    for (const account of receivingAccounts) {
-      pushFetchProgress(account, INBOX_FETCH_PHASES.COMPLETE, { message: "刷新完成" });
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    Log.error("inbox.refresh", "抓取后处理失败", error instanceof Error ? error.stack : undefined);
-    for (const account of receivingAccounts) pushFetchProgress(account, INBOX_FETCH_PHASES.FAILED, { message });
-    return failResult(message);
-  }
+  const fetched = await fetchInbox(accountId);
+  if (!fetched.success) return fetched;
+  await continuePendingInboxSync(accountId);
+  if (!inboxNetworkAllowed()) return failResult('当前离线，无法刷新邮件。');
+  cleanupInbox();
+
+  void prefetchRecentBodies(20);
+  schedulePostFetch(accountId);
 
   return listInbox();
+}
+
+/** 退信深补与 Sent 扫描只影响后续事实，不能拖住用户等待的邮件拉取。 */
+function schedulePostFetch(accountId?: number): void {
+  const adapters = postFetchAdapters;
+  if (!adapters) {
+    Log.warn("inbox.refresh", "抓取后网络适配器未配置，跳过退信与 Sent 补齐");
+    return;
+  }
+  if (postFetchInFlight) {
+    Log.debug("inbox.postFetch", "补齐任务仍在运行，本轮跳过");
+    return;
+  }
+  if (postFetchCompletedAt > 0 && Date.now() - postFetchCompletedAt < POST_FETCH_MIN_INTERVAL_MS) {
+    Log.debug("inbox.postFetch", "距上次补齐不足 10 分钟，本轮跳过");
+    return;
+  }
+  postFetchInFlight = Promise.allSettled([
+    backfillAfterFetch(accountId, adapters),
+    detectSentAfterFetch(adapters),
+  ]).then(results => {
+    for (const result of results) {
+      if (result.status === "rejected") Log.warn("inbox.postFetch", `补齐任务失败: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+    }
+  }).finally(() => {
+    postFetchCompletedAt = Date.now();
+    postFetchInFlight = null;
+  });
 }
 
 async function backfillAfterFetch(accountId: number | undefined, adapters: PostFetchAdapters): Promise<void> {
@@ -1036,10 +1073,31 @@ export function cleanupInbox(): void {
 
 // ── 列表 ──
 
+function listInboxTodoStates(messageIds: number[]): Map<number, InboxTodoState> {
+  const result = new Map<number, InboxTodoState>();
+  if (!messageIds.length) return result;
+  try {
+    const raw = getRawDb();
+    for (let start = 0; start < messageIds.length; start += 400) {
+      const chunk = messageIds.slice(start, start + 400);
+      const placeholders = chunk.map(() => '?').join(',');
+      const rows = raw.prepare(`SELECT message_id AS messageId,state FROM inbox_todo_states WHERE message_id IN (${placeholders})`).all(...chunk) as Array<{ messageId: number; state: InboxTodoState }>;
+      for (const row of rows) result.set(Number(row.messageId), row.state);
+    }
+  } catch (error) {
+    Log.warn('inbox.todo', `本地待办状态读取失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return result;
+}
+
 export function listInbox(request?: InboxListRequest): Result<InboxMessageRow[]> {
   if (request != null && (typeof request !== "object" || Array.isArray(request))) return failResult("无效的邮件列表请求");
   const includeId = request?.includeId;
   if (includeId !== undefined && (!Number.isSafeInteger(includeId) || includeId <= 0)) return failResult("无效的邮件 ID");
+  const centerMessageKey = request?.centerMessageKey;
+  if (centerMessageKey !== undefined && (typeof centerMessageKey !== 'string' || !centerMessageKey.trim() || centerMessageKey.length > 512)) return failResult('无效的中心邮件编号');
+  const centerContext = inboxCenterContactPort?.context();
+  const includedCenterId = centerMessageKey && centerContext ? inboxCenterContactPort?.localMessageIdForMessageKey?.(centerContext, centerMessageKey) ?? null : null;
   const db = getDb();
   // 按分类分别限定数量，合并返回
   const all: InboxMessageRow[] = [];
@@ -1057,8 +1115,9 @@ export function listInbox(request?: InboxListRequest): Result<InboxMessageRow[]>
     .orderBy(desc(inboxMessages.receivedAt))
     .all();
   all.push(...sentRows);
-  if (includeId && !all.some(r => r.id === includeId)) {
-    const target = db.select().from(inboxMessages).where(eq(inboxMessages.id, includeId)).get();
+  for (const requestedId of [includeId, includedCenterId]) {
+    if (!requestedId || all.some(r => r.id === requestedId)) continue;
+    const target = db.select().from(inboxMessages).where(eq(inboxMessages.id, requestedId)).get();
     if (target) all.push(target);
   }
   // 按时间统一排序
@@ -1079,23 +1138,355 @@ export function listInbox(request?: InboxListRequest): Result<InboxMessageRow[]>
       .from(contacts).where(eq(contacts.id, cid)).get();
     if (c) contactMap.set(cid, { status: c.status || "", tags: c.tags || "[]" });
   }
+  const labelIdsByMessage = new Map<number, number[]>();
+  const analysisByMessage = listInboxAnalysisViews(all.map(row => row.id));
+  const todoStateByMessage = listInboxTodoStates(all.map(row => row.id));
+  if (all.length > 0) {
+    const links = db.select({ messageId: inboxMessageLabels.messageId, labelId: inboxMessageLabels.labelId })
+      .from(inboxMessageLabels)
+      .where(inArray(inboxMessageLabels.messageId, all.map(row => row.id)))
+      .all();
+    for (const link of links) labelIdsByMessage.set(link.messageId, [...(labelIdsByMessage.get(link.messageId) || []), link.labelId]);
+  }
 
   // 扩展返回字段（前端不需要改接口定义，通过 unknown→any 带过去）
+  const pinnedIds = new Set((getRawDb().prepare('SELECT message_id AS messageId FROM inbox_pinned_messages').all() as Array<{ messageId: number }>).map(row => Number(row.messageId)));
   const enriched = all.map(r => ({
     ...r,
     _accountEmail: accountMap.get(r.accountId) || null,
     _contactStatus: contactMap.get(r.matchedContactId ?? 0)?.status || null,
     _contactTags: contactMap.get(r.matchedContactId ?? 0)?.tags || null,
+    _labelIds: labelIdsByMessage.get(r.id) || [],
+    _pinned: pinnedIds.has(r.id),
+    _analysis: analysisByMessage.get(r.id) || null,
+    _todoState: todoStateByMessage.get(r.id) || null,
   }));
-  const centerContext = inboxCenterContactPort?.context();
   if (centerContext && inboxCenterContactPort?.getLinks) for (const row of enriched) {
     const links = inboxCenterContactPort.getLinks(centerContext, row.id);
     Object.assign(row, {
       _centerContacts: links, _centerContact: links.find(link => link.role === 'primary' || link.role === 'bounce') || links[0] || null,
+      _centerMessageKeys: [...new Set(links.map(link => link.messageKey).filter((value): value is string => typeof value === 'string' && value.length > 0))],
       ...(links.length ? { _contactStatus: links[0]?.status ?? null, _contactTags: links[0]?.tags ? JSON.stringify(links[0].tags) : null } : {}),
     });
   }
   return okResult(enriched as unknown as InboxMessageRow[]);
+}
+
+export function setInboxTodoState(input: InboxTodoStateRequest): Result<{ messageId: number; state: InboxTodoState }> {
+  if (!input || !Number.isSafeInteger(input.messageId) || input.messageId <= 0) return failResult('邮件 ID 无效');
+  if (input.state !== 'open' && input.state !== 'done') return failResult('待办状态无效');
+  if (!validWriteKey(input.idempotencyKey)) return failResult('请求编号无效');
+  const raw = getRawDb();
+  const exists = raw.prepare('SELECT 1 FROM inbox_messages WHERE id=?').get(input.messageId);
+  if (!exists) return failResult('邮件不存在');
+  try {
+    const prior = raw.prepare('SELECT message_id AS messageId,state FROM inbox_todo_states WHERE operation_key=?')
+      .get(input.idempotencyKey) as { messageId: number; state: InboxTodoState } | undefined;
+    if (prior) {
+      if (Number(prior.messageId) !== input.messageId) return failResult('请求编号已用于其他邮件');
+      return okResult({ messageId: input.messageId, state: prior.state });
+    }
+    raw.prepare(`INSERT INTO inbox_todo_states(message_id,state,operation_key,updated_at)
+      VALUES(?,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(message_id) DO UPDATE SET state=excluded.state,operation_key=excluded.operation_key,updated_at=CURRENT_TIMESTAMP`)
+      .run(input.messageId, input.state, input.idempotencyKey);
+    return okResult({ messageId: input.messageId, state: input.state });
+  } catch (error) {
+    Log.warn('inbox.todo', `本地待办状态保存失败: ${error instanceof Error ? error.message : String(error)}`);
+    return failResult('待办状态保存失败');
+  }
+}
+
+const INBOX_TODO_BATCH_LIMIT = 5000;
+
+export function setInboxTodoStateBatch(input: InboxTodoBatchRequest): Result<{ updated: number; state: InboxTodoState }> {
+  if (!input || !Array.isArray(input.messageIds)) return failResult('邮件 ID 列表无效');
+  if (input.state !== 'open' && input.state !== 'done') return failResult('待办状态无效');
+  if (!validWriteKey(input.idempotencyKey)) return failResult('请求编号无效');
+  const messageIds = [...new Set(input.messageIds)];
+  if (messageIds.length === 0) return failResult('没有需要处理的待办');
+  if (messageIds.length > INBOX_TODO_BATCH_LIMIT) return failResult(`一次最多处理 ${INBOX_TODO_BATCH_LIMIT} 项待办`);
+  if (messageIds.some(id => !Number.isSafeInteger(id) || id <= 0)) return failResult('邮件 ID 无效');
+
+  const raw = getRawDb();
+  try {
+    raw.transaction(() => {
+      const exists = raw.prepare('SELECT 1 FROM inbox_messages WHERE id=?');
+      const prior = raw.prepare('SELECT message_id AS messageId,state FROM inbox_todo_states WHERE operation_key=?');
+      const write = raw.prepare(`INSERT INTO inbox_todo_states(message_id,state,operation_key,updated_at)
+        VALUES(?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(message_id) DO UPDATE SET state=excluded.state,operation_key=excluded.operation_key,updated_at=CURRENT_TIMESTAMP`);
+      for (const messageId of messageIds) {
+        if (!exists.get(messageId)) throw new Error(`邮件不存在: ${messageId}`);
+        const operationKey = `${input.idempotencyKey}:${messageId}`;
+        const previous = prior.get(operationKey) as { messageId: number; state: InboxTodoState } | undefined;
+        if (previous) {
+          if (Number(previous.messageId) !== messageId || previous.state !== input.state) {
+            throw new Error('请求编号与已有待办操作不一致');
+          }
+          continue;
+        }
+        write.run(messageId, input.state, operationKey);
+      }
+    })();
+    return okResult({ updated: messageIds.length, state: input.state });
+  } catch (error) {
+    Log.warn('inbox.todo', `批量待办状态保存失败: ${error instanceof Error ? error.message : String(error)}`);
+    return failResult(error instanceof Error ? error.message : '批量待办状态保存失败');
+  }
+}
+
+function validInboxLabelName(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 24;
+}
+
+function validInboxLabelColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function inboxFolderColor(name: string): string {
+  const hash = [...name].reduce((total, char) => (total * 31 + char.charCodeAt(0)) >>> 0, 0);
+  return INBOX_FOLDER_COLORS[hash % INBOX_FOLDER_COLORS.length]!;
+}
+
+function validWriteKey(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length >= 8;
+}
+
+function cachedLabelOperation<T>(raw: ReturnType<typeof getRawDb>, operationKey: string): T | null {
+  const row = raw.prepare('SELECT result_json FROM inbox_label_operations WHERE operation_key = ?').get(operationKey) as { result_json: string } | undefined;
+  return row ? JSON.parse(row.result_json) as T : null;
+}
+
+function storeLabelOperation(raw: ReturnType<typeof getRawDb>, operationKey: string, result: unknown): void {
+  raw.prepare('INSERT INTO inbox_label_operations (operation_key, result_json) VALUES (?, ?)').run(operationKey, JSON.stringify(result));
+  raw.prepare("DELETE FROM inbox_label_operations WHERE created_at < datetime('now', '-30 days')").run();
+}
+
+export function listInboxLabels(): Result<InboxLabel[]> {
+  const rows = getRawDb().prepare(`
+    SELECT l.id AS labelId, l.name, l.color, l.source, l.status, l.created_at AS createdAt, l.updated_at AS updatedAt,
+           COUNT(DISTINCT ml.message_id) AS count,
+           (SELECT COUNT(*) FROM inbox_label_candidates c WHERE c.label_id = l.id) AS candidateCount
+    FROM inbox_labels l
+    LEFT JOIN inbox_message_labels ml ON ml.label_id = l.id
+    GROUP BY l.id
+    ORDER BY CASE l.status WHEN 'active' THEN 0 ELSE 1 END, l.name COLLATE NOCASE ASC
+  `).all() as Array<InboxLabel & { count: number; candidateCount: number }>;
+  return okResult(rows.map(row => ({ ...row, count: Number(row.count) || 0, candidateCount: Number(row.candidateCount) || 0 })));
+}
+
+export function saveInboxLabel(input: InboxLabelSaveRequest): Result<InboxLabel> {
+  if (!input || !validInboxLabelName(input.name) || !validInboxLabelColor(input.color) || !validWriteKey(input.idempotencyKey)) {
+    return failResult('标签名称、颜色或请求编号无效');
+  }
+  if (input.labelId !== undefined && (!Number.isSafeInteger(input.labelId) || input.labelId <= 0)) return failResult('标签 ID 无效');
+  const name = input.name.trim();
+  const raw = getRawDb();
+  try {
+    const label = raw.transaction(() => {
+      const cached = cachedLabelOperation<InboxLabel>(raw, input.idempotencyKey);
+      if (cached) return cached;
+      const duplicate = raw.prepare('SELECT id FROM inbox_labels WHERE lower(name) = lower(?) AND (? IS NULL OR id <> ?) LIMIT 1')
+        .get(name, input.labelId ?? null, input.labelId ?? null) as { id: number } | undefined;
+      if (duplicate) throw new Error('标签名称已存在');
+      if (input.labelId) {
+        const changed = raw.prepare('UPDATE inbox_labels SET name = ?, color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(name, input.color.toLowerCase(), input.labelId).changes;
+        if (!changed) throw new Error('标签不存在');
+      } else {
+        raw.prepare("INSERT INTO inbox_labels (name, color, source, status) VALUES (?, ?, 'user', 'active')").run(name, input.color.toLowerCase());
+        raw.prepare('DELETE FROM inbox_folder_suggestion_dismissals WHERE normalized_name = lower(?)').run(name);
+      }
+      const id = input.labelId ?? Number((raw.prepare('SELECT last_insert_rowid() AS id').get() as { id: number }).id);
+      const result = raw.prepare(`
+        SELECT l.id AS labelId, l.name, l.color, l.source, l.status, l.created_at AS createdAt, l.updated_at AS updatedAt,
+               COUNT(DISTINCT ml.message_id) AS count,
+               (SELECT COUNT(*) FROM inbox_label_candidates c WHERE c.label_id = l.id) AS candidateCount
+        FROM inbox_labels l LEFT JOIN inbox_message_labels ml ON ml.label_id = l.id
+        WHERE l.id = ? GROUP BY l.id
+      `).get(id) as InboxLabel;
+      const normalized = { ...result, count: Number(result.count) || 0, candidateCount: Number(result.candidateCount) || 0 };
+      storeLabelOperation(raw, input.idempotencyKey, normalized);
+      return normalized;
+    })();
+    return okResult(label);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '标签保存失败';
+    return failResult(message === 'UNIQUE constraint failed: index \'idx_inbox_labels_name\'' ? '标签名称已存在' : message);
+  }
+}
+
+export function deleteInboxLabel(input: InboxLabelDeleteRequest): Result<{ deleted: boolean }> {
+  if (!input || !Number.isSafeInteger(input.labelId) || input.labelId <= 0 || !validWriteKey(input.idempotencyKey)) return failResult('标签请求无效');
+  const raw = getRawDb();
+  try {
+    const deleted = raw.transaction(() => {
+      const cached = cachedLabelOperation<{ deleted: boolean }>(raw, input.idempotencyKey);
+      if (cached) return cached.deleted;
+      const label = raw.prepare('SELECT name, source FROM inbox_labels WHERE id = ?').get(input.labelId) as { name: string; source: string } | undefined;
+      if (label?.source === 'ai') raw.prepare('INSERT OR REPLACE INTO inbox_folder_suggestion_dismissals (normalized_name, dismissed_at) VALUES (lower(?), CURRENT_TIMESTAMP)').run(label.name);
+      raw.prepare('DELETE FROM inbox_message_labels WHERE label_id = ?').run(input.labelId);
+      const result = { deleted: raw.prepare('DELETE FROM inbox_labels WHERE id = ?').run(input.labelId).changes > 0 };
+      storeLabelOperation(raw, input.idempotencyKey, result);
+      return result.deleted;
+    })();
+    return okResult({ deleted });
+  } catch (error) {
+    Log.error('inbox.labels', '标签删除失败', error instanceof Error ? error.stack : undefined);
+    return failResult('标签删除失败');
+  }
+}
+
+export function setInboxMessageLabels(input: InboxMessageLabelsRequest): Result<{ labelIds: number[] }> {
+  if (!input || !Number.isSafeInteger(input.messageId) || input.messageId <= 0 || !validWriteKey(input.idempotencyKey) || !Array.isArray(input.labelIds)) {
+    return failResult('邮件标签请求无效');
+  }
+  if (input.labelIds.some(id => !Number.isSafeInteger(id) || id <= 0)) return failResult('标签 ID 无效');
+  const labelIds = [...new Set(input.labelIds)].sort((left, right) => left - right);
+  const raw = getRawDb();
+  try {
+    raw.transaction(() => {
+      const cached = cachedLabelOperation<{ labelIds: number[] }>(raw, input.idempotencyKey);
+      if (cached) return;
+      const message = raw.prepare('SELECT id FROM inbox_messages WHERE id = ?').get(input.messageId);
+      if (!message) throw new Error('邮件不存在');
+      if (labelIds.length > 0) {
+        const placeholders = labelIds.map(() => '?').join(',');
+        const found = raw.prepare(`SELECT COUNT(*) AS count FROM inbox_labels WHERE status = 'active' AND id IN (${placeholders})`).get(...labelIds) as { count: number };
+        if (Number(found.count) !== labelIds.length) throw new Error('标签不存在');
+      }
+      raw.prepare('DELETE FROM inbox_message_labels WHERE message_id = ?').run(input.messageId);
+      const insert = raw.prepare('INSERT OR IGNORE INTO inbox_message_labels (message_id, label_id) VALUES (?, ?)');
+      for (const labelId of labelIds) insert.run(input.messageId, labelId);
+      storeLabelOperation(raw, input.idempotencyKey, { labelIds });
+    })();
+    return okResult({ labelIds });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '邮件标签保存失败';
+    return failResult(message === '邮件不存在' || message === '标签不存在' ? message : '邮件标签保存失败');
+  }
+}
+
+export function suggestInboxFolders(input: InboxFolderSuggestionRequest): Result<{ created: number }> {
+  if (!input || !validWriteKey(input.idempotencyKey) || !Array.isArray(input.suggestions) || input.suggestions.length === 0 || input.suggestions.length > 12) {
+    return failResult('文件夹建议请求无效');
+  }
+  const suggestions = input.suggestions.map(suggestion => ({
+    name: typeof suggestion?.name === 'string' ? suggestion.name.trim() : '',
+    messageIds: Array.isArray(suggestion?.messageIds) ? [...new Set(suggestion.messageIds)] : [],
+  }));
+  if (suggestions.some(suggestion => !validInboxLabelName(suggestion.name) || suggestion.messageIds.length < 2
+    || suggestion.messageIds.some(id => !Number.isSafeInteger(id) || id <= 0))) {
+    return failResult('文件夹建议内容无效');
+  }
+  const raw = getRawDb();
+  try {
+    const created = raw.transaction(() => {
+      const cached = cachedLabelOperation<{ created: number }>(raw, input.idempotencyKey);
+      if (cached) return cached.created;
+      let count = 0;
+      const insertCandidate = raw.prepare('INSERT OR IGNORE INTO inbox_label_candidates (label_id, message_id) SELECT ?, id FROM inbox_messages WHERE id = ?');
+      for (const suggestion of suggestions) {
+        const duplicate = raw.prepare('SELECT id FROM inbox_labels WHERE lower(name) = lower(?) LIMIT 1').get(suggestion.name);
+        const dismissed = raw.prepare('SELECT 1 FROM inbox_folder_suggestion_dismissals WHERE normalized_name = lower(?)').get(suggestion.name);
+        if (duplicate || dismissed) continue;
+        raw.prepare("INSERT INTO inbox_labels (name, color, source, status) VALUES (?, ?, 'ai', 'suggested')")
+          .run(suggestion.name, inboxFolderColor(suggestion.name));
+        const labelId = Number((raw.prepare('SELECT last_insert_rowid() AS id').get() as { id: number }).id);
+        for (const messageId of suggestion.messageIds) insertCandidate.run(labelId, messageId);
+        count++;
+      }
+      storeLabelOperation(raw, input.idempotencyKey, { created: count });
+      return count;
+    })();
+    return okResult({ created });
+  } catch (error) {
+    Log.error('inbox.folders', 'AI 文件夹建议保存失败', error instanceof Error ? error.stack : undefined);
+    return failResult('AI 文件夹建议保存失败');
+  }
+}
+
+export function confirmInboxFolder(input: InboxFolderConfirmRequest): Result<{ labelId: number; assigned: number }> {
+  if (!input || !Number.isSafeInteger(input.labelId) || input.labelId <= 0 || !validWriteKey(input.idempotencyKey)) {
+    return failResult('文件夹确认请求无效');
+  }
+  const raw = getRawDb();
+  try {
+    const result = raw.transaction(() => {
+      const cached = cachedLabelOperation<{ labelId: number; assigned: number }>(raw, input.idempotencyKey);
+      if (cached) return cached;
+      const label = raw.prepare("SELECT id FROM inbox_labels WHERE id = ? AND source = 'ai' AND status = 'suggested'").get(input.labelId);
+      if (!label) throw new Error('建议文件夹不存在');
+      const assigned = raw.prepare('INSERT OR IGNORE INTO inbox_message_labels (message_id, label_id) SELECT message_id, label_id FROM inbox_label_candidates WHERE label_id = ?').run(input.labelId).changes;
+      raw.prepare("UPDATE inbox_labels SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(input.labelId);
+      raw.prepare('DELETE FROM inbox_label_candidates WHERE label_id = ?').run(input.labelId);
+      const confirmed = { labelId: input.labelId, assigned };
+      storeLabelOperation(raw, input.idempotencyKey, confirmed);
+      return confirmed;
+    })();
+    return okResult(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '文件夹确认失败';
+    return failResult(message === '建议文件夹不存在' ? message : '文件夹确认失败');
+  }
+}
+
+export function setInboxMessagePinned(input: InboxPinMessageRequest): Result<{ pinned: boolean }> {
+  if (!input || !Number.isSafeInteger(input.messageId) || input.messageId <= 0 || typeof input.pinned !== 'boolean' || !validWriteKey(input.idempotencyKey)) {
+    return failResult('邮件置顶请求无效');
+  }
+  const raw = getRawDb();
+  try {
+    const pinned = raw.transaction(() => {
+      const cached = cachedLabelOperation<{ pinned: boolean }>(raw, input.idempotencyKey);
+      if (cached) return cached.pinned;
+      const message = raw.prepare('SELECT id FROM inbox_messages WHERE id = ?').get(input.messageId);
+      if (!message) throw new Error('邮件不存在');
+      if (input.pinned) raw.prepare('INSERT OR IGNORE INTO inbox_pinned_messages (message_id) VALUES (?)').run(input.messageId);
+      else raw.prepare('DELETE FROM inbox_pinned_messages WHERE message_id = ?').run(input.messageId);
+      storeLabelOperation(raw, input.idempotencyKey, { pinned: input.pinned });
+      return input.pinned;
+    })();
+    return okResult({ pinned });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '邮件置顶保存失败';
+    return failResult(message === '邮件不存在' ? message : '邮件置顶保存失败');
+  }
+}
+
+export function setInboxReadState(input: InboxReadStateRequest): Result<{ updated: number }> {
+  if (!input || !Array.isArray(input.messageIds) || typeof input.read !== 'boolean' || !validWriteKey(input.idempotencyKey)) {
+    return failResult('邮件已读状态请求无效');
+  }
+  const messageIds = [...new Set(input.messageIds)];
+  if (!messageIds.length || messageIds.length > INBOX_READ_STATE_BATCH_MAX || messageIds.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+    return failResult('邮件已读状态请求无效');
+  }
+  const raw = getRawDb();
+  try {
+    const updated = raw.transaction(() => {
+      const cached = cachedLabelOperation<{ updated: number }>(raw, input.idempotencyKey);
+      if (cached) return cached.updated;
+      const placeholders = messageIds.map(() => '?').join(',');
+      const rows = raw.prepare(`SELECT id, account_id AS accountId, message_id AS messageId FROM inbox_messages WHERE id IN (${placeholders})`).all(...messageIds) as Array<{ id: number; accountId: number; messageId: string | null }>;
+      if (rows.length !== messageIds.length) throw new Error('邮件不存在');
+      raw.prepare(`UPDATE inbox_messages SET is_read = ? WHERE id IN (${placeholders})`).run(input.read ? 1 : 0, ...messageIds);
+      if (input.read) {
+        const upsert = raw.prepare('INSERT INTO inbox_seen_outbox(account_id,message_id) VALUES(?,?) ON CONFLICT(account_id,message_id) DO UPDATE SET last_error=NULL,updated_at=CURRENT_TIMESTAMP');
+        for (const row of rows) if (row.accountId && row.messageId) upsert.run(row.accountId, row.messageId);
+      } else {
+        raw.prepare('DELETE FROM inbox_seen_outbox WHERE message_id IN (SELECT message_id FROM inbox_messages WHERE id IN (' + placeholders + '))').run(...messageIds);
+      }
+      storeLabelOperation(raw, input.idempotencyKey, { updated: rows.length });
+      return rows.length;
+    })();
+    saveDatabase();
+    return okResult({ updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '邮件已读状态保存失败';
+    return failResult(message === '邮件不存在' ? message : '邮件已读状态保存失败');
+  }
 }
 
 // ── 正文落盘（正文不进库，独立文件存储，参照 Foxmail 索引/正文分离）──
@@ -1394,16 +1785,26 @@ export function markReplied(id: number): Result<void> {
 
 // ── 标记已读 / 删除 ──
 
-/** 程序内标读待回写服务器 \Seen 的队列：键 accountId|messageId（IMAP 抓取轮开始时统一回写，
- *  否则未读校准会按服务器视角把程序内的已读改回未读——已读"复活"的根因） */
-const pendingSeen = new Map<string, { accountId: number; messageId: string }>();
+/** Pending IMAP \Seen writes persist locally so restart or writeback failure cannot resurrect unread state. */
+export function listPendingSeen(accountId: number, limit = PENDING_SEEN_BATCH): Array<{ messageId: string }> {
+  return getRawDb().prepare(`SELECT message_id AS messageId FROM inbox_seen_outbox
+    WHERE account_id=? ORDER BY updated_at ASC LIMIT ?`).all(accountId, limit) as Array<{ messageId: string }>;
+}
 
-export function takePendingSeen(accountId: number): Array<{ messageId: string }> {
-  const out: Array<{ messageId: string }> = [];
-  for (const [k, v] of pendingSeen) {
-    if (v.accountId === accountId) { out.push({ messageId: v.messageId }); pendingSeen.delete(k); }
-  }
-  return out;
+export function pendingSeenMessageIds(accountId: number): Set<string> {
+  const rows = getRawDb().prepare('SELECT message_id AS messageId FROM inbox_seen_outbox WHERE account_id=?').all(accountId) as Array<{ messageId: string }>;
+  return new Set(rows.map(row => row.messageId));
+}
+
+export function ackPendingSeen(accountId: number, messageId: string): void {
+  getRawDb().prepare('DELETE FROM inbox_seen_outbox WHERE account_id=? AND message_id=?').run(accountId, messageId);
+  saveDatabase();
+}
+
+export function failPendingSeen(accountId: number, messageId: string, error: string): void {
+  getRawDb().prepare(`UPDATE inbox_seen_outbox SET attempts=attempts+1,last_error=?,updated_at=CURRENT_TIMESTAMP
+    WHERE account_id=? AND message_id=?`).run(error.slice(0, 300), accountId, messageId);
+  saveDatabase();
 }
 
 export function markRead(id: number): Result<void> {
@@ -1413,7 +1814,8 @@ export function markRead(id: number): Result<void> {
   getDb().update(inboxMessages).set({ isRead: 1 })
     .where(eq(inboxMessages.id, id)).run();
   if (row?.accountId && row.messageId) {
-    pendingSeen.set(`${row.accountId}|${row.messageId}`, { accountId: row.accountId, messageId: row.messageId });
+    getRawDb().prepare(`INSERT INTO inbox_seen_outbox(account_id,message_id) VALUES(?,?)
+      ON CONFLICT(account_id,message_id) DO UPDATE SET last_error=NULL,updated_at=CURRENT_TIMESTAMP`).run(row.accountId, row.messageId);
   }
   saveDatabase();
   return okResult(undefined);
@@ -1527,7 +1929,13 @@ export function startAutoFetch(intervalMs = 5 * 60 * 1000) {
       if (exclude.length) Log.info("inbox.auto", `失败退避：跳过 ${exclude.length} 个连败账号（本第 ${autoTick} 轮）`);
     } catch { /* 查不到就照常全量 */ }
     fetchInbox(undefined, exclude)
-      .then(() => continuePendingInboxSync())
+      .then(result => {
+        if (!result.success) {
+          Log.warn("inbox.auto", `自动抓取失败：${result.error}`);
+          return;
+        }
+        return continuePendingInboxSync();
+      })
       .catch(err => {
         Log.error("inbox.auto", "自动抓取失败", err instanceof Error ? err.stack : undefined);
       })

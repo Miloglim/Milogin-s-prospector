@@ -8,6 +8,9 @@ describe('contact assignment validation',()=>{
   const ref={contactId:1,customerId:id,expectedVersion:1};
   expect(validators.contactAssignmentCreate({...{targetUserId:id,idempotencyKey:'key'},contacts:[ref,ref]})).toMatchObject({ok:false});
   expect(validators.contactAssignmentCreate({targetUserId:id,idempotencyKey:'key',contacts:[ref],notifyUserIds:[id]})).toMatchObject({ok:false});
+  expect(validators.contactAssignmentCreate({targetUserId:id,idempotencyKey:'key',contacts:[ref],supervisorUserIds:[id]})).toMatchObject({ok:true});
+  expect(validators.contactAssignmentCreate({targetUserId:id,idempotencyKey:'key',contacts:[ref],supervisorUserIds:[id,id]})).toMatchObject({ok:false});
+  expect(validators.contactAssignmentCreate({targetUserId:id,idempotencyKey:'key',contacts:[ref],supervisorUserIds:['invalid']})).toMatchObject({ok:false});
   expect(validators.contactUpdate({...ref,idempotencyKey:'key',fields:{ownerUserId:id}})).toMatchObject({ok:false});
   expect(validators.contactUpdate({...ref,idempotencyKey:'key',fields:{tags:['quoting']}})).toMatchObject({ok:true});
   expect(validators.contactUpdate({...ref,idempotencyKey:'key',fields:{preferences:['Santos']}})).toMatchObject({ok:true});

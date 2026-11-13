@@ -47,6 +47,7 @@ import { startTaskDispatcher } from './adapters/task-dispatcher';
 import { TASK_ROUTES } from './core/tasks';
 import { OPPORTUNITY_ROUTES } from './core/opportunities';
 import { PostgresOpportunityRepository } from './adapters/postgres/opportunity-repository';
+import { migrateLeadOverlapSchema } from './adapters/postgres/lead-overlap-schema';
 import { createOpportunityService } from './services/opportunities';
 import { createOpportunityHandler } from './transport/opportunities-http';
 import { createManagementDashboardService } from './services/management-dashboard';
@@ -116,6 +117,7 @@ async function main() {
     if(!(await teamMonitoringRepo.migrate()).ok)throw new Error('团队监控迁移被拒绝');
     const opportunityRepo=new PostgresOpportunityRepository(pool,serverLog);
     if(!(await opportunityRepo.migrate()).ok)throw new Error('商机迁移被拒绝');
+    const overlapClient=await pool.connect();try{if(!(await migrateLeadOverlapSchema(overlapClient)).ok)throw new Error('线索范围重叠迁移被拒绝');}finally{overlapClient.release();}
     const salesPerformanceRepo=new PostgresSalesPerformanceRepository(pool,serverLog);
     if(!(await salesPerformanceRepo.migrate()).ok)throw new Error('销售绩效迁移被拒绝');
     const contactChangeRepo=new PostgresContactChangeRepository(pool,serverLog);

@@ -1,7 +1,8 @@
 import type {Result} from './crm';
 import type {CenterContactRef} from './contact-assignments';
-export const CONTACT_SHARING_ROUTES={shares:'/api/crm/contact-shares',members:'/api/crm/contact-shares/members'} as const;
+export const CONTACT_SHARING_ROUTES={shares:'/api/crm/contact-shares',team:'/api/crm/contact-shares/team',members:'/api/crm/contact-shares/members'} as const;
 export const CONTACT_SHARING_EVENTS={requested:'crm.contact.share.requested',accepted:'crm.contact.share.accepted',rejected:'crm.contact.share.rejected',revoked:'crm.contact.share.revoked',updated:'crm.contact.share.updated'} as const;
+export const CONTACT_TEAM_VISIBILITY_EVENT='crm.contact.team_visible';
 export const CONTACT_SHARED_FIELDS=['firstName','lastName','title','phone','whatsapp','linkedinUrl','country','language','clientType'] as const;
 export interface ContactPermissions {editableFields:string[];canFollowup:boolean;canChangeStage:boolean;canSendMail:boolean;canShare:boolean;}
 export interface ContactShareGrant {editableFields:string[];canFollowup:boolean;canChangeStage:boolean;}
@@ -10,6 +11,8 @@ export interface ContactShare extends CenterContactRef,ContactShareGrant {shareI
 export interface ContactShareCreate extends CenterContactRef,ContactShareGrant {expectedVersion:number;targetUserId:string;idempotencyKey:string;}
 export interface ContactShareDecision {shareId:string;expectedVersion:number;idempotencyKey:string;}
 export interface ContactShareUpdate extends ContactShareDecision,ContactShareGrant {}
+export interface ContactTeamShareCreate extends CenterContactRef {expectedVersion:number;idempotencyKey:string;}
+export interface ContactTeamShareReceipt {teamId:string;teamName:string;sharedCount:number;alreadyShared:number;pendingCount:number;}
 export interface ContactShareQuery {view:'incoming'|'outgoing';status?:ContactShareStatus;contactId?:number;customerId?:string;limit:number;offset:number;}
 export interface ContactSharePage {items:ContactShare[];total:number;}
 export interface ContactShareMember {userId:string;displayName:string;}
@@ -18,5 +21,6 @@ export interface ContactSharingRepository {
  createShare(hash:string,input:ContactShareCreate):Promise<Result<ContactShare>>;
  decideShare(hash:string,action:'accept'|'reject'|'revoke',input:ContactShareDecision):Promise<Result<ContactShare>>;
  updateShare(hash:string,input:ContactShareUpdate):Promise<Result<ContactShare>>;
+  shareTeam(hash:string,input:ContactTeamShareCreate):Promise<Result<ContactTeamShareReceipt>>;
  shareMembers(hash:string):Promise<Result<ContactShareMember[]>>;
 }

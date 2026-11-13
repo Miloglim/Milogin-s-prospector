@@ -1,10 +1,11 @@
-import {LEAD_IMPORT_FIELDS, leadImportMapping} from '../../../../server/core/lead-import-fields';
-import { importRowIssue } from '../../../../server/core/leads';
+import {LEAD_IMPORT_FIELDS, fillForwardImportCompanyFields, leadImportMapping, normalizeImportCustomerType, normalizeImportEmail} from '../../../../server/core/lead-import-fields';
+import { importRowIssue, isSkippableImportIssue } from '../../../../server/core/leads';
 import { ONLINE_CHANNELS, CENTER_CONTACT_LIMITS, LIFECYCLE_LIMITS, centerContactDisplayStatus, centerContactRemark, type CenterContact, type CenterContactQuery, type CenterContactPage, type CenterContactDetail, type ContactDelete, type ContactDeleteReceipt, type Result, type ImportPreview, type ImportReceipt, type ImportRequest } from '../../../shared/online-crm';
 import type { Contact, ContactDataPort, ContactFilters } from '../../hooks/useContacts';
 import type { ImportDrawerPort, ImportExecutionResult } from '../../components/ImportDrawer';
 import { importFingerprint, prepareImportRequests } from './customerImport';
 import type { LeadIngressConflictNotice } from './LeadIngressConflictDrawer';
+import { isPermissionDenied } from '../../lib/permissionGate';
 
 export type CenterInvoke = <T>(channel: string, input?: unknown) => Promise<Result<T>>;
 const IMPORT_ROW_OFFSET = 2;
@@ -13,8 +14,8 @@ const HEX_WIDTH = 2;
 const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SERVER_IMPORT_KEY_LENGTH = 120;
 export const centerInvoke: CenterInvoke = (channel, input) => window.api.invoke(channel, input) as never;
-async function companyImportKey(companyName: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(companyName.trim().toLowerCase()));
+async function companyImportKey(companyName: string, country = ''): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([companyName.trim().toLowerCase(), country.trim().toLowerCase()])));
   return Array.from(new Uint8Array(digest), byte => byte.toString(HEX_RADIX).padStart(HEX_WIDTH, '0')).join('');
 }
 export function displayCenterContact(row: CenterContact): Contact {
@@ -41,11 +42,22 @@ export interface CenterContactPort extends ContactDataPort {
 export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'all', assignment, group, isCurrent = () => true }: { key: string; invoke?: CenterInvoke; scope?: CenterContactQuery['scope']; assignment?: 'accepted'; group?: Pick<CenterContactQuery,'groupDimension'|'groupKey'>; isCurrent?: () => boolean }): CenterContactPort {
   const records = new Map<number, CenterContact>();
   const deleteRequests = new Map<string,ContactDelete>();
-  async function remove(ids:number[]) {
+  type DeleteReference = Pick<CenterContact,'contactId'|'customerId'|'contactVersion'|'customerVersion'|'canDelete'>;
+  function deleteReference(row: Contact): DeleteReference | undefined {
+    if (row.dataSource !== 'center' || !row.contactId || !row.customerId) return undefined;
+    return { contactId: row.contactId, customerId: row.customerId, contactVersion: row.contactVersion, customerVersion: row.contactVersion ?? 0, canDelete: row.canDelete };
+  }
+  async function remove(ids:number[],loaded:Contact[]=[]) {
     if(!isCurrent())return {success:false,error:"账号或权限已变化"};
     if(!ids.length||new Set(ids).size!==ids.length)return {success:false,error:"联系人选择已变化，请刷新后重试"};
-    const rows=ids.map(id=>records.get(id));
-    if(rows.some(row=>!row?.canDelete))return {success:false,error:"所选联系人不可删除"};
+    const supplied=new Map<number,DeleteReference>();
+    for(const row of loaded){const ref=deleteReference(row);if(ref)supplied.set(ref.contactId,ref);}
+    if(ids.some(id=>!records.has(id)&&!supplied.has(id))){
+      const all=await readAll();
+      if(!all.success)return {success:false,error:all.error??"联系人选择加载失败"};
+    }
+    const rows=ids.map(id=>supplied.get(id)??records.get(id));
+    if(rows.some(row=>isPermissionDenied(row?.canDelete)))return {success:false,error:"所选联系人包含当前不可删除项"};
     if(rows.some(row=>!row||!UUID_PATTERN.test(row.customerId)||!Number.isSafeInteger(row.contactVersion??row.customerVersion)||(row.contactVersion??row.customerVersion)<1))return {success:false,error:"联系人缺少中心编号或版本，请刷新后重试"};
     const contacts=rows.map(row=>({contactId:row!.contactId,customerId:row!.customerId,expectedVersion:row!.contactVersion??row!.customerVersion}));
     const chunks: Array<typeof contacts>=[];
@@ -108,7 +120,7 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
       if (!isCurrent()) return {success:false,error:'账号或权限已变化'};
       if (input.id !== undefined) return { success: false, error: '请在联系人详情中修改资料' };
       const fields = Object.fromEntries(LEAD_IMPORT_FIELDS.map(({key}) => [key, typeof input[key] === 'string' ? input[key].trim() : '']).filter(([,value]) => value));
-      const row = { ...fields, companyName: fields.companyName ?? '', email: (fields.email ?? '').toLowerCase(), customerKey: await companyImportKey(fields.companyName ?? ''), name: fields.name || [fields.firstName, fields.lastName].filter(Boolean).join(' ') };
+      const row = { ...fields, companyName: fields.companyName ?? '', email: (fields.email ?? '').toLowerCase(), customerKey: await companyImportKey(fields.companyName ?? '', fields.country ?? ''), name: fields.name || [fields.firstName, fields.lastName].filter(Boolean).join(' ') };
       const issue = importRowIssue(row); if (issue) return { success: false, error: issue };
       const signature = JSON.stringify(row);
       if (creation?.signature !== signature) creation = { signature, payload: { source: 'manual', sourceDetail: '', companyMatching: true, idempotencyKey: crypto.randomUUID(), rows: [row] } };
@@ -131,7 +143,7 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
     async export(kind, filters) {
       const all = await readAll(filters); if (!all.success || !all.data) return { success: false, error: all.error };
       const csv = (rows: unknown[][]) => '\ufeff' + rows.map(row => row.map(value => { const text = String(value ?? ''); return '"' + (/^[\s]*[=+@-]/.test(text) ? "'" + text : text).replace(/"/g, '""') + '"'; }).join(',')).join('\r\n');
-      if (kind === 'contacts') return { success: true, data: csv([['邮箱','名','姓','公司名','职位 / Title','电话','WhatsApp','LinkedIn','国家','语言','客户类型','业务类型','网站','联系状态','发送阶段','负责人','客户阶段','标签','一级来源','二级来源','导入批次来源','备注','创建时间','更新时间'], ...all.data.map(row => [row.email,row.firstName,row.lastName,row.companyName,row.title,row.phone,row.whatsapp,row.linkedinUrl,row.country,row.language,row.clientType === 'agent' ? '代理' : row.clientType === 'direct' ? '直客' : row.clientType,row.businessType,row.website,centerContactDisplayStatus(row),row.stage,row.ownerName,row.relationshipStage,row.tags.join('、'),row.sourceLevel1,row.sourceLevel2,row.source,centerContactRemark(row.extra),row.createdAt,row.updatedAt])]) };
+      if (kind === 'contacts') return { success: true, data: csv([['邮箱','名','姓','公司名','职位 / Title','电话','WhatsApp','LinkedIn','国家','语言','客户类型','业务类型','网站','联系状态','发送阶段','归属','客户阶段','标签','一级来源','二级来源','导入批次来源','备注','创建时间','更新时间'], ...all.data.map(row => [row.email,row.firstName,row.lastName,row.companyName,row.title,row.phone,row.whatsapp,row.linkedinUrl,row.country,row.language,row.clientType === 'agent' ? '代理' : row.clientType === 'direct' ? '直客' : row.clientType,row.businessType,row.website,centerContactDisplayStatus(row),row.stage,row.ownerName ?? '未分配',row.relationshipStage,row.tags.join('、'),row.sourceLevel1,row.sourceLevel2,row.source,centerContactRemark(row.extra),row.createdAt,row.updatedAt])]) };
       const rows: unknown[][] = [];
       for (const row of all.data) {
         const result = await invoke<CenterContactDetail>(ONLINE_CHANNELS.CONTACT_DETAIL, { contactId: row.contactId, customerId: row.customerId });
@@ -142,7 +154,7 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
       }
       return { success: true, data: csv([['联系人邮箱','姓名','跟进内容','时间'], ...rows]) };
     },
-    canDelete:id=>!!records.get(id)?.canDelete,
+    canDelete:id=>!isPermissionDenied(records.get(id)?.canDelete),
     deleteBatch:remove,delete:id=>remove([id]),
   };
 }
@@ -150,13 +162,15 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
 /** Original drawer delegates full file bytes and stable, repeatable batches to the center. */
 export function createCenterImportPort(invoke: CenterInvoke, operations: boolean, refresh: () => void, isCurrent = () => true): ImportDrawerPort {
   let preview: ImportPreview | null = null;
-  let prepared: { fingerprint: string; batches: Array<{ offset: number; payload: ImportRequest }>; imported: number; skipped: number } | null = null;
+  let prepared: { fingerprint: string; batches: Array<{ offset: number; payload: ImportRequest }>; imported: number; skipped: number; overlaps: number } | null = null;
   let blocked: { conflicts: LeadIngressConflictNotice[]; receipt: ImportReceipt; resolved: number; failure?: string } | null = null;
   const attemptKey = (key: string, index: number) => `${key.slice(0, SERVER_IMPORT_KEY_LENGTH)}:${index}`;
+  const acceptedOrSkipped = (row: ImportReceipt['rows'][number]) => ['created', 'duplicate'].includes(row.status) || row.status === 'restricted_conflict' && !row.conflict;
   const completeReceipt = (receipt: ImportReceipt) => {
     if (!prepared) return;
     prepared.imported += receipt.rows.filter(row => row.status === 'created').length;
-    prepared.skipped += receipt.rows.filter(row => row.status === 'duplicate').length;
+    prepared.skipped += receipt.rows.filter(row => row.status === 'duplicate' || row.status === 'restricted_conflict' && !row.conflict).length;
+    prepared.overlaps += receipt.rows.reduce((total,row) => total + (row.overlapCount ?? 0),0);
     prepared.batches.shift();
   };
   const run = async (): Promise<ImportExecutionResult> => {
@@ -179,13 +193,13 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
         refresh();
         return { success: false, error: conflicts[0]!.message, conflict: conflicts[0] };
       }
-      if (result.data.rows.some(row => !['created', 'duplicate'].includes(row.status))) {
+      if (result.data.rows.some(row => !acceptedOrSkipped(row))) {
         refresh();
-        return { success: false, error: result.data.rows.find(row => !['created', 'duplicate'].includes(row.status))?.message ?? '部分行未导入，请核对文件内容' };
+        return { success: false, error: result.data.rows.find(row => !acceptedOrSkipped(row))?.message ?? '部分行未导入，请核对文件内容' };
       }
       completeReceipt(result.data);
     }
-    const data = { imported: prepared.imported, skipped: prepared.skipped }; prepared = null; refresh(); return { success: true, data };
+    const data = { imported: prepared.imported, skipped: prepared.skipped, overlaps: prepared.overlaps }; prepared = null; refresh(); return { success: true, data };
   };
   return {
     async preview(input) {
@@ -195,36 +209,52 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
       preview = result.data; prepared = null;
       const mapping = leadImportMapping(result.data.headers);
       const suggestedMapping = Object.fromEntries(Object.entries(mapping).map(([field,header])=>[header,field]));
-      return { success: true, data: { headers: result.data.headers, previewRows: result.data.rows.slice(0, 20).map(row => result.data.headers.map(header => row[header] ?? '')), totalRows: result.data.rows.length, suggestedMapping, duplicateEmails: [] } };
+      const effectiveRows = fillForwardImportCompanyFields(result.data.rows, mapping);
+      preview = { ...result.data, rows: effectiveRows };
+      const rows=effectiveRows.map(row => result.data.headers.map(header => row[header] ?? ''));
+      return { success: true, data: { headers: result.data.headers, previewRows: rows.slice(0, 20), rows, totalRows: result.data.rows.length, suggestedMapping, duplicateEmails: [] } };
     },
     async execute(input) {
       if (!isCurrent()) return { success: false, error: '账号已切换，请重新导入' };
       if (!preview) return { success: false, error: '请重新预览文件' };
       const mapping = Object.fromEntries(Object.entries(input.mapping).filter(([, field]) => field).map(([header, field]) => [field, header]));
-      const fingerprint = importFingerprint(input, mapping);
-      if (prepared && prepared.fingerprint !== fingerprint) return { success: false, error: '字段映射已改变，请重新预览' };
+      const fingerprint = importFingerprint(input, mapping,input.rows);
+      if (prepared && prepared.fingerprint !== fingerprint) return { success: false, error: '预览数据已改变，请重新确认导入' };
       if (!prepared) {
         if (new Set(Object.values(input.mapping).filter(Boolean)).size !== Object.values(input.mapping).filter(Boolean).length) return {success:false,error:'同一个字段只能匹配一列'};
         const companyFields = new Map<string,Record<string,string>>();
         const rows = [];
+        const skippedRows = new Set(input.skippedRows ?? []);
+        if(input.rows&&input.rows.length!==preview.rows.length)return {success:false,error:'预览行数已变化，请重新预览'};
         for (const [index,raw] of preview.rows.entries()) {
-          const fields = Object.fromEntries(Object.entries(mapping).map(([field,header])=>[field,(raw[header]??'').trim()]));
+          if(skippedRows.has(index))continue;
+          const edited=input.rows?.[index];
+          const source=edited?Object.fromEntries(preview.headers.map(header=>[header,edited[header]??''])):raw;
+          const fields = Object.fromEntries(Object.entries(mapping).map(([field,header])=>[field,(source[header]??'').trim()]));
           const companyName=fields.companyName??'';
-          const normalized=companyName.toLowerCase();
+          const normalized=JSON.stringify([companyName.toLowerCase(),(fields.country??'').toLowerCase()]);
           const company=companyFields.get(normalized)??{};
-          for (const key of ['country','customerType','businessType','website']) {
+          for (const key of ['customerType','businessType','website']) {
             if (fields[key] && company[key] && fields[key]!==company[key]) return {success:false,error:`第 ${index+IMPORT_ROW_OFFSET} 行与同公司其他行的公司资料不一致，请核对国家、客户类型、业务类型和网站`};
             if (fields[key]) company[key]=fields[key]!;
           }
           companyFields.set(normalized,company);
-          const customerKey=await companyImportKey(companyName);
-          const row={...fields,customerKey,companyName,email:(fields.email??'').toLowerCase(),rawRow:raw};
-          const issue=importRowIssue(row);if(issue)return {success:false,error:`第 ${index+IMPORT_ROW_OFFSET} 行：${issue}`};
+          const customerKey=await companyImportKey(companyName,fields.country??'');
+          const normalizedEmail=normalizeImportEmail(fields.email??'');
+          const normalizedCustomerType=normalizeImportCustomerType(fields.customerType??'');
+          const sourceForImport={...source};
+          if(normalizedEmail.extras.length)sourceForImport['其他邮箱（导入识别）']=normalizedEmail.extras.join('；');
+          if(fields.customerType?.trim()&&normalizedCustomerType!==fields.customerType.trim())sourceForImport['原始客户类型']=fields.customerType.trim();
+          const row={...fields,customerKey,companyName,email:normalizedEmail.email,customerType:normalizedCustomerType,rawRow:sourceForImport};
+          const issue=importRowIssue(row);
+          if(isSkippableImportIssue(issue))continue;
+          if(issue)return {success:false,error:`第 ${index+IMPORT_ROW_OFFSET} 行：${issue}`};
           rows.push(row);
         }
+        if(!rows.length)return {success:false,error:'没有可导入条目'};
         const result = prepareImportRequests({ source: 'desktop-import', sourceDetail: preview.fileName, kind: operations ? 'operations' : 'personal', companyMatching:true, mapping }, rows);
         if (!result.ok) return { success: false, error: result.error.message };
-        prepared = { fingerprint, batches: result.data, imported: 0, skipped: 0 };
+        prepared = { fingerprint, batches: result.data, imported: 0, skipped: 0, overlaps: 0 };
       }
       return run();
     },

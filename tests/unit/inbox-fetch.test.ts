@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { INBOX_IMAP_BATCH_LIMIT, INBOX_RECENT_BACKFILL_COUNT, mergeInboxScanUids, needsRecentInboxBackfill, selectInboxUidBatch } from "../../src/main/core/inbox-fetch";
+import { INBOX_IMAP_BATCH_LIMIT, INBOX_INITIAL_IMPORT_LIMIT, INBOX_RECENT_BACKFILL_COUNT, mergeInboxScanUids, needsRecentInboxBackfill, selectInboxUidBatch } from "../../src/main/core/inbox-fetch";
 
 describe("IMAP UID batching", () => {
+  it("uses a larger first-sync window while keeping later batches small", () => {
+    expect(INBOX_INITIAL_IMPORT_LIMIT).toBe(2000);
+    expect(INBOX_IMAP_BATCH_LIMIT).toBe(500);
+  });
   it("continues after the persisted UID instead of selecting the same first batch", () => {
     const uids = Array.from({ length: INBOX_IMAP_BATCH_LIMIT + 3 }, (_, index) => index + 1);
     const first = selectInboxUidBatch(uids, null);

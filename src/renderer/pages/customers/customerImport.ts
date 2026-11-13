@@ -1,11 +1,19 @@
 import { LEAD_LIMITS, type ImportFileContent, type ImportPreview, type ImportRow, type ImportRequest, type Result } from '../../../shared/online-crm';
+import { fillForwardImportCompanyFields, normalizeImportCustomerType, normalizeImportEmail } from '../../../../server/core/lead-import-fields';
 const FNV_OFFSET = 2166136261;
 const FNV_PRIME = 16777619;
 /** A deterministic local guard so a partially retried batch cannot use a changed file or mapping. */
-export function importFingerprint(input: ImportFileContent, mapping: Record<string, string>): string {
+export function importFingerprint(input: ImportFileContent, mapping: Record<string, string>, rows?: Array<Record<string,string>>): string {
  let hash = FNV_OFFSET;
- const value = `${input.type}\u0000${input.encoding ?? ''}\u0000${input.data}\u0000${JSON.stringify(Object.entries(mapping).sort(([a], [b]) => a.localeCompare(b)))}`;
- for (let index = 0; index < value.length; index++) { hash ^= value.charCodeAt(index); hash = Math.imul(hash, FNV_PRIME); }
+ const add = (value: string) => { for (let index = 0; index < value.length; index++) { hash ^= value.charCodeAt(index); hash = Math.imul(hash, FNV_PRIME); } };
+ add(input.type); add('\u0000'); add(input.encoding ?? ''); add('\u0000'); add(input.data); add('\u0000');
+ for (const [header, field] of Object.entries(mapping).sort(([a], [b]) => a.localeCompare(b))) {
+   add(header); add('\u0001'); add(field); add('\u0000');
+ }
+ for (const row of rows ?? []) {
+   add('\u0002');
+   for (const key of Object.keys(row).sort()) { add(key); add('\u0001'); add(row[key] ?? ''); add('\u0000'); }
+ }
  return (hash >>> 0).toString(16);
 }
 /** Match original CSV/XLSX headers without silently selecting ambiguous aliases. */
@@ -14,7 +22,7 @@ export function autoMapping(headers: string[]): Record<string, string> {
   return Object.fromEntries(Object.keys(aliases).map(field => { const matches = headers.filter(header => aliases[field]!.includes(header.toLowerCase().replace(/[\s_-]/g, ''))); return [field, matches.length === 1 ? matches[0]! : '']; }));
 }
 export function mappedImportRows(preview: ImportPreview, mapping: Record<string, string>): ImportRow[] {
- return preview.rows.map(raw => ({ customerKey: (raw[mapping.customerKey ?? ''] ?? '').trim(), companyName: (raw[mapping.companyName ?? ''] ?? '').trim(), email: (raw[mapping.email ?? ''] ?? '').trim().toLowerCase(), name: (raw[mapping.name ?? ''] ?? '').trim(), country: (raw[mapping.country ?? ''] ?? '').trim(), ...(mapping.customerType ? {customerType:(raw[mapping.customerType]??'').trim()} : {}), rawRow: raw }));
+ return fillForwardImportCompanyFields(preview.rows, mapping).map(raw => ({ customerKey: (raw[mapping.customerKey ?? ''] ?? '').trim(), companyName: (raw[mapping.companyName ?? ''] ?? '').trim(), email: normalizeImportEmail(raw[mapping.email ?? ''] ?? '').email, name: (raw[mapping.name ?? ''] ?? '').trim(), country: (raw[mapping.country ?? ''] ?? '').trim(), ...(mapping.customerType ? {customerType:normalizeImportCustomerType(raw[mapping.customerType]??'')} : {}), rawRow: raw }));
 }
 export function prepareImportRequests(base: Omit<ImportRequest, 'rows' | 'idempotencyKey'>, rows: ImportRow[]): Result<Array<{ offset: number; payload: ImportRequest }>> {
  const batches: Array<{ offset: number; payload: ImportRequest }> = [];

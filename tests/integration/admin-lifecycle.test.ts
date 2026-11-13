@@ -155,4 +155,45 @@ describe.skipIf(!enabled)('user lifecycle PostgreSQL rollback-only verification'
   const result=await repo.mutate(hash,{action:'user.delete',userId:t.id,revision:1,reason:'last'});
   expect(result.ok).toBe(false);if(!result.ok)expect(result.error.message).toContain('至少一名');
  });
+ it('archives empty teams and promotes a remaining member when an account is archived',async()=>{
+  const ready=(await c.query("SELECT to_regclass('crm_org_units') AS units,to_regclass('crm_org_assignments') AS assignments")).rows[0];
+  if(!ready.units||!ready.assignments)return;
+  const company=(await c.query("SELECT unit_id FROM crm_org_units WHERE kind='company' AND dissolved_at IS NULL LIMIT 1")).rows[0]?.unit_id;
+  if(!company)return;
+  const emptyLeader=await target();
+  const emptyId=randomUUID();
+  await c.query("INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,created_by) VALUES($1,'sales_team',$2,$3,$4)",[emptyId,company,`empty-${emptyId}`,emptyLeader.id]);
+  await c.query("INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'leader',true)",[emptyLeader.id,emptyId]);
+  const invitationId=randomUUID();
+  await c.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)",[invitationId,emptyId,emptyLeader.id,actorId]);
+  const groupId=randomUUID();
+  await c.query("INSERT INTO crm_org_member_groups(group_id,unit_id,name) VALUES($1,$2,$3)",[groupId,emptyId,`group-${groupId.slice(0,8)}`]);
+  await c.query("INSERT INTO crm_org_member_group_members(group_id,unit_id,user_id) VALUES($1,$2,$3)",[groupId,emptyId,emptyLeader.id]);
+  const archive=await repo.mutate(hash,{action:'user.delete',userId:emptyLeader.id,revision:1,reason:'team lifecycle'});
+  expect(archive.ok,JSON.stringify(archive)).toBe(true);
+  expect((await c.query('SELECT dissolved_at IS NOT NULL AS dissolved FROM crm_org_units WHERE unit_id=$1',[emptyId])).rows[0].dissolved).toBe(true);
+  expect((await c.query('SELECT count(*)::int AS n FROM crm_org_assignments WHERE unit_id=$1 AND ended_at IS NULL',[emptyId])).rows[0].n).toBe(0);
+  expect((await c.query('SELECT status FROM crm_org_invitations WHERE invitation_id=$1',[invitationId])).rows[0].status).toBe('cancelled');
+  expect((await c.query('SELECT count(*)::int AS n FROM crm_org_member_group_members WHERE group_id=$1',[groupId])).rows[0].n).toBe(0);
+
+  const leavingLeader=await target();
+  const remainingMember=await target();
+  const keptId=randomUUID();
+  await c.query("INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,created_by) VALUES($1,'sales_team',$2,$3,$4)",[keptId,company,`kept-${keptId}`,leavingLeader.id]);
+  await c.query("INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'leader',true)",[leavingLeader.id,keptId]);
+  await c.query("INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'member',false)",[remainingMember.id,keptId]);
+  const moved=await repo.mutate(hash,{action:'user.delete',userId:leavingLeader.id,revision:1,reason:'team lifecycle'});
+  expect(moved.ok,JSON.stringify(moved)).toBe(true);
+  const successor=(await c.query("SELECT user_id,role,is_primary FROM crm_org_assignments WHERE unit_id=$1 AND ended_at IS NULL",[keptId])).rows;
+  expect(successor).toEqual([{user_id:remainingMember.id,role:'leader',is_primary:true}]);
+  expect((await c.query('SELECT dissolved_at FROM crm_org_units WHERE unit_id=$1',[keptId])).rows[0].dissolved_at).toBeNull();
+
+  const deactivatedLeader=await target();
+  const deactivatedId=randomUUID();
+  await c.query("INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,created_by) VALUES($1,'sales_team',$2,$3,$4)",[deactivatedId,company,`deactivated-${deactivatedId}`,deactivatedLeader.id]);
+  await c.query("INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'leader',true)",[deactivatedLeader.id,deactivatedId]);
+  const deactivated=await repo.mutate(hash,{action:'user.update',userId:deactivatedLeader.id,revision:1,active:false,identityAdmin:false,reason:'deactivate lifecycle'});
+  expect(deactivated.ok,JSON.stringify(deactivated)).toBe(true);
+  expect((await c.query('SELECT dissolved_at IS NOT NULL AS dissolved FROM crm_org_units WHERE unit_id=$1',[deactivatedId])).rows[0].dissolved).toBe(true);
+ });
 });

@@ -5,6 +5,7 @@ import type {
   MailContactState,
 } from '../../../server/core/mail-analysis';
 import type { ContactMailEventReceipt } from '../../../server/core/contact-mail';
+import { Log } from '../logger';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -25,9 +26,27 @@ export interface MailAnalysisAnalyzerPort {
 
 export interface MailAnalysisQueueOptions {
   analyzer?: MailAnalysisAnalyzerPort;
+  store?: MailAnalysisQueueStore;
   timeoutMs?: number;
   maxAttempts?: number;
   retryDelayMs?: number;
+}
+
+export type MailAnalysisJobStatus = 'pending' | 'running' | 'retrying' | 'completed' | 'failed';
+
+export interface MailAnalysisQueueStoredJob {
+  key: string;
+  input: MailAnalysisQueueInput;
+  status: MailAnalysisJobStatus;
+  attempt: number;
+  nextAttemptAt: string | null;
+  lastError: string | null;
+}
+
+export interface MailAnalysisQueueStore {
+  save(job: MailAnalysisQueueStoredJob): void;
+  recoverable(): MailAnalysisQueueStoredJob[];
+  prune(): void;
 }
 
 type SubmitAnalysis = (input: ContactMailAnalysisSubmission) => Promise<{ ok: boolean; error?: { message: string } }>;
@@ -36,10 +55,12 @@ interface QueueItem {
   key: string;
   input: MailAnalysisQueueInput;
   submit: SubmitAnalysis;
+  attempt: number;
 }
 
 export interface MailAnalysisQueueService {
   enqueue(input: MailAnalysisQueueInput, submit: SubmitAnalysis): boolean;
+  restore(submit: SubmitAnalysis): number;
   status(): MailAnalysisQueueStatus;
   waitForIdle(): Promise<void>;
   stop(): void;
@@ -47,6 +68,7 @@ export interface MailAnalysisQueueService {
 
 export function createMailAnalysisQueueService(options: MailAnalysisQueueOptions = {}): MailAnalysisQueueService {
   const analyzer = options.analyzer;
+  const store = options.store;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
@@ -66,6 +88,15 @@ export function createMailAnalysisQueueService(options: MailAnalysisQueueOptions
     if (running || queued.length || retrying) return;
     for (const resolve of idleWaiters) resolve();
     idleWaiters.clear();
+  };
+
+  const persist = (item: QueueItem, status: MailAnalysisJobStatus, error: string | null = null, nextAttemptAt: string | null = null): void => {
+    if (!store) return;
+    try {
+      store.save({ key: item.key, input: item.input, status, attempt: item.attempt, nextAttemptAt, lastError: error });
+    } catch (cause) {
+      Log.warn('mail.analysis.queue', `分析任务持久化失败 ${item.key}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
   };
 
   const analyzeWithTimeout = async (item: QueueItem): Promise<MailAnalysisDraft> => {
@@ -89,9 +120,13 @@ export function createMailAnalysisQueueService(options: MailAnalysisQueueOptions
   };
 
   const submitOnce = async (item: QueueItem): Promise<boolean> => {
-    let attempt = 0;
-    while (attempt < maxAttempts && !stopped) {
-      attempt++;
+    if (item.attempt >= maxAttempts) {
+      persist(item, 'failed', '重试次数已耗尽');
+      return false;
+    }
+    while (item.attempt < maxAttempts && !stopped) {
+      item.attempt++;
+      persist(item, 'running');
       try {
         const draft = await analyzeWithTimeout(item);
         if (stopped) return false;
@@ -116,15 +151,22 @@ export function createMailAnalysisQueueService(options: MailAnalysisQueueOptions
           },
         };
         const receipt = await item.submit(submission);
-        if (receipt.ok) return true;
+        if (receipt.ok) {
+          persist(item, 'completed');
+          return true;
+        }
         lastError = receipt.error?.message ?? 'AI 分析保存失败';
       } catch (error) {
         lastError = error instanceof Error ? error.message : 'AI 分析失败';
       }
-      if (attempt < maxAttempts && !stopped) {
+      if (item.attempt < maxAttempts && !stopped) {
+        const delay = retryDelayMs * item.attempt;
+        persist(item, 'retrying', lastError, new Date(Date.now() + delay).toISOString());
         retrying++;
-        await new Promise(resolve => setTimeout(resolve, retryDelayMs * attempt));
+        await new Promise(resolve => setTimeout(resolve, delay));
         retrying--;
+      } else {
+        persist(item, 'failed', lastError);
       }
     }
     return false;
@@ -157,9 +199,25 @@ export function createMailAnalysisQueueService(options: MailAnalysisQueueOptions
       const key = [input.analysis.contentHash, input.event.eventId, String(input.analysis.inputSequence)].join(':');
       if (known.has(key)) return false;
       known.add(key);
-      queued.push({ key, input, submit });
+      const item: QueueItem = { key, input, submit, attempt: 0 };
+      persist(item, 'pending');
+      queued.push(item);
       void drain();
       return true;
+    },
+    restore(submit) {
+      if (!store || stopped) return 0;
+      store.prune();
+      const rows = store.recoverable();
+      let restored = 0;
+      for (const row of rows) {
+        if (known.has(row.key)) continue;
+        known.add(row.key);
+        queued.push({ key: row.key, input: row.input, submit, attempt: row.attempt });
+        restored++;
+      }
+      if (restored) void drain();
+      return restored;
     },
     status() {
       return { enabled: !!analyzer && !stopped, pending: queued.length, running, retrying, completed, failed, lastError };

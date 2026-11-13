@@ -44,6 +44,9 @@ describe('settings information architecture', () => {
     expect(campaign).not.toContain('dailyCap');
     expect(campaign).not.toContain('单日上限');
     expect(campaign).not.toContain('单日放行上限');
+    expect(campaign).toContain('import { RichTextEditor }');
+    expect(campaign).toContain('粘贴正文、HTML 或图片');
+    expect(campaign).not.toContain('Input.TextArea size="small" rows={6} placeholder="邮件正文');
   });
 
   it('hides only the settings-page scrollbar while retaining the dot rail', () => {

@@ -107,7 +107,8 @@ export class PostgresTaskRepository implements TaskRepository {
  });}
  list(hash:string,input:TaskQuery){return this.authorized(hash,async(db,a)=>{
   const owner=a.capabilities.includes('leads.develop'),ops=operations(a);
-  const visibility=administrator(a)?'($1::uuid IS NOT NULL)':ops?`(c.origin='operations'${owner?' OR c.owner_user_id=$1':''})`:owner?'c.owner_user_id=$1':'FALSE AND $1::uuid IS NOT NULL';
+  const scopeVisibility=administrator(a)?'($1::uuid IS NOT NULL)':ops?`(c.origin='operations'${owner?' OR c.owner_user_id=$1':''})`:owner?'c.owner_user_id=$1':'FALSE AND $1::uuid IS NOT NULL';
+  const visibility=input.mine?`(${scopeVisibility}) AND COALESCE(c.owner_user_id,c.created_by)=$1`:scopeVisibility;
   const filter=`WHERE (${visibility}) AND ($2::uuid IS NULL OR c.customer_id=$2) AND ($3::text IS NULL OR t.status=$3)`;
   const params=[a.userId,input.customerId??null,input.status??null];
   const count=await db.query(`SELECT count(*)::int AS n FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) ${filter}`,params);

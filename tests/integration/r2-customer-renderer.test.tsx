@@ -118,7 +118,7 @@ describe('R2 customer center renderer', () => {
   it('keeps raw partial-failure evidence and repeats the exact original request without inventing a company', async () => {
     await mount(); await click('导入'); const normal = invoke.getMockImplementation()!; let writes = 0;
     invoke.mockImplementation(async (channel, ...args) => {
-      if (channel === CHANNEL.PREVIEW) return { ok: true, data: { fileName: 'repair.csv', headers: ['id', 'company', 'email'], rowNumbers: [2, 4], rows: [{ id: 'one', company: 'First', email: 'first@example.invalid' }, { id: 'two', company: '', email: 'bad' }] } };
+      if (channel === CHANNEL.PREVIEW) return { ok: true, data: { fileName: 'repair.csv', headers: ['id', 'company', 'email'], rowNumbers: [2, 4], rows: [{ id: 'one', company: 'First', email: 'first@example.invalid' }, { id: 'two', company: 'Second', email: 'second@example.invalid' }] } };
       if (channel === CHANNEL.IMPORT) { writes++; return { ok: true, data: { batchId: 'original', version: 1, rows: [{ rowId: 'ok-row', index: 0, status: 'created', customerId: 'one' }, { rowId: 'bad-row', index: 1, status: 'invalid', message: '邮箱格式无效' }] } }; }
       return normal(channel, ...args);
     });
@@ -126,7 +126,7 @@ describe('R2 customer center renderer', () => {
     expect(invoke.mock.calls.find(call => call[0] === CHANNEL.IMPORT)![1].mapping).toEqual({ customerKey: 'id', companyName: 'company', email: 'email' });
     expect(document.body.textContent).toContain('部分行未导入'); await click('确认导入2条');
     const calls = invoke.mock.calls.filter(call => call[0] === CHANNEL.IMPORT); expect(calls).toHaveLength(2); expect(calls[0][1]).toEqual(calls[1][1]);
-    expect(calls[0][1].rows[1]).toMatchObject({ companyName: '', email: 'bad', rawRow: { company: '', email: 'bad' } });
+    expect(calls[0][1].rows[1]).toMatchObject({ companyName: 'Second', email: 'second@example.invalid', rawRow: { company: 'Second', email: 'second@example.invalid' } });
   });
   it('keeps the edit version fixed while polling and does not reopen a closed pending save', async () => {
     await mount(); await openCustomer(); await click('编辑资料');
@@ -202,7 +202,7 @@ describe('R2 customer center renderer', () => {
     const normal = invoke.getMockImplementation()!;
     invoke.mockImplementation(async (channel, ...args) => {
       if (channel === CHANNEL.BOOTSTRAP) return { ok: true, data: { userId: 'sales-a', capabilities, scope: 'shared', summary: { mine: 0, pool: 0 }, feedCursor: '0' } };
-      if (channel === CHANNEL.PREVIEW) return { ok: true, data: { fileName: 'synthetic.csv', headers: ['customerKey', 'companyName', 'email'], rows: [{ customerKey: '1', companyName: 'Synthetic', email: 'public@example.invalid' }, { customerKey: 'bad', companyName: 'Bad', email: 'bad' }] } };
+      if (channel === CHANNEL.PREVIEW) return { ok: true, data: { fileName: 'synthetic.csv', headers: ['customerKey', 'companyName', 'email'], rows: [{ customerKey: '1', companyName: 'Synthetic', email: 'public@example.invalid' }, { customerKey: 'bad', companyName: 'Bad', email: 'duplicate@example.invalid' }] } };
       if (channel === CHANNEL.IMPORT) return { ok: true, data: { batchId: 'operations-batch', version: 1, rows: [{ rowId: 'row-valid', index: 0, status: 'created' }, { rowId: 'row-duplicate', index: 1, status: 'duplicate' }] } };
       if (channel === CHANNEL.PUBLISH) return { ok: false, error: { code: 'UNAVAILABLE', message: 'Lost publish response' } };
       return normal(channel, ...args);

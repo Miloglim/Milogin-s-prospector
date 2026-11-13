@@ -6,6 +6,18 @@ import { ONLINE_CHANNELS, type CenterContact, type ImportRequest } from '../../s
 const contact = { contactId: 72, customerId: '12345678-1234-1234-1234-123456789abc', customerVersion: 4, contactVersion: 3, companyId: 9, companyName: 'Center company', email: 'a@example.invalid', firstName: 'Alice', lastName: null, title: 'Manager', phone: null, linkedinUrl: null, country: null, clientType: null, language: null, stage: 'cold', status: '', tags: ['priority'], extra: {}, touchStatus: 'contacted', relationshipStage: 'quoting', assignee: '', source: 'fixture', sourceDetail: null, createdAt: '2026-10-14', updatedAt: '2026-10-14', ownerUserId: null, ownerName: null, origin: 'operations', state: 'draft' } as CenterContact;
 
 describe('center data port for original contact table', () => {
+  it('loads selected center contacts before deleting when their rows were not previously paged in', async () => {
+    const calls: string[] = [];
+    const port = createCenterContactPort({ key: 'delete-unloaded', invoke: async (channel) => {
+      calls.push(channel);
+      if (channel === ONLINE_CHANNELS.CONTACT_LIST) return { ok: true, data: { items: [{ ...contact, canDelete: true }], total: 1 } } as never;
+      if (channel === ONLINE_CHANNELS.CONTACT_DELETE) return { ok: true, data: { deleted: [{ contactId: contact.contactId, customerId: contact.customerId }], version: 1 } } as never;
+      throw new Error(`unexpected channel ${channel}`);
+    } });
+    expect(await port.deleteBatch([contact.contactId])).toMatchObject({ success: true });
+    expect(calls[0]).toBe(ONLINE_CHANNELS.CONTACT_LIST);
+    expect(calls).toContain(ONLINE_CHANNELS.CONTACT_DELETE);
+  });
   it('uses the documented aliases and imports all lead fields without requiring a customer number or email',async()=>{
     const raw={'公司名称':'Test Company','国家':'Brazil','客户类型':'代理','业务类型':'海运','官网':'https://example.invalid','联系人姓名':'Alice','联系人title':'Manager','电话':'+55 111','Whats App':'+55 222','来源':'展会','二级来源':'上海展'};
     const calls:unknown[]=[];
@@ -21,6 +33,66 @@ describe('center data port for original contact table', () => {
     for(const field of LEAD_IMPORT_FIELDS)for(const alias of field.aliases)expect(leadImportMapping([alias])[field.key]).toBe(alias);
     expect(leadImportMapping(['电话','phone']).phone).toBeUndefined();
   });
+  it('imports corrected preview cells instead of the original invalid row values',async()=>{
+    const calls:ImportRequest[]=[];
+    const port=createCenterImportPort(async(channel,input)=>{
+      if(channel===ONLINE_CHANNELS.PREVIEW)return {ok:true,data:{headers:['公司','邮箱'],rows:[{'公司':'Good','邮箱':'good@example.invalid'},{'公司':'Fixed','邮箱':'bad'}],fileName:'test.csv'}} as never;
+      calls.push(input as ImportRequest);return {ok:true,data:{batchId:'b',version:1,rows:[{rowId:'r1',index:0,status:'created',customerId:contact.customerId},{rowId:'r2',index:1,status:'created',customerId:contact.customerId}]}} as never;
+    },true,()=>{});
+    const file={type:'csv' as const,data:'fixture'};
+    const preview=await port.preview(file);
+    expect(await port.execute({...file,mapping:preview.data!.suggestedMapping,rows:[{'公司':'Good','邮箱':'good@example.invalid'},{'公司':'Fixed','邮箱':'fixed@example.invalid'}]})).toMatchObject({success:true,data:{imported:2}});
+    expect(calls[0]!.rows[1]).toMatchObject({companyName:'Fixed',email:'fixed@example.invalid'});
+  });
+  it('fills grouped companies and normalizes multi-email/type cells before the center request',async()=>{
+    const calls:ImportRequest[]=[];
+    const port=createCenterImportPort(async(channel,input)=>{
+      if(channel===ONLINE_CHANNELS.PREVIEW)return {ok:true,data:{headers:['公司','类型','邮箱'],rows:[{'公司':'Acme','类型':'货代','邮箱':'first@example.invalid<label>second@example.invalid'},{'公司':'','类型':'','邮箱':'third@example.invalid'}],fileName:'test.csv'}} as never;
+      calls.push(input as ImportRequest);return {ok:true,data:{batchId:'b',version:1,rows:[{rowId:'r1',index:0,status:'created',customerId:contact.customerId},{rowId:'r2',index:1,status:'created',customerId:contact.customerId}]}} as never;
+    },true,()=>{});
+    const file={type:'csv' as const,data:'fixture'};
+    const preview=await port.preview(file);
+    expect(preview.data?.rows).toEqual([['Acme','货代','first@example.invalid<label>second@example.invalid'],['Acme','货代','third@example.invalid']]);
+    expect(await port.execute({...file,mapping:preview.data!.suggestedMapping})).toMatchObject({success:true,data:{imported:2}});
+    expect(calls[0]!.rows[0]).toMatchObject({companyName:'Acme',email:'first@example.invalid',customerType:'代理'});
+    expect(calls[0]!.rows[0]!.rawRow).toMatchObject({'其他邮箱（导入识别）':'second@example.invalid','原始客户类型':'货代'});
+    expect(calls[0]!.rows[1]).toMatchObject({companyName:'Acme',email:'third@example.invalid',customerType:'代理'});
+  });
+  it('treats the same company name in different countries as separate customers',async()=>{
+    const calls:ImportRequest[]=[];
+    const port=createCenterImportPort(async(channel,input)=>{
+      if(channel===ONLINE_CHANNELS.PREVIEW)return {ok:true,data:{headers:['公司','国家','邮箱'],rows:[{'公司':'Acme','国家':'US','邮箱':'us@example.invalid'},{'公司':'Acme','国家':'BR','邮箱':'br@example.invalid'}],fileName:'test.csv'}} as never;
+      calls.push(input as ImportRequest);return {ok:true,data:{batchId:'b',version:1,rows:[{rowId:'r1',index:0,status:'created',customerId:contact.customerId},{rowId:'r2',index:1,status:'created',customerId:contact.customerId}]}} as never;
+    },true,()=>{});
+    const file={type:'csv' as const,data:'fixture'};
+    const preview=await port.preview(file);
+    expect(await port.execute({...file,mapping:preview.data!.suggestedMapping})).toMatchObject({success:true,data:{imported:2}});
+    expect(calls[0]!.rows[0]!.customerKey).not.toBe(calls[0]!.rows[1]!.customerKey);
+  });
+  it('skips rows without contact identity and rows removed by the user',async()=>{
+    const calls:ImportRequest[]=[];
+    const port=createCenterImportPort(async(channel,input)=>{
+      if(channel===ONLINE_CHANNELS.PREVIEW)return {ok:true,data:{headers:['公司','邮箱'],rows:[{'公司':'Acme','邮箱':'good@example.invalid'},{'公司':'Acme','邮箱':''},{'公司':'Acme','邮箱':'removed@example.invalid'}],fileName:'test.csv'}} as never;
+      calls.push(input as ImportRequest);return {ok:true,data:{batchId:'b',version:1,rows:[{rowId:'r1',index:0,status:'created',customerId:contact.customerId}]}} as never;
+    },true,()=>{});
+    const file={type:'csv' as const,data:'fixture'};
+    const preview=await port.preview(file);
+    expect(await port.execute({...file,mapping:preview.data!.suggestedMapping,skippedRows:[2]})).toMatchObject({success:true,data:{imported:1}});
+    expect(calls[0]!.rows).toHaveLength(1);
+    expect(calls[0]!.rows[0]!.email).toBe('good@example.invalid');
+  });
+  it('skips non-actionable ownership conflicts instead of aborting the whole batch',async()=>{
+    const port=createCenterImportPort(async(channel)=>{
+      if(channel===ONLINE_CHANNELS.PREVIEW)return {ok:true,data:{headers:['公司','邮箱'],rows:[{'公司':'Acme','邮箱':'ok@example.invalid'},{'公司':'Acme','邮箱':'private@example.invalid'}],fileName:'test.csv'}} as never;
+      return {ok:true,data:{batchId:'b',version:1,rows:[
+        {rowId:'r1',index:0,status:'created',customerId:contact.customerId},
+        {rowId:'r2',index:1,status:'restricted_conflict',message:'邮箱与受限记录冲突，请核实来源或归属'},
+      ]}} as never;
+    },true,()=>{});
+    const file={type:'csv' as const,data:'fixture'};
+    const preview=await port.preview(file);
+    expect(await port.execute({...file,mapping:preview.data!.suggestedMapping})).toMatchObject({success:true,data:{imported:1,skipped:1}});
+  });
   it('rejects conflicting company fields before writing any batch',async()=>{
     let writes=0;
     const port=createCenterImportPort(async(channel)=>{
@@ -34,7 +106,7 @@ describe('center data port for original contact table', () => {
   });
   it('keeps display identity explicit and sends every read to the center', async () => {
     const calls: Array<[string, unknown]> = [];
-    const port = createCenterContactPort({ key: 'fixture', invoke: async (channel, input) => { calls.push([channel, input]); return { ok: true, data: { items: [contact], total: 1 } }; } });
+    const port = createCenterContactPort({ key: 'fixture', invoke: async (channel, input) => { calls.push([channel, input]); return { ok: true, data: { items: [{ ...contact, canDelete: false }], total: 1 } }; } });
     const page = await port.list({ page: 1 });
     expect(page.success).toBe(true);
     expect(page.data?.items[0]).toMatchObject({

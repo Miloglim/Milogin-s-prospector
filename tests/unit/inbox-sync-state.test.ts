@@ -22,6 +22,13 @@ vi.mock("../../src/main/db", () => ({
           statement.reset();
           return row;
         },
+        all: (...args: unknown[]) => {
+          statement.bind(args as never);
+          const rows: unknown[] = [];
+          while (statement.step()) rows.push(statement.getAsObject());
+          statement.reset();
+          return rows;
+        },
       };
     },
   }),

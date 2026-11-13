@@ -721,8 +721,8 @@ function renderSalesFolded(){
     +'.drow.hist-q td:first-child{box-shadow: inset 4px 0 0 -1px #c3cad4;}</style>';
   let html=FOLDSTYLE+'<table class="data-table"><thead><tr><th>承运人</th><th>起运港</th><th>目的港</th><th>船期ETD</th><th>有效期</th>'+COLS.map(c=>'<th>'+c+'</th>').join('')+'<th>入库</th><th>操作</th></tr></thead><tbody>';
   gs.forEach(function(g,i){
-    html += quoteRow(g.current, i, false, i+'-c', COLS, g.history.length);
-    g.history.forEach(function(h,j){ html += quoteRow(h, i, true, i+'-'+j, COLS, 0); });
+    html += quoteRow(g.current, i, false, i+'-c', COLS);
+    g.history.forEach(function(h,j){ html += quoteRow(h, i, true, i+'-'+j, COLS); });
     html += detailRow(g.current, i, false, i+'-c');
     g.history.forEach(function(h,j){ html += detailRow(h, i, true, i+'-'+j); });
   });
@@ -730,14 +730,13 @@ function renderSalesFolded(){
   $('table-container').innerHTML=html;
   document.querySelectorAll('img.dimg').forEach(function(im){ im.onerror=function(){ var s=document.createElement('span'); s.style.cssText='font-size:12px;color:var(--ink-muted)'; s.textContent='图片未同步（'+(im.getAttribute('data-name')||'')+'）'; im.replaceWith(s); }; });
 }
-function quoteRow(q, gi, isHist, did, COLS, histN){
+function quoteRow(q, gi, isHist, did, COLS){
   if(!q) return '';
   var TOG='background:#fff;border:1px solid var(--border);border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--ink-muted);margin-right:6px';
   var noCur=q.expired||q.status==='已被覆盖';
   var tag=noCur?' <span class="badge badge-coral">无有效价</span>':'';
-  var style=isHist?' style="display:none;background:#fafbfc"':' style="background:#fff"';
+  var style=isHist?' style="background:#fafbfc"':' style="background:#fff"';
   var detailBtn='<button style="'+TOG+'" data-did="'+did+'" data-open="0" onclick="toggleDetail(this)">▸ 详情</button>';
-  var histBtn=(!isHist&&histN>0)?('<button class="foldtog" data-gi="'+gi+'" data-n="'+histN+'" data-open="0" style="'+TOG+'" onclick="toggleGroup(this)">展开历史 '+histN+' ▾</button>'):'';
   var row='<tr class="qrow'+(isHist?' hist-q':'')+'" data-gi="'+gi+'"'+style+'>'
     +'<td><b>'+esc(q.carrier||'?')+'</b><div style="font-size:11px;color:var(--ink-muted)">'+esc(q.route||'')+tag+'</div></td>'
     +'<td style="font-weight:700">'+esc(q.pol||'—')+'</td>'
@@ -746,7 +745,7 @@ function quoteRow(q, gi, isHist, did, COLS, histN){
     +'<td style="font-size:12px">'+foldValid(q)+'</td>'
     +COLS.map(function(c){return foldCabCell(q,c);}).join('')
     +'<td style="font-size:11px;color:var(--ink-muted)">'+esc((q.synced_at||'').slice(5,16))+'</td>'
-    +'<td>'+detailBtn+histBtn+'</td></tr>';
+    +'<td>'+detailBtn+'</td></tr>';
   return row;
 }
 function detailRow(q, gi, isHist, did){
@@ -773,24 +772,6 @@ function toggleDetail(btn){
   r.style.display = next==='1'?'':'none';
   btn.textContent = next==='1'?'▾ 收起详情':'▸ 详情';
 }
-function toggleGroup(btn){
-  var gi=btn.getAttribute('data-gi');
-  var next=btn.getAttribute('data-open')==='1'?'0':'1';
-  btn.setAttribute('data-open',next);
-  document.querySelectorAll('tr.hist-q[data-gi="'+gi+'"]').forEach(function(r){
-    if(next==='1'){ if(!r.classList.contains('drow')) r.style.display=''; }
-    else {
-      r.style.display='none';
-      if(r.classList.contains('drow')){
-        r.setAttribute('data-open','0');
-        var b=document.querySelector('button[data-did="'+r.getAttribute('data-did')+'"]');
-        if(b) b.textContent='▸ 详情';
-      }
-    }
-  });
-  btn.textContent = next==='1' ? '收起历史 ▴' : ('展开历史 '+btn.getAttribute('data-n')+' ▾');
-}
-
 function setCatTab(btn){
   document.querySelectorAll('#cat-tabs button').forEach(function(b){ b.classList.toggle('active', b===btn); });
   $('sf-tab').value = btn.getAttribute('data-tab');

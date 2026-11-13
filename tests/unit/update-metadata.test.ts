@@ -25,7 +25,7 @@ const feed = `<?xml version="1.0" encoding="UTF-8"?>
   </entry>
 </feed>`;
 
-describe('GitHub Release Atom metadata', () => {
+describe('release metadata and internal update feed', () => {
   it('parses stable and preview releases without GitHub REST API data', () => {
     const releases = parseReleaseFeed(feed);
     expect(releases).toHaveLength(3);
@@ -45,11 +45,13 @@ describe('GitHub Release Atom metadata', () => {
     expect(compareReleaseVersions('0.59.0', '0.59.0-alpha.2')).toBe(1);
   });
 
-  it('removes the unauthenticated GitHub REST API dependency from updater checks', () => {
+  it('uses the company Navigator update manifest instead of GitHub', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/main/updater.ts'), 'utf8');
-    expect(source).toContain('releases.atom');
+    expect(source).toContain('/api/downloads/prospector/latest');
+    expect(source).toContain("provider: \"generic\"");
     expect(source).toContain('net.fetch');
     expect(source).not.toContain('netFetch');
     expect(source).not.toContain('api.github.com');
+    expect(source).not.toContain('releases.atom');
   });
 });

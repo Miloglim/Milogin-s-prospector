@@ -2,7 +2,6 @@
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Modal } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContactList } from '../../src/renderer/pages/contacts/ContactList';
 import { CompanyPage, type CompanyDataPort } from '../../src/renderer/pages/companies/CompanyPage';
@@ -50,6 +49,25 @@ describe('existing contact and company views after remote lifecycle changes', ()
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ search: '', page: 1 }));
     expect(list.mock.calls[0]?.[0]).not.toHaveProperty('touchStatus');
   });
+  it('loads the next contact batch only when the table approaches its bottom', async () => {
+    const nextContact = { ...contact, id: 43, contactId: 43, customerId: 'customer-43', email: 'next@example.invalid', firstName: 'Next' };
+    const list = vi.fn(async ({ page }: { page?: number }) => page === 2
+      ? { success: true, data: { items: [nextContact], total: 2 } }
+      : { success: true, data: { items: [contact], total: 2 } });
+    const port = { key: 'fixture', list, listIds: async () => ({ success: true, data: { ids: [42, 43] } }) } as unknown as ContactDataPort;
+    await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} /></QueryClientProvider>));
+    await act(flush);
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(host.querySelector('.ant-pagination')).toBeNull();
+    const scroller = host.querySelector<HTMLElement>('.customer-contacts-table .ant-table-content')!;
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 200 });
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 520 });
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, writable: true, value: 280 });
+    await act(async () => { scroller.dispatchEvent(new Event('scroll')); await flush(); });
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ page: 2, search: '' }));
+    expect(host.textContent).toContain(contact.email);
+    expect(host.textContent).toContain(nextContact.email);
+  });
   it('shows one compact selection toolbar without duplicate action counts', async () => {
     const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }), canDelete: () => true } as unknown as ContactDataPort;
     await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} onAssign={() => {}} /></QueryClientProvider>));
@@ -64,22 +82,36 @@ describe('existing contact and company views after remote lifecycle changes', ()
     await act(async () => { Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '取消选择')!.click(); await flush(); });
     expect(host.textContent).not.toContain('已选择 1 项');
   });
-  it('hides center contacts immediately after confirmed delete and restores them if the center fails', async () => {
+  it('deletes without confirmation and keeps the row until the center responds', async () => {
     let finish!: (result: { success: boolean; error?: string }) => void;
     const deleteBatch = vi.fn(() => new Promise<{ success: boolean; error?: string }>(resolve => { finish = resolve; }));
-    const confirm = vi.spyOn(Modal, 'confirm').mockReturnValue({ destroy: vi.fn(), update: vi.fn() } as never);
     const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }), canDelete: () => true, deleteBatch } as unknown as ContactDataPort;
     await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} /></QueryClientProvider>));
     await act(flush);
     await act(async () => { (host.querySelectorAll('input[type="checkbox"]')[1] as HTMLInputElement).click(); await flush(); });
     await act(async () => { host.querySelector<HTMLButtonElement>('button[title="删除选中的 1 个联系人"]')!.click(); await flush(); });
-    const onOk = (confirm.mock.calls[0]![0] as { onOk: () => Promise<void> }).onOk;
-    let pending!: Promise<void>;
-    await act(async () => { pending = onOk(); await flush(); });
-    expect(deleteBatch).toHaveBeenCalledWith([42]);
-    expect(host.textContent).not.toContain(contact.email);
-    await act(async () => { finish({ success: false, error: '中心不可用' }); await pending; await flush(); });
+    expect(document.body.textContent).not.toContain('删除 1 个联系人？');
+    expect(deleteBatch).toHaveBeenCalledWith([42], [expect.objectContaining({ id: 42 })]);
     expect(host.textContent).toContain(contact.email);
+    await act(async () => { finish({ success: false, error: '中心不可用' }); await flush(); });
+    expect(host.textContent).toContain(contact.email);
+    expect(document.body.textContent).toContain('中心不可用');
+  });
+  it('deletes a single row directly when the list omitted canDelete', async () => {
+    let finish!: (result: { success: boolean; error?: string }) => void;
+    const deleteBatch = vi.fn(() => new Promise<{ success: boolean; error?: string }>(resolve => { finish = resolve; }));
+    const noPermissionFlag = { ...contact, canDelete: undefined };
+    const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [noPermissionFlag], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }), deleteBatch } as unknown as ContactDataPort;
+    await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} /></QueryClientProvider>));
+    await act(flush);
+    const rowDelete = host.querySelector<HTMLButtonElement>('button[aria-label="删除联系人"]')!;
+    expect(rowDelete.disabled).toBe(false);
+    await act(async () => { rowDelete.click(); await flush(); });
+    expect(document.body.textContent).not.toContain('删除 1 个联系人？');
+    expect(deleteBatch).toHaveBeenCalledWith([42], [expect.objectContaining({ id: 42 })]);
+    expect(host.textContent).toContain(contact.email);
+    await act(async () => { finish({ success: true }); await flush(); });
+    expect(document.body.textContent).not.toContain('删除 1 个联系人？');
   });
   it('keeps import and column controls in more operations with the existing offline limits', async () => {
     const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }), export: async () => ({ success: true, data: '' }) } as unknown as ContactDataPort;

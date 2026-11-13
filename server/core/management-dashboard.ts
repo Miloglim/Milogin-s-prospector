@@ -27,7 +27,17 @@ export const DASHBOARD_LIMITS = { receipts: 20, stale_event_seconds: 60 } as con
 export interface DashboardReceipt { id: string; flowId: string; createdAt: string; status: string; detail: string; }
 export interface ManagementDashboard {
   generatedAt: string;
-  overview: { databases: number; healthy: number; activeUsers: number; customers: number; openTasks: number; pendingEvents: number };
+  overview: {
+    databases: number;
+    healthy: number;
+    activeUsers: number;
+    customers: number;
+    openTasks: number;
+    pendingEvents: number;
+    mailAnalyses: number;
+    mailActions: number;
+    humanLockedMail: number;
+  };
   databases: DashboardDatabase[];
   flows: DashboardFlow[];
   alerts: DashboardAlert[];

@@ -5,7 +5,7 @@ export const CACHE_DEPENDENCIES = {
   crm: ["crm", "dashboard", "send", "contacts", "search"],
   inbox: ["inbox", "crm", "dashboard", "contacts", "mail-brief", "history", "bounce", "search"],
   send: ["send", "campaigns", "campaign", "dev-letter", "crm", "dashboard", "contacts", "history", "search"],
-  contacts: ["center-contacts","center-companies","center-company-detail","center-contact-detail","center-assignment","center-shares", "contacts", "crm", "dashboard", "send", "inbox", "companies", "dev-letter", "search"],
+  contacts: ["center-contacts","center-contact-groups","center-import-batches","center-companies","center-company-detail","center-contact-detail","center-assignment","center-shares", "contacts", "crm", "dashboard", "send", "inbox", "companies", "dev-letter", "search"],
   accounts: ["accounts", "inbox"],
   companies: ["center-companies","center-company-detail","center-contacts", "companies", "contacts", "crm", "search"],
   templates: ["templates"],

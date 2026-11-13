@@ -26,6 +26,17 @@ const LAST_FOLLOWUP_AT=lastEffectiveFollowupSql('occurred_at');
 const LAST_FOLLOWUP_NOTE=lastEffectiveFollowupSql('note');
 const PROJECTION=`ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '代理' THEN 'agent' WHEN '直客' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT COALESCE(array_agg(DISTINCT sid),'{}'::uuid[]) FROM crm_contact_assignment_requests sar CROSS JOIN LATERAL unnest(sar.supervisor_user_ids) sid WHERE sar.contact_id=ct.id AND sar.customer_id=c.customer_id AND sar.status='accepted') AS supervisor_user_ids,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted','pending_transfer')) AS active_assignment_status,(SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1) AS "relationshipStage",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
 export type ContactRow=CenterContact & {created_by:string;development_restriction:string|null;active_assignment_status:string|null;supervisor_user_ids:string[];shared_grants?:Array<ContactShareGrant & {targetUserId:string}>};
+const NOTIFICATION_VALUE_MAX=240;
+function notificationValue(value:unknown):string|null {
+ if(value===undefined||value===null||value==='')return null;
+ const text=Array.isArray(value)?value.join('、'):typeof value==='object'?JSON.stringify(value):String(value);
+ return text.length>NOTIFICATION_VALUE_MAX?`${text.slice(0,NOTIFICATION_VALUE_MAX)}…`:text;
+}
+function contactFieldValue(ct:ContactRow,key:string):unknown {
+ const values:Record<string,unknown>={email:ct.email,firstName:ct.firstName,lastName:ct.lastName,title:ct.title,phone:ct.phone,whatsapp:ct.whatsapp,sourceLevel1:ct.sourceLevel1,sourceLevel2:ct.sourceLevel2,linkedinUrl:ct.linkedinUrl,country:ct.country,language:ct.language,stage:ct.stage,status:ct.status,tags:ct.tags,preferences:ct.extra?.preferences};
+ return values[key];
+}
+function notificationValues(entries:Array<[string,unknown,unknown]>){return entries.flatMap(([field,before,after])=>JSON.stringify(before??null)===JSON.stringify(after??null)?[]:[{field,from:notificationValue(before),to:notificationValue(after)}]);}
 export function contactPermissionsFor(a:LeadActor,row:ContactRow):ContactPermissions{return contactPermissions(a,{...row,shared_grant:row.shared_grants?.find(g=>g.targetUserId===a.userId)});}
 export function contactManager(a:LeadActor):boolean {return ['shared','summary'].includes(a.scope)&&a.roles.includes('operations')&&a.capabilities.includes('leads.assign');}
 function assignmentOversight(a:LeadActor):boolean{return ['shared','summary'].includes(a.scope)&&a.roles.includes('admin')&&a.capabilities.includes('leads.read.all');}
@@ -123,7 +134,7 @@ async function cached<T>(c:PoolClient,a:LeadActor,operation:string,input:{idempo
  if(old)return old.digest!==digest?failure('CONFLICT','幂等键已用于不同请求'):replay?replay(old.response):success(old.response);
  const result=await work();if(result.ok)await c.query('INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)',[a.userId,operation,input.idempotencyKey,digest,JSON.stringify(result.data)]);return result;
 }
-async function members(c:PoolClient){return (await c.query(`SELECT u.user_id,pa.scope,pa.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM public.identity_users u JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE u.active AND NOT u.must_change_password FOR SHARE OF u,pa`)).rows;}
+async function members(c:PoolClient){return (await c.query(`SELECT u.user_id,pa.scope,pa.capabilities,EXISTS(SELECT 1 FROM crm_org_assignments leader WHERE leader.user_id=u.user_id AND leader.role='leader' AND leader.ended_at IS NULL) AS is_supervisor,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM public.identity_users u JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE u.active AND NOT u.must_change_password FOR SHARE OF u,pa`)).rows;}
 import {effectiveCapabilitiesFor} from '../../core/admin';
 function validTarget(member:Record<string,any>|undefined,actorId:string):boolean{return !!member&&isContactAssignmentTarget({userId:member.user_id,roles:member.roles,capabilities:effectiveCapabilitiesFor(member.roles,member.capabilities)},actorId);}
 async function assignmentOrgContext(c:PoolClient,actorId:string,targetUserId:string):Promise<{supervisorUserIds:string[];sourceOrgUnitId:string|null;sourceOrgUnitName:string|null}>{
@@ -180,17 +191,22 @@ export async function createContactAssignmentsIn(c:PoolClient,a:LeadActor,input:
  const migrated=await migrateContactAssignmentGroups(c);if(!migrated.ok)return migrated;
  if(!contactManager(a))return failure('FORBIDDEN','无分配权限');
  const currentMembers=await members(c);if(!validTarget(currentMembers.find(m=>m.user_id===input.targetUserId),a.userId))return failure('INVALID_INPUT','分配成员已失效或无用户开发权限');
- const org=await assignmentOrgContext(c,a.userId,input.targetUserId),notifyUserIds=contactAssignmentRecipients(input.targetUserId,org.supervisorUserIds);
+ const requestedSupervisors=input.supervisorUserIds??[],invalidSupervisor=requestedSupervisors.some(id=>!currentMembers.some(member=>member.user_id===id));if(invalidSupervisor)return failure('INVALID_INPUT','通知用户已失效或不在当前中心');
+ const org=await assignmentOrgContext(c,a.userId,input.targetUserId),supervisorUserIds=[...new Set([...org.supervisorUserIds,...requestedSupervisors])].sort(),notifyUserIds=contactAssignmentRecipients(input.targetUserId,supervisorUserIds);
  return cached(c,a,'contact-assignments:create',input,async()=>{
   const items:ContactAssignment[]=[];const groupId=randomUUID(),ordered=[...input.contacts].sort((x,y)=>x.contactId-y.contactId);
   for(const [index,ref] of ordered.entries()){
-   const ct=await contact(c,ref,true);if(!ct||!read(a,ct))return failure('NOT_FOUND','联系人不存在');if(!assign(a,ct)||ct.contactVersion!==ref.expectedVersion)return failure('CONFLICT','联系人已分配、受限或版本已变化');
+   const ct=await contact(c,ref,true);if(!ct||!read(a,ct))return failure('NOT_FOUND','联系人不存在');
+   if(ct.origin!=='operations')return failure('FORBIDDEN','个人线索不能由管理员分配');
+   if(ct.development_restriction?.trim())return failure('FORBIDDEN','联系人存在开发限制');
+   if(ct.ownerUserId!==null)return failure('CONFLICT','联系人已有负责人');
+   if(ct.active_assignment_status)return failure('CONFLICT','联系人已有进行中的分配');
    if((await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE contact_id=$1 AND status IN ('pending','accepted','pending_transfer')",[ref.contactId])).rows.length)return failure('CONFLICT','联系人已有有效分配请求');
-   const id=randomUUID();await c.query('INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids,supervisor_user_ids,source_org_unit_id,source_org_unit_name) VALUES($1,$2,$3,$4,$5,$6::uuid[],$7::uuid[],$8,$9)',[id,ref.contactId,ref.customerId,input.targetUserId,a.userId,notifyUserIds,org.supervisorUserIds,org.sourceOrgUnitId,org.sourceOrgUnitName]);await c.query('INSERT INTO crm_contact_assignment_group_members(group_id,request_id) VALUES($1,$2)',[groupId,id]);const r=await request(c,a,id);if(!r.ok)return r;items.push(r.data);if(index===0)await assignmentEvent(c,a,r.data,CONTACT_ASSIGNMENT_EVENTS.requested,[a.userId,...notifyUserIds],undefined,ordered.length);
+    const id=randomUUID();await c.query('INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids,supervisor_user_ids,source_org_unit_id,source_org_unit_name) VALUES($1,$2,$3,$4,$5,$6::uuid[],$7::uuid[],$8,$9)',[id,ref.contactId,ref.customerId,input.targetUserId,a.userId,notifyUserIds,supervisorUserIds,org.sourceOrgUnitId,org.sourceOrgUnitName]);await c.query('INSERT INTO crm_contact_assignment_group_members(group_id,request_id) VALUES($1,$2)',[groupId,id]);const r=await request(c,a,id);if(!r.ok)return r;items.push(r.data);if(index===0)await assignmentEvent(c,a,r.data,CONTACT_ASSIGNMENT_EVENTS.requested,[a.userId,...notifyUserIds],undefined,ordered.length);
   }return success({items});
  },async old=>{const items:ContactAssignment[]=[];for(const r of old.items){const current=await request(c,a,r.requestId);if(!current.ok)return current;items.push(current.data);}return success({items});});
 }
-export async function decideContactAssignmentIn(c:PoolClient,a:LeadActor,action:ContactAssignmentDecisionAction,input:ContactAssignmentDecision):Promise<Result<ContactAssignment>>{
+export async function decideContactAssignmentIn(c:PoolClient,a:LeadActor,action:ContactAssignmentDecisionAction,input:ContactAssignmentDecision,emitEvent=true):Promise<Result<ContactAssignment>>{
  const initial=(await c.query('SELECT * FROM crm_contact_assignment_requests WHERE request_id=$1',[input.requestId])).rows[0];
  if(!initial)return failure('NOT_FOUND','分配请求不存在');
  const initiallyAllowed=action==='cancel'?contactManager(a)||[initial.actor_id,initial.transfer_actor_id].includes(a.userId):initial.target_user_id===a.userId&&a.capabilities.includes('leads.develop');
@@ -239,17 +255,23 @@ export async function decideContactAssignmentIn(c:PoolClient,a:LeadActor,action:
    }
   }
   const result=await request(c,a,input.requestId,a.userId);if(!result.ok)return result;
-  await assignmentEvent(c,a,result.data,event,[row.actor_id,row.target_user_id,row.transfer_actor_id,row.previous_target_user_id,...row.notify_user_ids,...row.supervisor_user_ids].filter((id):id is string=>!!id));return result;
+  if(emitEvent)await assignmentEvent(c,a,result.data,event,[row.actor_id,row.target_user_id,row.transfer_actor_id,row.previous_target_user_id,...row.notify_user_ids,...row.supervisor_user_ids].filter((id):id is string=>!!id));return result;
  },()=>request(c,a,input.requestId,a.userId));
 }
 export async function decideContactAssignmentGroupIn(c:PoolClient,a:LeadActor,action:ContactAssignmentDecisionAction,input:ContactAssignmentGroupDecision):Promise<Result<{items:ContactAssignment[]}>>{
  const migrated=await migrateContactAssignmentGroups(c);if(!migrated.ok)return migrated;
- const rows=(await c.query(`SELECT r.request_id,r.version,r.status,r.target_user_id,c.origin FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id JOIN crm_customers c ON c.customer_id=r.customer_id WHERE COALESCE(gm.group_id,r.request_id)=$1 ORDER BY r.request_id FOR UPDATE OF r`,[input.groupId])).rows;
+ const rows=(await c.query(`SELECT r.request_id,r.version,r.status,r.actor_id,r.target_user_id,r.transfer_actor_id,r.previous_target_user_id,r.notify_user_ids,r.supervisor_user_ids,c.origin FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id JOIN crm_customers c ON c.customer_id=r.customer_id WHERE COALESCE(gm.group_id,r.request_id)=$1 ORDER BY r.request_id FOR UPDATE OF r`,[input.groupId])).rows;
  if(!rows.length)return failure('NOT_FOUND','分配组不存在');
  if(action==='cancel'?!contactManager(a):rows.some(row=>row.target_user_id!==a.userId)||!a.capabilities.includes('leads.develop'))return failure('NOT_FOUND','分配请求不存在');
- for(const row of rows.filter(row=>row.status==='pending')){
+ const pendingRows=rows.filter(row=>row.status==='pending'),decided:ContactAssignment[]=[];
+ for(const row of pendingRows){
   const decision={requestId:row.request_id as string,expectedVersion:Number(row.version),idempotencyKey:createHash('sha256').update(`${input.idempotencyKey}:${row.request_id}`).digest('hex')};
-  const result=await decideContactAssignmentIn(c,a,action,decision);if(!result.ok)return result;
+  const result=await decideContactAssignmentIn(c,a,action,decision,false);if(!result.ok)return result;decided.push(result.data);
+ }
+ if(decided.length){
+  const event=action==='accept'?CONTACT_ASSIGNMENT_EVENTS.accepted:action==='reject'?CONTACT_ASSIGNMENT_EVENTS.rejected:CONTACT_ASSIGNMENT_EVENTS.cancelled;
+  const recipients=[...new Set(pendingRows.flatMap(row=>[row.actor_id,row.target_user_id,row.transfer_actor_id,row.previous_target_user_id,...row.notify_user_ids,...row.supervisor_user_ids]).filter((id):id is string=>!!id))];
+  await assignmentEvent(c,a,decided[0]!,event,recipients,undefined,decided.length);
  }
  const result=await contactAssignmentsIn(c,a,{view:action==='cancel'?'outgoing':'incoming',status:'pending',search:'',limit:200,offset:0,groupId:input.groupId});
  return result.ok?success({items:result.data.items}):result;
@@ -347,6 +369,7 @@ export async function contactUpdateIn(c:PoolClient,a:LeadActor,input:CenterConta
   const fields={email:'email',firstName:'first_name',lastName:'last_name',title:'title',phone:'phone',whatsapp:'whatsapp',sourceLevel1:'source_level1',sourceLevel2:'source_level2',linkedinUrl:'linkedin',country:'country',clientType:'client_type',language:'language',stage:'stage',status:'status',tags:'tags',preferences:'extra'} as const;
   const values: unknown[] = [input.contactId];
   const sets: string[] = [];
+  const changes = notificationValues(Object.entries(input.fields).map(([key,value])=>[key,contactFieldValue(ct,key),key==='email'&&typeof value==='string'?value.trim().toLowerCase()||null:value]));
   for (const [key, value] of Object.entries(input.fields)) {
    if (!Object.hasOwn(fields, key)) return failure('INVALID_INPUT', '联系人字段不可修改');
    const json = key === 'tags' || key === 'preferences';
@@ -357,10 +380,10 @@ export async function contactUpdateIn(c:PoolClient,a:LeadActor,input:CenterConta
     : `${fields[key as keyof typeof fields]}=$${values.length}${json ? '::jsonb' : ''}`);
   }
   await c.query(`UPDATE contacts SET ${sets.join(',')},crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1`,values);
-  await contactEvent(c,a,ct,CONTACT_ASSIGNMENT_EVENTS.updated,input.expectedVersion+1);return contactDetailIn(c,a,input);
+  await contactEvent(c,a,ct,CONTACT_ASSIGNMENT_EVENTS.updated,input.expectedVersion+1,undefined,undefined,{fields:Object.keys(input.fields),changes});return contactDetailIn(c,a,input);
  },()=>contactDetailIn(c,a,input));
 }
-async function contactEvent(c:PoolClient,a:LeadActor,ct:ContactRow,type:string,version:number,activityId?:string,mailEventId?:string){await c.query('INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,\'crm\',$3,$4,$5,$6::uuid[])',[type,a.userId,version,ct.customerId,JSON.stringify({contactId:ct.contactId,customerId:ct.customerId,version,...(activityId?{activityId}:{}),...(mailEventId?{mailEventId}:{})}),[...new Set([a.userId,ct.created_by,...(ct.ownerUserId?[ct.ownerUserId]:[]),...(ct.shared_grants??[]).map(g=>g.targetUserId)])].sort()]);}
+async function contactEvent(c:PoolClient,a:LeadActor,ct:ContactRow,type:string,version:number,activityId?:string,mailEventId?:string,details:Record<string,unknown>={},extraRecipients:readonly string[]=[]){await c.query('INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,\'crm\',$3,$4,$5,$6::uuid[])',[type,a.userId,version,ct.customerId,JSON.stringify({contactId:ct.contactId,customerId:ct.customerId,version,...(activityId?{activityId}:{}),...(mailEventId?{mailEventId}:{}),...details}),[...new Set([a.userId,ct.created_by,...(ct.ownerUserId?[ct.ownerUserId]:[]),...(ct.shared_grants??[]).map(g=>g.targetUserId),...extraRecipients])].sort()]);}
 export async function contactFollowupIn(c:PoolClient,a:LeadActor,input:CenterContactFollowup):Promise<Result<CenterContactDetail>>{
  const ct=await contact(c,input,true);if(!ct||!read(a,ct))return failure('NOT_FOUND','联系人不存在或不可跟进');
  const permissions=contactPermissionsFor(a,ct);if(input.stage!==undefined&&!permissions.canChangeStage||(input.stage===undefined||input.method!=='note'||input.contactStatus!==undefined)&&!permissions.canFollowup)return failure('FORBIDDEN','没有跟进或关系阶段修改权限');
@@ -369,6 +392,7 @@ export async function contactFollowupIn(c:PoolClient,a:LeadActor,input:CenterCon
   const recorded=(await c.query('SELECT clock_timestamp() AS t')).rows[0].t as Date,occurred=input.occurredAt?new Date(input.occurredAt):recorded,method=input.method??'other';
   if(!Number.isFinite(occurred.getTime())||occurred.getTime()>recorded.getTime()+FOLLOWUP_TIME_LIMITS.future_skew_seconds*MILLISECONDS_PER_SECOND||method==='note'&&input.contactStatus!==undefined)return failure('INVALID_INPUT','跟进时间或触达状态无效');
   const note=!permissions.canFollowup&&input.stage!==undefined?`关系阶段：${input.stage}`:input.note;
+  const changes=notificationValues([['contactStatus',ct.touchStatus,input.contactStatus],['stage',ct.relationshipStage??null,input.stage]]);
   const activity=(await c.query('INSERT INTO crm_shared_activities(customer_id,interaction_id,actor_id,note,stage,method,occurred_at,recorded_at,created_at,contact_id,contact_status) VALUES($1,NULL,$2,$3,$4,$5,$6,$7,$7,$8,$9) RETURNING id::text',[ct.customerId,a.userId,note,input.stage??null,method,occurred,recorded,ct.contactId,input.contactStatus??null])).rows[0];
   // Only explicit user results synchronize compatible legacy display fields.
   // Unable to contact is not evidence of an invalid mailbox; notes/tags never manufacture touch.
@@ -376,7 +400,7 @@ export async function contactFollowupIn(c:PoolClient,a:LeadActor,input:CenterCon
   // Relationship stage lives in the activity timeline; ordinary tags are independent customer metadata.
   await c.query('UPDATE contacts SET crm_touch_status=COALESCE($2,crm_touch_status),status=COALESCE($3,status),crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1',[ct.contactId,input.contactStatus??null,legacyStatus]);
   await refreshMailProjectionIn(c,input,ct.email);
-  await contactEvent(c,a,ct,CONTACT_ASSIGNMENT_EVENTS.followup,input.expectedVersion+1,activity.id);
+  await contactEvent(c,a,ct,CONTACT_ASSIGNMENT_EVENTS.followup,input.expectedVersion+1,activity.id,undefined,{stage:input.stage??null,contactStatus:input.contactStatus??null,method,changes});
   return contactDetailIn(c,a,input);
  },()=>contactDetailIn(c,a,input));
 }

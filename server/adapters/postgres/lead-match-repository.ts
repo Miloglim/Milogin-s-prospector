@@ -135,7 +135,7 @@ const CANDIDATE_SELECT = `
   EXISTS(SELECT 1 FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.target_user_id=$1::uuid AND sh.status='accepted') AS shared
 `;
 
-async function emailCandidates(c: PoolClient, actor: LeadActor, email: string): Promise<LeadIngressCandidateSnapshot[]> {
+async function emailCandidates(c: PoolClient, actor: LeadActor, email: string, kind: LeadIngressInput['kind']): Promise<LeadIngressCandidateSnapshot[]> {
   if (!email) return [];
   const rows = await c.query<CandidateRow>(`SELECT ${CANDIDATE_SELECT}
     FROM contacts ct
@@ -143,7 +143,8 @@ async function emailCandidates(c: PoolClient, actor: LeadActor, email: string): 
     JOIN crm_customers c ON c.customer_id=cc.customer_id
     JOIN companies co ON co.id=c.company_id
     WHERE lower(btrim(ct.email))=$2
-    FOR SHARE OF ct,c`, [actor.userId, email]);
+      AND (($3='operations' AND c.origin='operations') OR ($3='personal' AND c.origin='personal' AND c.owner_user_id=$1))
+    FOR SHARE OF ct,c`, [actor.userId, email, kind]);
   return rows.rows.map(row => snapshot(actor, row, 'exact_email', 1));
 }
 
@@ -159,10 +160,10 @@ async function companyCandidates(c: PoolClient, actor: LeadActor, input: LeadIng
       ($2::text<>'' AND lower(btrim(co.domain)) LIKE '%'||split_part($2::text,'.',1)||'%')
       OR lower(btrim(co.name))=lower(btrim($3))
       OR ($4::text<>'' AND lower(btrim(co.name)) LIKE '%'||$4::text||'%')
-    )
+    ) AND (($5='operations' AND c.origin='operations') OR ($5='personal' AND c.origin='personal' AND c.owner_user_id=$1))
     ORDER BY co.id,ct.id
     LIMIT 200
-    FOR SHARE OF co`, [actor.userId, keys.domain, input.company.name, token]);
+    FOR SHARE OF co`, [actor.userId, keys.domain, input.company.name, token, input.kind]);
   const snapshots = rows.rows.map(row => snapshot(actor, row, 'none', 0));
   return classifyCompanyCandidates(input.company, snapshots.map(row => {
     return {
@@ -178,7 +179,7 @@ async function companyCandidates(c: PoolClient, actor: LeadActor, input: LeadIng
 async function candidatesIn(c: PoolClient, actor: LeadActor, input: LeadIngressInput): Promise<LeadIngressCandidateSnapshot[]> {
   const emails = [...new Set(input.contacts.map(contact => (contact.email ?? '').trim().toLowerCase()).filter(Boolean))];
   const exact: LeadIngressCandidateSnapshot[] = [];
-  for (const email of emails) exact.push(...await emailCandidates(c, actor, email));
+  for (const email of emails) exact.push(...await emailCandidates(c, actor, email, input.kind));
   const companies = input.target?.customerId ? [] : await companyCandidates(c, actor, input);
   return [...exact, ...companies];
 }
@@ -271,7 +272,7 @@ async function createCustomerIn(c: PoolClient, actor: LeadActor, input: LeadIngr
   const customerId = randomUUID();
   const inserted = await c.query(`INSERT INTO crm_customers(
     customer_id,company_id,source,customer_key,source_detail,created_by,origin,state,owner_user_id,business_type,development_restriction,source_created_at
-  ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(source,customer_key) DO NOTHING RETURNING customer_id`, [
+  ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING RETURNING customer_id`, [
     customerId, companyId, input.sourceChannel, input.customerKey || customerId, input.sourceDetail, actor.userId, input.kind,
     input.kind === 'personal' ? 'owned' : 'draft', input.kind === 'personal' ? actor.userId : null,
     text(input.company.businessType),text(input.profile?.developmentRestriction),

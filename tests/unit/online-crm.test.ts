@@ -21,6 +21,7 @@ describe('desktop center isolation',()=>{
   });
   it('allows HTTPS centers and explicit loopback HTTP without accepting unsafe URLs',()=>{
     expect(validateCenterBase('http://127.0.0.1:55844')).toBe('http://127.0.0.1:55844');
+    expect(validateCenterBase('http://22124.qa4.yqn.corp:22124')).toBe('http://22124.qa4.yqn.corp:22124');
     expect(validateCenterBase('https://crm.company.internal')).toBe('https://crm.company.internal');
     for(const url of ['http://localhost:55844','http://example.invalid','http://user@127.0.0.1','https://crm.company.internal/api','https://crm.company.internal?x=1'])expect(validateCenterBase(url)).toBeNull();
   });
@@ -82,6 +83,10 @@ describe('desktop center isolation',()=>{
     expect(request).toHaveBeenCalledWith('GET','/api/crm/leads?view=operations&search=name%20%26%20team&limit=25&offset=25&assignment=unassigned&stage=cold');
     await service.list({view:'personal',search:'',limit:25,offset:0});
     expect(request).toHaveBeenCalledWith('GET','/api/crm/leads?view=personal&search=&limit=25&offset=0');
+    await service.teamCandidates({search:'xj',limit:50,offset:0,role:'member',unitType:'sales_team'});
+    expect(request).toHaveBeenCalledWith('GET','/api/crm/team-invite-candidates?search=xj&limit=50&offset=0&role=member&unitType=sales_team');
+    await service.teamCandidates({search:'xj',limit:50,offset:0,role:'member',unitType:'sales_team',purpose:'create'});
+    expect(request).toHaveBeenCalledWith('GET','/api/crm/team-invite-candidates?search=xj&limit=50&offset=0&role=member&unitType=sales_team&purpose=create');
     const workbook={source:'worksheet',sourceDetail:'',kind:'operations' as const,idempotencyKey:'workbook-key',rows:[{entity:'customer' as const,sourceRef:'row-1',companyName:'Without contacts',sheetName:'Customers',rowNumber:2,rawRow:{}}]};
     await service.importWorkbook(workbook);expect(request).toHaveBeenCalledWith('POST','/api/crm/workbook-imports',workbook);
     await service.contactGroups({dimension:'batch',scope:'all',search:'Q3',limit:24,offset:0});expect(request).toHaveBeenCalledWith('GET','/api/crm/contact-groups?dimension=batch&scope=all&search=Q3&limit=24&offset=0');
@@ -104,15 +109,49 @@ describe('desktop center isolation',()=>{
     const token=randomBytes(32).toString('base64url');
     const paths:string[]=[];
     const page={items:[],total:0};
+    const groups={items:[{key:'batch-a',label:'Batch A',count:2}],total:1};
     const detail={contact:{contactId:7,customerId:'customer-7'}};
-    const fetcher=vi.fn(async(url:string)=>{if(url.endsWith('/login'))return json({token,identity});if(url.endsWith('/me'))return json(identity);paths.push(url);return url.includes('/api/crm/contacts/7')?json(detail):json(page);});
+    const fetcher=vi.fn(async(url:string)=>{if(url.endsWith('/login'))return json({token,identity});if(url.endsWith('/me'))return json(identity);paths.push(url);return url.includes('/api/crm/contact-groups')?json(groups):url.includes('/api/crm/contacts/7')?json(detail):json(page);});
     const adapter=new OnlineCrmAdapter(fetcher as unknown as typeof fetch);
     await adapter.login({baseUrl:'http://127.0.0.1:55844',email:identity.email,password:randomBytes(24).toString('base64url')});
     adapter.setContactReader(async()=>failure('DATABASE_ERROR','本地镜像损坏'));
+    adapter.setContactGroupReader(async()=>failure('DATABASE_ERROR','本地分组损坏'));
     adapter.setDetailReader(async()=>failure('DATABASE_ERROR','本地详情损坏'));
     expect(await adapter.contacts({search:'buyer',limit:25,offset:0})).toMatchObject({ok:true,data:page});
+    expect(await adapter.contactGroups({dimension:'batch',scope:'all',search:'',limit:24,offset:0})).toMatchObject({ok:true,data:groups});
     expect(await adapter.contactDetail({contactId:7,customerId:'customer-7'})).toMatchObject({ok:true,data:detail});
     expect(paths[0]).toContain('/api/crm/contacts?search=buyer&limit=25&offset=0');
-    expect(paths[1]).toContain('/api/crm/contacts/7?customerId=customer-7');
+    expect(paths[1]).toContain('/api/crm/contact-groups?dimension=batch&scope=all&search=&limit=24&offset=0');
+    expect(paths[2]).toContain('/api/crm/contacts/7?customerId=customer-7');
+  });
+  it('pauses the old device, uploads a safe inventory, and resumes only after the handoff ends',async()=>{
+    const token=randomBytes(32).toString('base64url');
+    let pendingCalls=0, prepareBody:Record<string,unknown>|undefined;
+    const fetcher=vi.fn(async(url:string,init:RequestInit)=>{
+      if(url.endsWith('/login'))return json({token,refreshToken:'refresh-token',expiresAt:new Date(Date.now()+3600000).toISOString(),identity});
+      if(url.endsWith('/me'))return json(identity);
+      if(url.endsWith('/handoff/pending')){
+        pendingCalls++;
+        return json(pendingCalls===1?{handoffId:'handoff-1',newDeviceName:'Home PC',expiresAt:new Date(Date.now()+600000).toISOString()}:null);
+      }
+      if(url.endsWith('/handoff/prepare')){
+        prepareBody=JSON.parse(init.body as string) as Record<string,unknown>;
+        return json({handoffId:'handoff-1',status:'blocked',expiresAt:new Date(Date.now()+600000).toISOString(),oldDeviceName:'Office PC',newDeviceName:'Home PC'});
+      }
+      return json(undefined);
+    });
+    const pause=vi.fn(), resume=vi.fn();
+    const adapter=new OnlineCrmAdapter(fetcher as unknown as typeof fetch,{load:async()=>null,save:async()=>{},clear:async()=>{}} as never);
+    adapter.setHandoffRuntime({
+      pause,resume,
+      inspect:()=>({checkedAt:new Date().toISOString(),counts:{contactPending:0,contactFailed:0,offlinePending:0,offlineFailed:0,templates:0,inboxLabels:0,queuedSends:0,activeCampaigns:1,pendingMailChanges:0},blockers:[]}),
+    });
+    expect((await adapter.login({baseUrl:'http://127.0.0.1:55844',email:identity.email,password:'synthetic-password',remember:true})).ok).toBe(true);
+    expect((await adapter.status()).ok).toBe(true);
+    await vi.waitFor(()=>expect(prepareBody).toBeTruthy());
+    expect(pause).toHaveBeenCalledOnce();
+    expect(prepareBody).toMatchObject({refreshToken:'refresh-token',summary:{counts:{activeCampaigns:1},blockers:['有 1 个自动开发任务仍在运行']}});
+    expect((await adapter.status()).ok).toBe(true);
+    await vi.waitFor(()=>expect(resume).toHaveBeenCalledOnce());
   });
 });

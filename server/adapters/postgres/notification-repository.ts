@@ -1,8 +1,8 @@
-import {CONTACT_SHARING_EVENTS} from '../../core/contact-sharing';
+import {CONTACT_SHARING_EVENTS,CONTACT_TEAM_VISIBILITY_EVENT} from '../../core/contact-sharing';
 import {loadContactIn,canReadContact} from './contact-assignment-repository';
 import {createHash} from 'node:crypto';
 import {CONTACT_ASSIGNMENT_EVENTS} from '../../core/contact-assignments';
-const CONTACT_EVENTS:string[]=[...Object.values(CONTACT_ASSIGNMENT_EVENTS),...Object.values(CONTACT_SHARING_EVENTS)];
+const CONTACT_EVENTS:string[]=[...Object.values(CONTACT_ASSIGNMENT_EVENTS),...Object.values(CONTACT_SHARING_EVENTS),CONTACT_TEAM_VISIBILITY_EVENT];
 const ASSIGNMENT_REQUEST_EVENTS:string[]=[CONTACT_ASSIGNMENT_EVENTS.requested,CONTACT_ASSIGNMENT_EVENTS.accepted,CONTACT_ASSIGNMENT_EVENTS.rejected,CONTACT_ASSIGNMENT_EVENTS.cancelled,CONTACT_ASSIGNMENT_EVENTS.expired,CONTACT_ASSIGNMENT_EVENTS.transferRequested,CONTACT_ASSIGNMENT_EVENTS.transferred,CONTACT_ASSIGNMENT_EVENTS.transferCancelled];
 const CONTACT_REQUEST_EVENTS:string[]=[...ASSIGNMENT_REQUEST_EVENTS,...Object.values(CONTACT_SHARING_EVENTS)];
 import type {Pool,PoolClient} from 'pg';
@@ -18,6 +18,7 @@ import {assertCenterDatabasePool} from './config';
 import {ADMIN_LOCK} from './admin-schema';
 import { TASK_DUE_EVENT } from '../../core/tasks';
 import { OPPORTUNITY_EVENTS } from '../../core/opportunities';
+import { DEAL_OVERLAP_EVENT } from '../../core/lead-ingress';
 const OPPORTUNITY_EVENT_TYPES:string[]=Object.values(OPPORTUNITY_EVENTS);
 import { TEAM_ATTENTION_EVENTS } from '../../core/team-attention';
 const TEAM_ATTENTION_EVENT_TYPES:string[]=Object.values(TEAM_ATTENTION_EVENTS);
@@ -32,6 +33,19 @@ function visible(a:Actor,c:Customer,eventType:string){
  const ops=c.origin==='operations'&&a.roles.includes('operations')&&a.capabilities.some(v=>['leads.import','leads.publish','followups.read'].includes(v))&&(a.scope==='shared'||a.scope==='summary');
  const sales=(c.state==='published'&&a.capabilities.includes('leads.claim'))||(c.owner_user_id===a.userId&&a.capabilities.includes('leads.develop'));
  return ops||sales;
+}
+function notificationChange(row:Record<string,any>):Notification['change']{
+ const eventType=String(row.event_type??'');
+ const text=(value:unknown)=>typeof value==='string'&&value.trim()?value.trim():null;
+ const changes=Array.isArray(row.payload?.changes)?row.payload.changes.filter((value:unknown):value is {field:string;from:string|null;to:string|null}=>!!value&&typeof value==='object'&&!Array.isArray(value)&&typeof (value as Record<string,unknown>).field==='string'&&((value as Record<string,unknown>).from===null||typeof (value as Record<string,unknown>).from==='string')&&((value as Record<string,unknown>).to===null||typeof (value as Record<string,unknown>).to==='string')):[];
+ if((eventType==='crm.lead.followup'||eventType==='crm.contact.followup')&&row.mail_event_id)return {kind:'mail',direction:text(row.mail_direction),from:text(row.mail_from_email),method:'email',note:text(row.mail_subject)||text(row.mail_preview)};
+ if(eventType==='crm.lead.followup'||eventType==='crm.contact.followup')return {kind:'followup',changes,stage:text(row.activity_stage),contactStatus:text(row.activity_contact_status),method:text(row.activity_method),note:text(row.activity_note)};
+ if(eventType==='crm.contact.updated')return {kind:'fields',fields:Array.isArray(row.payload?.fields)?row.payload.fields.filter((value:unknown):value is string=>typeof value==='string'):[],changes};
+ if(eventType===TASK_DUE_EVENT)return {kind:'task',title:text(row.task_title)};
+ if(OPPORTUNITY_EVENT_TYPES.includes(eventType))return {kind:'opportunity',title:text(row.opportunity_title)};
+ if(eventType.startsWith('crm.contact.assignment.'))return {kind:'assignment'};
+ if(eventType.startsWith('crm.contact.share.'))return {kind:'share'};
+ return {kind:'customer'};
 }
 export class PostgresNotificationRepository implements NotificationRepository{
  constructor(private readonly pool:Pool,private readonly log:LogSink){assertCenterDatabasePool(pool);}
@@ -77,7 +91,25 @@ export class PostgresNotificationRepository implements NotificationRepository{
   const head=await db.query('SELECT delivery_seq::text FROM crm_feed_heads WHERE user_id=$1',[a.userId]);const high=head.rows[0]?.delivery_seq??'0';
   if(BigInt(q.after)>BigInt(high))return success({items:[],nextCursor:high,hasMore:false,resyncRequired:true});
   const after=q.latest?String(BigInt(high)>BigInt(NOTIFICATION_LIMITS.history)?BigInt(high)-BigInt(NOTIFICATION_LIMITS.history):0):q.after;
-  const rows=await db.query(`SELECT d.*,c.created_by,c.owner_user_id,c.origin,c.state,co.name AS company_name,o.recipient_user_ids,o.payload,u.display_name AS actor_name,act.note AS activity_note,act.opportunity_id AS activity_opportunity_id,op.opportunity_id AS projected_opportunity_id,op.title AS opportunity_title,EXISTS(SELECT 1 FROM crm_notification_reads r WHERE r.user_id=$1 AND r.delivery_id=d.delivery_id) AS read FROM crm_event_deliveries d JOIN crm_customers c USING(customer_id) JOIN public.identity_outbox o ON o.event_id=d.event_id JOIN companies co ON co.id=c.company_id LEFT JOIN public.identity_users u ON u.user_id=o.user_id LEFT JOIN crm_shared_activities act ON act.customer_id=c.customer_id AND act.actor_id=o.user_id AND act.id::text=o.payload->>'activityId' AND o.event_type='crm.lead.followup' LEFT JOIN crm_opportunities op ON op.customer_id=c.customer_id AND op.opportunity_id::text=COALESCE(act.opportunity_id::text,o.payload->>'opportunityId') WHERE d.recipient_user_id=$1 AND d.delivery_seq>$2 AND d.delivery_seq<=$3 AND NOT(d.event_type=$5 AND o.user_id=$1) ORDER BY d.delivery_seq LIMIT $4 FOR SHARE OF c`,[a.userId,after,high,NOTIFICATION_LIMITS.scanMax,SELF_CREATED_EVENT]);
+  const rows=await db.query(`WITH candidates AS MATERIALIZED (SELECT d.*,c.created_by,c.owner_user_id,c.origin,c.state,co.name AS company_name,o.recipient_user_ids,o.payload,u.display_name AS actor_name,
+    act.note AS activity_note,act.stage AS activity_stage,act.method AS activity_method,act.contact_status AS activity_contact_status,act.opportunity_id AS activity_opportunity_id,
+    mail.event_id AS mail_event_id,mail.message_key AS mail_message_key,mail.direction AS mail_direction,mail.subject AS mail_subject,mail.preview AS mail_preview,mail.from_email AS mail_from_email,
+    op.opportunity_id AS projected_opportunity_id,op.title AS opportunity_title,task.title AS task_title,
+    EXISTS(SELECT 1 FROM crm_notification_reads r WHERE r.user_id=$1 AND r.delivery_id=d.delivery_id) AS read
+    FROM crm_event_deliveries d JOIN crm_customers c USING(customer_id) JOIN public.identity_outbox o ON o.event_id=d.event_id JOIN companies co ON co.id=c.company_id
+    LEFT JOIN public.identity_users u ON u.user_id=o.user_id
+    LEFT JOIN crm_shared_activities act ON act.customer_id=c.customer_id AND act.actor_id=o.user_id AND act.id::text=o.payload->>'activityId' AND o.event_type IN ('crm.lead.followup','crm.contact.followup')
+    LEFT JOIN crm_contact_mail_events mail ON mail.event_id::text=o.payload->>'mailEventId' AND o.event_type IN ('crm.lead.followup','crm.contact.followup')
+    LEFT JOIN crm_opportunities op ON op.customer_id=c.customer_id AND op.opportunity_id::text=COALESCE(act.opportunity_id::text,o.payload->>'opportunityId')
+    LEFT JOIN crm_followup_tasks task ON task.task_id::text=o.payload->>'taskId'
+    WHERE d.recipient_user_id=$1 AND d.delivery_seq>$2 AND d.delivery_seq<=$3 AND NOT(d.event_type=$5 AND o.user_id=$1)
+    ORDER BY d.delivery_seq LIMIT $4 FOR SHARE OF c),
+    deduped AS (SELECT candidates.*,ROW_NUMBER() OVER (PARTITION BY recipient_user_id,
+      CASE WHEN mail_message_key IS NOT NULL THEN concat_ws(':',customer_id,payload->>'contactId',
+        COALESCE(NULLIF(lower(regexp_replace(btrim(COALESCE(mail_subject,'')),'^((re|res|fw|fwd|aw|sv|回复|答复|回覆|转发|轉寄)[[:space:]]*[:：][[:space:]]*)+','', 'i')),''),mail_message_key))
+      ELSE delivery_id::text END
+      ORDER BY delivery_seq DESC) AS duplicate_rank FROM candidates)
+    SELECT * FROM deduped WHERE duplicate_rank=1 ORDER BY delivery_seq`,[a.userId,after,high,NOTIFICATION_LIMITS.scanMax,SELF_CREATED_EVENT]);
   const items:Notification[]=[];let cursor=q.after;
   for(const r of rows.rows){cursor=String(r.delivery_seq);
    if(TEAM_ATTENTION_EVENT_TYPES.includes(r.event_type)){
@@ -87,6 +119,7 @@ export class PostgresNotificationRepository implements NotificationRepository{
     items.push({
       id:r.delivery_id,eventType:r.event_type as Notification['eventType'],customerId:access.canOpen?r.customer_id:'',version:access.canOpen?access.version:0,
       canOpen:access.canOpen,cursor,createdAt:new Date(r.created_at).toISOString(),read:r.read,taskId:itemId||undefined,attentionItemId:itemId||undefined,
+      change:notificationChange(r),
       ...(access.canOpen&&access.contactId?{contactId:access.contactId}:{}),
       ...(access.canOpen?{summary:{companyName:r.company_name,contactName:access.contactName,actorName:r.actor_name}}:{}),
     });
@@ -103,10 +136,10 @@ export class PostgresNotificationRepository implements NotificationRepository{
     const monitorRecipient=!!requestRow&&!shareEvent&&requestRow.supervisor_user_ids?.includes(a.userId);
     const canOpen=requestEvent?shareEvent?!!requestRow&&([requestRow.actor_id,requestRow.target_user_id].includes(a.userId)||contactAccess):!!requestRow&&r.recipient_user_ids?.includes(a.userId):contactAccess;
     const customerId=canOpen?r.customer_id:'',version=canOpen?r.version:0;
-    items.push({id:r.delivery_id,eventType:r.event_type,customerId,version,canOpen,cursor,createdAt:new Date(r.created_at).toISOString(),read:r.read,...(canOpen?{contactOpenMode:requestEvent?(shareEvent?'contact':monitorRecipient?'monitor':'assignment'):'contact'}:{}),...(requestEvent?shareEvent?{shareId:r.payload.shareId,shareStatus:requestRow?.status,shareTargetUserId:requestRow?.target_user_id}:{requestId:r.payload.requestId,assignmentStatus:requestRow?.status,...(typeof r.payload.groupId==='string'?{assignmentGroupId:r.payload.groupId}:{}),...(Number.isSafeInteger(r.payload.groupCount)?{assignmentGroupCount:r.payload.groupCount}:{})}:{}),...(contactAccess||requestEvent&&!shareEvent?{contactId:r.payload.contactId}:{}),summary:{companyName:r.company_name,actorName:r.actor_name,...(requestEvent?{contactName:r.payload.contactName}:{})}});
+    items.push({id:r.delivery_id,eventType:r.event_type,customerId,version,canOpen,cursor,createdAt:new Date(r.created_at).toISOString(),read:r.read,change:notificationChange(r),...(canOpen?{contactOpenMode:requestEvent?(shareEvent?'contact':monitorRecipient?'monitor':'assignment'):'contact'}:{}),...(requestEvent?shareEvent?{shareId:r.payload.shareId,shareStatus:requestRow?.status,shareTargetUserId:requestRow?.target_user_id}:{requestId:r.payload.requestId,assignmentStatus:requestRow?.status,...(typeof r.payload.groupId==='string'?{assignmentGroupId:r.payload.groupId}:{}),...(Number.isSafeInteger(r.payload.groupCount)?{assignmentGroupCount:r.payload.groupCount}:{})}:{}),...(contactAccess||requestEvent&&!shareEvent?{contactId:r.payload.contactId}:{}),...(r.mail_event_id?{mailEventId:String(r.mail_event_id)}:{}),...(r.mail_message_key?{mailMessageKey:String(r.mail_message_key)}:{}),summary:{companyName:r.company_name,actorName:r.actor_name,...(requestEvent?{contactName:r.payload.contactName}:{})}});
     if(items.length===q.limit)break;continue;
    }
-   const assigned=r.event_type==='crm.lead.assigned'&&r.recipient_user_ids?.includes(a.userId);const taskDue=r.event_type===TASK_DUE_EVENT;if(taskDue&&!await canProjectTaskDue(db,r,a))continue;if(taskDue||assigned||visible(a,r,r.event_type)){const canOpen=assigned?canReadLead(a,r):true;items.push({id:r.delivery_id,eventType:r.event_type,customerId:canOpen?r.customer_id:'',version:canOpen?r.version:0,canOpen,cursor,createdAt:new Date(r.created_at).toISOString(),read:r.read,...(taskDue?{taskId:r.payload.taskId}:{}),...(r.projected_opportunity_id&&canOpen?{opportunityId:r.projected_opportunity_id}:{}),...(canReadLead(a,r)?{summary:{companyName:r.company_name,actorName:r.actor_name,...(typeof r.activity_note==='string'?{note:r.activity_note.slice(0,SUMMARY_NOTE_MAX)}:OPPORTUNITY_EVENT_TYPES.includes(r.event_type)&&r.opportunity_title?{note:r.opportunity_title.slice(0,SUMMARY_NOTE_MAX)}:{})}}:{})});if(items.length===q.limit)break;}}
+   const assigned=r.event_type==='crm.lead.assigned'&&r.recipient_user_ids?.includes(a.userId);const overlap=r.event_type===DEAL_OVERLAP_EVENT&&r.recipient_user_ids?.includes(a.userId);const taskDue=r.event_type===TASK_DUE_EVENT;if(taskDue&&!await canProjectTaskDue(db,r,a))continue;if(taskDue||assigned||overlap||visible(a,r,r.event_type)){const canOpen=assigned?canReadLead(a,r):true;items.push({id:r.delivery_id,eventType:r.event_type,customerId:canOpen?r.customer_id:'',version:canOpen?r.version:0,canOpen,cursor,createdAt:new Date(r.created_at).toISOString(),read:r.read,change:notificationChange(r),...(taskDue?{taskId:r.payload.taskId}:{}),...(r.projected_opportunity_id&&canOpen?{opportunityId:r.projected_opportunity_id}:{}),...(r.mail_event_id?{mailEventId:String(r.mail_event_id)}:{}),...(r.mail_message_key?{mailMessageKey:String(r.mail_message_key)}:{}),...(canReadLead(a,r)||overlap?{summary:{companyName:r.company_name,actorName:r.actor_name,...(typeof r.activity_note==='string'?{note:r.activity_note.slice(0,SUMMARY_NOTE_MAX)}:OPPORTUNITY_EVENT_TYPES.includes(r.event_type)&&r.opportunity_title?{note:r.opportunity_title.slice(0,SUMMARY_NOTE_MAX)}:{})}}:{})});if(items.length===q.limit)break;}}
   if(!rows.rows.length||q.latest)cursor=high;
   await db.query(`INSERT INTO crm_device_cursors(user_id,device_id,cursor) VALUES($1,$2,$3) ON CONFLICT(user_id,device_id) DO UPDATE SET cursor=GREATEST(crm_device_cursors.cursor,excluded.cursor),updated_at=now()`,[a.userId,q.deviceId,cursor]);
   return success({items,nextCursor:cursor,hasMore:BigInt(cursor)<BigInt(high)});
@@ -120,7 +153,7 @@ export class PostgresNotificationRepository implements NotificationRepository{
   if(TEAM_ATTENTION_EVENT_TYPES.includes(row.event_type))allowed=!!row.recipient_user_ids?.includes(actor.data.userId)&&(await this.teamAttentionAccess(db,actor.data,row.payload?.attentionItemId)).canOpen;
   else if(CONTACT_REQUEST_EVENTS.includes(row.event_type))allowed=!!row.recipient_user_ids?.includes(actor.data.userId);
   else if(CONTACT_EVENTS.includes(row.event_type))allowed=await this.contactAccess(db,actor.data,row.payload?.contactId,row.customer_id);
-  else if(row.event_type==='crm.lead.assigned')allowed=!!row.recipient_user_ids?.includes(actor.data.userId);
+  else if(row.event_type==='crm.lead.assigned'||row.event_type===DEAL_OVERLAP_EVENT)allowed=!!row.recipient_user_ids?.includes(actor.data.userId);
   else allowed=visible(actor.data,row,row.event_type);
   if(!allowed)return failure('NOT_FOUND','通知不存在');
   await db.query('INSERT INTO crm_notification_reads(user_id,delivery_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[actor.data.userId,id]);return success(undefined);
@@ -132,9 +165,9 @@ export class PostgresNotificationRepository implements NotificationRepository{
   const events=await db.query(`SELECT o.* FROM public.identity_outbox o WHERE NOT EXISTS(SELECT 1 FROM crm_notification_consumed x WHERE x.event_id=o.event_id) ORDER BY o.created_at,o.event_id LIMIT $1 FOR UPDATE OF o SKIP LOCKED`,[NOTIFICATION_LIMITS.dispatchBatch]);
   const recipients=await db.query('SELECT user_id FROM public.identity_users WHERE active AND NOT must_change_password ORDER BY user_id FOR SHARE');let count=0;
   for(const event of events.rows){
-   if(event.product_id==='crm'&&['crm.customer.created','crm.lead.published','crm.lead.claimed','crm.lead.followup','crm.lead.assigned',TASK_DUE_EVENT,...OPPORTUNITY_EVENT_TYPES,...CONTACT_EVENTS,...TEAM_ATTENTION_EVENT_TYPES].includes(event.event_type)&&event.customer_id){
+   if(event.product_id==='crm'&&['crm.customer.created','crm.lead.published','crm.lead.claimed','crm.lead.followup','crm.lead.assigned',DEAL_OVERLAP_EVENT,TASK_DUE_EVENT,...OPPORTUNITY_EVENT_TYPES,...CONTACT_EVENTS,...TEAM_ATTENTION_EVENT_TYPES].includes(event.event_type)&&event.customer_id){
     const customer=await db.query('SELECT * FROM crm_customers WHERE customer_id=$1 FOR SHARE',[event.customer_id]);
-    if(customer.rows.length)for(const user of recipients.rows){if(event.event_type===SELF_CREATED_EVENT&&event.user_id===user.user_id)continue;if([TASK_DUE_EVENT,'crm.lead.assigned',...CONTACT_EVENTS,...TEAM_ATTENTION_EVENT_TYPES].includes(event.event_type)&&!event.recipient_user_ids?.includes(user.user_id))continue;const a=await this.access(db,user.user_id);if(!a)continue;if(event.event_type===TASK_DUE_EVENT){if(!await canProjectTaskDue(db,event,a))continue;}else if(CONTACT_EVENTS.includes(event.event_type)){if(!CONTACT_REQUEST_EVENTS.includes(event.event_type)&&!await this.contactAccess(db,a,event.payload?.contactId,event.customer_id))continue;}else if(TEAM_ATTENTION_EVENT_TYPES.includes(event.event_type)){if(!(await this.teamAttentionAccess(db,a,event.payload?.attentionItemId)).canOpen)continue;}else if(event.event_type!=='crm.lead.assigned'&&!visible(a,customer.rows[0],event.event_type))continue;
+    if(customer.rows.length)for(const user of recipients.rows){if(event.event_type===SELF_CREATED_EVENT&&event.user_id===user.user_id)continue;if([TASK_DUE_EVENT,'crm.lead.assigned',DEAL_OVERLAP_EVENT,...CONTACT_EVENTS,...TEAM_ATTENTION_EVENT_TYPES].includes(event.event_type)&&!event.recipient_user_ids?.includes(user.user_id))continue;const a=await this.access(db,user.user_id);if(!a)continue;if(event.event_type===TASK_DUE_EVENT){if(!await canProjectTaskDue(db,event,a))continue;}else if(CONTACT_EVENTS.includes(event.event_type)){if(!CONTACT_REQUEST_EVENTS.includes(event.event_type)&&!await this.contactAccess(db,a,event.payload?.contactId,event.customer_id))continue;}else if(TEAM_ATTENTION_EVENT_TYPES.includes(event.event_type)){if(!(await this.teamAttentionAccess(db,a,event.payload?.attentionItemId)).canOpen)continue;}else if(event.event_type!=='crm.lead.assigned'&&event.event_type!==DEAL_OVERLAP_EVENT&&!visible(a,customer.rows[0],event.event_type))continue;
      const old=await db.query("SELECT 1 FROM crm_event_deliveries WHERE event_id=$1 AND recipient_user_id=$2 AND projection_type='lead'",[event.event_id,a.userId]);if(old.rows.length)continue;
      await db.query('INSERT INTO crm_feed_heads(user_id) VALUES($1) ON CONFLICT DO NOTHING',[a.userId]);
      const head=await db.query('UPDATE crm_feed_heads SET delivery_seq=delivery_seq+1 WHERE user_id=$1 RETURNING delivery_seq',[a.userId]);

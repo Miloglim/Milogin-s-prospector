@@ -1,6 +1,7 @@
 import type { BrowserHandler } from './http';
 import { body, send } from './http';
 import { DESKTOP_AUTH_ROUTES } from '../core/desktop-session';
+import { DESKTOP_HANDOFF_ROUTES } from '../core/device-handoff';
 import { failure } from '../core/crm';
 import type { LoginGate, OnlineConfig } from '../core/auth';
 import type { DesktopSessionService } from '../services/desktop-session';
@@ -20,9 +21,19 @@ export function createDesktopAuthHandler(service: DesktopSessionService, gate: L
       const email = input.data && typeof input.data === 'object' && 'email' in input.data && typeof input.data.email === 'string' ? input.data.email.trim().toLowerCase() : 'invalid';
       send(response, gate.allow(email, request.socket.remoteAddress ?? 'unknown') ? await service.login(input.data) : failure('RATE_LIMITED', '登录尝试过多，请稍后重试')); return;
     }
+    if (path === DESKTOP_HANDOFF_ROUTES.begin) {
+      const email = input.data && typeof input.data === 'object' && 'email' in input.data && typeof input.data.email === 'string' ? input.data.email.trim().toLowerCase() : 'invalid';
+      send(response, gate.allow(email, request.socket.remoteAddress ?? 'unknown') ? await service.beginHandoff(input.data) : failure('RATE_LIMITED', '登录尝试过多，请稍后重试')); return;
+    }
     if (path === DESKTOP_AUTH_ROUTES.refresh) send(response, await service.refresh(input.data));
     else if (path === DESKTOP_AUTH_ROUTES.logout) send(response, await service.logout(input.data));
     else if (path === DESKTOP_AUTH_ROUTES.password) send(response, await service.changePassword(token, input.data));
+    else if (path === DESKTOP_HANDOFF_ROUTES.status) send(response, await service.handoffStatus(input.data));
+    else if (path === DESKTOP_HANDOFF_ROUTES.pending) send(response, await service.pendingHandoff(input.data));
+    else if (path === DESKTOP_HANDOFF_ROUTES.prepare) send(response, await service.prepareHandoff(input.data));
+    else if (path === DESKTOP_HANDOFF_ROUTES.complete) send(response, await service.completeHandoff(input.data));
+    else if (path === DESKTOP_HANDOFF_ROUTES.takeover) send(response, await service.takeoverHandoff(input.data));
+    else if (path === DESKTOP_HANDOFF_ROUTES.cancel) send(response, await service.cancelHandoff(input.data));
     else send(response, failure('NOT_FOUND', '接口不存在'));
   };
 }

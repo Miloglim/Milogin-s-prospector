@@ -11,6 +11,7 @@ import { NotificationProvider } from './NotificationContext';
 import { ProductLogin } from './components/ProductLogin';
 import { DiamondLogo } from './components/DiamondLogo';
 import { subscribeWorkspaceDark, workspaceDarkEnabled } from './lib/workspace-preferences';
+import { PRODUCT_EDITION, productEditionOfflineEntryPath } from './lib/product-edition';
 import './components/ProductLogin.css';
 
 function AppEmptyState() {
@@ -68,29 +69,23 @@ function UpdateAvailableDialog() {
 
 function IdentityGate() {
   const session = useIdentity();
-  const [pathname, setPathname] = useState(() => router.state.location.pathname);
   const enteredUser = useRef<string | null>(null);
-  const [initialRoutePending, setInitialRoutePending] = useState(true);
-  const targetPath = session.localAvailable && session.status === 'offline' ? '/inbox' : '/customers';
   useEffect(() => {
-    setPathname(router.state.location.pathname);
-    return router.subscribe('onResolved', () => setPathname(router.state.location.pathname));
-  }, []);
-  useEffect(() => {
-    if (!session.identity) { enteredUser.current = null; setInitialRoutePending(true); return; }
-    if (enteredUser.current !== session.identity.userId) setInitialRoutePending(true);
-    if (session.localAvailable && session.status === 'offline' && enteredUser.current !== session.identity.userId) void router.navigate({ to: '/inbox', replace: true });
-    if (session.localAvailable) enteredUser.current = session.identity.userId;
-    if (session.identity && !session.localAvailable && !session.identity.mustChangePassword) void router.navigate({ to: '/customers', replace: true });
+    if (!session.identity || session.identity.mustChangePassword) { enteredUser.current = null; return; }
+    if (!session.localAvailable) { void router.navigate({ to: '/customers', replace: true }); return; }
+    if (enteredUser.current === session.identity.userId) return;
+    enteredUser.current = session.identity.userId;
+    if (session.status === 'offline') void router.navigate({ to: productEditionOfflineEntryPath(PRODUCT_EDITION), replace: true });
   }, [session.identity?.userId, session.localAvailable, session.identity?.mustChangePassword, session.status]);
-  useEffect(() => {
-    if (session.identity && pathname === targetPath) setInitialRoutePending(false);
-  }, [pathname, targetPath, session.identity]);
   if (!session.ready) return <div className="login-restore-screen"><DiamondLogo size={32} state="running" /><span>正在恢复登录…</span></div>;
   if (!session.identity || session.identity.mustChangePassword) return <ProductLogin />;
-  return <div className="identity-app-shell" key={JSON.stringify([session.identity.userId, session.identity.crmRoles, session.identity.crmCapabilities, session.localAvailable])} style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+  const permissionKey = JSON.stringify([
+    session.identity.identityAdmin,
+    session.identity.crmRoles.slice().sort(),
+    session.identity.crmCapabilities?.slice().sort() ?? [],
+  ]);
+  return <div className="identity-app-shell" key={`${session.identity.userId}:${permissionKey}`} style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
     <RouterProvider router={router} />
-    {initialRoutePending && <div className="identity-route-loading" aria-live="polite"><DiamondLogo size={32} state="running" /></div>}
   </div>;
 }
 

@@ -82,7 +82,7 @@ export interface TeamSnapshot {
   version: number;
   createdAt: string;
   members: TeamMember[];
-  /** Total team assignments, including the leader; members may be privacy-filtered. */
+  /** Total team assignments, including the leader. Visible team members receive the full active roster. */
   memberCount?: number;
   memberGroups?: TeamMemberGroup[];
   /** Server-derived permission to dissolve this non-root unit. */
@@ -100,6 +100,10 @@ export interface TeamAdminSummary {
   leaderName: string;
   memberCount: number;
   pendingInvitationCount: number;
+  /** Accepted contact assignments currently owned by members of this sales team. */
+  assignedLeadCount?: number;
+  /** Operations groups linked by those accepted assignments; this is a derived edge, not the physical parent. */
+  assignmentSourceTeamIds?: string[];
   createdAt: string;
   organizationKind?: OrganizationUnitKind;
   version?: number;
@@ -154,6 +158,7 @@ export interface TeamMemberCandidateQuery {
   offset: number;
   role?: TeamCandidateRole;
   unitType?: TeamUnitType;
+  purpose?: 'invite' | 'create';
 }
 
 export interface TeamCreateInput {
@@ -199,7 +204,8 @@ export interface TeamLeaderInput {
 
 export interface TeamMemberAdjustmentInput {
   userId: string;
-  action: 'add' | 'remove';
+  /** `add` sends an invitation; `remove` is manager-only; `leave` is self-only for ordinary members. */
+  action: 'add' | 'remove' | 'leave';
   expectedVersion: number;
   idempotencyKey: string;
 }

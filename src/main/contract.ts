@@ -89,6 +89,7 @@ export const IPC = {
     SYNC_HISTORY:  chan(PREFIX.INBOX, "syncHistory"),
     CLASSIFY:      chan(PREFIX.INBOX, "classify"),
     MARK_READ:     chan(PREFIX.INBOX, "markRead"),
+    SET_READ_STATE: chan(PREFIX.INBOX, "setReadState"),
     DELETE:        chan(PREFIX.INBOX, "delete"),
     DELETE_BOUNCE: chan(PREFIX.INBOX, "deleteBounce"),
     /** 被退联系人全库计数+邮箱预览（一键删除按钮现拉，规范 docs/bounce-multi-match-spec.md） */
@@ -96,6 +97,17 @@ export const IPC = {
     /** 单封退信的被退联系人列表（详情栏同源展示） */
     BOUNCE_MATCHES: chan(PREFIX.INBOX, "bounceMatches"),
     GET_BODY:      chan(PREFIX.INBOX, "getBody"),
+    LABELS:        chan(PREFIX.INBOX, "labels"),
+    LABEL_SAVE:    chan(PREFIX.INBOX, "labelSave"),
+    LABEL_DELETE:  chan(PREFIX.INBOX, "labelDelete"),
+    MESSAGE_LABELS: chan(PREFIX.INBOX, "messageLabels"),
+    FOLDER_SUGGEST: chan(PREFIX.INBOX, "folderSuggest"),
+    FOLDER_CONFIRM: chan(PREFIX.INBOX, "folderConfirm"),
+    PIN_MESSAGE:    chan(PREFIX.INBOX, "pinMessage"),
+    TODO_STATE:     chan(PREFIX.INBOX, "todoState"),
+    TODO_STATE_BATCH: chan(PREFIX.INBOX, "todoStateBatch"),
+    ANALYSIS_STATUS: chan(PREFIX.INBOX, "analysisStatus"),
+    ANALYSIS_RUN: chan(PREFIX.INBOX, "analysisRun"),
     /** 首页「今日邮箱概览」卡：北京时间今日收信/未读/分类/待回复（只读快照，无模型） */
     TODAY_BRIEF:   chan(PREFIX.INBOX, "todayBrief"),
   },

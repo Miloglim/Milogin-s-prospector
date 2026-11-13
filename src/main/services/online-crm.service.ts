@@ -1,6 +1,6 @@
 import type { ImportFileContent } from "../../shared/online-crm";
 import type { AccountProfile, Result, Identity, OnlineLogin, ImportPreview, ImportRequest, ImportReceipt, PublishRequest, PublishReceipt, LeadBootstrap, LeadQuery, LeadPage, LeadDetail, LeadCommand, FollowupRequest, OnlineFeed, NotificationReadAllReceipt } from '../../shared/online-crm';
-import type { OnlineSessionSnapshot, OnlinePasswordChange, OnlineRegistration, RegisteredAccount, OnlineFeedRequest } from '../../shared/online-crm';
+import type { OnlineSessionSnapshot, OnlinePasswordChange, OnlineRegistration, RegisteredAccount, OnlineFeedRequest, OnlineHandoffBegin, OnlineHandoffBeginResult, OnlineHandoffComplete, OnlineHandoffState, OnlineHandoffTakeover, OnlineHandoffToken } from '../../shared/online-crm';
 import type { LoginAccountQuery, SavedAccountLogin, OnlineLogout, LeadIngressDecisionDTO, LeadIngressDecisionQuery, LeadIngressResolutionCommand, LeadIngressResolutionReceipt } from '../../shared/online-crm';
 import { TEAM_ROUTES, type CustomerCreate, type CustomerUpdate, type MemberQuery, type MemberPage, type TeamContext, type TeamCreateInput, type TeamCreateReceipt, type TeamDetail, type TeamDissolveInput, type TeamInvitationDecision, type TeamInviteInput, type TeamLeaderInput, type TeamMemberAdjustmentInput, type TeamMemberCandidatePage, type TeamMemberCandidateQuery, type TeamMemberGroupDeleteInput, type TeamMemberGroupInput, type TeamMoveInput } from '../../shared/online-crm';
 import { LEAD_ROUTES } from '../../../server/core/leads';
@@ -17,13 +17,14 @@ import { CONTACT_ASSIGNMENT_ROUTES, type CenterCompanyUpdate,type CenterContactR
 import {companyUpdate,contactRef,contactUpdate,contactFollowup,contactAssignmentQuery,contactAssignmentGroupQuery,contactAssignmentGroupDecision,contactAssignmentCreate,contactAssignmentDecision,contactAssignmentTransfer,contactAssignmentExpiry} from '../../../server/services/contact-assignments';
 import {companyCreate,companyDelete,companyQuery,companyRef,contactDelete} from '../../../server/services/crm-lifecycle';
 import {COMPANY_ROUTE,CONTACT_DELETE_ROUTE,type CompanyCreate,type CompanyDelete,type CompanyQuery,type CompanyPage,type CompanyDetail,type ContactDelete,type ContactDeleteReceipt} from '../../../server/core/crm-lifecycle';
-import { CONTACT_SHARING_ROUTES, type ContactShare, type ContactSharePage, type ContactShareQuery, type ContactShareCreate, type ContactShareUpdate, type ContactShareMember } from '../../../server/core/contact-sharing';
+import { CONTACT_SHARING_ROUTES, type ContactShare, type ContactSharePage, type ContactShareQuery, type ContactShareCreate, type ContactShareUpdate, type ContactShareMember, type ContactTeamShareCreate, type ContactTeamShareReceipt } from '../../../server/core/contact-sharing';
 import type { ContactShareDecisionInput } from '../../shared/online-crm';
-import { contactShareQuery, contactShareCreate, contactShareDecision, contactShareUpdate } from '../../../server/services/contact-sharing';
+import { contactShareQuery, contactShareCreate, contactShareDecision, contactShareUpdate, contactTeamShareCreate } from '../../../server/services/contact-sharing';
 import { LEAD_INGRESS_ROUTES, validateLeadIngressDecisionQuery, validateLeadIngressResolution } from '../../../server/core/lead-ingress';
 import type { ContactMailAnalysisCorrection, ContactMailAnalysisQuery, ContactMailAnalysisRecord, ContactMailAnalysisSubmission, ContactMailAnalysisView } from '../../../server/core/mail-analysis';
 import { CONTACT_MAIL_ANALYSIS_ROUTES } from '../../../server/core/mail-analysis';
 import { contactMailAnalysisCorrection, contactMailAnalysisQuery, contactMailAnalysisSubmission } from '../../../server/services/contact-mail-analysis';
+import { Log } from '../logger';
 const MONITORING_UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 /** IO port is implemented by the adapter; this service never touches the local CRM. */
 export interface OnlineCrmPort {
@@ -38,6 +39,11 @@ export interface OnlineCrmPort {
   contactGroups?(query:CenterContactGroupQuery):Promise<Result<CenterContactGroupPage>>;
   register?(input:OnlineRegistration):Promise<Result<RegisteredAccount>>;
   login(input:OnlineLogin):Promise<Result<Identity>>; logout(input?:OnlineLogout):Promise<Result<void>>;
+  beginHandoff?(input:OnlineHandoffBegin):Promise<Result<OnlineHandoffBeginResult>>;
+  handoffStatus?(input:OnlineHandoffToken):Promise<Result<OnlineHandoffState>>;
+  completeHandoff?(input:OnlineHandoffComplete):Promise<Result<Identity>>;
+  takeoverHandoff?(input:OnlineHandoffTakeover):Promise<Result<Identity>>;
+  cancelHandoff?(input:OnlineHandoffToken):Promise<Result<void>>;
   accountProfile?():Promise<Result<AccountProfile>>;
   request<T>(method:string,path:string,body?:unknown,requireCenterReceipt?:boolean):Promise<Result<T>>;
   preview(input?:ImportFileContent):Promise<Result<ImportPreview>>; feed(input?:OnlineFeedRequest):Promise<Result<OnlineFeed>>;
@@ -92,6 +98,7 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
       return port.request<ContactSharePage>('GET',`${CONTACT_SHARING_ROUTES.shares}?${params}`,undefined,true);
     }),
     createContactShare:(input:ContactShareCreate)=>validated(input,contactShareCreate,value=>port.request<ContactShare>('POST',CONTACT_SHARING_ROUTES.shares,value,true)),
+    shareContactWithTeam:(input:ContactTeamShareCreate)=>validated(input,contactTeamShareCreate,value=>port.request<ContactTeamShareReceipt>('POST',CONTACT_SHARING_ROUTES.team,value,true)),
     decideContactShare:(input:ContactShareDecisionInput)=>{
       if(!input||!['accept','reject','revoke'].includes(input.action))return Promise.resolve(failure('INVALID_INPUT','共享操作无效'));
       const {action,...decisionInput}=input;
@@ -99,7 +106,13 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     },
     updateContactShare:(input:ContactShareUpdate)=>validated(input,contactShareUpdate,value=>port.request<ContactShare>('POST',`${CONTACT_SHARING_ROUTES.shares}/${encodeURIComponent(value.shareId)}/update`,value,true)),
     contactShareMembers:()=>port.request<ContactShareMember[]>('GET',CONTACT_SHARING_ROUTES.members,undefined,true),
-    deleteContacts:(input:ContactDelete)=>validated(input,contactDelete,v=>port.request<ContactDeleteReceipt>('POST',CONTACT_DELETE_ROUTE,v,true)),
+    deleteContacts:(input:ContactDelete)=>validated(input,contactDelete,async v=>{
+      Log.debug('online.contacts.delete',`向中心发送删除请求 ${v.contacts.length} 个联系人`);
+      const result=await port.request<ContactDeleteReceipt>('POST',CONTACT_DELETE_ROUTE,v,true);
+      if(result.ok)Log.debug('online.contacts.delete',`中心删除回执完成 ${result.data.deleted.length} 个联系人`);
+      else Log.warn('online.contacts.delete',`中心删除失败 ${result.error.code}: ${result.error.message}`);
+      return result;
+    }),
     createCompany:(input:CompanyCreate)=>validated(input,companyCreate,v=>port.request<CompanyDetail>('POST',COMPANY_ROUTE,v,true)),
     deleteCompany:(input:CompanyDelete)=>validated(input,companyDelete,v=>port.request<{companyId:number}>('POST',`${COMPANY_ROUTE}/${v.companyId}/delete`,v,true)),
     companies:(input:CompanyQuery)=>validated(input,companyQuery,v=>port.request<CompanyPage>('GET',`${COMPANY_ROUTE}?${new URLSearchParams({search:v.search,scope:v.scope,limit:String(v.limit),offset:String(v.offset)})}`,undefined,true)),
@@ -128,7 +141,11 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     opportunityStage:(input:OpportunityUpdateStage)=>port.request<Opportunity>('POST',`${OPPORTUNITY_ROUTES.opportunities}/${encodeURIComponent(input.opportunityId)}/${OPPORTUNITY_ROUTES.stageAction}`,input),
     teamContext:()=>port.request<TeamContext>('GET',TEAM_ROUTES.context),
     teamDetail:(teamId:string)=>port.request<TeamDetail>('GET',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}`),
-    teamCandidates:(query:TeamMemberCandidateQuery)=>port.request<TeamMemberCandidatePage>('GET',`${TEAM_ROUTES.candidates}?${new URLSearchParams({search:query.search,limit:String(query.limit),offset:String(query.offset),role:query.role??'member',unitType:query.unitType??'sales_team'})}`),
+    teamCandidates:(query:TeamMemberCandidateQuery)=>{
+      const search=new URLSearchParams({search:query.search,limit:String(query.limit),offset:String(query.offset),role:query.role??'member',unitType:query.unitType??'sales_team'});
+      if(query.purpose==='create')search.set('purpose','create');
+      return port.request<TeamMemberCandidatePage>('GET',`${TEAM_ROUTES.candidates}?${search}`);
+    },
     teamCreate:(input:TeamCreateInput)=>port.request<TeamCreateReceipt>('POST',TEAM_ROUTES.teams,input),
     teamInvite:(teamId:string,input:TeamInviteInput)=>port.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/invitations`,input),
     teamInvitation:(invitationId:string,action:'accept'|'decline'|'cancel',input:TeamInvitationDecision)=>port.request<TeamContext>('POST',`${TEAM_ROUTES.invitations}/${encodeURIComponent(invitationId)}/${action}`,input),
@@ -140,6 +157,11 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     teamDeleteMemberGroup:(teamId:string,groupId:string,input:TeamMemberGroupDeleteInput)=>port.teamDeleteMemberGroup?.(teamId,groupId,input) ?? port.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/groups/${encodeURIComponent(groupId)}/delete`,input),
     register:(input:OnlineRegistration)=>port.register?.(input) ?? Promise.resolve(failure('UNAVAILABLE','注册暂不可用')),
     login:(input:OnlineLogin)=>port.login(input), logout:(input?:OnlineLogout)=>port.logout(input), preview:(input?:ImportFileContent)=>port.preview(input),
+    beginHandoff:(input:OnlineHandoffBegin)=>port.beginHandoff?.(input) ?? Promise.resolve(failure('UNAVAILABLE','换机暂不可用')),
+    handoffStatus:(input:OnlineHandoffToken)=>port.handoffStatus?.(input) ?? Promise.resolve(failure('UNAVAILABLE','换机状态暂不可用')),
+    completeHandoff:(input:OnlineHandoffComplete)=>port.completeHandoff?.(input) ?? Promise.resolve(failure('UNAVAILABLE','换机完成暂不可用')),
+    takeoverHandoff:(input:OnlineHandoffTakeover)=>port.takeoverHandoff?.(input) ?? Promise.resolve(failure('UNAVAILABLE','旧电脑接管暂不可用')),
+    cancelHandoff:(input:OnlineHandoffToken)=>port.cancelHandoff?.(input) ?? Promise.resolve(failure('UNAVAILABLE','取消换机暂不可用')),
     accountProfile:()=>port.accountProfile?.() ?? Promise.resolve(failure('UNAVAILABLE','账号资料暂不可用')),
     workbookPreview:()=>port.workbookPreview?.() ?? Promise.resolve(failure('UNAVAILABLE','工作簿预览暂不可用')),
     importWorkbook:(input:WorkbookImportRequest)=>port.request<WorkbookImportReceipt>('POST',WORKBOOK_IMPORT_ROUTE,input),

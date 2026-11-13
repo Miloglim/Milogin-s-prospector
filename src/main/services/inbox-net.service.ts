@@ -15,15 +15,16 @@ import { getDecryptedPassword } from "./account.service";
 import * as InboxService from "./inbox.service";
 import {
   INBOX_IMAP_BATCH_LIMIT,
+  INBOX_INITIAL_IMPORT_LIMIT,
   INBOX_RECENT_BACKFILL_COUNT,
   selectInboxUidBatch,
 } from "../core/inbox-fetch";
+import { describeMailError, mailErrorDiagnostic } from "../core/mail-error";
 import { INBOX_FETCH_PHASES, type InboxFetchPhase } from "../../shared/inbox";
 
 // ── 拉取时间窗口（天）──
 // 只拉最近 N 天；批量内用账号 UID 游标继续，避免历史全量扫描或重复扫同一批。
 const FETCH_DAYS = 5;
-const PROGRESS_PUSH_EVERY = 5;
 const POP3_FETCH_LIMIT = 40;
 
 // ── POP3 端口检测 ──
@@ -232,9 +233,7 @@ async function doPop3Fetch(accountId: number): Promise<Result<InboxService.Inbox
 
     for (let i = startIdx; i <= total; i++) {
       scanned++;
-      if (scanned % PROGRESS_PUSH_EVERY === 0) {
-        pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SCANNING, scanned, fetchCount, parsed.length, 0);
-      }
+      pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SCANNING, scanned, fetchCount, parsed.length, 0);
       const uid = uidMap.get(i) || `pop3-${accountId}-${i}`;
 
       // 去重 + 已删除集过滤
@@ -308,8 +307,8 @@ async function doPop3Fetch(accountId: number): Promise<Result<InboxService.Inbox
     return okResult(parsed);
   } catch (err: unknown) {
     try { sock?.destroy(); } catch { /* */ }
-    const msg = err instanceof Error ? err.message : String(err);
-    Log.error("inbox.pop3", msg);
+    const msg = describeMailError(err, 'POP3');
+    Log.error("inbox.pop3", msg, mailErrorDiagnostic(err));
     pushProgress(accountId, account.email, INBOX_FETCH_PHASES.FAILED, 0, 0, 0, 0, msg);
     return failResult(msg);
   }
@@ -346,15 +345,22 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
     // 回写程序内标读（\Seen）：校准前先把用户在本程序里点开/标读的邮件同步到服务器，
     // 否则下面的未读校准会按服务器视角把这些行改回未读 —— 已读"复活"的根因。
     try {
-      const pending = InboxService.takePendingSeen(accountId);
+      const pending = InboxService.listPendingSeen(accountId);
       if (pending.length) {
         let synced = 0;
-        for (const p of pending.slice(0, 300)) {
+        for (const p of pending) {
           try {
             const seenUids = (await client.search({ header: { "message-id": p.messageId } }, { uid: true })) || [];
             const su = seenUids[seenUids.length - 1];
-            if (su && await client.messageFlagsAdd(String(su), ["\\Seen"], { uid: true })) synced++;
-          } catch { /* 单封失败不影响其余回写 */ }
+            if (su && await client.messageFlagsAdd(String(su), ["\\Seen"], { uid: true })) {
+              synced++;
+              InboxService.ackPendingSeen(accountId, p.messageId);
+            } else {
+              InboxService.failPendingSeen(accountId, p.messageId, su ? '服务器拒绝标记已读' : '服务器未找到该邮件');
+            }
+          } catch (error) {
+            InboxService.failPendingSeen(accountId, p.messageId, error instanceof Error ? error.message : String(error));
+          }
         }
         if (synced) Log.info("inbox.imap.seen", `${account.email}: 回写 ${synced}/${pending.length} 封程序内已读到服务器`);
       }
@@ -373,9 +379,10 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
     const uidValidity = mailbox ? mailbox.uidValidity.toString() : "";
     const fetchCursor = readImapFetchCursor(accountId);
     const lastUid = fetchCursor.uidValidity === uidValidity ? fetchCursor.lastUid : null;
-    const recentUids = syncWindow.phase === 'initial' ? await latestInboxUids(client, INBOX_RECENT_BACKFILL_COUNT) : [];
+    const recentUids = syncWindow.phase === 'initial' ? await latestInboxUids(client, INBOX_INITIAL_IMPORT_LIMIT) : [];
     const candidates = bootstrap ? [...new Set([...uids, ...recentUids])].sort((left, right) => left - right) : uids;
-    const uidBatch = selectInboxUidBatch(candidates, bootstrap ? syncWindow.cursorUid : lastUid, INBOX_IMAP_BATCH_LIMIT);
+    const uidBatch = selectInboxUidBatch(candidates, bootstrap ? syncWindow.cursorUid : lastUid,
+      syncWindow.phase === 'initial' ? INBOX_INITIAL_IMPORT_LIMIT : INBOX_IMAP_BATCH_LIMIT);
     const scanUids = uidBatch.batch;
     const remaining = uidBatch.remaining;
     const requiredCount = bootstrap ? Math.max(syncWindow.targetCount, syncWindow.scannedBefore + scanUids.length + remaining) : scanUids.length + remaining;
@@ -425,9 +432,7 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
       const fromName = from?.name || null;
       const subject = (env.subject as string) || null;
       const date = env.date ? new Date(env.date as string).toISOString() : new Date().toISOString();
-      if (scanned % PROGRESS_PUSH_EVERY === 0) {
-        pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SCANNING, scanned, scanUids.length, syncWindow.newBefore + inserted, remaining, undefined, subject, syncWindow.scannedBefore + scanned, requiredCount);
-      }
+      pushProgress(accountId, account.email, INBOX_FETCH_PHASES.SCANNING, scanned, scanUids.length, syncWindow.newBefore + inserted, remaining, undefined, subject, syncWindow.scannedBefore + scanned, requiredCount);
 
       // 去重 + 已删除集过滤
       if (msgId && InboxService.isDeleted(`${accountId}|${msgId}`)) continue;
@@ -520,10 +525,11 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
       const accRows = getDb().select({
         id: inboxMessages.id, messageId: inboxMessages.messageId, isRead: inboxMessages.isRead,
       }).from(inboxMessages).where(eq(inboxMessages.accountId, accountId)).all();
+      const pendingSeenMessages = InboxService.pendingSeenMessageIds(accountId);
       let markedRead = 0;
       let markedUnread = 0;
       for (const r of accRows) {
-        const serverUnseen = !!(r.messageId && unseenMsgIds.has(r.messageId));
+        const serverUnseen = !!r.messageId && !pendingSeenMessages.has(r.messageId) && unseenMsgIds.has(r.messageId);
         if (serverUnseen && r.isRead === 0) continue;
         if (!serverUnseen && r.isRead === 1) continue;
         getDb().update(inboxMessages).set({ isRead: serverUnseen ? 0 : 1 })
@@ -567,8 +573,8 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
     client = null;
     return okResult(parsed);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    Log.error("inbox.imap", msg, err instanceof Error ? err.stack : undefined);
+    const msg = describeMailError(err, 'IMAP');
+    Log.error("inbox.imap", `${account.email}: ${msg}${mailErrorDiagnostic(err) ? ` (${mailErrorDiagnostic(err)})` : ''}`, err instanceof Error ? err.stack : undefined);
     if (client) { try { client.logout(); } catch { /* */ } }
     pushProgress(accountId, account.email, INBOX_FETCH_PHASES.FAILED, 0, 0, 0, 0, msg);
     return failResult(msg);
@@ -645,7 +651,7 @@ export async function backfillBounceDeep(accountId: number, limit = 100): Promis
     Log.info("inbox.bounceDeep", `${account.email}: 待补 ${targets.length} 封，命中 ${hitUids.length} 封，新匹配 ${matched} 个联系人`);
     return matched;
   } catch (err: unknown) {
-    Log.warn("inbox.bounceDeep", `${account.email} 补拉失败: ${err instanceof Error ? err.message : String(err)}`);
+    Log.warn("inbox.bounceDeep", `${account.email} 补拉失败: ${describeMailError(err, 'IMAP')}`);
     return 0;
   } finally {
     if (client) { try { client.logout(); } catch { /* 已断开 */ } }
@@ -761,7 +767,7 @@ export async function detectSent(accountId: number): Promise<number> {
     Log.info("inbox.sent", `${account.email}: 扫描 ${scanned} 封，新增 ${added} 封`);
     return added;
   } catch (err) {
-    Log.warn("inbox.sent", `${account.email} 检测失败: ${err instanceof Error ? err.message : String(err)}`);
+    Log.warn("inbox.sent", `${account.email} 检测失败: ${describeMailError(err, 'IMAP')}`);
     return 0;
   } finally {
     if (client) { try { client.logout(); } catch { /* */ } }
@@ -912,7 +918,7 @@ export async function fetchBody(accountId: number, messageId: string, classifica
     }
     return failResult("未拉取到正文");
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = describeMailError(err, 'IMAP');
     Log.warn("inbox.body", `${account.email} 正文拉取失败: ${msg}`);
     return failResult(msg);
   } finally {

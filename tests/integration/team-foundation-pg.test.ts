@@ -82,12 +82,12 @@ describe.skipIf(!enabled)('canonical organization PostgreSQL rollback-only', () 
     }));
   }
 
-  async function createSalesTeam(operations: User, leader: User, parentTeamId: string | null = null, invitees: string[] = [], idempotencyKey = randomUUID(), name = `Sales ${randomUUID().slice(0, 8)}`) {
-    return unwrap(await service.create(operations.token, {
+  async function createSalesTeam(_operations: User, leader: User, _parentTeamId: string | null = null, invitees: string[] = [], idempotencyKey = randomUUID(), name = `Sales ${randomUUID().slice(0, 8)}`) {
+    return unwrap(await service.create(leader.token, {
       name,
-      parentTeamId,
+      parentTeamId: null,
       unitType: 'sales_team',
-      leaderUserId: leader.id,
+      leaderUserId: undefined,
       inviteeUserIds: invitees,
       idempotencyKey,
     }));
@@ -214,22 +214,81 @@ describe.skipIf(!enabled)('canonical organization PostgreSQL rollback-only', () 
 
     expect(await service.create(operations.token, {
       name: `Missing Leader ${randomUUID().slice(0, 8)}`, parentTeamId: ops.teamId, unitType: 'sales_team', inviteeUserIds: [], idempotencyKey: randomUUID(),
-    })).toMatchObject({ error: { code: 'INVALID_INPUT' } });
+    })).toMatchObject({ error: { code: 'FORBIDDEN' } });
     expect(await service.create(operations.token, {
       name: `Nested ${randomUUID().slice(0, 8)}`, parentTeamId: team.teamId, unitType: 'sales_team', leaderUserId: leader.id, inviteeUserIds: [], idempotencyKey: randomUUID(),
-    })).toMatchObject({ error: { code: 'INVALID_INPUT' } });
+    })).toMatchObject({ error: { code: 'FORBIDDEN' } });
     expect(await service.move(operations.token, ops.teamId, { parentTeamId: team.teamId, expectedVersion: 1, idempotencyKey: randomUUID() })).toMatchObject({ error: { code: 'INVALID_INPUT' } });
     expect(await service.move(operations.token, ops.teamId, { parentTeamId: ops.teamId, expectedVersion: 1, idempotencyKey: randomUUID() })).toMatchObject({ error: { code: 'INVALID_INPUT' } });
     expect((await client.query("SELECT count(*)::int AS count FROM crm_org_assignments WHERE unit_id=$1 AND role='member'", [ops.teamId])).rows[0].count).toBe(0);
   });
 
-  it('isolates ordinary sales to their own summary and denies enumeration', async () => {
+  it('opens team context to every active CRM account without granting creation', async () => {
+    const auditor = await user('auditor', 'Team Auditor');
+    const context = unwrap(await service.context(auditor.token));
+    expect(context.team).toBeNull();
+    expect(context.canCreate).toBe(false);
+    expect(context.canAdmin).toBe(false);
+    expect(context.incomingInvitations).toEqual([]);
+  });
+
+  it('lets a team member read the own-team roster for collaboration', async () => {
+    const leader = await user('sales', 'Roster Leader');
+    const first = await user('sales', 'Roster First');
+    const second = await user('sales', 'Roster Second');
+    const created = await createSalesTeam(leader, leader, null, [first.id, second.id]);
+    for (const invitee of [first, second]) {
+      const invitation = unwrap(await service.context(invitee.token)).incomingInvitations.find(item => item.teamId === created.teamId)!;
+      unwrap(await service.decide(invitee.token, invitation.invitationId, 'accept', { expectedVersion: invitation.version, idempotencyKey: randomUUID() }));
+    }
+    const context = unwrap(await service.context(first.token));
+    expect(context.team?.members.map(item => item.userId)).toEqual(expect.arrayContaining([leader.id, first.id, second.id]));
+    const detail = unwrap(await service.detail(first.token, created.teamId));
+    expect(detail.team.members.map(item => item.userId)).toEqual(expect.arrayContaining([leader.id, first.id, second.id]));
+    expect(detail.children).toEqual([]);
+  });
+
+  it('turns member additions into invitations and lets ordinary members leave', async () => {
+    const leader = await user('sales', 'Consent Leader');
+    const member = await user('sales', 'Consent Member');
+    const created = await createSalesTeam(leader, leader);
+    const invited = unwrap(await service.adjustMember(leader.token, created.teamId, { userId: member.id, action: 'add', expectedVersion: 1, idempotencyKey: randomUUID() }));
+    expect((await client.query("SELECT count(*)::int AS count FROM crm_org_assignments WHERE unit_id=$1 AND user_id=$2 AND ended_at IS NULL", [created.teamId, member.id])).rows[0].count).toBe(0);
+    const invitation = invited.outgoingInvitations.find(item => item.inviteeUserId === member.id)!;
+    unwrap(await service.decide(member.token, invitation.invitationId, 'accept', { expectedVersion: invitation.version, idempotencyKey: randomUUID() }));
+    expect(unwrap(await service.context(member.token)).team?.teamId).toBe(created.teamId);
+    const left = unwrap(await service.adjustMember(member.token, created.teamId, { userId: member.id, action: 'leave', expectedVersion: 1, idempotencyKey: randomUUID() }));
+    expect(left.team).toBeNull();
+    expect((await client.query("SELECT count(*)::int AS count FROM crm_org_assignments WHERE unit_id=$1 AND user_id=$2 AND ended_at IS NULL", [created.teamId, member.id])).rows[0].count).toBe(0);
+  });
+
+  it('shows sales-team membership for leaders and members in the assignment directory', async () => {
+    const operations = await user('operations', 'Directory Operations');
+    const leader = await user('sales', 'Directory Leader');
+    const member = await user('sales', 'Directory Member');
+    const teamName = `Directory Team ${randomUUID().slice(0, 8)}`;
+    const created = await createSalesTeam(operations, leader, null, [member.id], randomUUID(), teamName);
+    const invitation = unwrap(await service.context(member.token)).incomingInvitations.find(item => item.teamId === created.teamId)!;
+    unwrap(await service.decide(member.token, invitation.invitationId, 'accept', { expectedVersion: invitation.version, idempotencyKey: randomUUID() }));
+    const leads = new PostgresLeadRepository(pool, log);
+    const rows = await (leads as unknown as { memberRows(client: PoolClient): Promise<Array<{ userId: string; teamNames: string[]; supervisorNames: string[] }>> }).memberRows(client);
+    const leaderRow = rows.find(item => item.userId === leader.id)!;
+    const memberRow = rows.find(item => item.userId === member.id)!;
+    expect(leaderRow.teamNames).toContain(teamName);
+    expect(memberRow.teamNames).toContain(teamName);
+    expect(memberRow.supervisorNames).toContain('Directory Leader');
+  });
+
+  it('shares the own-team roster for collaboration but denies enumeration and management', async () => {
     const operations = await user('operations', 'Privacy Operations');
     const leader = await user('sales', 'Privacy Leader');
     const member = await user('sales', 'Privacy Member');
     const teammate = await user('sales', 'Privacy Teammate');
     const outsider = await user('sales', 'Privacy Outsider');
+    const creator = await user('sales', 'Privacy Creator');
     const ops = await createOperationsGroup(operations);
+    const createCandidates = unwrap(await service.candidates(creator.token, { search: 'Privacy', limit: 20, offset: 0, purpose: 'create' }));
+    expect(createCandidates.items.map(item => item.userId)).toEqual(expect.arrayContaining([member.id, teammate.id, outsider.id]));
     const createKey = randomUUID();
     const teamName = `Privacy Sales ${randomUUID().slice(0, 8)}`;
     const created = await createSalesTeam(operations, leader, ops.teamId, [member.id, teammate.id], createKey, teamName);
@@ -243,12 +302,12 @@ describe.skipIf(!enabled)('canonical organization PostgreSQL rollback-only', () 
     expect((await client.query('SELECT count(*)::int AS count FROM crm_team_idempotency WHERE actor_id=$1 AND idempotency_key=$2', [operations.id, createKey])).rows[0].count).toBe(0);
 
     const context = unwrap(await service.context(member.token));
-    expect(context.team?.members).toEqual([expect.objectContaining({ userId: member.id, role: 'member' })]);
+    expect(context.team?.members.map(item => item.userId)).toEqual(expect.arrayContaining([leader.id, member.id, teammate.id]));
     expect(context.team?.memberCount).toBe(3);
     expect(context.outgoingInvitations).toEqual([]);
     expect(context.managedTeams).toEqual([]);
     expect(context.organization?.visibleUnits.map(unit => unit.unitId)).toEqual([created.teamId]);
-    expect((await service.detail(member.token, created.teamId)).ok && unwrap(await service.detail(member.token, created.teamId)).team.members).toEqual([expect.objectContaining({ userId: member.id })]);
+    expect((await service.detail(member.token, created.teamId)).ok && unwrap(await service.detail(member.token, created.teamId)).team.members.map(item => item.userId)).toEqual(expect.arrayContaining([leader.id, member.id, teammate.id]));
     expect(await service.detail(member.token, other.teamId)).toMatchObject({ error: { code: 'NOT_FOUND' } });
     expect(await service.candidates(member.token, { search: '', limit: 20, offset: 0 })).toMatchObject({ error: { code: 'FORBIDDEN' } });
     expect(unwrap(await service.context(leader.token)).team?.members.map(item => item.userId)).toEqual(expect.arrayContaining([leader.id, member.id, teammate.id]));
@@ -417,8 +476,10 @@ describe.skipIf(!enabled)('canonical organization PostgreSQL rollback-only', () 
     const secondOps = await createOperationsGroup(operations);
     const team = await createSalesTeam(operations, oldLeader, firstOps.teamId);
 
-    const added = unwrap(await service.adjustMember(operations.token, team.teamId, { userId: member.id, action: 'add', expectedVersion: 1, idempotencyKey: randomUUID() }));
-    expect(added.organization?.visibleUnits.find(unit => unit.unitId === team.teamId)?.version).toBe(2);
+    const invited = unwrap(await service.invite(operations.token, team.teamId, { userIds: [member.id], idempotencyKey: randomUUID() }));
+    const memberInvitation = invited.outgoingInvitations.find(item => item.inviteeUserId === member.id)!;
+    unwrap(await service.decide(member.token, memberInvitation.invitationId, 'accept', { expectedVersion: memberInvitation.version, idempotencyKey: randomUUID() }));
+    expect(invited.organization?.visibleUnits.find(unit => unit.unitId === team.teamId)?.version).toBe(1);
     const grouped = unwrap(await service.saveMemberGroup(operations.token, team.teamId, { groupId: null, name: '华东一组', memberIds: [member.id], expectedVersion: 0, idempotencyKey: randomUUID() }));
     const group = unwrap(await service.detail(operations.token, team.teamId)).team.memberGroups?.find(item => item.name === '华东一组');
     expect(group).toMatchObject({ memberIds: [member.id], version: 1 });
@@ -428,12 +489,12 @@ describe.skipIf(!enabled)('canonical organization PostgreSQL rollback-only', () 
     const renamedGroup = unwrap(await service.detail(operations.token, team.teamId)).team.memberGroups?.find(item => item.groupId === group!.groupId);
     expect(renamedGroup).toMatchObject({ name: '华东一组（更新）', version: 2 });
 
-    const reassigned = unwrap(await service.assignLeader(operations.token, team.teamId, { leaderUserId: newLeader.id, expectedVersion: 2, idempotencyKey: randomUUID() }));
-    expect(reassigned.organization?.visibleUnits.find(unit => unit.unitId === team.teamId)?.version).toBe(3);
-    const moved = unwrap(await service.move(operations.token, team.teamId, { parentTeamId: secondOps.teamId, expectedVersion: 3, idempotencyKey: randomUUID() }));
+    const reassigned = unwrap(await service.assignLeader(operations.token, team.teamId, { leaderUserId: newLeader.id, expectedVersion: 1, idempotencyKey: randomUUID() }));
+    expect(reassigned.organization?.visibleUnits.find(unit => unit.unitId === team.teamId)?.version).toBe(2);
+    const moved = unwrap(await service.move(operations.token, team.teamId, { parentTeamId: secondOps.teamId, expectedVersion: 2, idempotencyKey: randomUUID() }));
     expect(moved.organization?.visibleUnits.find(unit => unit.unitId === team.teamId)?.parentUnitId).toBe(secondOps.teamId);
-    expect(moved.organization?.visibleUnits.find(unit => unit.unitId === team.teamId)?.version).toBe(4);
-    expect((await service.adjustMember(operations.token, team.teamId, { userId: member.id, action: 'remove', expectedVersion: 4, idempotencyKey: randomUUID() })).ok).toBe(true);
+    expect(moved.organization?.visibleUnits.find(unit => unit.unitId === team.teamId)?.version).toBe(3);
+    expect((await service.adjustMember(operations.token, team.teamId, { userId: member.id, action: 'remove', expectedVersion: 3, idempotencyKey: randomUUID() })).ok).toBe(true);
     expect((await service.deleteMemberGroup(operations.token, team.teamId, group!.groupId, { groupId: group!.groupId, expectedVersion: 2, idempotencyKey: randomUUID() })).ok).toBe(true);
 
     expect((await client.query('SELECT count(*)::int AS count FROM crm_teams')).rows[0].count).toBe(0);
@@ -477,9 +538,7 @@ describe.skipIf(!enabled)('canonical organization PostgreSQL rollback-only', () 
     const third = await createSalesTeam(operations, pureSales, secondOps.teamId);
     expect(await rejectedDatabaseWrite("INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'member',false)", [leader.id, third.teamId])).toBe('P0001');
     expect(await service.adjustMember(operations.token, first.teamId, { userId: leader.id, action: 'add', expectedVersion: 1, idempotencyKey: randomUUID() })).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
-    expect((await service.create(operations.token, {
-      name: 'Matrix Leader Team', parentTeamId: secondOps.teamId, unitType: 'sales_team', leaderUserId: leader.id, inviteeUserIds: [], idempotencyKey: randomUUID(),
-    })).ok).toBe(true);
+    await createSalesTeam(operations, leader, secondOps.teamId, [], randomUUID(), 'Matrix Leader Team');
 
     const candidates = unwrap(await service.candidates(operations.token, { search: 'Matrix', limit: 50, offset: 0, role: 'leader', unitType: 'sales_team' }));
     const candidateIds = candidates.items.map(item => item.userId);
@@ -533,9 +592,11 @@ describe.skipIf(!enabled)('canonical organization PostgreSQL rollback-only', () 
     const history = await client.query("SELECT status,count(*)::int AS count FROM crm_org_invitations WHERE invitation_id=ANY($1::uuid[]) GROUP BY status", [[leaderInvitation.invitationId, managerInvitation.invitationId, adminInvitation.invitationId]]);
     expect(history.rows).toEqual([{ status: 'cancelled', count: 3 }]);
 
-    const memberAdded = unwrap(await service.adjustMember(operations.token, team.teamId, { userId: member.id, action: 'add', expectedVersion: 1, idempotencyKey: 'stable-member-key' }));
-    const memberAddedAgain = unwrap(await service.adjustMember(operations.token, team.teamId, { userId: member.id, action: 'add', expectedVersion: 1, idempotencyKey: 'stable-member-key' }));
-    expect(memberAddedAgain).toEqual(memberAdded);
+    const memberInvited = unwrap(await service.invite(operations.token, team.teamId, { userIds: [member.id], idempotencyKey: 'stable-member-key' }));
+    const memberInvitedAgain = unwrap(await service.invite(operations.token, team.teamId, { userIds: [member.id], idempotencyKey: 'stable-member-key' }));
+    expect(memberInvitedAgain).toEqual(memberInvited);
+    const memberInvitation = memberInvited.outgoingInvitations.find(item => item.inviteeUserId === member.id)!;
+    unwrap(await service.decide(member.token, memberInvitation.invitationId, 'accept', { expectedVersion: memberInvitation.version, idempotencyKey: randomUUID() }));
     unwrap(await service.saveMemberGroup(operations.token, team.teamId, { groupId: null, name: '负责人与成员', memberIds: [leader.id, member.id], expectedVersion: 0, idempotencyKey: randomUUID() }));
     const savedGroup = unwrap(await service.detail(operations.token, team.teamId)).team.memberGroups?.find(item => item.name === '负责人与成员');
     expect(savedGroup).toMatchObject({ version: 1, memberIds: expect.arrayContaining([leader.id, member.id]) });

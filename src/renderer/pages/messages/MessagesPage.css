@@ -1,38 +1,50 @@
 .message-center-trigger { display: inline-flex; }
-.message-center-popover .ant-popover-inner { border: 1px solid var(--message-border, rgba(0,0,0,.08)); border-radius: 8px; box-shadow: 0 14px 38px rgba(20,24,35,.16), 0 3px 10px rgba(20,24,35,.08); }
+.message-center-popover .ant-popover-inner { padding: 0; overflow: hidden; border: 1px solid var(--message-border, rgba(0,0,0,.08)); border-radius: 8px; box-shadow: 0 12px 30px rgba(20,24,35,.14), 0 3px 8px rgba(20,24,35,.07); }
 .messages-route { min-height: 100%; display: flex; justify-content: center; align-items: flex-start; }
 .message-center-panel { position: relative; width: min(430px, calc(100vw - 32px)); height: min(620px, calc(100vh - 96px)); min-width: 320px; max-width: calc(100vw - 32px); max-height: calc(100vh - 24px); min-height: 360px; display: flex; flex-direction: column; overflow: hidden; color: var(--message-text); background: var(--message-bg); }
+.message-center-panel.is-dropdown { width: min(356px, calc(100vw - 28px)); height: min(510px, calc(100vh - 72px)); min-width: 0; min-height: 0; max-height: calc(100vh - 40px); border-radius: 8px; }
 .messages-route .message-center-panel { max-height: 680px; }
 .message-resize-grip { position: absolute; top: 0; right: 0; z-index: 4; width: 18px; height: 18px; padding: 0; border: 0; background: transparent; cursor: nwse-resize; touch-action: none; }
 .message-resize-grip::before { content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-top: 1px solid #b8b8b8; border-right: 1px solid #b8b8b8; }
 .message-resize-grip:hover::before, .message-resize-grip:focus-visible::before { border-color: #888; }
 .message-resize-grip:focus-visible { outline: none; }
 .messages-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0; padding: 14px 32px 11px 14px; border-bottom: 1px solid var(--message-border); }
+.message-center-panel.is-dropdown .messages-header { padding: 12px 12px 9px; }
 .messages-heading { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .messages-header h1 { margin: 0; font-weight: 600; white-space: nowrap; }
 .messages-unread-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; color: #fff; background: var(--message-unread); font-size: 11px; font-weight: 600; line-height: 18px; }
 .messages-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.message-center-panel.is-dropdown .messages-tools { gap: 4px; }
 .messages-tools > button { width: 30px; min-width: 30px; height: 30px; padding: 0; }
 .messages-tools > .messages-mark-all-read { width: auto; min-width: 0; padding-inline: 7px; white-space: nowrap; }
+.message-center-panel.is-dropdown .messages-mark-all-read { width: 28px; min-width: 28px; padding: 0; }
 .messages-alert { margin: 10px 12px 0; }
 .messages-body { flex: 1; min-height: 0; overflow: auto; padding: 0 0 8px; scrollbar-gutter: stable; }
+.message-center-panel.is-dropdown .messages-body { padding-bottom: 5px; }
 .messages-body.is-empty { display: flex; align-items: center; justify-content: center; overflow: hidden; scrollbar-gutter: auto; }
 .messages-body.is-empty .messages-list { width: 100%; }
 .messages-list { margin: 0; }
 .message-date-group { display: flex; align-items: center; gap: 9px; margin: 0; padding: 12px 14px 6px; font-size: 12px; font-weight: 500; color: var(--message-muted); background: var(--message-bg); }
+.message-center-panel.is-dropdown .message-date-group { padding: 10px 12px 5px; font-size: 11px; }
 .message-date-group::after { content: ""; flex: 1; height: 1px; background: var(--message-border); }
 .message-row { position: relative; display: flex; align-items: stretch; margin: 1px 8px; overflow: hidden; border-radius: 6px; }
+.message-center-panel.is-dropdown .message-row { margin: 0 6px; border-radius: 5px; }
 .message-row:hover, .message-row:focus-within { background: var(--message-hover); }
 .message-main { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 58px; padding: 8px 0 8px 10px; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; }
+.message-center-panel.is-dropdown .message-main { gap: 9px; min-height: 52px; padding: 7px 0 7px 9px; }
 button.message-main { cursor: pointer; }
 .message-type-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 7px; color: var(--message-muted); background: var(--message-icon-bg); font-size: 13px; }
+.message-center-panel.is-dropdown .message-type-icon { width: 26px; height: 26px; flex-basis: 26px; border-radius: 6px; font-size: 12px; }
 .message-copy { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
 .message-title { font-size: 13px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-center-panel.is-dropdown .message-title { font-size: 12.5px; line-height: 17px; }
 .message-title strong { font-weight: inherit; color: var(--message-muted); }
 .message-summary { color: var(--message-muted); font-size: 12px; line-height: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-center-panel.is-dropdown .message-summary { font-size: 11.5px; line-height: 16px; }
 .message-destination { color: var(--message-text); font-weight: 500; }
 .message-meta { display: flex; align-items: center; justify-content: flex-end; align-self: stretch; flex: 0 0 38px; padding: 0; }
 .message-meta time { color: var(--message-subtle); font-size: 11px; white-space: nowrap; }
 .message-status { position: relative; display: flex; align-items: center; justify-content: center; width: 32px; flex: 0 0 32px; align-self: stretch; }
+.message-center-panel.is-dropdown .message-status { width: 26px; flex-basis: 26px; }
 .message-unread-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--message-unread); }
 .message-main:focus-visible { outline: 2px solid var(--message-focus); outline-offset: -2px; }

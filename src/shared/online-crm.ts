@@ -3,6 +3,7 @@ import type { Identity } from '../../server/core/auth';
 import type { LeadDetail, ImportReceipt } from '../../server/core/leads';
 import type { WorkbookImportReceipt as CoreWorkbookImportReceipt, WorkbookReceiptRow } from '../../server/core/customer-import';
 import type { LeadConflictLevel } from '../../server/core/lead-conflict';
+import type { DesktopHandoffBeginResult, DeviceHandoffState } from '../../server/core/device-handoff';
 export { hasContactedCustomer, customerBoardStage } from '../../server/core/leads';
 export type { Result, CrmStage } from '../../server/core/crm';
 export { importRowIssue, LEAD_LIMITS } from '../../server/core/leads';
@@ -32,7 +33,7 @@ export { CENTER_CONTACT_ROUTE, CENTER_CONTACT_GROUP_ROUTE, CENTER_CONTACT_LIMITS
 export type { CenterContactGroup, CenterContactGroupDimension, CenterContactGroupPage, CenterContactGroupQuery } from '../../server/core/center-contacts';
 export type { ContactAssignment, ContactAssignmentStatus, ContactAssignmentLifecycleStatus, ContactAssignmentPage, ContactAssignmentQuery, ContactAssignmentCreate, ContactAssignmentDecision, ContactAssignmentTransfer, ContactAssignmentExpiryInput, ContactAssignmentExpiryReceipt, ContactAssignmentGroup, ContactAssignmentGroupDecision, ContactAssignmentGroupPage, ContactAssignmentGroupQuery, ContactAssignmentReceipt, ContactMonitorContact, ContactMonitorDetail, CenterCompanyUpdate, CenterContactRef, CenterContactDetail, CenterContactUpdate, CenterContactFollowup } from '../../server/core/contact-assignments';
 export { CONTACT_ASSIGNMENT_ROUTES, CONTACT_ASSIGNMENT_LIMITS } from '../../server/core/contact-assignments';
-export type { ContactPermissions, ContactShareGrant, ContactShareStatus, ContactShare, ContactShareCreate, ContactShareDecision, ContactShareUpdate, ContactShareQuery, ContactSharePage, ContactShareMember } from '../../server/core/contact-sharing';
+export type { ContactPermissions, ContactShareGrant, ContactShareStatus, ContactShare, ContactShareCreate, ContactShareDecision, ContactShareUpdate, ContactShareQuery, ContactSharePage, ContactShareMember, ContactTeamShareCreate, ContactTeamShareReceipt } from '../../server/core/contact-sharing';
 export { CONTACT_SHARING_ROUTES, CONTACT_SHARING_EVENTS, CONTACT_SHARED_FIELDS } from '../../server/core/contact-sharing';
 export type ContactShareDecisionInput = import('../../server/core/contact-sharing').ContactShareDecision & { action: 'accept' | 'reject' | 'revoke' };
 export type { AssignRequest, CrmMember, MemberQuery, MemberPage } from '../../server/core/leads';
@@ -47,6 +48,13 @@ export interface OnlineLogout { switchAccount?: boolean; }
 export interface LoginAccountQuery { accounts: LoginAccount[]; selectedAccountId?: string; }
 export interface OnlineRegistration { email: string; password: string; }
 export type { RegisteredAccount } from '../../server/core/desktop-session';
+export type { DesktopHandoffBeginResult, DeviceHandoffState, DeviceHandoffSummary, DeviceHandoffCounts, DeviceHandoffStatus } from '../../server/core/device-handoff';
+export type OnlineHandoffBeginResult = DesktopHandoffBeginResult;
+export type OnlineHandoffState = DeviceHandoffState;
+export interface OnlineHandoffBegin extends OnlineLogin { requestKey: string; }
+export interface OnlineHandoffToken { handoffToken: string; }
+export interface OnlineHandoffComplete extends OnlineHandoffToken { remember?: boolean; autoLogin?: boolean; }
+export interface OnlineHandoffTakeover extends OnlineHandoffComplete { reason: string; }
 export interface OnlineSessionSnapshot { identity: Identity | null; remembered: boolean; baseUrl: string; localAvailable?: boolean; connection?: 'online' | 'offline'; offlineExpiresAt?: string; }
 export interface OnlinePasswordChange { currentPassword: string; newPassword: string; }
 export interface ImportPreview { headers: string[]; rows: Record<string, string>[]; fileName: string; rowNumbers?: number[]; sheets?: import('../../server/core/customer-import').ImportSheetPreview[]; }
@@ -67,9 +75,10 @@ export type {ContactDelete,ContactDeleteReceipt,CompanyCreate,CompanyDelete,Comp
 export { LIFECYCLE_LIMITS } from '../../server/core/crm-lifecycle';
 export const ONLINE_CHANNELS = {
   ACCOUNT_PROFILE:'online:account-profile',
-  CONTACT_SHARES:'online:contact-shares', CONTACT_SHARE_CREATE:'online:contact-share-create', CONTACT_SHARE_DECIDE:'online:contact-share-decide', CONTACT_SHARE_UPDATE:'online:contact-share-update', CONTACT_SHARE_MEMBERS:'online:contact-share-members',
+  CONTACT_SHARES:'online:contact-shares', CONTACT_SHARE_CREATE:'online:contact-share-create', CONTACT_SHARE_DECIDE:'online:contact-share-decide', CONTACT_SHARE_UPDATE:'online:contact-share-update', CONTACT_SHARE_TEAM:'online:contact-share-team', CONTACT_SHARE_MEMBERS:'online:contact-share-members',
  CONTACT_DELETE:'online:contact-delete',COMPANY_LIST:'online:company-list',COMPANY_DETAIL:'online:company-detail',COMPANY_CREATE:'online:company-create',COMPANY_DELETE:'online:company-delete',
   REGISTER:'online:register', LOGIN:'online:login', LOGOUT:'online:logout', STATUS:'online:status', RESTORE:'online:restore', PASSWORD:'online:password', BOOTSTRAP:'online:bootstrap',
+  HANDOFF_BEGIN:'online:handoff-begin', HANDOFF_STATUS:'online:handoff-status', HANDOFF_COMPLETE:'online:handoff-complete', HANDOFF_TAKEOVER:'online:handoff-takeover', HANDOFF_CANCEL:'online:handoff-cancel',
   ACCOUNT_LIST:'online:account-list', ACCOUNT_LOGIN:'online:account-login', ACCOUNT_REMOVE:'online:account-remove',
   PREVIEW:'online:preview', IMPORT:'online:import', PUBLISH:'online:publish',
   WORKBOOK_PREVIEW:'online:workbook-preview', WORKBOOK_IMPORT:'online:workbook-import',
@@ -100,7 +109,7 @@ export const ONLINE_CHANNELS = {
   OPPORTUNITY_LIST:'online:opportunity-list', OPPORTUNITY_CREATE:'online:opportunity-create',
   OPPORTUNITY_DETAIL:'online:opportunity-detail', OPPORTUNITY_STAGE:'online:opportunity-stage',
 } as const;
-export const ONLINE_LIMITS = { timeoutMs:10000, responseBytes:1048576, fileBytes:10485760, fileRows:10000, batchRows:200, feedPage:100, pollMs:5000, defaultUrl:'http://127.0.0.1:55844' } as const;
+export const ONLINE_LIMITS = { timeoutMs:10000, responseBytes:1048576, fileRows:100000, batchRows:200, feedPage:100, pollMs:5000, defaultUrl:'http://127.0.0.1:55844' } as const;
 
 export interface ImportFileContent { type: "csv" | "xlsx" | "tsv"; data: string; encoding?:'base64'; }
 export type { FollowupTask, TaskQuery, TaskPage, TaskCreate, TaskReschedule, TaskComplete } from '../../server/core/tasks';

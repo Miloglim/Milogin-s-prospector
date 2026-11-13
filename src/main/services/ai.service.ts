@@ -74,7 +74,7 @@ function resolveLlmEndpoint(): { url: string; model: string; key: string; label:
 }
 
 /** 轻任务 LLM 调用（会话压缩摘要等单发小任务；也被 agent.service 复用）。opts.thinking 供起草/背调等高价值合成开思考。 */
-export async function chat(system: string, user: string, opts?: { thinking?: boolean }): Promise<Result<string>> {
+export async function chat(system: string, user: string, opts?: { thinking?: boolean; signal?: AbortSignal }): Promise<Result<string>> {
   // 大小模型路由：能力调用（总结/背调/开发信/压缩摘要）优先走轻任务档 LIGHT_*，未配置回落主端点
   const light = readLightEndpoint();
   const ep = light.source === "light"
@@ -83,6 +83,9 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
   if (!ep) return failResult("模型端点未配置：请到「设置 → 模型与端点」填好 Base URL / 密钥 / 模型名并启用（或在 .env 配 DEEPSEEK_API_KEY 作回落）");
 
   const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  if (opts?.signal?.aborted) controller.abort();
+  else opts?.signal?.addEventListener("abort", abortFromCaller, { once: true });
   // 思考会显著加长首字前延迟：开思考的合成调用（起草/背调）放宽到 120s
   const timeoutMs = opts?.thinking ? 120_000 : 60_000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -131,11 +134,12 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
     return failResult(aborted ? `模型请求超时（${timeoutMs / 1000}s）` : "模型网络错误");
   } finally {
     clearTimeout(timer);
+    opts?.signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
 /** 调 LLM 并要求返回 JSON，解析失败时给 fail */
-export async function chatJson<T>(system: string, user: string, opts?: { thinking?: boolean }): Promise<Result<T>> {
+export async function chatJson<T>(system: string, user: string, opts?: { thinking?: boolean; signal?: AbortSignal }): Promise<Result<T>> {
   const r = await chat(system, user, opts);
   if (!r.success) return r;
   const cleaned = r.data.replace(/```json|```/g, "").trim();

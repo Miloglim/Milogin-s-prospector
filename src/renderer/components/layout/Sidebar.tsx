@@ -445,7 +445,8 @@ export function Sidebar() {
             onOpenChange={setMessagesOpen}
             overlayClassName="message-center-popover"
             styles={{ body: { padding: 0, overflow: 'hidden' } }}
-            content={<MessageCenterPanel />}
+            arrow={{ pointAtCenter: true }}
+            content={<MessageCenterPanel compact />}
           >
             <span className="message-center-trigger">
               <FootIcon icon={<><BellOutlined />{(notifications?.unread ?? 0) > 0 && <span className="sidebar-message-badge" aria-label={`${notifications?.unread} 条未读`}>{notifications?.unread}</span>}</>} label="消息中心" active={messagesOpen} onClick={() => undefined} />

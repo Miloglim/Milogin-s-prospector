@@ -34,6 +34,12 @@ describe('QQ-style login presets without exposing secrets',()=>{
   await mount();await act(async()=>fireEvent.click(host.querySelector('[name=autoLogin]')!));expect((host.querySelector('[name=remember]') as HTMLInputElement).checked).toBe(true);
   await act(async()=>fireEvent.click(host.querySelector('[name=remember]')!));expect((host.querySelector('[name=autoLogin]') as HTMLInputElement).checked).toBe(false);expect((host.querySelector('#password') as HTMLInputElement).required).toBe(true);
  });
+ it('keeps desktop login ready for offline restarts by default',async()=>{
+  fixture.session.accounts=[];fixture.session.selectedAccountId=undefined;
+  await mount();
+  expect((host.querySelector('[name=remember]') as HTMLInputElement).checked).toBe(true);
+  expect((host.querySelector('[name=autoLogin]') as HTMLInputElement).checked).toBe(true);
+ });
  it('removing one preset forwards its ID and does not attempt a login',async()=>{
   await mount();await act(async()=>fireEvent.click(host.querySelector('[aria-label="选择账号"]')!));await act(async()=>fireEvent.click(host.querySelector('[aria-label="移除 b@example.invalid"]')!));
   expect(fixture.session.removeAccount).toHaveBeenCalledWith('b');expect(fixture.session.loginAccount).not.toHaveBeenCalled();

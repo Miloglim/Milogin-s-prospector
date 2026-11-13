@@ -5,7 +5,6 @@
 .product-login-busybar.is-visible::after { opacity: .85; animation: product-login-progress 1.15s ease-in-out infinite; }
 @keyframes product-login-progress { from { transform: translateX(0); } to { transform: translateX(385%); } }
 .login-restore-screen { height: 100vh; display: flex; align-items: center; justify-content: center; gap: 10px; color: #6b6b6b; background: #fff; font-size: 13px; }
-.identity-route-loading { position: fixed; top: var(--app-titlebar-height); right: 0; bottom: 0; left: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: #fff; }
 .identity-app-shell { animation: identity-app-enter .24s ease-out both; }
 @keyframes identity-app-enter { from { opacity: 0; } to { opacity: 1; } }
 .product-login-main { position: relative; inset: auto; flex: 1; min-height: 0; overflow: hidden; padding: 16px 24px; background: radial-gradient(ellipse at 24% 28%, rgba(220,228,238,.3), transparent 48%), radial-gradient(ellipse at 78% 72%, rgba(237,231,221,.24), transparent 46%), #fff; }
@@ -101,7 +100,6 @@ body.workspace-dark .product-login-main {
   background: radial-gradient(ellipse at 24% 28%, rgba(255,255,255,.035), transparent 48%), radial-gradient(ellipse at 78% 72%, rgba(255,255,255,.025), transparent 46%), var(--workspace-canvas);
 }
 body.workspace-dark .login-restore-screen,
-body.workspace-dark .identity-route-loading { color: var(--workspace-muted); background: var(--workspace-canvas); }
 body.workspace-dark .product-login-brand,
 body.workspace-dark .product-login-mascot { color: var(--workspace-text); }
 body.workspace-dark .product-login-brand-owner,

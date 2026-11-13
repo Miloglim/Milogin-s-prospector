@@ -1,4 +1,5 @@
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "[::1]"]);
+const COMPANY_INTERNAL_SUFFIX = ".yqn.corp";
 
 /** Public center addresses must use HTTPS; plain HTTP is reserved for local test servers. */
 export function validateCenterBase(input: unknown): string | null {
@@ -6,8 +7,9 @@ export function validateCenterBase(input: unknown): string | null {
   try {
     const url = new URL(input.trim());
     const loopback = LOOPBACK_HOSTS.has(url.hostname);
+    const companyInternalHttp = url.protocol === "http:" && url.hostname.endsWith(COMPANY_INTERNAL_SUFFIX);
     if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) return null;
-    if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) return null;
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && (loopback || companyInternalHttp))) return null;
     return url.origin;
   } catch { /* Invalid URL is rejected before it can reach network IO. */ return null; }
 }
