@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export const CONTACT_CHANGE_VERSION = '008-contact-change-import-capture-public';
 export const CONTACT_CHANGE_LOCK = 19041007;
 export const PUBLIC_OUTBOX_FK_REPAIR_VERSION = '063-public-outbox-fk-repair';
@@ -39,16 +41,27 @@ CREATE TRIGGER crm_contact_change_capture AFTER INSERT ON public.identity_outbox
 
 /** Legacy local centers can retain FKs against identity.outbox after public identity migration. */
 export const PUBLIC_OUTBOX_FK_REPAIR_SQL = `
-ALTER TABLE public.crm_contact_changes DROP CONSTRAINT IF EXISTS crm_contact_changes_event_id_fkey;
-ALTER TABLE public.crm_contact_changes ADD CONSTRAINT crm_contact_changes_event_id_fkey
+ALTER TABLE crm_contact_changes DROP CONSTRAINT IF EXISTS crm_contact_changes_event_id_fkey;
+ALTER TABLE crm_contact_changes ADD CONSTRAINT crm_contact_changes_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
-ALTER TABLE public.crm_event_deliveries DROP CONSTRAINT IF EXISTS crm_event_deliveries_event_id_fkey;
-ALTER TABLE public.crm_event_deliveries ADD CONSTRAINT crm_event_deliveries_event_id_fkey
+ALTER TABLE crm_event_deliveries DROP CONSTRAINT IF EXISTS crm_event_deliveries_event_id_fkey;
+ALTER TABLE crm_event_deliveries ADD CONSTRAINT crm_event_deliveries_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
-ALTER TABLE public.crm_notification_consumed DROP CONSTRAINT IF EXISTS crm_notification_consumed_event_id_fkey;
-ALTER TABLE public.crm_notification_consumed ADD CONSTRAINT crm_notification_consumed_event_id_fkey
+ALTER TABLE crm_notification_consumed DROP CONSTRAINT IF EXISTS crm_notification_consumed_event_id_fkey;
+ALTER TABLE crm_notification_consumed ADD CONSTRAINT crm_notification_consumed_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
-ALTER TABLE public.crm_task_due_receipts DROP CONSTRAINT IF EXISTS crm_task_due_receipts_event_id_fkey;
-ALTER TABLE public.crm_task_due_receipts ADD CONSTRAINT crm_task_due_receipts_event_id_fkey
+ALTER TABLE crm_task_due_receipts DROP CONSTRAINT IF EXISTS crm_task_due_receipts_event_id_fkey;
+ALTER TABLE crm_task_due_receipts ADD CONSTRAINT crm_task_due_receipts_event_id_fkey
   FOREIGN KEY(event_id) REFERENCES public.identity_outbox(event_id);
 `;
+
+const PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL = PUBLIC_OUTBOX_FK_REPAIR_SQL.replaceAll(
+  'ALTER TABLE crm_',
+  'ALTER TABLE public.crm_',
+);
+export const PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM = createHash('sha256').update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest('hex');
+export const PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM = createHash('sha256').update(PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL).digest('hex');
+
+export function acceptsPublicOutboxFkRepairChecksum(checksum: string): boolean {
+  return checksum === PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM || checksum === PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM;
+}

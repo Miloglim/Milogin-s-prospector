@@ -4,6 +4,37 @@ import { success, failure, type Result, type LogSink } from "../core/crm";
 import type { AuthService } from "../services/auth";
 
 const MILLISECONDS_PER_SECOND = 1000;
+const ACTUATOR_INFO_PATH = "/actuator/info";
+const ACTUATOR_PROMETHEUS_PATH = "/actuator/prometheus";
+const PROMETHEUS_BODY = [
+  "# HELP prospector_center_up Whether the Prospector center process is serving requests.",
+  "# TYPE prospector_center_up gauge",
+  "prospector_center_up 1",
+  "",
+].join("\n");
+
+function operationalHeaders(contentType: string) {
+  return {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Connection": "close",
+  };
+}
+
+async function sendActuatorInfo(response: ServerResponse, service: AuthService, head: boolean) {
+  const readiness = await service.ready();
+  const status = readiness.ok ? HTTP_STATUS.OK : HTTP_STATUS[readiness.error.code];
+  const payload = readiness.ok ? { status: "UP" } : readiness;
+  response.writeHead(status, operationalHeaders("application/json; charset=utf-8"));
+  response.end(head ? undefined : JSON.stringify(payload));
+}
+
+function sendPrometheus(response: ServerResponse) {
+  response.writeHead(HTTP_STATUS.OK, operationalHeaders("text/plain; version=0.0.4; charset=utf-8"));
+  response.end(PROMETHEUS_BODY);
+}
+
 export function send(response: ServerResponse, result: Result<unknown>) {
   if(response.destroyed || response.writableEnded) return;
   response.writeHead(result.ok ? HTTP_STATUS.OK : HTTP_STATUS[result.error.code], {
@@ -46,6 +77,8 @@ export function createOnlineServer(service: AuthService, gate: LoginGate, config
     if(request.headers.host !== localHost && (!publicHost || request.headers.host !== publicHost)) { send(response,failure("FORBIDDEN","服务 Host 无效")); return; }
     if(browser && (path.startsWith('/admin-api/') || path === '/' || path.startsWith('/?') || path.startsWith('/assets/'))) {await browser(request,response);return;}
     if(request.headers.origin || request.headers["sec-fetch-site"] === "cross-site") { send(response,failure("FORBIDDEN","当前仅接受本机非浏览器跨站请求")); return; }
+    if((method === "GET" || method === "HEAD") && path === ACTUATOR_INFO_PATH) { await sendActuatorInfo(response,service,method === "HEAD"); return; }
+    if(method === "GET" && path === ACTUATOR_PROMETHEUS_PATH) { sendPrometheus(response); return; }
     if(desktop && path.startsWith('/api/auth/desktop/')) { await desktop(request,response); return; }
     if(crm && path.startsWith('/api/crm/') && path !== API_ROUTES.crmAccess) { await crm(request,response); return; }
     const authorization = request.headers.authorization ?? "";

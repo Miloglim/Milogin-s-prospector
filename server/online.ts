@@ -4,7 +4,7 @@ import {SEND_ACCEPTANCE_ROUTES} from './core/send-acceptance';
 import {createContactSharingService} from './services/contact-sharing';
 import {createContactSharingHandler} from './transport/contact-sharing-http';
 import { Pool } from "pg";
-import { readOnlineDatabaseConfig } from "./adapters/postgres/config";
+import { resolveOnlineDatabaseConfig } from "./adapters/postgres/config";
 import { PostgresCrmRepository } from "./adapters/postgres/repository";
 import { PostgresAuthRepository } from "./adapters/postgres/auth-repository";
 import { PasswordAdapter,tokenAdapter } from "./adapters/password";
@@ -80,11 +80,12 @@ import { PostgresSalesPerformanceRepository } from './adapters/postgres/sales-pe
 import { createSalesPerformanceService } from './services/sales-performance';
 import { createSalesPerformanceHandler } from './transport/sales-performance-http';
 import { SALES_PERFORMANCE_ROUTES } from './core/sales-performance';
+import { resolveOnlineInstanceId } from './adapters/online-instance';
 
 const EXIT_FAILED = 1;
 const SHUTDOWN_TIMEOUT_MS = 5000;
 async function main() {
-  const config=readOnlineConfig(), pool=new Pool(readOnlineDatabaseConfig());
+  const config=readOnlineConfig(), pool=new Pool(await resolveOnlineDatabaseConfig());
   let started=false;
   try {
     const crm=new PostgresCrmRepository(pool,serverLog), repo=new PostgresAuthRepository(pool,serverLog);
@@ -92,8 +93,7 @@ async function main() {
     const passwords=new PasswordAdapter(config.password_concurrency);
     await passwords.initialize();
     await initializeFixtures(repo,passwords,config.test_mode);
-    const clock={now:()=>Date.now()}, instanceId=process.env.PROSPECTOR_ONLINE_INSTANCE;
-    if(!instanceId || !/^[a-f0-9]{64}$/.test(instanceId)) throw new Error("缺少本节点启动标识");
+    const clock={now:()=>Date.now()}, instanceId=resolveOnlineInstanceId();
     const auth=createAuthService(repo,passwords,tokenAdapter,clock,config.session_ttl_seconds);
     const adminRepository=new PostgresAdminRepository(pool,serverLog);
     const admin=createAdminService(adminRepository,repo,passwords,tokenAdapter,clock,auth);

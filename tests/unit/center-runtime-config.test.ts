@@ -76,7 +76,10 @@ describe('center database environment boundary', () => {
     expect(() => readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://center.example.test' })).toThrow();
     expect(readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://127.0.0.1:55847', PROSPECTOR_CENTER_LOCAL_HTTP: '1' }))
       .toMatchObject({ host: '127.0.0.1', port: 55847, public_origin: 'http://127.0.0.1:55847', local_http: true });
+    expect(readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://22124.pro.yqn.corp:22124', APP_PORT: '22124' }))
+      .toMatchObject({ port: 22124, public_origin: 'http://22124.pro.yqn.corp:22124', insecure_http: true });
     expect(() => readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://127.0.0.1:55847' })).toThrow();
+    expect(() => readOnlineConfig({ ...env, PROSPECTOR_CENTER_PUBLIC_ORIGIN: 'http://external.example.com' })).toThrow();
   });
 
   it('supports a container bind address and persistent runtime path', () => {

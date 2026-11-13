@@ -50,7 +50,7 @@ async function navigatorHealth(config: OnlineConfig):Promise<OperationsCheck> {
  }
 }
 export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:TokenPort,gate:LoginGate,config:OnlineConfig,staticHandler:BrowserHandler,passwordChange?:PasswordChangeService,dashboard?:ReturnType<typeof createManagementDashboardService>,dataBrowser?:ReturnType<typeof createAdminDataBrowserService>):BrowserHandler {
- const cookieFlags=`HttpOnly; SameSite=Strict; Path=/`+(config.test_mode||config.local_http?'':'; Secure');
+  const cookieFlags=`HttpOnly; SameSite=Strict; Path=/`+(config.test_mode||config.local_http||config.insecure_http?'':'; Secure');
  return async(request,response)=>{
   response.setHeader('Referrer-Policy','no-referrer');
   response.setHeader('X-Frame-Options','DENY');

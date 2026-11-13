@@ -570,6 +570,11 @@
 - 验证：真实文件平表预览约 0.7 秒成功，得到 84 个有效/未命名表头和 11062 行，完整拆成 56 个批次；没有输出客户字段内容。合成稀疏范围回归、导入相关 48 项测试、typecheck、Electron build 和架构检查 5 项通过。
 - 包：`D:\Agent Basement\dist-downloads-0.71.0-alpha.11-contact-autodev-r2\prospecting-email-setup-0.71.0-alpha.11.exe`，123,905,149 字节，SHA-256 `FE8BAD4C958F81133A6C53EDFBA3005E07D8920AEC6067776CB23FDD968CCDDF`，未签名。
 - 边界：已完成真实文件解析和请求拆批验证，尚未用该文件向正式中心写入；未上传 GitHub Release 或下载页。格式损坏、重复字段、字段内容或权限问题仍会阻止对应导入。
+## 2026-11-04 公司内网 HTTP 客户端地址
+
+- 现象：QA 中心使用 `http://22124.qa4.yqn.corp:22124`、Navigator 使用 `http://22125.qa4.yqn.corp:22125`，旧客户端和打包脚本只允许 HTTPS 或本机/私有 IP HTTP，内网域名会被判为无效。
+- 修改：Center 和 Navigator 地址校验仅对 `*.yqn.corp` 放行 HTTP；正式打包脚本使用同一边界，公网仍强制 HTTPS。
+- 验证：地址、登录和 Navigator 客户端 33 项测试及 typecheck 通过；已生成内嵌 22124/22125 的公司 QA 完整客户端。
 
 ## 2026-11-02 自动回复停止任务后续发送
 
@@ -1296,3 +1301,26 @@
 - 修改：新增统一邮件协议错误归因，把 IMAP/SMTP/POP3 的认证拒绝、超时、网络和证书错误翻译成可执行提示；收信日志保留脱敏服务器响应。全部收信账号失败时，手动刷新和自动抓取都返回/记录真实失败并停止无意义的收信后处理；进度框失败状态提供“检查账号”，健康通知也可直接进入设置页。
 - 验证：typecheck、错误归因/账号验证/收信服务/收件箱渲染 42 项、生产构建、架构检查 5 项和真实 Electron 收件箱冒烟通过，页面错误 0。
 - 边界：当前 `zayne_jin@yqn.com` 的真实 IMAP 登录仍被服务商拒绝，需要用户在设置页更新邮箱密码/授权码并确认服务端已开启 IMAP；本轮没有修改或猜测凭据，不执行真实外发，也未新增接口、数据库表或依赖。
+### QA4 中心因数据库 KMS 密钥名被当作明文密码而启动失败
+
+- 现象：QA4 中心启动时报“缺少正式中心数据库连接配置”；补入数据库变量后又因认证失败而无法就绪。
+- 原因：Apollo 的 `postgres.password` 保存的是 KMS 密钥名，旧中心只读取明文 `PROSPECTOR_CENTER_PG_PASSWORD`，没有在创建 PostgreSQL 连接池前解析公司 KMS 凭据。首轮适配上线后又确认 QA4 注入层会过滤带点号的键，实例只加载 7 项配置并回退旧明文路径，PostgreSQL 返回 `28P01`。
+- 修改：新增签名 KMS 凭据适配器；生产模式优先解析可注入的 `PROSPECTOR_CENTER_PG_KMS_SECRET`，并保留 `postgres.password` 兼容路径，用返回的账号和密码构造固定 `milogin_center`、`prospector,public` 搜索路径的连接池。仓储层连接边界也支持已解析的 KMS 连接池，不再依赖旧明文密码变量。QA4 Apollo 已发布两个 KMS 密钥名配置和 `PROSPECTOR_CENTER_PG_USER=yqnroot`。
+- 验证：KMS 解析、优先级、Apollo 点号键过滤、错误脱敏、路由元数据和无旧明文密码连接池校验共 6 项单元测试通过；服务端入口 esbuild 解析、预构建包 Node 语法和 `git diff --check` 通过；只读数据库连通性此前已验证。
+- 边界：KMS 修复镜像已进入 QA4，数据库认证不再是最新 Pod 的阻断点；旧 `PROSPECTOR_CENTER_PG_PASSWORD` 配置暂未删除，但新适配器会忽略它。服务整体就绪仍取决于后续启动边界通过。
+
+### QA4 容器通过数据库迁移后因缺少启动标识退出
+
+- 现象：KMS 修复镜像加载 8 项 Apollo 配置并通过数据库认证后，启动继续报“缺少本节点启动标识”，Pod 进入 CrashLoopBackOff。
+- 原因：本机 `production-server.mjs` 启动器会生成 `PROSPECTOR_ONLINE_INSTANCE`，但 Dockerfile 直接执行预构建 `online.cjs`，K8s 没有经过该启动器，也没有注入这个本机进程管理字段。
+- 修改：在线服务在未配置时为当前进程生成随机 32 字节启动标识；启动器显式提供的合法标识继续原样使用，显式非法值仍拒绝启动。预构建部署包同步同一逻辑。
+- 验证：启动器传值、容器缺省生成和非法配置拒绝共 3 项单元测试通过；QA4 最新 Pod 日志已证明 KMS 数据库认证不再是当前阻断点。
+- 边界：新启动标识修复仍需构建部署；部署后继续检查剩余迁移、`/health/live` 和 `/health/ready`，不能仅以 CrashLoop 错误变化宣称服务就绪。
+
+### QA4 联系人变化迁移错误定位到 public schema
+
+- 现象：容器生成启动标识并继续迁移后，日志报 `contact-change.pg`，随后以“联系人变化迁移被拒绝”退出。
+- 原因：公司 QA4 使用 `search_path=prospector,public`，四张 CRM 表都位于 `prospector`；迁移 `063-public-outbox-fk-repair` 却将它们硬编码为 `public.crm_*`。只读数据库核验确认联系人变化迁移 `008` 已完成，而 `063` 尚未记录。
+- 修改：四张 CRM 表改为通过既有 `search_path` 解析，外键目标继续显式指向共享的 `public.identity_outbox`；旧本地单 schema 中的 `public` 表仍可兼容。已执行旧 `063` 的中心可继续使用原 SQL checksum，其他 checksum 漂移仍拒绝。预构建在线服务同步同一逻辑。
+- 验证：schema 回归断言先在旧 SQL 下按预期失败，历史 checksum 回归断言先因兼容接口缺失而失败，修改后均通过；源码与预构建 SQL 对比一致，预构建 bundle 通过 Node 语法检查。隔离工作树缺少 Vitest 和 esbuild 依赖，未安装依赖，正式 Vitest 与重新打包命令未执行成功。
+- 边界：需发布新镜像后确认迁移 `063` 落库、日志不再出现 `contact-change.pg`，并检查 Pod Ready；本次未手工修改 QA4 数据库。
