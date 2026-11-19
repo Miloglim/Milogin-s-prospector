@@ -1,5 +1,13 @@
 # Prospector 问题与修复摘要
 
+## 2026-11-18 中心启动迁移日志丢失数据库原始错误
+
+- 现象：PR 中心启动只记录 `crm.pg.migrate 数据库操作失败 code=UNKNOWN` 和“迁移被拒绝”，无法判断失败发生在连接、事务、锁、迁移表、checksum 还是 schema 应用阶段。
+- 根因：CRM 仓储只提取无下划线的错误 `code`，没有记录异常名称、消息、cause、迁移阶段或耗时；业务 checksum 冲突只返回失败结果，也没有独立日志。Docker 又直接运行预构建 bundle，只改 TypeScript 源码不会进入实际镜像。
+- 修改：启动连接池前记录不含用户、密码、DSN 和 KMS 返回值的 host、port、database、timeout、application、search_path 与 SSL 摘要；CRM 迁移按 `connect/begin/advisory_lock/ensure_migration_table/checksum/apply_schema/record_version/commit` 标记阶段，异常消息和 cause 经凭据模式脱敏、折叠换行并限制长度后写入日志；checksum 拒绝单独记录业务错误。源码和预构建在线 bundle 同步。
+- 验证：Node 无依赖回归先复现 3 项日志缺口、1 项异步阶段误标和 1 项数据库用户名泄漏，修改后 5 项通过；凭据用例覆盖密码、连接串凭据和用户名脱敏；预构建 bundle 通过 `node --check`，源码与产物均检出阶段、cause 和连接摘要标记，`git diff --check` 通过。
+- 边界：本次只增强启动诊断，不修改连接参数、KMS、迁移 SQL、数据库内容或重试行为；仍需发布 PR 镜像并读取一次新启动日志，才能确认实际根因。
+
 ## 2026-11-13 首次同步目标改为最近 2000 封
 
 - 现象：邮箱最近 90 天只有 295 封时，界面拉取 295 封就结束；用户预期首次同步应覆盖最近 2000 封。

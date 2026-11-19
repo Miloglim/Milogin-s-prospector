@@ -6095,6 +6095,19 @@ function productionPool(host, port, user, password) {
     ssl: false
   };
 }
+function describePostgresConnection(config) {
+  const options = typeof config.options === "string" ? config.options : "";
+  const searchPath = /(?:^|\s)-c\s+search_path=([^\s]+)/.exec(options)?.[1] || "default";
+  return [
+    `host=${String(config.host || "default")}`,
+    `port=${String(config.port || DEFAULT_PRODUCTION_PORT)}`,
+    `database=${String(config.database || "default")}`,
+    `timeout_ms=${String(config.connectionTimeoutMillis || 0)}`,
+    `application=${String(config.application_name || "default")}`,
+    `search_path=${searchPath}`,
+    `ssl=${config.ssl ? "true" : "false"}`
+  ].join(" ");
+}
 function readTestDatabaseConfig() {
   const value2 = JSON.parse((0, import_node_fs.readFileSync)(import_node_path.default.resolve(CRM_CONFIG_RELATIVE_PATH), "utf8"));
   if (value2.marker !== CRM_RUNTIME_MARKER || value2.database !== CRM_TEST_DATABASE || value2.user !== CRM_TEST_DATABASE || value2.host !== CRM_TEST_HOST || value2.port !== CRM_TEST_PORT || typeof value2.password !== "string" || !value2.password || value2.connection_timeout_seconds !== postgres_test_settings_default.connection_timeout_seconds) {
@@ -6217,6 +6230,27 @@ CREATE TABLE crm_relations (
 );
 `;
 
+// server/adapters/postgres/diagnostics.ts
+var POSTGRES_MAX_DIAGNOSTIC_LENGTH = 500;
+function cleanPostgresDiagnostic(value2, fallback) {
+  if (typeof value2 !== "string" || !value2.trim())
+    return fallback;
+  return value2.replace(/\b(postgres(?:ql)?:\/\/)[^@\s]+@/gi, "$1[redacted]@").replace(/\b(password|passwd|pwd|secret|token)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]").replace(/\bfor user\s+(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "for user [redacted]").replace(/\b(user|username)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, POSTGRES_MAX_DIAGNOSTIC_LENGTH);
+}
+function postgresErrorProperty(error, key) {
+  return error && typeof error === "object" && key in error ? error[key] : void 0;
+}
+function postgresErrorDiagnostic(error) {
+  const cause = postgresErrorProperty(error, "cause");
+  return [
+    `code=${cleanPostgresDiagnostic(postgresErrorProperty(error, "code"), "UNKNOWN")}`,
+    `name=${cleanPostgresDiagnostic(postgresErrorProperty(error, "name"), "UNKNOWN")}`,
+    `message=${cleanPostgresDiagnostic(postgresErrorProperty(error, "message"), "unknown")}`,
+    `cause_code=${cleanPostgresDiagnostic(postgresErrorProperty(cause, "code"), "UNKNOWN")}`,
+    `cause_message=${cleanPostgresDiagnostic(postgresErrorProperty(cause, "message"), "unknown")}`
+  ].join(" ");
+}
+
 // server/adapters/postgres/repository.ts
 var COMPANY_COLUMNS = `id, name, domain, industry, country, size, backcheck_data AS "backcheckData",
   created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -6248,12 +6282,14 @@ var PostgresCrmRepository = class {
       this.log.write("ERROR", "crm.pg.pool", `\u95F2\u7F6E\u8FDE\u63A5\u9519\u8BEF code=${sqlCode(error)}`);
     });
   }
-  async execute(context, action) {
+  async execute(context, action, detail) {
     try {
       return await action();
     } catch (error) {
       const code2 = sqlCode(error);
-      this.log.write("ERROR", context, `\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25 code=${code2}`);
+      const diagnosticDetail = detail?.();
+      const diagnostic = detail ? ` ${postgresErrorDiagnostic(error)}` : ` code=${code2}`;
+      this.log.write("ERROR", context, `\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25${diagnosticDetail ? ` ${diagnosticDetail}` : ""}${diagnostic}`);
       if (code2 === EMAIL_CONFLICT)
         return failure("CONFLICT", "\u8D44\u6599\u5DF2\u5B58\u5728\uFF0C\u672A\u8986\u76D6\u73B0\u6709\u8BB0\u5F55");
       if (code2 === FOREIGN_KEY_ERROR || code2 === CHECK_ERROR)
@@ -6261,11 +6297,15 @@ var PostgresCrmRepository = class {
       return failure("DATABASE_ERROR", "\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u6D4B\u8BD5\u670D\u52A1\u72B6\u6001");
     }
   }
-  async transaction(action) {
+  async transaction(action, phase) {
+    phase?.("connect");
     const client = await this.pool.connect();
     try {
+      phase?.("begin");
       await client.query("BEGIN");
       const result2 = await action(client);
+      if (result2.ok)
+        phase?.("commit");
       await client.query(result2.ok ? "COMMIT" : "ROLLBACK");
       return result2;
     } catch (error) {
@@ -6280,22 +6320,37 @@ var PostgresCrmRepository = class {
     }
   }
   migrate() {
+    const startedAt = Date.now();
+    let currentPhase = "connect";
+    const detail = () => `phase=${currentPhase} elapsed_ms=${Date.now() - startedAt}`;
     return this.execute("crm.pg.migrate", () => this.transaction(async (client) => {
+      currentPhase = "advisory_lock";
       await client.query("SELECT pg_advisory_xact_lock($1)", [CRM_SCHEMA_LOCK]);
+      currentPhase = "ensure_migration_table";
       await client.query(`CREATE TABLE IF NOT EXISTS crm_schema_migrations (
         version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
       const checksum4 = (0, import_node_crypto2.createHash)("sha256").update(CRM_SCHEMA_SQL).digest("hex");
+      currentPhase = "checksum";
       const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CRM_SCHEMA_VERSION]);
       if (existing.rows.length) {
         if (existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u5DF2\u5E94\u7528\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4\uFF0C\u62D2\u7EDD\u8986\u76D6");
       } else {
+        currentPhase = "apply_schema";
         await client.query(CRM_SCHEMA_SQL);
+        currentPhase = "record_version";
         await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES ($1,$2)", [CRM_SCHEMA_VERSION, checksum4]);
         this.log.write("INFO", "crm.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${CRM_SCHEMA_VERSION}`);
       }
       return success(void 0);
-    }));
+    }, (value2) => {
+      currentPhase = value2;
+    }), detail).then((result2) => {
+      if (!result2.ok && result2.error.code !== "DATABASE_ERROR") {
+        this.log.write("ERROR", "crm.pg.migrate", `\u8FC1\u79FB\u88AB\u62D2\u7EDD ${detail()} code=${result2.error.code} message=${result2.error.message}`);
+      }
+      return result2;
+    });
   }
   createCompany(input) {
     return this.execute("crm.pg.company", async () => {
@@ -19235,7 +19290,9 @@ function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_
 var EXIT_FAILED = 1;
 var SHUTDOWN_TIMEOUT_MS = 5e3;
 async function main() {
-  const config = readOnlineConfig(), pool = new Pool(await resolveOnlineDatabaseConfig());
+  const config = readOnlineConfig(), databaseConfig = await resolveOnlineDatabaseConfig();
+  serverLog.write("INFO", "identity.runtime", `\u6570\u636E\u5E93\u8FDE\u63A5\u914D\u7F6E ${describePostgresConnection(databaseConfig)}`);
+  const pool = new Pool(databaseConfig);
   let started = false;
   try {
     const crm = new PostgresCrmRepository(pool, serverLog), repo = new PostgresAuthRepository(pool, serverLog);
