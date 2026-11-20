@@ -50,11 +50,11 @@ describe("ACK operational HTTP compatibility", () => {
     expect(head).toMatchObject({ status: 200, text: "" });
   });
 
-  it("fails actuator info closed when the center is not ready", async () => {
+  it("keeps HEAD actuator as a process heartbeat without readiness", async () => {
     const base = await start(async () => failure("UNAVAILABLE", "not ready"));
 
     expect(await response(base, "/actuator/info")).toMatchObject({ status: 503 });
-    expect(await response(base, "/actuator/info", "HEAD")).toMatchObject({ status: 503, text: "" });
+    expect(await response(base, "/actuator/info", "HEAD")).toMatchObject({ status: 200, text: "" });
   });
 
   it("serves a valid minimal Prometheus exposition", async () => {

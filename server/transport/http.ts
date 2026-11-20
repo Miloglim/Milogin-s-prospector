@@ -23,11 +23,16 @@ function operationalHeaders(contentType: string) {
 }
 
 async function sendActuatorInfo(response: ServerResponse, service: AuthService, head: boolean) {
+  if (head) {
+    response.writeHead(HTTP_STATUS.OK, operationalHeaders("application/json; charset=utf-8"));
+    response.end();
+    return;
+  }
   const readiness = await service.ready();
   const status = readiness.ok ? HTTP_STATUS.OK : HTTP_STATUS[readiness.error.code];
   const payload = readiness.ok ? { status: "UP" } : readiness;
   response.writeHead(status, operationalHeaders("application/json; charset=utf-8"));
-  response.end(head ? undefined : JSON.stringify(payload));
+  response.end(JSON.stringify(payload));
 }
 
 function sendPrometheus(response: ServerResponse) {
@@ -72,21 +77,21 @@ export type BrowserHandler = (request: IncomingMessage, response: ServerResponse
 export function createOnlineServer(service: AuthService, gate: LoginGate, config: OnlineConfig, log: LogSink, instanceId = "integration", browser?: BrowserHandler, crm?: BrowserHandler, desktop?: BrowserHandler) {
   const dispatch = async (request: IncomingMessage, response: ServerResponse) => {
     const path = request.url ?? "", method = request.method;
+    if((method === "GET" || method === "HEAD") && path === ACTUATOR_INFO_PATH) { await sendActuatorInfo(response,service,method === "HEAD"); return; }
+    if((method === "GET" || method === "HEAD") && path === API_ROUTES.live) { send(response,success({status:"live",instanceId,pid:process.pid})); return; }
+    if((method === "GET" || method === "HEAD") && path === API_ROUTES.ready) { send(response,await service.ready()); return; }
     const localHost = `${request.socket.localAddress}:${request.socket.localPort}`;
     const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
     if(request.headers.host !== localHost && (!publicHost || request.headers.host !== publicHost)) { send(response,failure("FORBIDDEN","服务 Host 无效")); return; }
     if(browser && (path.startsWith('/admin-api/') || path === '/' || path.startsWith('/?') || path.startsWith('/assets/'))) {await browser(request,response);return;}
     if(request.headers.origin || request.headers["sec-fetch-site"] === "cross-site") { send(response,failure("FORBIDDEN","当前仅接受本机非浏览器跨站请求")); return; }
-    if((method === "GET" || method === "HEAD") && path === ACTUATOR_INFO_PATH) { await sendActuatorInfo(response,service,method === "HEAD"); return; }
     if(method === "GET" && path === ACTUATOR_PROMETHEUS_PATH) { sendPrometheus(response); return; }
     if(desktop && path.startsWith('/api/auth/desktop/')) { await desktop(request,response); return; }
     if(crm && path.startsWith('/api/crm/') && path !== API_ROUTES.crmAccess) { await crm(request,response); return; }
     const authorization = request.headers.authorization ?? "";
     const token = /^Bearer ([A-Za-z0-9_-]+)$/.exec(authorization)?.[1] ?? "";
     let result: Result<unknown>;
-    if(method === "GET" && path === API_ROUTES.live) result = success({status:"live",instanceId,pid:process.pid});
-    else if(method === "GET" && path === API_ROUTES.ready) result = await service.ready();
-    else if(method === "POST" && path === API_ROUTES.login) {
+    if(method === "POST" && path === API_ROUTES.login) {
       const input = await body(request,config.request_body_bytes);
       if(!input.ok) result=input;
       else {

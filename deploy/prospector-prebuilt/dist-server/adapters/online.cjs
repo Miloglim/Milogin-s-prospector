@@ -25,9 +25,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/postgres-array/index.js
+// ../../Milogin-s-prospector/node_modules/postgres-array/index.js
 var require_postgres_array = __commonJS({
-  "node_modules/postgres-array/index.js"(exports2) {
+  "../../Milogin-s-prospector/node_modules/postgres-array/index.js"(exports2) {
     "use strict";
     exports2.parse = function(source, transform) {
       return new ArrayParser(source, transform).parse();
@@ -123,9 +123,9 @@ var require_postgres_array = __commonJS({
   }
 });
 
-// node_modules/pg-types/lib/arrayParser.js
+// ../../Milogin-s-prospector/node_modules/pg-types/lib/arrayParser.js
 var require_arrayParser = __commonJS({
-  "node_modules/pg-types/lib/arrayParser.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg-types/lib/arrayParser.js"(exports2, module2) {
     var array = require_postgres_array();
     module2.exports = {
       create: function(source, transform) {
@@ -139,9 +139,9 @@ var require_arrayParser = __commonJS({
   }
 });
 
-// node_modules/postgres-date/index.js
+// ../../Milogin-s-prospector/node_modules/postgres-date/index.js
 var require_postgres_date = __commonJS({
-  "node_modules/postgres-date/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/postgres-date/index.js"(exports2, module2) {
     "use strict";
     var DATE_TIME = /(\d{1,})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(\.\d{1,})?.*?( BC)?$/;
     var DATE = /^(\d{1,})-(\d{2})-(\d{2})( BC)?$/;
@@ -227,9 +227,9 @@ var require_postgres_date = __commonJS({
   }
 });
 
-// node_modules/xtend/mutable.js
+// ../../Milogin-s-prospector/node_modules/xtend/mutable.js
 var require_mutable = __commonJS({
-  "node_modules/xtend/mutable.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/xtend/mutable.js"(exports2, module2) {
     module2.exports = extend;
     var hasOwnProperty = Object.prototype.hasOwnProperty;
     function extend(target) {
@@ -246,9 +246,9 @@ var require_mutable = __commonJS({
   }
 });
 
-// node_modules/postgres-interval/index.js
+// ../../Milogin-s-prospector/node_modules/postgres-interval/index.js
 var require_postgres_interval = __commonJS({
-  "node_modules/postgres-interval/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/postgres-interval/index.js"(exports2, module2) {
     "use strict";
     var extend = require_mutable();
     module2.exports = PostgresInterval;
@@ -266,12 +266,12 @@ var require_postgres_interval = __commonJS({
       }
       if (filtered.length === 0)
         return "0";
-      return filtered.map(function(property) {
-        var value2 = this[property] || 0;
-        if (property === "seconds" && this.milliseconds) {
+      return filtered.map(function(property2) {
+        var value2 = this[property2] || 0;
+        if (property2 === "seconds" && this.milliseconds) {
           value2 = (value2 + this.milliseconds / 1e3).toFixed(6).replace(/\.?0+$/, "");
         }
-        return value2 + " " + property;
+        return value2 + " " + property2;
       }, this).join(" ");
     };
     var propertiesISOEquivalent = {
@@ -288,12 +288,12 @@ var require_postgres_interval = __commonJS({
       var datePart = dateProperties.map(buildProperty, this).join("");
       var timePart = timeProperties.map(buildProperty, this).join("");
       return "P" + datePart + "T" + timePart;
-      function buildProperty(property) {
-        var value2 = this[property] || 0;
-        if (property === "seconds" && this.milliseconds) {
+      function buildProperty(property2) {
+        var value2 = this[property2] || 0;
+        if (property2 === "seconds" && this.milliseconds) {
           value2 = (value2 + this.milliseconds / 1e3).toFixed(6).replace(/0+$/, "");
         }
-        return value2 + propertiesISOEquivalent[property];
+        return value2 + propertiesISOEquivalent[property2];
       }
     };
     var NUMBER = "([+-]?\\d+)";
@@ -323,27 +323,27 @@ var require_postgres_interval = __commonJS({
         return {};
       var matches = INTERVAL.exec(interval);
       var isNegative = matches[8] === "-";
-      return Object.keys(positions).reduce(function(parsed, property) {
-        var position = positions[property];
+      return Object.keys(positions).reduce(function(parsed, property2) {
+        var position = positions[property2];
         var value2 = matches[position];
         if (!value2)
           return parsed;
-        value2 = property === "milliseconds" ? parseMilliseconds(value2) : parseInt(value2, 10);
+        value2 = property2 === "milliseconds" ? parseMilliseconds(value2) : parseInt(value2, 10);
         if (!value2)
           return parsed;
-        if (isNegative && ~negatives.indexOf(property)) {
+        if (isNegative && ~negatives.indexOf(property2)) {
           value2 *= -1;
         }
-        parsed[property] = value2;
+        parsed[property2] = value2;
         return parsed;
       }, {});
     }
   }
 });
 
-// node_modules/postgres-bytea/index.js
+// ../../Milogin-s-prospector/node_modules/postgres-bytea/index.js
 var require_postgres_bytea = __commonJS({
-  "node_modules/postgres-bytea/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/postgres-bytea/index.js"(exports2, module2) {
     "use strict";
     var bufferFrom = Buffer.from || Buffer;
     module2.exports = function parseBytea(input) {
@@ -377,9 +377,9 @@ var require_postgres_bytea = __commonJS({
   }
 });
 
-// node_modules/pg-types/lib/textParsers.js
+// ../../Milogin-s-prospector/node_modules/pg-types/lib/textParsers.js
 var require_textParsers = __commonJS({
-  "node_modules/pg-types/lib/textParsers.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg-types/lib/textParsers.js"(exports2, module2) {
     var array = require_postgres_array();
     var arrayParser = require_arrayParser();
     var parseDate = require_postgres_date();
@@ -582,9 +582,9 @@ var require_textParsers = __commonJS({
   }
 });
 
-// node_modules/pg-int8/index.js
+// ../../Milogin-s-prospector/node_modules/pg-int8/index.js
 var require_pg_int8 = __commonJS({
-  "node_modules/pg-int8/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg-int8/index.js"(exports2, module2) {
     "use strict";
     var BASE = 1e6;
     function readInt8(buffer) {
@@ -662,9 +662,9 @@ var require_pg_int8 = __commonJS({
   }
 });
 
-// node_modules/pg-types/lib/binaryParsers.js
+// ../../Milogin-s-prospector/node_modules/pg-types/lib/binaryParsers.js
 var require_binaryParsers = __commonJS({
-  "node_modules/pg-types/lib/binaryParsers.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg-types/lib/binaryParsers.js"(exports2, module2) {
     var parseInt64 = require_pg_int8();
     var parseBits = function(data, bits, offset, invert, callback) {
       offset = offset || 0;
@@ -863,9 +863,9 @@ var require_binaryParsers = __commonJS({
   }
 });
 
-// node_modules/pg-types/lib/builtins.js
+// ../../Milogin-s-prospector/node_modules/pg-types/lib/builtins.js
 var require_builtins = __commonJS({
-  "node_modules/pg-types/lib/builtins.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg-types/lib/builtins.js"(exports2, module2) {
     module2.exports = {
       BOOL: 16,
       BYTEA: 17,
@@ -931,9 +931,9 @@ var require_builtins = __commonJS({
   }
 });
 
-// node_modules/pg-types/index.js
+// ../../Milogin-s-prospector/node_modules/pg-types/index.js
 var require_pg_types = __commonJS({
-  "node_modules/pg-types/index.js"(exports2) {
+  "../../Milogin-s-prospector/node_modules/pg-types/index.js"(exports2) {
     var textParsers = require_textParsers();
     var binaryParsers = require_binaryParsers();
     var arrayParser = require_arrayParser();
@@ -972,9 +972,9 @@ var require_pg_types = __commonJS({
   }
 });
 
-// node_modules/pg/lib/defaults.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/defaults.js
 var require_defaults = __commonJS({
-  "node_modules/pg/lib/defaults.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/defaults.js"(exports2, module2) {
     "use strict";
     var user;
     try {
@@ -1041,9 +1041,9 @@ var require_defaults = __commonJS({
   }
 });
 
-// node_modules/pg/lib/utils.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/utils.js
 var require_utils = __commonJS({
-  "node_modules/pg/lib/utils.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/utils.js"(exports2, module2) {
     "use strict";
     var defaults2 = require_defaults();
     var nodeUtils = require("util");
@@ -1209,9 +1209,9 @@ var require_utils = __commonJS({
   }
 });
 
-// node_modules/pg/lib/crypto/utils.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/crypto/utils.js
 var require_utils2 = __commonJS({
-  "node_modules/pg/lib/crypto/utils.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/crypto/utils.js"(exports2, module2) {
     var nodeCrypto = require("crypto");
     module2.exports = {
       postgresMd5PasswordHash,
@@ -1260,9 +1260,9 @@ var require_utils2 = __commonJS({
   }
 });
 
-// node_modules/pg/lib/crypto/cert-signatures.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/crypto/cert-signatures.js
 var require_cert_signatures = __commonJS({
-  "node_modules/pg/lib/crypto/cert-signatures.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/crypto/cert-signatures.js"(exports2, module2) {
     function x509Error(msg, cert) {
       return new Error("SASL channel binding: " + msg + " when parsing public certificate " + cert.toString("base64"));
     }
@@ -1374,9 +1374,9 @@ var require_cert_signatures = __commonJS({
   }
 });
 
-// node_modules/pg/lib/crypto/sasl.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/crypto/sasl.js
 var require_sasl = __commonJS({
-  "node_modules/pg/lib/crypto/sasl.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/crypto/sasl.js"(exports2, module2) {
     "use strict";
     var crypto = require_utils2();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
@@ -1561,9 +1561,9 @@ var require_sasl = __commonJS({
   }
 });
 
-// node_modules/pg/lib/type-overrides.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/type-overrides.js
 var require_type_overrides = __commonJS({
-  "node_modules/pg/lib/type-overrides.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/type-overrides.js"(exports2, module2) {
     "use strict";
     var types2 = require_pg_types();
     function TypeOverrides2(userTypes) {
@@ -1596,9 +1596,9 @@ var require_type_overrides = __commonJS({
   }
 });
 
-// node_modules/pg-connection-string/index.js
+// ../../Milogin-s-prospector/node_modules/pg-connection-string/index.js
 var require_pg_connection_string = __commonJS({
-  "node_modules/pg-connection-string/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg-connection-string/index.js"(exports2, module2) {
     "use strict";
     function parse(str, options = {}) {
       if (str.charAt(0) === "/") {
@@ -1784,9 +1784,9 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   }
 });
 
-// node_modules/pg/lib/connection-parameters.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/connection-parameters.js
 var require_connection_parameters = __commonJS({
-  "node_modules/pg/lib/connection-parameters.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/connection-parameters.js"(exports2, module2) {
     "use strict";
     var dns = require("dns");
     var defaults2 = require_defaults();
@@ -1936,9 +1936,9 @@ var require_connection_parameters = __commonJS({
   }
 });
 
-// node_modules/pg/lib/result.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/result.js
 var require_result = __commonJS({
-  "node_modules/pg/lib/result.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/result.js"(exports2, module2) {
     "use strict";
     var types2 = require_pg_types();
     var matchRegexp = /^([A-Za-z]+)(?: (\d+))?(?: (\d+))?/;
@@ -2027,9 +2027,9 @@ var require_result = __commonJS({
   }
 });
 
-// node_modules/pg/lib/query.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/query.js
 var require_query = __commonJS({
-  "node_modules/pg/lib/query.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/query.js"(exports2, module2) {
     "use strict";
     var { EventEmitter } = require("events");
     var Result2 = require_result();
@@ -2229,9 +2229,9 @@ var require_query = __commonJS({
   }
 });
 
-// node_modules/pg-protocol/dist/messages.js
+// ../../Milogin-s-prospector/node_modules/pg-protocol/dist/messages.js
 var require_messages = __commonJS({
-  "node_modules/pg-protocol/dist/messages.js"(exports2) {
+  "../../Milogin-s-prospector/node_modules/pg-protocol/dist/messages.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.NoticeMessage = exports2.DataRowMessage = exports2.CommandCompleteMessage = exports2.ReadyForQueryMessage = exports2.NotificationResponseMessage = exports2.BackendKeyDataMessage = exports2.AuthenticationMD5Password = exports2.ParameterStatusMessage = exports2.ParameterDescriptionMessage = exports2.RowDescriptionMessage = exports2.Field = exports2.CopyResponse = exports2.CopyDataMessage = exports2.DatabaseError = exports2.copyDone = exports2.emptyQuery = exports2.replicationStart = exports2.portalSuspended = exports2.noData = exports2.closeComplete = exports2.bindComplete = exports2.parseComplete = void 0;
@@ -2394,9 +2394,9 @@ var require_messages = __commonJS({
   }
 });
 
-// node_modules/pg-protocol/dist/buffer-writer.js
+// ../../Milogin-s-prospector/node_modules/pg-protocol/dist/buffer-writer.js
 var require_buffer_writer = __commonJS({
-  "node_modules/pg-protocol/dist/buffer-writer.js"(exports2) {
+  "../../Milogin-s-prospector/node_modules/pg-protocol/dist/buffer-writer.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Writer = void 0;
@@ -2507,9 +2507,9 @@ var require_buffer_writer = __commonJS({
   }
 });
 
-// node_modules/pg-protocol/dist/serializer.js
+// ../../Milogin-s-prospector/node_modules/pg-protocol/dist/serializer.js
 var require_serializer = __commonJS({
-  "node_modules/pg-protocol/dist/serializer.js"(exports2) {
+  "../../Milogin-s-prospector/node_modules/pg-protocol/dist/serializer.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.serialize = void 0;
@@ -2721,9 +2721,9 @@ var require_serializer = __commonJS({
   }
 });
 
-// node_modules/pg-protocol/dist/buffer-reader.js
+// ../../Milogin-s-prospector/node_modules/pg-protocol/dist/buffer-reader.js
 var require_buffer_reader = __commonJS({
-  "node_modules/pg-protocol/dist/buffer-reader.js"(exports2) {
+  "../../Milogin-s-prospector/node_modules/pg-protocol/dist/buffer-reader.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.BufferReader = void 0;
@@ -2780,9 +2780,9 @@ var require_buffer_reader = __commonJS({
   }
 });
 
-// node_modules/pg-protocol/dist/parser.js
+// ../../Milogin-s-prospector/node_modules/pg-protocol/dist/parser.js
 var require_parser = __commonJS({
-  "node_modules/pg-protocol/dist/parser.js"(exports2) {
+  "../../Milogin-s-prospector/node_modules/pg-protocol/dist/parser.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Parser = void 0;
@@ -3087,9 +3087,9 @@ var require_parser = __commonJS({
   }
 });
 
-// node_modules/pg-protocol/dist/index.js
+// ../../Milogin-s-prospector/node_modules/pg-protocol/dist/index.js
 var require_dist = __commonJS({
-  "node_modules/pg-protocol/dist/index.js"(exports2) {
+  "../../Milogin-s-prospector/node_modules/pg-protocol/dist/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.DatabaseError = exports2.serialize = void 0;
@@ -3111,18 +3111,18 @@ var require_dist = __commonJS({
   }
 });
 
-// node_modules/pg-cloudflare/dist/empty.js
+// ../../Milogin-s-prospector/node_modules/pg-cloudflare/dist/empty.js
 var require_empty = __commonJS({
-  "node_modules/pg-cloudflare/dist/empty.js"(exports2) {
+  "../../Milogin-s-prospector/node_modules/pg-cloudflare/dist/empty.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.default = {};
   }
 });
 
-// node_modules/pg/lib/stream.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/stream.js
 var require_stream = __commonJS({
-  "node_modules/pg/lib/stream.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/stream.js"(exports2, module2) {
     var { getStream, getSecureStream } = getStreamFuncs();
     module2.exports = {
       /**
@@ -3186,9 +3186,9 @@ var require_stream = __commonJS({
   }
 });
 
-// node_modules/pg/lib/connection.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/connection.js
 var require_connection = __commonJS({
-  "node_modules/pg/lib/connection.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/connection.js"(exports2, module2) {
     "use strict";
     var EventEmitter = require("events").EventEmitter;
     var { parse, serialize } = require_dist();
@@ -3388,9 +3388,9 @@ var require_connection = __commonJS({
   }
 });
 
-// node_modules/split2/index.js
+// ../../Milogin-s-prospector/node_modules/split2/index.js
 var require_split2 = __commonJS({
-  "node_modules/split2/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/split2/index.js"(exports2, module2) {
     "use strict";
     var { Transform } = require("stream");
     var { StringDecoder } = require("string_decoder");
@@ -3490,9 +3490,9 @@ var require_split2 = __commonJS({
   }
 });
 
-// node_modules/pgpass/lib/helper.js
+// ../../Milogin-s-prospector/node_modules/pgpass/lib/helper.js
 var require_helper = __commonJS({
-  "node_modules/pgpass/lib/helper.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pgpass/lib/helper.js"(exports2, module2) {
     "use strict";
     var path4 = require("path");
     var Stream = require("stream").Stream;
@@ -3661,9 +3661,9 @@ var require_helper = __commonJS({
   }
 });
 
-// node_modules/pgpass/lib/index.js
+// ../../Milogin-s-prospector/node_modules/pgpass/lib/index.js
 var require_lib = __commonJS({
-  "node_modules/pgpass/lib/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pgpass/lib/index.js"(exports2, module2) {
     "use strict";
     var path4 = require("path");
     var fs = require("fs");
@@ -3682,9 +3682,9 @@ var require_lib = __commonJS({
   }
 });
 
-// node_modules/pg/lib/client.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/client.js
 var require_client = __commonJS({
-  "node_modules/pg/lib/client.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/client.js"(exports2, module2) {
     var EventEmitter = require("events").EventEmitter;
     var utils = require_utils();
     var nodeUtils = require("util");
@@ -4379,9 +4379,9 @@ var require_client = __commonJS({
   }
 });
 
-// node_modules/pg-pool/index.js
+// ../../Milogin-s-prospector/node_modules/pg-pool/index.js
 var require_pg_pool = __commonJS({
-  "node_modules/pg-pool/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg-pool/index.js"(exports2, module2) {
     "use strict";
     var EventEmitter = require("events").EventEmitter;
     var NOOP = function() {
@@ -4805,9 +4805,9 @@ var require_pg_pool = __commonJS({
   }
 });
 
-// node_modules/pg/lib/native/query.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/native/query.js
 var require_query2 = __commonJS({
-  "node_modules/pg/lib/native/query.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/native/query.js"(exports2, module2) {
     "use strict";
     var EventEmitter = require("events").EventEmitter;
     var util = require("util");
@@ -4951,9 +4951,9 @@ var require_query2 = __commonJS({
   }
 });
 
-// node_modules/pg/lib/native/client.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/native/client.js
 var require_client2 = __commonJS({
-  "node_modules/pg/lib/native/client.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/native/client.js"(exports2, module2) {
     var nodeUtils = require("util");
     var Native;
     try {
@@ -5293,17 +5293,17 @@ var require_client2 = __commonJS({
   }
 });
 
-// node_modules/pg/lib/native/index.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/native/index.js
 var require_native = __commonJS({
-  "node_modules/pg/lib/native/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/native/index.js"(exports2, module2) {
     "use strict";
     module2.exports = require_client2();
   }
 });
 
-// node_modules/pg/lib/index.js
+// ../../Milogin-s-prospector/node_modules/pg/lib/index.js
 var require_lib2 = __commonJS({
-  "node_modules/pg/lib/index.js"(exports2, module2) {
+  "../../Milogin-s-prospector/node_modules/pg/lib/index.js"(exports2, module2) {
     "use strict";
     var Client2 = require_client();
     var defaults2 = require_defaults();
@@ -5395,6 +5395,33 @@ var SEND_AUTHORIZATION_LIMITS = {
 // server/core/lead-import-fields.ts
 var normalizeImportHeader = (value2) => value2.trim().toLowerCase().replace(/[\s_-]/g, "");
 var IMPORT_REMARK_MAX = 2e4;
+var IMPORT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+var IMPORT_EMAIL_CANDIDATE = /[^\s<>()@,;:"'，；：]+@[^\s<>()@,;:"'，；：]+\.[^\s<>()@,;:"'，；：]+/g;
+function normalizeImportEmail(value2) {
+  const trimmed = value2.trim();
+  if (!trimmed)
+    return { email: "", extras: [] };
+  if (IMPORT_EMAIL_PATTERN.test(trimmed))
+    return { email: trimmed.toLowerCase(), extras: [] };
+  const candidates = (trimmed.match(IMPORT_EMAIL_CANDIDATE) ?? []).map((candidate) => candidate.trim().replace(/[.,;:!?]+$/g, "").toLowerCase()).filter((candidate) => IMPORT_EMAIL_PATTERN.test(candidate));
+  const distinct = [...new Set(candidates)];
+  return distinct.length ? { email: distinct[0], extras: distinct.slice(1) } : { email: trimmed, extras: [] };
+}
+var CUSTOMER_TYPE_ALIASES = {
+  "\u4EE3\u7406": "\u4EE3\u7406",
+  "\u8D27\u4EE3": "\u4EE3\u7406",
+  "\u4EE3\u7406\u516C\u53F8": "\u4EE3\u7406",
+  "\u8D27\u8FD0\u4EE3\u7406": "\u4EE3\u7406",
+  "\u76F4\u5BA2": "\u76F4\u5BA2",
+  "\u76F4\u63A5\u5BA2\u6237": "\u76F4\u5BA2",
+  "\u76F4\u63A5\u5BA2\u4EBA": "\u76F4\u5BA2"
+};
+function normalizeImportCustomerType(value2) {
+  if (!value2.trim())
+    return "";
+  const parts = value2.split(/[;,，；、|/]+/).map((part) => part.trim()).filter(Boolean);
+  return parts.map((part) => CUSTOMER_TYPE_ALIASES[part]).find(Boolean) ?? value2.trim();
+}
 var EMPTY_IMPORT_VALUES = /* @__PURE__ */ new Set(["", "n/a", "na", "(n/a)", "null", "none", "nil", "-", "--", "\u2014", "\u6682\u65E0", "\u65E0", "\u672A\u63D0\u4F9B"]);
 var DIRECT_REMARK_HEADERS = /* @__PURE__ */ new Set(["\u5907\u6CE8", "remark", "note", "notes", "\u8BF4\u660E"]);
 function remarkValue(value2) {
@@ -5430,6 +5457,7 @@ function unmatchedImportRemark(rawRow, mappedHeaders) {
 var LEAD_LIMITS = { batchRows: 200, bodyBytes: 1048576, text: 500, note: IMPORT_REMARK_MAX, page: 25, pageMax: 100, key: 128, notifyMax: 20 };
 var LEAD_ROUTES = { bootstrap: "/api/crm/bootstrap", imports: "/api/crm/imports", leads: "/api/crm/leads", members: "/api/crm/members", assignAction: "assign" };
 var IMPORT_EMAIL_MAX = 254;
+var IMPORT_CONTACT_IDENTITY_ISSUE = "\u81F3\u5C11\u586B\u5199\u8054\u7CFB\u4EBA\u59D3\u540D\u3001\u7535\u8BDD\u3001WhatsApp\u6216\u90AE\u7BB1\u4E4B\u4E00";
 function importRowIssue(row2) {
   if (!row2.customerKey.trim())
     return "\u7F3A\u5C11\u5BA2\u6237\u7F16\u53F7";
@@ -5438,7 +5466,7 @@ function importRowIssue(row2) {
   if (row2.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row2.email.trim()))
     return "\u90AE\u7BB1\u683C\u5F0F\u65E0\u6548";
   if (!row2.email.trim() && ![row2.name, row2.firstName, row2.lastName, row2.phone, row2.whatsapp].some((value2) => value2?.trim()))
-    return "\u81F3\u5C11\u586B\u5199\u8054\u7CFB\u4EBA\u59D3\u540D\u3001\u7535\u8BDD\u3001WhatsApp\u6216\u90AE\u7BB1\u4E4B\u4E00";
+    return IMPORT_CONTACT_IDENTITY_ISSUE;
   if (row2.customerKey.length > LEAD_LIMITS.key)
     return "\u5BA2\u6237\u7F16\u53F7\u8FC7\u957F";
   if (row2.email.length > IMPORT_EMAIL_MAX)
@@ -5677,11 +5705,16 @@ function operationalHeaders(contentType) {
   };
 }
 async function sendActuatorInfo(response, service, head) {
+  if (head) {
+    response.writeHead(HTTP_STATUS.OK, operationalHeaders("application/json; charset=utf-8"));
+    response.end();
+    return;
+  }
   const readiness = await service.ready();
   const status = readiness.ok ? HTTP_STATUS.OK : HTTP_STATUS[readiness.error.code];
   const payload = readiness.ok ? { status: "UP" } : readiness;
   response.writeHead(status, operationalHeaders("application/json; charset=utf-8"));
-  response.end(head ? void 0 : JSON.stringify(payload));
+  response.end(JSON.stringify(payload));
 }
 function sendPrometheus(response) {
   response.writeHead(HTTP_STATUS.OK, operationalHeaders("text/plain; version=0.0.4; charset=utf-8"));
@@ -5743,6 +5776,18 @@ async function body(request2, maximum) {
 function createOnlineServer(service, gate, config, log, instanceId = "integration", browser, crm, desktop) {
   const dispatch = async (request2, response) => {
     const path4 = request2.url ?? "", method = request2.method;
+    if ((method === "GET" || method === "HEAD") && path4 === ACTUATOR_INFO_PATH) {
+      await sendActuatorInfo(response, service, method === "HEAD");
+      return;
+    }
+    if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.live) {
+      send(response, success({ status: "live", instanceId, pid: process.pid }));
+      return;
+    }
+    if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.ready) {
+      send(response, await service.ready());
+      return;
+    }
     const localHost = `${request2.socket.localAddress}:${request2.socket.localPort}`;
     const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
     if (request2.headers.host !== localHost && (!publicHost || request2.headers.host !== publicHost)) {
@@ -5755,10 +5800,6 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
     }
     if (request2.headers.origin || request2.headers["sec-fetch-site"] === "cross-site") {
       send(response, failure("FORBIDDEN", "\u5F53\u524D\u4EC5\u63A5\u53D7\u672C\u673A\u975E\u6D4F\u89C8\u5668\u8DE8\u7AD9\u8BF7\u6C42"));
-      return;
-    }
-    if ((method === "GET" || method === "HEAD") && path4 === ACTUATOR_INFO_PATH) {
-      await sendActuatorInfo(response, service, method === "HEAD");
       return;
     }
     if (method === "GET" && path4 === ACTUATOR_PROMETHEUS_PATH) {
@@ -5776,11 +5817,7 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
     const authorization = request2.headers.authorization ?? "";
     const token = /^Bearer ([A-Za-z0-9_-]+)$/.exec(authorization)?.[1] ?? "";
     let result2;
-    if (method === "GET" && path4 === API_ROUTES.live)
-      result2 = success({ status: "live", instanceId, pid: process.pid });
-    else if (method === "GET" && path4 === API_ROUTES.ready)
-      result2 = await service.ready();
-    else if (method === "POST" && path4 === API_ROUTES.login) {
+    if (method === "POST" && path4 === API_ROUTES.login) {
       const input = await body(request2, config.request_body_bytes);
       if (!input.ok)
         result2 = input;
@@ -5852,8 +5889,9 @@ function createSendAcceptanceHandler(service) {
 }
 
 // server/core/contact-sharing.ts
-var CONTACT_SHARING_ROUTES = { shares: "/api/crm/contact-shares", members: "/api/crm/contact-shares/members" };
+var CONTACT_SHARING_ROUTES = { shares: "/api/crm/contact-shares", team: "/api/crm/contact-shares/team", members: "/api/crm/contact-shares/members" };
 var CONTACT_SHARING_EVENTS = { requested: "crm.contact.share.requested", accepted: "crm.contact.share.accepted", rejected: "crm.contact.share.rejected", revoked: "crm.contact.share.revoked", updated: "crm.contact.share.updated" };
+var CONTACT_TEAM_VISIBILITY_EVENT = "crm.contact.team_visible";
 var CONTACT_SHARED_FIELDS = ["firstName", "lastName", "title", "phone", "whatsapp", "linkedinUrl", "country", "language", "clientType"];
 
 // server/services/contact-sharing.ts
@@ -5889,6 +5927,9 @@ function contactShareDecision(v) {
 function contactShareUpdate(v) {
   return record2(v) && keys(v, ["shareId", "expectedVersion", "idempotencyKey", "editableFields", "canFollowup", "canChangeStage"]) && uuid(v.shareId) && version(v) && grant(v) ? success(v) : invalid2();
 }
+function contactTeamShareCreate(v) {
+  return record2(v) && keys(v, ["contactId", "customerId", "expectedVersion", "idempotencyKey"]) && positive(v.contactId) && uuid(v.customerId) && version(v) ? success(v) : invalid2();
+}
 function contactShareQuery(v) {
   if (!record2(v) || !keys(v, ["view", "status", "contactId", "customerId", "limit", "offset"]))
     return invalid2();
@@ -5904,7 +5945,7 @@ function createContactSharingService(repo, tokens) {
     const p = parse(v);
     return p.ok ? work(tokens.hash(token), p.data) : Promise.resolve(p);
   }
-  return { shares: (t, v) => run2(t, v, contactShareQuery, (h, i) => repo.shares(h, i)), createShare: (t, v) => run2(t, v, contactShareCreate, (h, i) => repo.createShare(h, i)), decideShare: (t, a, v) => run2(t, v, contactShareDecision, (h, i) => repo.decideShare(h, a, i)), updateShare: (t, v) => run2(t, v, contactShareUpdate, (h, i) => repo.updateShare(h, i)), shareMembers: (t) => run2(t, {}, () => success({}), (h) => repo.shareMembers(h)) };
+  return { shares: (t, v) => run2(t, v, contactShareQuery, (h, i) => repo.shares(h, i)), createShare: (t, v) => run2(t, v, contactShareCreate, (h, i) => repo.createShare(h, i)), decideShare: (t, a, v) => run2(t, v, contactShareDecision, (h, i) => repo.decideShare(h, a, i)), updateShare: (t, v) => run2(t, v, contactShareUpdate, (h, i) => repo.updateShare(h, i)), shareTeam: (t, v) => run2(t, v, contactTeamShareCreate, (h, i) => repo.shareTeam(h, i)), shareMembers: (t) => run2(t, {}, () => success({}), (h) => repo.shareMembers(h)) };
 }
 
 // server/transport/contact-sharing-http.ts
@@ -5913,6 +5954,11 @@ function createContactSharingHandler(service) {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`), token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1] ?? "", path4 = url.pathname;
     if (req.method === "GET" && path4 === CONTACT_SHARING_ROUTES.members) {
       send(res, await service.shareMembers(token));
+      return;
+    }
+    if (req.method === "POST" && path4 === CONTACT_SHARING_ROUTES.team) {
+      const parsed = await body(req, LEAD_LIMITS.bodyBytes);
+      send(res, parsed.ok ? await service.shareTeam(token, parsed.data) : parsed);
       return;
     }
     if (req.method === "GET" && path4 === CONTACT_SHARING_ROUTES.shares) {
@@ -5952,7 +5998,7 @@ function createContactSharingHandler(service) {
   };
 }
 
-// node_modules/pg/esm/index.mjs
+// ../../Milogin-s-prospector/node_modules/pg/esm/index.mjs
 var import_lib = __toESM(require_lib2(), 1);
 var Client = import_lib.default.Client;
 var Pool = import_lib.default.Pool;
@@ -6231,23 +6277,23 @@ CREATE TABLE crm_relations (
 `;
 
 // server/adapters/postgres/diagnostics.ts
-var POSTGRES_MAX_DIAGNOSTIC_LENGTH = 500;
-function cleanPostgresDiagnostic(value2, fallback) {
+var MAX_DIAGNOSTIC_LENGTH = 500;
+function clean(value2, fallback) {
   if (typeof value2 !== "string" || !value2.trim())
     return fallback;
-  return value2.replace(/\b(postgres(?:ql)?:\/\/)[^@\s]+@/gi, "$1[redacted]@").replace(/\b(password|passwd|pwd|secret|token)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]").replace(/\bfor user\s+(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "for user [redacted]").replace(/\b(user|username)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, POSTGRES_MAX_DIAGNOSTIC_LENGTH);
+  return value2.replace(/\b(postgres(?:ql)?:\/\/)[^@\s]+@/gi, "$1[redacted]@").replace(/\b(password|passwd|pwd|secret|token)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]").replace(/\bfor user\s+(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "for user [redacted]").replace(/\b(user|username)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, MAX_DIAGNOSTIC_LENGTH);
 }
-function postgresErrorProperty(error, key) {
+function property(error, key) {
   return error && typeof error === "object" && key in error ? error[key] : void 0;
 }
 function postgresErrorDiagnostic(error) {
-  const cause = postgresErrorProperty(error, "cause");
+  const cause = property(error, "cause");
   return [
-    `code=${cleanPostgresDiagnostic(postgresErrorProperty(error, "code"), "UNKNOWN")}`,
-    `name=${cleanPostgresDiagnostic(postgresErrorProperty(error, "name"), "UNKNOWN")}`,
-    `message=${cleanPostgresDiagnostic(postgresErrorProperty(error, "message"), "unknown")}`,
-    `cause_code=${cleanPostgresDiagnostic(postgresErrorProperty(cause, "code"), "UNKNOWN")}`,
-    `cause_message=${cleanPostgresDiagnostic(postgresErrorProperty(cause, "message"), "unknown")}`
+    `code=${clean(property(error, "code"), "UNKNOWN")}`,
+    `name=${clean(property(error, "name"), "UNKNOWN")}`,
+    `message=${clean(property(error, "message"), "unknown")}`,
+    `cause_code=${clean(property(cause, "code"), "UNKNOWN")}`,
+    `cause_message=${clean(property(cause, "message"), "unknown")}`
   ].join(" ");
 }
 
@@ -6845,6 +6891,51 @@ var PostgresAdminRepository = class {
       c.release();
     }
   }
+  async detachUserFromOrganizations(c, targetId, actorId) {
+    const ready = await c.query(`SELECT to_regclass('crm_org_units') AS units,to_regclass('crm_org_assignments') AS assignments,
+   EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='crm_org_units' AND column_name='dissolved_at') AS dissolvable,
+   to_regclass('crm_org_invitations') AS invitations,to_regclass('crm_org_member_group_members') AS group_members,
+   to_regclass('crm_org_dissolution_audits') AS dissolution_audits`);
+    if (!ready.rows[0].units || !ready.rows[0].assignments)
+      return;
+    const affected = (await c.query('SELECT DISTINCT unit_id AS "unitId" FROM crm_org_assignments WHERE user_id=$1 AND ended_at IS NULL', [targetId])).rows;
+    if (!affected.length)
+      return;
+    if (ready.rows[0].group_members)
+      await c.query("DELETE FROM crm_org_member_group_members WHERE user_id=$1", [targetId]);
+    if (ready.rows[0].invitations)
+      await c.query("UPDATE crm_org_invitations SET status='cancelled',version=version+1,decided_at=now() WHERE status='pending' AND (inviter_user_id=$1 OR invitee_user_id=$1)", [targetId]);
+    await c.query("UPDATE crm_org_assignments SET ended_at=now(),version=version+1,updated_at=now() WHERE user_id=$1 AND ended_at IS NULL", [targetId]);
+    for (const { unitId } of affected) {
+      const state = (await c.query(`SELECT u.kind,u.version,u.dissolved_at AS "dissolvedAt",
+    count(a.user_id) FILTER(WHERE a.ended_at IS NULL)::int AS active,
+    count(a.user_id) FILTER(WHERE a.ended_at IS NULL AND a.role='leader')::int AS leaders,
+    count(a.user_id) FILTER(WHERE a.ended_at IS NULL AND a.role='leader' AND a.is_primary)::int AS primary_leaders,
+    (SELECT count(*)::int FROM crm_org_units child WHERE child.parent_unit_id=u.unit_id AND child.dissolved_at IS NULL) AS children
+    FROM crm_org_units u LEFT JOIN crm_org_assignments a ON a.unit_id=u.unit_id
+    WHERE u.unit_id=$1 GROUP BY u.unit_id`, [unitId])).rows[0];
+      if (!state || state.kind === "company" || state.dissolvedAt)
+        continue;
+      if (+state.leaders === 0 && +state.active > 0 && state.kind === "sales_team") {
+        const candidate = (await c.query(`SELECT user_id AS "userId" FROM crm_org_assignments WHERE unit_id=$1 AND ended_at IS NULL AND role='member' ORDER BY created_at,user_id LIMIT 1`, [unitId])).rows[0]?.userId;
+        if (candidate) {
+          await c.query("DELETE FROM crm_org_member_group_members WHERE unit_id=$1 AND user_id=$2", [unitId, candidate]);
+          await c.query("DELETE FROM crm_org_assignments WHERE unit_id=$1 AND user_id=$2 AND role='member' AND ended_at IS NULL", [unitId, candidate]);
+          await c.query("INSERT INTO crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'leader',true)", [candidate, unitId]);
+        }
+      } else if (+state.primary_leaders === 0 && +state.leaders > 0) {
+        await c.query(`UPDATE crm_org_assignments SET is_primary=true,version=version+1,updated_at=now()
+     WHERE user_id=(SELECT user_id FROM crm_org_assignments WHERE unit_id=$1 AND ended_at IS NULL AND role='leader' ORDER BY created_at,user_id LIMIT 1)
+     AND unit_id=$1 AND role='leader' AND ended_at IS NULL`, [unitId]);
+      }
+      if (ready.rows[0].dissolvable && +state.active === 0 && +state.children === 0) {
+        const dissolved = (await c.query("UPDATE crm_org_units SET dissolved_at=now(),dissolved_by=$2,version=version+1,updated_at=now() WHERE unit_id=$1 RETURNING unit_id", [unitId, actorId])).rows[0];
+        if (dissolved && ready.rows[0].dissolution_audits)
+          await c.query(`INSERT INTO crm_org_dissolution_audits(audit_id,unit_id,actor_user_id,unit_kind,unit_name,unit_version,ended_assignment_count,cancelled_invitation_count,dissolved_at)
+     SELECT gen_random_uuid(),u.unit_id,$2,u.kind,u.name,u.version,0,0,u.dissolved_at FROM crm_org_units u WHERE u.unit_id=$1 ON CONFLICT(unit_id) DO NOTHING`, [unitId, actorId]);
+      }
+    }
+  }
   migrate() {
     return this.execute(() => this.tx(async (c) => {
       await c.query("SELECT pg_advisory_xact_lock($1)", [ADMIN_LOCK]);
@@ -6974,7 +7065,7 @@ var PostgresAdminRepository = class {
     return this.read(hash, async (c, actor) => {
       if (!canReadManagementDashboard(actor))
         return failure("FORBIDDEN", "\u65E0\u6570\u636E\u770B\u677F\u6743\u9650");
-      const [users, customers, tasks, pending, imports, deliveries, batchReceipts, eventReceipts, taskReceipts] = await Promise.all([
+      const [users, customers, tasks, pending, imports, deliveries, batchReceipts, eventReceipts, taskReceipts, mailEvents, mailAnalyses, mailSuggestions, analysisReceipts] = await Promise.all([
         c.query("SELECT count(*)::int AS n FROM public.identity_users WHERE active AND deleted_at IS NULL"),
         c.query("SELECT count(*)::int AS n,max(created_at) AS updated_at FROM crm_customers"),
         c.query("SELECT count(*)::int AS n,count(*) FILTER (WHERE due_at<=now())::int AS overdue,min(due_at) AS next_due FROM crm_followup_tasks WHERE status='open'"),
@@ -6983,32 +7074,41 @@ var PostgresAdminRepository = class {
         c.query("SELECT count(*)::int AS n,max(created_at) AS updated_at FROM crm_event_deliveries"),
         c.query(`SELECT b.batch_id::text AS id,b.created_at,count(r.row_id)::int AS total,count(r.row_id) FILTER (WHERE r.status='created')::int AS created,count(r.row_id) FILTER (WHERE r.status='duplicate')::int AS duplicate,count(r.row_id) FILTER (WHERE r.status IN ('invalid','restricted_conflict'))::int AS review FROM (SELECT batch_id,created_at FROM crm_import_batches ORDER BY created_at DESC,batch_id LIMIT $1) b LEFT JOIN crm_import_rows r USING(batch_id) GROUP BY b.batch_id,b.created_at ORDER BY b.created_at DESC,b.batch_id`, [DASHBOARD_LIMITS.receipts]),
         c.query(`SELECT o.event_id::text AS id,o.created_at,x.consumed_at,(SELECT count(*)::int FROM crm_event_deliveries d WHERE d.event_id=o.event_id) AS deliveries FROM public.identity_outbox o LEFT JOIN crm_notification_consumed x USING(event_id) WHERE o.product_id='crm' AND o.customer_id IS NOT NULL ORDER BY o.created_at DESC,o.event_id LIMIT $1`, [DASHBOARD_LIMITS.receipts]),
-        c.query(`SELECT t.task_id::text AS id,t.updated_at AS created_at,t.status,t.due_at,EXISTS(SELECT 1 FROM crm_task_due_receipts r WHERE r.task_id=t.task_id AND r.task_version=t.version) AS reminded FROM crm_followup_tasks t ORDER BY t.updated_at DESC,t.task_id LIMIT $1`, [DASHBOARD_LIMITS.receipts])
+        c.query(`SELECT t.task_id::text AS id,t.updated_at AS created_at,t.status,t.due_at,EXISTS(SELECT 1 FROM crm_task_due_receipts r WHERE r.task_id=t.task_id AND r.task_version=t.version) AS reminded FROM crm_followup_tasks t ORDER BY t.updated_at DESC,t.task_id LIMIT $1`, [DASHBOARD_LIMITS.receipts]),
+        c.query("SELECT count(*)::int AS n,max(occurred_at) AS updated_at FROM crm_contact_mail_events WHERE NOT archive_only"),
+        c.query("SELECT count(*)::int AS n,count(*) FILTER (WHERE requires_action)::int AS actions,count(*) FILTER (WHERE human_locked)::int AS human_locked,max(created_at) AS updated_at FROM crm_contact_mail_analyses WHERE is_current"),
+        c.query("SELECT count(*)::int AS n,count(*) FILTER (WHERE status='suggested')::int AS suggested,max(updated_at) AS updated_at FROM crm_contact_mail_task_suggestions"),
+        c.query("SELECT analysis_id::text AS id,created_at,source,confidence,requires_action,human_locked FROM crm_contact_mail_analyses WHERE is_current ORDER BY created_at DESC,analysis_id LIMIT $1", [DASHBOARD_LIMITS.receipts])
       ]);
       const value2 = (r) => Number(r.rows[0]?.n ?? 0);
       const iso5 = (v) => v instanceof Date ? v.toISOString() : typeof v === "string" ? new Date(v).toISOString() : null;
       const customerCount = value2(customers), taskCount = value2(tasks), pendingCount = value2(pending), overdueCount = Number(tasks.rows[0]?.overdue ?? 0), staleCount = Number(pending.rows[0]?.stale ?? 0);
+      const mailEventCount = value2(mailEvents), mailAnalysisCount = value2(mailAnalyses), mailActionCount = Number(mailAnalyses.rows[0]?.actions ?? 0), humanLockedCount = Number(mailAnalyses.rows[0]?.human_locked ?? 0), mailSuggestionCount = value2(mailSuggestions), suggestedCount = Number(mailSuggestions.rows[0]?.suggested ?? 0);
       const databases = [
         { id: "identity", name: "\u8EAB\u4EFD\u6570\u636E\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 public.identity_*", state: "healthy", records: value2(users), updatedAt: null, detail: "\u4E0E\u4E1A\u52A1\u533A\u5171\u7528 public schema\uFF1B\u8D26\u53F7\u8868\u4F7F\u7528 identity_ \u524D\u7F00", recordLabel: "\u542F\u7528\u8D26\u53F7" },
         { id: "crm", name: "Prospector \u4E1A\u52A1\u6570\u636E\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 public", state: "healthy", records: customerCount, updatedAt: iso5(customers.rows[0]?.updated_at), detail: "\u5BA2\u6237\u3001\u8054\u7CFB\u4EBA\u3001\u8DDF\u8FDB\u4E0E\u534F\u4F5C\u4E8B\u4EF6\uFF1B\u65F6\u95F4\u4E3A\u6700\u8FD1\u5BA2\u6237\u521B\u5EFA\u65F6\u95F4", recordLabel: "\u5BA2\u6237" },
+        { id: "mail-analysis", name: "Prospector \u90AE\u4EF6\u5206\u6790\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 \u90AE\u4EF6\u4E8B\u4EF6\u4E0E\u5206\u6790", state: mailEventCount > 0 && mailAnalysisCount === 0 ? "attention" : "healthy", records: mailEventCount, updatedAt: iso5(mailAnalyses.rows[0]?.updated_at) ?? iso5(mailEvents.rows[0]?.updated_at), detail: `${mailAnalysisCount} \u5C01\u5F53\u524D\u5206\u6790\uFF0C${mailActionCount} \u5C01\u9700\u8981\u52A8\u4F5C\uFF0C${humanLockedCount} \u5C01\u4EBA\u5DE5\u9501\u5B9A`, recordLabel: "\u90AE\u4EF6\u4E8B\u4EF6" },
         { id: "local", name: "\u684C\u9762\u4E2A\u4EBA\u6570\u636E", kind: "SQLite", state: "not_connected", records: null, updatedAt: null, detail: "\u5C1A\u672A\u63A5\u5165\u4E2D\u5FC3\u9065\u6D4B", recordLabel: "\u8BB0\u5F55" }
       ];
       const flows = [
         { id: "import", label: "\u5BFC\u5165 \u2192 \u5BA2\u6237\u5E93", state: "healthy", records: value2(imports), updatedAt: iso5(imports.rows[0]?.updated_at), detail: "\u5DF2\u8BB0\u5F55\u7684\u4E2D\u5FC3\u5BFC\u5165\u6279\u6B21", recordLabel: "\u5BFC\u5165\u6279\u6B21", timeLabel: "\u6700\u8FD1\u5BFC\u5165", stages: ["\u6587\u4EF6\u89E3\u6790", "\u5B57\u6BB5\u6821\u9A8C", "\u5BA2\u6237\u5165\u5E93"] },
         { id: "events", label: "\u4E1A\u52A1\u4E8B\u4EF6 \u2192 \u901A\u77E5", state: staleCount > 0 ? "attention" : "healthy", records: value2(deliveries), updatedAt: iso5(deliveries.rows[0]?.updated_at), detail: pendingCount > 0 ? `\u6709 ${pendingCount} \u6761\u4E8B\u4EF6\u7B49\u5F85\u5904\u7406\uFF0C${staleCount} \u6761\u8D85\u8FC7\u4E00\u5206\u949F` : "\u5F85\u5904\u7406\u961F\u5217\u4E3A\u7A7A", recordLabel: "\u901A\u77E5\u8BB0\u5F55", timeLabel: "\u6700\u8FD1\u6295\u9012", stages: ["\u4E1A\u52A1\u4E8B\u4EF6", "\u6743\u9650\u6295\u5F71", "\u901A\u77E5\u6295\u9012"] },
-        { id: "tasks", label: "\u8DDF\u8FDB\u4EFB\u52A1 \u2192 \u5230\u671F\u63D0\u9192", state: overdueCount > 0 ? "attention" : "healthy", records: taskCount, updatedAt: iso5(tasks.rows[0]?.next_due), detail: `${taskCount} \u6761\u5F00\u653E\u4EFB\u52A1\uFF0C${overdueCount} \u6761\u5DF2\u5230\u671F`, recordLabel: "\u5F00\u653E\u4EFB\u52A1", timeLabel: "\u6700\u8FD1\u5230\u671F", stages: ["\u4EFB\u52A1\u521B\u5EFA", "\u5230\u671F\u626B\u63CF", "\u63D0\u9192\u6295\u9012"] }
+        { id: "tasks", label: "\u8DDF\u8FDB\u4EFB\u52A1 \u2192 \u5230\u671F\u63D0\u9192", state: overdueCount > 0 ? "attention" : "healthy", records: taskCount, updatedAt: iso5(tasks.rows[0]?.next_due), detail: `${taskCount} \u6761\u5F00\u653E\u4EFB\u52A1\uFF0C${overdueCount} \u6761\u5DF2\u5230\u671F`, recordLabel: "\u5F00\u653E\u4EFB\u52A1", timeLabel: "\u6700\u8FD1\u5230\u671F", stages: ["\u4EFB\u52A1\u521B\u5EFA", "\u5230\u671F\u626B\u63CF", "\u63D0\u9192\u6295\u9012"] },
+        { id: "mail-analysis", label: "\u5BA2\u6237\u90AE\u4EF6 \u2192 AI \u5206\u6790 \u2192 \u5F85\u529E\u5EFA\u8BAE", state: mailEventCount > 0 && mailAnalysisCount === 0 ? "attention" : "healthy", records: mailAnalysisCount, updatedAt: iso5(mailAnalyses.rows[0]?.updated_at), detail: `${mailActionCount} \u5C01\u9700\u8981\u52A8\u4F5C\uFF0C${humanLockedCount} \u5C01\u4EBA\u5DE5\u9501\u5B9A\uFF0C${suggestedCount} \u6761\u5EFA\u8BAE\u5F85\u786E\u8BA4`, recordLabel: "\u5F53\u524D\u5206\u6790", timeLabel: "\u6700\u8FD1\u5206\u6790", stages: ["\u90AE\u4EF6\u4E8B\u4EF6", "\u89C4\u5219/AI \u5206\u62E3", "\u4EBA\u5DE5\u4FEE\u6B63", "\u4EFB\u52A1\u5EFA\u8BAE"] }
       ];
       const alerts = [
         ...staleCount > 0 ? [{ id: "pending-events", level: "warning", title: "\u4E8B\u4EF6\u7B49\u5F85\u8D85\u8FC7\u4E00\u5206\u949F", detail: `${staleCount} \u6761\u4E8B\u4EF6\u5C1A\u672A\u5B8C\u6210\u6D88\u8D39\uFF1B\u6D88\u8D39\u56DE\u6267\u4E0D\u7B49\u4E8E\u7528\u6237\u5DF2\u8BFB` }] : [],
         ...overdueCount > 0 ? [{ id: "open-tasks", level: "warning", title: "\u6709\u8DDF\u8FDB\u4EFB\u52A1\u5DF2\u5230\u671F", detail: `${overdueCount} \u6761\u4EFB\u52A1\u5F85\u5904\u7406` }] : [],
+        ...mailEventCount > 0 && mailAnalysisCount === 0 ? [{ id: "mail-analysis-missing", level: "warning", title: "\u6709\u90AE\u4EF6\u4E8B\u4EF6\u4F46\u65E0\u5F53\u524D\u5206\u6790", detail: `${mailEventCount} \u5C01\u5BA2\u6237\u90AE\u4EF6\u4E8B\u4EF6\u5C1A\u672A\u5F62\u6210\u4E2D\u5FC3\u5206\u6790\u7ED3\u679C` }] : [],
         { id: "local-telemetry", level: "warning", title: "\u684C\u9762\u4E2A\u4EBA\u6570\u636E\u672A\u63A5\u5165", detail: "\u90AE\u4EF6\u5E93\u3001\u8FD0\u4EF7\u955C\u50CF\u7B49\u672C\u5730\u6570\u636E\u6682\u4E0D\u7EB3\u5165\u4E2D\u5FC3\u5065\u5EB7\u5224\u65AD" }
       ];
       const receipts = [
         ...batchReceipts.rows.map((r) => ({ id: r.id, flowId: "import", createdAt: iso5(r.created_at), status: r.review ? "\u5F85\u6838\u5BF9" : r.total ? "\u5DF2\u6709\u56DE\u6267" : "\u6682\u65E0\u884C\u56DE\u6267", detail: `${r.total} \u884C\uFF1A\u65B0\u589E ${r.created}\uFF0C\u91CD\u590D ${r.duplicate}\uFF0C\u5F85\u6838\u5BF9 ${r.review}` })),
         ...eventReceipts.rows.map((r) => ({ id: r.id, flowId: "events", createdAt: iso5(r.created_at), status: r.consumed_at ? "\u5DF2\u6D88\u8D39" : "\u5F85\u6D88\u8D39", detail: `${r.deliveries} \u4EFD\u901A\u77E5\u6295\u5F71\uFF1B\u6D88\u8D39\u4E0D\u4EE3\u8868\u5DF2\u8BFB` })),
-        ...taskReceipts.rows.map((r) => ({ id: r.id, flowId: "tasks", createdAt: iso5(r.created_at), status: r.status === "completed" ? "\u5DF2\u5B8C\u6210" : r.reminded ? "\u63D0\u9192\u5DF2\u5165\u961F" : "\u5F00\u653E", detail: `\u5230\u671F ${iso5(r.due_at)}\uFF1B\u5F53\u524D\u7248\u672C${r.reminded ? "\u6709" : "\u65E0"}\u63D0\u9192\u56DE\u6267` }))
+        ...taskReceipts.rows.map((r) => ({ id: r.id, flowId: "tasks", createdAt: iso5(r.created_at), status: r.status === "completed" ? "\u5DF2\u5B8C\u6210" : r.reminded ? "\u63D0\u9192\u5DF2\u5165\u961F" : "\u5F00\u653E", detail: `\u5230\u671F ${iso5(r.due_at)}\uFF1B\u5F53\u524D\u7248\u672C${r.reminded ? "\u6709" : "\u65E0"}\u63D0\u9192\u56DE\u6267` })),
+        ...analysisReceipts.rows.map((r) => ({ id: r.id, flowId: "mail-analysis", createdAt: iso5(r.created_at), status: r.human_locked ? "\u4EBA\u5DE5\u9501\u5B9A" : r.requires_action ? "\u9700\u8981\u52A8\u4F5C" : "\u5DF2\u5206\u6790", detail: `${r.source} \xB7 \u7F6E\u4FE1\u5EA6 ${Math.round(Number(r.confidence ?? 0) * 100)}%` }))
       ];
-      return success({ generatedAt: (/* @__PURE__ */ new Date()).toISOString(), overview: { databases: databases.length, healthy: databases.filter((row2) => row2.state === "healthy").length, activeUsers: value2(users), customers: customerCount, openTasks: taskCount, pendingEvents: pendingCount }, databases, flows, alerts, receipts });
+      return success({ generatedAt: (/* @__PURE__ */ new Date()).toISOString(), overview: { databases: databases.length, healthy: databases.filter((row2) => row2.state === "healthy").length, activeUsers: value2(users), customers: customerCount, openTasks: taskCount, pendingEvents: pendingCount, mailAnalyses: mailAnalysisCount, mailActions: mailActionCount, humanLockedMail: humanLockedCount }, databases, flows, alerts, receipts });
     });
   }
   operations(hash) {
@@ -7139,6 +7239,7 @@ var PostgresAdminRepository = class {
             if (requests.rows.length)
               return failure("CONFLICT", "\u8BE5\u7528\u6237\u4ECD\u6709\u6709\u6548\u8054\u7CFB\u4EBA\u5206\u914D\uFF0C\u8BF7\u5148\u5904\u7406\u5206\u914D\u5F52\u5C5E");
           }
+          await this.detachUserFromOrganizations(c, targetId, actor.userId);
           await c.query("UPDATE public.identity_users SET deleted_at=now(),active=false,security_revision=security_revision+1,management_revision=management_revision+1 WHERE user_id=$1", [targetId]);
           await c.query("UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL", [targetId]);
           await c.query("UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL", [targetId]);
@@ -7174,10 +7275,14 @@ var PostgresAdminRepository = class {
             if (count2.rows[0].n <= 1)
               return failure("CONFLICT", "\u5FC5\u987B\u4FDD\u7559\u81F3\u5C11\u4E00\u540D\u6709\u6548\u8D85\u7EA7\u7BA1\u7406\u5458");
           }
+          if (!cmd.active)
+            await this.detachUserFromOrganizations(c, targetId, actor.userId);
           await c.query("UPDATE public.identity_users SET active=$2,identity_admin=$3,management_revision=management_revision+1,security_revision=security_revision+1 WHERE user_id=$1", [targetId, cmd.active, cmd.identityAdmin]);
           await c.query("UPDATE public.identity_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL", [targetId]);
           await c.query("UPDATE public.identity_management_challenges SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL", [targetId]);
         } else if (cmd.action === "product.update") {
+          if (!cmd.active)
+            await this.detachUserFromOrganizations(c, targetId, actor.userId);
           productId = "crm";
           await c.query("DELETE FROM public.identity_product_grants WHERE user_id=$1 AND product_id=$2", [targetId, productId]);
           for (const role of cmd.roles)
@@ -7341,6 +7446,52 @@ CREATE INDEX idx_identity_legacy_mapping_center_user ON public.identity_legacy_a
 CREATE INDEX idx_identity_legacy_mapping_status ON public.identity_legacy_account_mappings(source_product, status);
 `;
 
+// server/adapters/postgres/device-handoff-schema.ts
+var DEVICE_HANDOFF_SCHEMA_VERSION = "066-device-handoff";
+var DEVICE_HANDOFF_SCHEMA_LOCK = 660066;
+var DEVICE_HANDOFF_AUDIT_SCHEMA_VERSION = "067-device-handoff-audit";
+var DEVICE_HANDOFF_AUDIT_SCHEMA_LOCK = 670067;
+var DEVICE_HANDOFF_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS public.identity_device_handoffs (
+  handoff_id uuid PRIMARY KEY,
+  token_hash text NOT NULL UNIQUE,
+  request_key text NOT NULL,
+  user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  desktop_product text NOT NULL,
+  old_session_id uuid NOT NULL REFERENCES public.identity_sessions(session_id),
+  old_device_id text,
+  old_device_name text,
+  new_device_id text NOT NULL,
+  new_device_name text NOT NULL,
+  new_platform text NOT NULL,
+  new_app_version text NOT NULL,
+  status text NOT NULL CHECK (status IN ('waiting_old_device','ready','blocked','completed','cancelled','expired')),
+  summary jsonb CHECK (summary IS NULL OR jsonb_typeof(summary)='object'),
+  takeover_reason text,
+  prepared_at timestamptz,
+  completed_at timestamptz,
+  cancelled_at timestamptz,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(user_id, desktop_product, request_key)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_device_handoffs_pending
+  ON public.identity_device_handoffs(user_id,desktop_product)
+  WHERE status IN ('waiting_old_device','ready','blocked');
+CREATE INDEX IF NOT EXISTS idx_identity_device_handoffs_token
+  ON public.identity_device_handoffs(token_hash,status,expires_at);
+CREATE INDEX IF NOT EXISTS idx_identity_device_handoffs_session
+  ON public.identity_device_handoffs(old_session_id,status);
+`;
+var DEVICE_HANDOFF_AUDIT_SCHEMA_SQL = `
+ALTER TABLE public.identity_audit DROP CONSTRAINT IF EXISTS identity_audit_event_check;
+ALTER TABLE public.identity_audit ADD CONSTRAINT identity_audit_event_check CHECK (event IN (
+  'login','logout','fixture','device.handoff.begin','device.handoff.ready','device.handoff.blocked',
+  'device.handoff.completed','device.handoff.takeover','device.handoff.cancelled'
+));
+`;
+
 // server/core/account-growth.ts
 var GROWTH_SOURCE_PRODUCTS = ["navigator", "crm"];
 var GROWTH_EVENT_RULES = {
@@ -7417,6 +7568,23 @@ var IDENTITY_COLUMNS = `u.user_id AS "userId",u.display_name AS "displayName",e.
 var SESSION_FILTER = `s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now()
   AND u.active AND s.security_revision=u.security_revision`;
 var GROWTH_RULE_VERSION = 2;
+var HANDOFF_COLUMNS = `h.handoff_id AS "handoffId",h.status,h.expires_at AS "expiresAt",
+  COALESCE(h.old_device_name,'\u539F\u7535\u8111') AS "oldDeviceName",h.new_device_name AS "newDeviceName",
+  h.summary,h.takeover_reason AS "takeoverReason"`;
+var HANDOFF_RETURNING = `handoff_id AS "handoffId",status,expires_at AS "expiresAt",
+  COALESCE(old_device_name,'\u539F\u7535\u8111') AS "oldDeviceName",new_device_name AS "newDeviceName",
+  summary,takeover_reason AS "takeoverReason"`;
+function handoffState(row2) {
+  return {
+    handoffId: String(row2.handoffId),
+    status: row2.status,
+    expiresAt: row2.expiresAt instanceof Date ? row2.expiresAt.toISOString() : String(row2.expiresAt),
+    oldDeviceName: String(row2.oldDeviceName),
+    newDeviceName: String(row2.newDeviceName),
+    ...row2.summary && typeof row2.summary === "object" ? { summary: row2.summary } : {},
+    ...row2.takeoverReason == null ? {} : { takeoverReason: String(row2.takeoverReason) }
+  };
+}
 function profileFromRow(row2) {
   if (!row2)
     return null;
@@ -7533,6 +7701,38 @@ var PostgresAuthRepository = class {
           await client.query(DESKTOP_DEVICE_SCHEMA_SQL);
           await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [DESKTOP_DEVICE_SCHEMA_VERSION, checksum4]);
           this.log.write("INFO", "identity.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${DESKTOP_DEVICE_SCHEMA_VERSION}`);
+        }
+        return success(void 0);
+      }));
+    }).then(async (result2) => {
+      if (!result2.ok)
+        return result2;
+      return this.execute(() => this.tx(async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock($1)", [DEVICE_HANDOFF_SCHEMA_LOCK]);
+        const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(DEVICE_HANDOFF_SCHEMA_SQL).digest("hex");
+        const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [DEVICE_HANDOFF_SCHEMA_VERSION]);
+        if (existing.rows.length && existing.rows[0].checksum !== checksum4)
+          return failure("CONFLICT", "\u6362\u673A\u4EA4\u63A5\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+        if (!existing.rows.length) {
+          await client.query(DEVICE_HANDOFF_SCHEMA_SQL);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [DEVICE_HANDOFF_SCHEMA_VERSION, checksum4]);
+          this.log.write("INFO", "identity.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${DEVICE_HANDOFF_SCHEMA_VERSION}`);
+        }
+        return success(void 0);
+      }));
+    }).then(async (result2) => {
+      if (!result2.ok)
+        return result2;
+      return this.execute(() => this.tx(async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock($1)", [DEVICE_HANDOFF_AUDIT_SCHEMA_LOCK]);
+        const checksum4 = (0, import_node_crypto4.createHash)("sha256").update(DEVICE_HANDOFF_AUDIT_SCHEMA_SQL).digest("hex");
+        const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [DEVICE_HANDOFF_AUDIT_SCHEMA_VERSION]);
+        if (existing.rows.length && existing.rows[0].checksum !== checksum4)
+          return failure("CONFLICT", "\u6362\u673A\u5BA1\u8BA1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+        if (!existing.rows.length) {
+          await client.query(DEVICE_HANDOFF_AUDIT_SCHEMA_SQL);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [DEVICE_HANDOFF_AUDIT_SCHEMA_VERSION, checksum4]);
+          this.log.write("INFO", "identity.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${DEVICE_HANDOFF_AUDIT_SCHEMA_VERSION}`);
         }
         return success(void 0);
       }));
@@ -7833,6 +8033,160 @@ var PostgresAuthRepository = class {
       return success(identity.rows[0]);
     }));
   }
+  beginDesktopHandoff(input) {
+    return this.execute(() => this.tx(async (client) => {
+      const user = await client.query("SELECT user_id FROM public.identity_users WHERE user_id=$1 AND active AND security_revision IS NOT NULL FOR UPDATE", [input.userId]);
+      if (!user.rows.length)
+        return failure("UNAUTHORIZED", "\u8D26\u53F7\u4E0D\u53EF\u7528");
+      await client.query(`UPDATE public.identity_device_handoffs SET status='expired',updated_at=now()
+        WHERE user_id=$1 AND desktop_product=$2 AND status IN ('waiting_old_device','ready','blocked') AND expires_at<=now()`, [input.userId, input.desktop.product]);
+      const previous = await client.query(`SELECT ${HANDOFF_COLUMNS} FROM public.identity_device_handoffs h
+        WHERE h.user_id=$1 AND h.desktop_product=$2 AND h.request_key=$3 FOR UPDATE`, [input.userId, input.desktop.product, input.requestKey]);
+      if (previous.rows.length) {
+        const row2 = previous.rows[0];
+        if (!["waiting_old_device", "ready", "blocked"].includes(String(row2.status)))
+          return failure("CONFLICT", "\u672C\u6B21\u6362\u673A\u8BF7\u6C42\u5DF2\u7ECF\u7ED3\u675F\uFF0C\u8BF7\u91CD\u65B0\u53D1\u8D77");
+        const renewed = await client.query(`UPDATE public.identity_device_handoffs h SET token_hash=$2,expires_at=$3,updated_at=now()
+          WHERE h.handoff_id=$1 RETURNING ${HANDOFF_RETURNING}`, [row2.handoffId, input.tokenHash, input.expiresAt]);
+        return success(handoffState(renewed.rows[0]));
+      }
+      const active = await client.query(`SELECT s.session_id,s.desktop_device_id,s.desktop_device_name
+        FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
+        WHERE s.user_id=$1 AND s.desktop_product=$2 AND s.revoked_at IS NULL AND s.expires_at>now()
+          AND u.active AND u.security_revision=s.security_revision
+        ORDER BY s.created_at DESC LIMIT 1 FOR UPDATE OF s`, [input.userId, input.desktop.product]);
+      if (!active.rows.length)
+        return failure("CONFLICT", "\u539F\u7535\u8111\u5DF2\u7ECF\u9000\u51FA\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55");
+      if (String(active.rows[0].desktop_device_id ?? "") === input.desktop.deviceId)
+        return failure("CONFLICT", "\u5F53\u524D\u7535\u8111\u5DF2\u7ECF\u662F\u6D3B\u8DC3\u8BBE\u5907");
+      const pending = await client.query(`SELECT handoff_id FROM public.identity_device_handoffs
+        WHERE user_id=$1 AND desktop_product=$2 AND status IN ('waiting_old_device','ready','blocked') FOR UPDATE`, [input.userId, input.desktop.product]);
+      if (pending.rows.length)
+        return failure("CONFLICT", "\u5DF2\u6709\u4E00\u53F0\u65B0\u7535\u8111\u6B63\u5728\u53D1\u8D77\u6362\u673A\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
+      const inserted = await client.query(`INSERT INTO public.identity_device_handoffs(
+        handoff_id,token_hash,request_key,user_id,desktop_product,old_session_id,old_device_id,old_device_name,
+        new_device_id,new_device_name,new_platform,new_app_version,status,expires_at
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'waiting_old_device',$13)
+      RETURNING ${HANDOFF_RETURNING}`, [
+        input.handoffId,
+        input.tokenHash,
+        input.requestKey,
+        input.userId,
+        input.desktop.product,
+        active.rows[0].session_id,
+        active.rows[0].desktop_device_id,
+        active.rows[0].desktop_device_name,
+        input.desktop.deviceId,
+        input.desktop.deviceName,
+        input.desktop.platform,
+        input.desktop.appVersion,
+        input.expiresAt
+      ]);
+      await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,'device.handoff.begin')", [input.userId]);
+      return success(handoffState(inserted.rows[0]));
+    }));
+  }
+  desktopHandoffStatus(tokenHash) {
+    return this.execute(() => this.tx(async (client) => {
+      await client.query(`UPDATE public.identity_device_handoffs SET status='expired',updated_at=now()
+        WHERE token_hash=$1 AND status IN ('waiting_old_device','ready','blocked') AND expires_at<=now()`, [tokenHash]);
+      const result2 = await client.query(`SELECT ${HANDOFF_COLUMNS} FROM public.identity_device_handoffs h
+        JOIN public.identity_users u USING(user_id) WHERE h.token_hash=$1 AND u.active FOR UPDATE OF h`, [tokenHash]);
+      return result2.rows.length ? success(handoffState(result2.rows[0])) : failure("UNAUTHORIZED", "\u6362\u673A\u8BF7\u6C42\u5DF2\u5931\u6548");
+    }));
+  }
+  pendingDesktopHandoff(refreshHash) {
+    return this.execute(() => this.tx(async (client) => {
+      await client.query(`UPDATE public.identity_device_handoffs h SET status='expired',updated_at=now()
+        FROM public.identity_desktop_refresh_tokens r
+        WHERE h.old_session_id=r.session_id AND r.token_hash=$1
+          AND h.status IN ('waiting_old_device','ready','blocked') AND h.expires_at<=now()`, [refreshHash]);
+      const result2 = await client.query(`SELECT h.handoff_id AS "handoffId",h.new_device_name AS "newDeviceName",h.expires_at AS "expiresAt"
+        FROM public.identity_desktop_refresh_tokens r JOIN public.identity_sessions s USING(session_id)
+        JOIN public.identity_device_handoffs h ON h.old_session_id=s.session_id
+        WHERE r.token_hash=$1 AND r.consumed_at IS NULL AND r.idle_expires_at>now() AND r.absolute_expires_at>now()
+          AND s.revoked_at IS NULL AND s.expires_at>now() AND h.status IN ('waiting_old_device','ready','blocked')
+        ORDER BY h.created_at DESC LIMIT 1`, [refreshHash]);
+      if (!result2.rows.length)
+        return success(null);
+      const row2 = result2.rows[0];
+      return success({ handoffId: String(row2.handoffId), newDeviceName: String(row2.newDeviceName), expiresAt: row2.expiresAt instanceof Date ? row2.expiresAt.toISOString() : String(row2.expiresAt) });
+    }));
+  }
+  prepareDesktopHandoff(refreshHash, input) {
+    return this.execute(() => this.tx(async (client) => {
+      const result2 = await client.query(`SELECT ${HANDOFF_COLUMNS},s.user_id
+        FROM public.identity_desktop_refresh_tokens r JOIN public.identity_sessions s USING(session_id)
+        JOIN public.identity_device_handoffs h ON h.old_session_id=s.session_id
+        WHERE r.token_hash=$1 AND r.consumed_at IS NULL AND r.idle_expires_at>now() AND r.absolute_expires_at>now()
+          AND s.revoked_at IS NULL AND s.expires_at>now() AND h.status IN ('waiting_old_device','ready','blocked')
+        ORDER BY h.created_at DESC LIMIT 1 FOR UPDATE OF h`, [refreshHash]);
+      if (!result2.rows.length)
+        return failure("CONFLICT", "\u5F53\u524D\u6CA1\u6709\u7B49\u5F85\u5904\u7406\u7684\u6362\u673A\u8BF7\u6C42");
+      const row2 = result2.rows[0];
+      if (new Date(row2.expiresAt).getTime() <= Date.now()) {
+        await client.query("UPDATE public.identity_device_handoffs SET status='expired',updated_at=now() WHERE handoff_id=$1", [row2.handoffId]);
+        return failure("UNAUTHORIZED", "\u6362\u673A\u8BF7\u6C42\u5DF2\u8FC7\u671F");
+      }
+      const status = input.summary.blockers.length ? "blocked" : "ready";
+      const updated = await client.query(`UPDATE public.identity_device_handoffs h SET status=$2,summary=$3::jsonb,prepared_at=now(),updated_at=now()
+        WHERE h.handoff_id=$1 RETURNING ${HANDOFF_RETURNING}`, [row2.handoffId, status, JSON.stringify(input.summary)]);
+      await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,$2)", [row2.user_id, status === "ready" ? "device.handoff.ready" : "device.handoff.blocked"]);
+      return success(handoffState(updated.rows[0]));
+    }));
+  }
+  completeDesktopHandoff(tokenHash, input, takeoverReason) {
+    return this.execute(() => this.tx(async (client) => {
+      const handoff = await client.query(`SELECT ${HANDOFF_COLUMNS},h.user_id,u.security_revision AS "securityRevision",h.old_session_id,h.new_device_id,h.new_device_name,h.new_platform,h.new_app_version,h.desktop_product
+        FROM public.identity_device_handoffs h JOIN public.identity_users u USING(user_id)
+        WHERE h.token_hash=$1 AND u.active FOR UPDATE OF h,u`, [tokenHash]);
+      if (!handoff.rows.length)
+        return success(null);
+      const row2 = handoff.rows[0];
+      if (new Date(row2.expiresAt).getTime() <= Date.now()) {
+        await client.query("UPDATE public.identity_device_handoffs SET status='expired',updated_at=now() WHERE handoff_id=$1", [row2.handoffId]);
+        return failure("UNAUTHORIZED", "\u6362\u673A\u8BF7\u6C42\u5DF2\u8FC7\u671F");
+      }
+      if (row2.status === "completed")
+        return failure("CONFLICT", "\u672C\u6B21\u6362\u673A\u5DF2\u7ECF\u5B8C\u6210\uFF0C\u8BF7\u76F4\u63A5\u767B\u5F55\u65B0\u7535\u8111");
+      if (!["waiting_old_device", "ready", "blocked"].includes(String(row2.status)))
+        return failure("UNAUTHORIZED", "\u6362\u673A\u8BF7\u6C42\u5DF2\u5931\u6548");
+      if (row2.status !== "ready" && !takeoverReason)
+        return failure("CONFLICT", "\u539F\u7535\u8111\u5C1A\u672A\u5B8C\u6210\u6570\u636E\u51C6\u5907");
+      await client.query(`UPDATE public.identity_sessions SET revoked_at=now(),revocation_reason=$2
+        WHERE user_id=$1 AND desktop_product=$3 AND revoked_at IS NULL`, [row2.user_id, takeoverReason ? "device-takeover" : "device-handoff", row2.desktop_product]);
+      const session = await client.query(`INSERT INTO public.identity_sessions(
+        token_hash,user_id,security_revision,expires_at,client,desktop_product,desktop_device_id,
+        desktop_device_name,desktop_platform,desktop_app_version
+      ) VALUES($1,$2,$3,$4,'api',$5,$6,$7,$8,$9) RETURNING session_id`, [
+        input.tokenHash,
+        row2.user_id,
+        row2.securityRevision,
+        input.expiresAt,
+        row2.desktop_product,
+        row2.new_device_id,
+        row2.new_device_name,
+        row2.new_platform,
+        row2.new_app_version
+      ]);
+      await client.query("INSERT INTO public.identity_desktop_refresh_tokens(token_hash,session_id,idle_expires_at,absolute_expires_at) VALUES($1,$2,$3,$4)", [input.refreshHash, session.rows[0].session_id, input.idleExpiresAt, input.absoluteExpiresAt]);
+      await client.query(`UPDATE public.identity_device_handoffs SET status='completed',takeover_reason=$2,completed_at=now(),updated_at=now()
+        WHERE handoff_id=$1`, [row2.handoffId, takeoverReason ?? null]);
+      await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,$2)", [row2.user_id, takeoverReason ? "device.handoff.takeover" : "device.handoff.completed"]);
+      const identity = await client.query(`SELECT ${IDENTITY_COLUMNS} FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id) WHERE u.user_id=$1`, [row2.user_id]);
+      return success(identity.rows[0]);
+    }));
+  }
+  cancelDesktopHandoff(tokenHash) {
+    return this.execute(() => this.tx(async (client) => {
+      const cancelled = await client.query(`UPDATE public.identity_device_handoffs SET status='cancelled',cancelled_at=now(),updated_at=now()
+        WHERE token_hash=$1 AND status IN ('waiting_old_device','ready','blocked') RETURNING user_id`, [tokenHash]);
+      if (!cancelled.rows.length)
+        return success(void 0);
+      await client.query("INSERT INTO public.identity_audit(user_id,event) VALUES($1,'device.handoff.cancelled')", [cancelled.rows[0].user_id]);
+      return success(void 0);
+    }));
+  }
   rotateDesktopSession(refreshHash, input) {
     return this.execute(() => this.tx(async (client) => {
       const session = await client.query(`SELECT s.session_id,s.user_id,r.absolute_expires_at FROM public.identity_desktop_refresh_tokens r
@@ -7842,7 +8196,7 @@ var PostgresAuthRepository = class {
       if (!session.rows.length) {
         const replaced = await client.query(`SELECT 1 FROM public.identity_desktop_refresh_tokens r
           JOIN public.identity_sessions s USING(session_id) JOIN public.identity_users u USING(user_id)
-          WHERE r.token_hash=$1 AND s.revocation_reason='replaced' AND u.active`, [refreshHash]);
+          WHERE r.token_hash=$1 AND s.revocation_reason IN ('replaced','device-handoff','device-takeover') AND u.active`, [refreshHash]);
         return replaced.rows.length ? failure("DEVICE_REPLACED", "\u8BE5\u8D26\u53F7\u5DF2\u5728\u53E6\u4E00\u53F0\u7535\u8111\u767B\u5F55") : success(null);
       }
       const row2 = session.rows[0];
@@ -7862,7 +8216,7 @@ var PostgresAuthRepository = class {
       if (result2.rows[0])
         return success(result2.rows[0]);
       const replaced = await this.pool.query(`SELECT 1 FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
-        WHERE s.token_hash=$1 AND s.client='api' AND s.revocation_reason='replaced' AND u.active`, [tokenHash]);
+        WHERE s.token_hash=$1 AND s.client='api' AND s.revocation_reason IN ('replaced','device-handoff','device-takeover') AND u.active`, [tokenHash]);
       return replaced.rows.length ? failure("DEVICE_REPLACED", "\u8BE5\u8D26\u53F7\u5DF2\u5728\u53E6\u4E00\u53F0\u7535\u8111\u767B\u5F55") : success(null);
     });
   }
@@ -8851,6 +9205,7 @@ function matchCompanyConflict(input, candidates) {
 
 // server/core/lead-ingress.ts
 var LEAD_INGRESS_ROUTES = { decision: "/api/crm/lead-ingress/decision", resolve: "/api/crm/lead-ingress/resolve" };
+var DEAL_OVERLAP_EVENT = "crm.deal.overlap_detected";
 var LEAD_INGRESS_LIMITS = { contacts: 200, candidates: 5, text: 500, key: 160 };
 var LEAD_INGRESS_SOURCES = ["manual", "flat_import", "workbook_import", "agent_import", "api_contact_update", "soft_delete_recovery", "migration_recovery"];
 var UUID5 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -9154,7 +9509,7 @@ var CONTACT_ASSIGNMENT_ROUTES = {
   monitor: "/api/crm/contact-monitor",
   contact: "/api/crm/contacts"
 };
-var CONTACT_ASSIGNMENT_LIMITS = { batch: 200, page: 50, pageMax: 100, notify: 20, text: 500, note: 2e4, key: 128, preferences: 10, preferenceText: 200 };
+var CONTACT_ASSIGNMENT_LIMITS = { batch: 200, page: 50, pageMax: 200, notify: 20, text: 500, note: 2e4, key: 128, preferences: 10, preferenceText: 200 };
 var CONTACT_ASSIGNMENT_EVENTS = {
   requested: "crm.contact.assignment.requested",
   accepted: "crm.contact.assignment.accepted",
@@ -9861,7 +10216,8 @@ var PostgresTaskRepository = class {
   list(hash, input) {
     return this.authorized(hash, async (db, a) => {
       const owner = a.capabilities.includes("leads.develop"), ops = operations(a);
-      const visibility2 = administrator(a) ? "($1::uuid IS NOT NULL)" : ops ? `(c.origin='operations'${owner ? " OR c.owner_user_id=$1" : ""})` : owner ? "c.owner_user_id=$1" : "FALSE AND $1::uuid IS NOT NULL";
+      const scopeVisibility = administrator(a) ? "($1::uuid IS NOT NULL)" : ops ? `(c.origin='operations'${owner ? " OR c.owner_user_id=$1" : ""})` : owner ? "c.owner_user_id=$1" : "FALSE AND $1::uuid IS NOT NULL";
+      const visibility2 = input.mine ? `(${scopeVisibility}) AND COALESCE(c.owner_user_id,c.created_by)=$1` : scopeVisibility;
       const filter = `WHERE (${visibility2}) AND ($2::uuid IS NULL OR c.customer_id=$2) AND ($3::text IS NULL OR t.status=$3)`;
       const params = [a.userId, input.customerId ?? null, input.status ?? null];
       const count2 = await db.query(`SELECT count(*)::int AS n FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) ${filter}`, params);
@@ -10328,6 +10684,20 @@ var JOINS = `FROM contacts ct JOIN crm_customer_contacts cc ON cc.contact_id=ct.
 var LAST_FOLLOWUP_AT = lastEffectiveFollowupSql("occurred_at");
 var LAST_FOLLOWUP_NOTE = lastEffectiveFollowupSql("note");
 var PROJECTION = `ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT COALESCE(array_agg(DISTINCT sid),'{}'::uuid[]) FROM crm_contact_assignment_requests sar CROSS JOIN LATERAL unnest(sar.supervisor_user_ids) sid WHERE sar.contact_id=ct.id AND sar.customer_id=c.customer_id AND sar.status='accepted') AS supervisor_user_ids,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted','pending_transfer')) AS active_assignment_status,(SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1) AS "relationshipStage",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
+var NOTIFICATION_VALUE_MAX = 240;
+function notificationValue(value2) {
+  if (value2 === void 0 || value2 === null || value2 === "")
+    return null;
+  const text16 = Array.isArray(value2) ? value2.join("\u3001") : typeof value2 === "object" ? JSON.stringify(value2) : String(value2);
+  return text16.length > NOTIFICATION_VALUE_MAX ? `${text16.slice(0, NOTIFICATION_VALUE_MAX)}\u2026` : text16;
+}
+function contactFieldValue(ct, key) {
+  const values = { email: ct.email, firstName: ct.firstName, lastName: ct.lastName, title: ct.title, phone: ct.phone, whatsapp: ct.whatsapp, sourceLevel1: ct.sourceLevel1, sourceLevel2: ct.sourceLevel2, linkedinUrl: ct.linkedinUrl, country: ct.country, language: ct.language, stage: ct.stage, status: ct.status, tags: ct.tags, preferences: ct.extra?.preferences };
+  return values[key];
+}
+function notificationValues(entries) {
+  return entries.flatMap(([field, before, after]) => JSON.stringify(before ?? null) === JSON.stringify(after ?? null) ? [] : [{ field, from: notificationValue(before), to: notificationValue(after) }]);
+}
 function contactPermissionsFor(a, row2) {
   return contactPermissions(a, { ...row2, shared_grant: row2.shared_grants?.find((g) => g.targetUserId === a.userId) });
 }
@@ -10463,7 +10833,7 @@ async function cached(c, a, operation, input, work, replay) {
   return result2;
 }
 async function members(c) {
-  return (await c.query(`SELECT u.user_id,pa.scope,pa.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM public.identity_users u JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE u.active AND NOT u.must_change_password FOR SHARE OF u,pa`)).rows;
+  return (await c.query(`SELECT u.user_id,pa.scope,pa.capabilities,EXISTS(SELECT 1 FROM crm_org_assignments leader WHERE leader.user_id=u.user_id AND leader.role='leader' AND leader.ended_at IS NULL) AS is_supervisor,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM public.identity_users u JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE u.active AND NOT u.must_change_password FOR SHARE OF u,pa`)).rows;
 }
 function validTarget(member2, actorId) {
   return !!member2 && isContactAssignmentTarget({ userId: member2.user_id, roles: member2.roles, capabilities: effectiveCapabilitiesFor(member2.roles, member2.capabilities) }, actorId);
@@ -10547,7 +10917,10 @@ async function createContactAssignmentsIn(c, a, input) {
   const currentMembers = await members(c);
   if (!validTarget(currentMembers.find((m) => m.user_id === input.targetUserId), a.userId))
     return failure("INVALID_INPUT", "\u5206\u914D\u6210\u5458\u5DF2\u5931\u6548\u6216\u65E0\u7528\u6237\u5F00\u53D1\u6743\u9650");
-  const org = await assignmentOrgContext(c, a.userId, input.targetUserId), notifyUserIds = contactAssignmentRecipients(input.targetUserId, org.supervisorUserIds);
+  const requestedSupervisors = input.supervisorUserIds ?? [], invalidSupervisor = requestedSupervisors.some((id) => !currentMembers.some((member2) => member2.user_id === id));
+  if (invalidSupervisor)
+    return failure("INVALID_INPUT", "\u901A\u77E5\u7528\u6237\u5DF2\u5931\u6548\u6216\u4E0D\u5728\u5F53\u524D\u4E2D\u5FC3");
+  const org = await assignmentOrgContext(c, a.userId, input.targetUserId), supervisorUserIds = [.../* @__PURE__ */ new Set([...org.supervisorUserIds, ...requestedSupervisors])].sort(), notifyUserIds = contactAssignmentRecipients(input.targetUserId, supervisorUserIds);
   return cached(c, a, "contact-assignments:create", input, async () => {
     const items = [];
     const groupId = (0, import_node_crypto13.randomUUID)(), ordered = [...input.contacts].sort((x, y) => x.contactId - y.contactId);
@@ -10555,12 +10928,18 @@ async function createContactAssignmentsIn(c, a, input) {
       const ct = await contact(c, ref2, true);
       if (!ct || !read(a, ct))
         return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
-      if (!assign(a, ct) || ct.contactVersion !== ref2.expectedVersion)
-        return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u5206\u914D\u3001\u53D7\u9650\u6216\u7248\u672C\u5DF2\u53D8\u5316");
+      if (ct.origin !== "operations")
+        return failure("FORBIDDEN", "\u4E2A\u4EBA\u7EBF\u7D22\u4E0D\u80FD\u7531\u7BA1\u7406\u5458\u5206\u914D");
+      if (ct.development_restriction?.trim())
+        return failure("FORBIDDEN", "\u8054\u7CFB\u4EBA\u5B58\u5728\u5F00\u53D1\u9650\u5236");
+      if (ct.ownerUserId !== null)
+        return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u6709\u8D1F\u8D23\u4EBA");
+      if (ct.active_assignment_status)
+        return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u6709\u8FDB\u884C\u4E2D\u7684\u5206\u914D");
       if ((await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE contact_id=$1 AND status IN ('pending','accepted','pending_transfer')", [ref2.contactId])).rows.length)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u6709\u6709\u6548\u5206\u914D\u8BF7\u6C42");
       const id = (0, import_node_crypto13.randomUUID)();
-      await c.query("INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids,supervisor_user_ids,source_org_unit_id,source_org_unit_name) VALUES($1,$2,$3,$4,$5,$6::uuid[],$7::uuid[],$8,$9)", [id, ref2.contactId, ref2.customerId, input.targetUserId, a.userId, notifyUserIds, org.supervisorUserIds, org.sourceOrgUnitId, org.sourceOrgUnitName]);
+      await c.query("INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids,supervisor_user_ids,source_org_unit_id,source_org_unit_name) VALUES($1,$2,$3,$4,$5,$6::uuid[],$7::uuid[],$8,$9)", [id, ref2.contactId, ref2.customerId, input.targetUserId, a.userId, notifyUserIds, supervisorUserIds, org.sourceOrgUnitId, org.sourceOrgUnitName]);
       await c.query("INSERT INTO crm_contact_assignment_group_members(group_id,request_id) VALUES($1,$2)", [groupId, id]);
       const r = await request(c, a, id);
       if (!r.ok)
@@ -10581,7 +10960,7 @@ async function createContactAssignmentsIn(c, a, input) {
     return success({ items });
   });
 }
-async function decideContactAssignmentIn(c, a, action, input) {
+async function decideContactAssignmentIn(c, a, action, input, emitEvent = true) {
   const initial = (await c.query("SELECT * FROM crm_contact_assignment_requests WHERE request_id=$1", [input.requestId])).rows[0];
   if (!initial)
     return failure("NOT_FOUND", "\u5206\u914D\u8BF7\u6C42\u4E0D\u5B58\u5728");
@@ -10648,7 +11027,8 @@ async function decideContactAssignmentIn(c, a, action, input) {
     const result2 = await request(c, a, input.requestId, a.userId);
     if (!result2.ok)
       return result2;
-    await assignmentEvent(c, a, result2.data, event2, [row2.actor_id, row2.target_user_id, row2.transfer_actor_id, row2.previous_target_user_id, ...row2.notify_user_ids, ...row2.supervisor_user_ids].filter((id) => !!id));
+    if (emitEvent)
+      await assignmentEvent(c, a, result2.data, event2, [row2.actor_id, row2.target_user_id, row2.transfer_actor_id, row2.previous_target_user_id, ...row2.notify_user_ids, ...row2.supervisor_user_ids].filter((id) => !!id));
     return result2;
   }, () => request(c, a, input.requestId, a.userId));
 }
@@ -10656,16 +11036,23 @@ async function decideContactAssignmentGroupIn(c, a, action, input) {
   const migrated = await migrateContactAssignmentGroups(c);
   if (!migrated.ok)
     return migrated;
-  const rows = (await c.query(`SELECT r.request_id,r.version,r.status,r.target_user_id,c.origin FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id JOIN crm_customers c ON c.customer_id=r.customer_id WHERE COALESCE(gm.group_id,r.request_id)=$1 ORDER BY r.request_id FOR UPDATE OF r`, [input.groupId])).rows;
+  const rows = (await c.query(`SELECT r.request_id,r.version,r.status,r.actor_id,r.target_user_id,r.transfer_actor_id,r.previous_target_user_id,r.notify_user_ids,r.supervisor_user_ids,c.origin FROM crm_contact_assignment_requests r LEFT JOIN crm_contact_assignment_group_members gm ON gm.request_id=r.request_id JOIN crm_customers c ON c.customer_id=r.customer_id WHERE COALESCE(gm.group_id,r.request_id)=$1 ORDER BY r.request_id FOR UPDATE OF r`, [input.groupId])).rows;
   if (!rows.length)
     return failure("NOT_FOUND", "\u5206\u914D\u7EC4\u4E0D\u5B58\u5728");
   if (action === "cancel" ? !contactManager(a) : rows.some((row2) => row2.target_user_id !== a.userId) || !a.capabilities.includes("leads.develop"))
     return failure("NOT_FOUND", "\u5206\u914D\u8BF7\u6C42\u4E0D\u5B58\u5728");
-  for (const row2 of rows.filter((row3) => row3.status === "pending")) {
+  const pendingRows = rows.filter((row2) => row2.status === "pending"), decided = [];
+  for (const row2 of pendingRows) {
     const decision2 = { requestId: row2.request_id, expectedVersion: Number(row2.version), idempotencyKey: (0, import_node_crypto13.createHash)("sha256").update(`${input.idempotencyKey}:${row2.request_id}`).digest("hex") };
-    const result3 = await decideContactAssignmentIn(c, a, action, decision2);
+    const result3 = await decideContactAssignmentIn(c, a, action, decision2, false);
     if (!result3.ok)
       return result3;
+    decided.push(result3.data);
+  }
+  if (decided.length) {
+    const event2 = action === "accept" ? CONTACT_ASSIGNMENT_EVENTS.accepted : action === "reject" ? CONTACT_ASSIGNMENT_EVENTS.rejected : CONTACT_ASSIGNMENT_EVENTS.cancelled;
+    const recipients2 = [...new Set(pendingRows.flatMap((row2) => [row2.actor_id, row2.target_user_id, row2.transfer_actor_id, row2.previous_target_user_id, ...row2.notify_user_ids, ...row2.supervisor_user_ids]).filter((id) => !!id))];
+    await assignmentEvent(c, a, decided[0], event2, recipients2, void 0, decided.length);
   }
   const result2 = await contactAssignmentsIn(c, a, { view: action === "cancel" ? "outgoing" : "incoming", status: "pending", search: "", limit: 200, offset: 0, groupId: input.groupId });
   return result2.ok ? success({ items: result2.data.items }) : result2;
@@ -10816,6 +11203,7 @@ async function contactUpdateIn(c, a, input) {
     const fields = { email: "email", firstName: "first_name", lastName: "last_name", title: "title", phone: "phone", whatsapp: "whatsapp", sourceLevel1: "source_level1", sourceLevel2: "source_level2", linkedinUrl: "linkedin", country: "country", clientType: "client_type", language: "language", stage: "stage", status: "status", tags: "tags", preferences: "extra" };
     const values = [input.contactId];
     const sets = [];
+    const changes = notificationValues(Object.entries(input.fields).map(([key, value2]) => [key, contactFieldValue(ct, key), key === "email" && typeof value2 === "string" ? value2.trim().toLowerCase() || null : value2]));
     for (const [key, value2] of Object.entries(input.fields)) {
       if (!Object.hasOwn(fields, key))
         return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u5B57\u6BB5\u4E0D\u53EF\u4FEE\u6539");
@@ -10824,12 +11212,12 @@ async function contactUpdateIn(c, a, input) {
       sets.push(key === "preferences" ? `extra=jsonb_set(COALESCE(extra,'{}'::jsonb),'{preferences}',$${values.length}::jsonb,true)` : `${fields[key]}=$${values.length}${json ? "::jsonb" : ""}`);
     }
     await c.query(`UPDATE contacts SET ${sets.join(",")},crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1`, values);
-    await contactEvent(c, a, ct, CONTACT_ASSIGNMENT_EVENTS.updated, input.expectedVersion + 1);
+    await contactEvent(c, a, ct, CONTACT_ASSIGNMENT_EVENTS.updated, input.expectedVersion + 1, void 0, void 0, { fields: Object.keys(input.fields), changes });
     return contactDetailIn(c, a, input);
   }, () => contactDetailIn(c, a, input));
 }
-async function contactEvent(c, a, ct, type, version4, activityId, mailEventId) {
-  await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,'crm',$3,$4,$5,$6::uuid[])", [type, a.userId, version4, ct.customerId, JSON.stringify({ contactId: ct.contactId, customerId: ct.customerId, version: version4, ...activityId ? { activityId } : {}, ...mailEventId ? { mailEventId } : {} }), [.../* @__PURE__ */ new Set([a.userId, ct.created_by, ...ct.ownerUserId ? [ct.ownerUserId] : [], ...(ct.shared_grants ?? []).map((g) => g.targetUserId)])].sort()]);
+async function contactEvent(c, a, ct, type, version4, activityId, mailEventId, details = {}, extraRecipients = []) {
+  await c.query("INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids) VALUES($1,$2,'crm',$3,$4,$5,$6::uuid[])", [type, a.userId, version4, ct.customerId, JSON.stringify({ contactId: ct.contactId, customerId: ct.customerId, version: version4, ...activityId ? { activityId } : {}, ...mailEventId ? { mailEventId } : {}, ...details }), [.../* @__PURE__ */ new Set([a.userId, ct.created_by, ...ct.ownerUserId ? [ct.ownerUserId] : [], ...(ct.shared_grants ?? []).map((g) => g.targetUserId), ...extraRecipients])].sort()]);
 }
 async function contactFollowupIn(c, a, input) {
   const ct = await contact(c, input, true);
@@ -10845,11 +11233,12 @@ async function contactFollowupIn(c, a, input) {
     if (!Number.isFinite(occurred.getTime()) || occurred.getTime() > recorded.getTime() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND7 || method === "note" && input.contactStatus !== void 0)
       return failure("INVALID_INPUT", "\u8DDF\u8FDB\u65F6\u95F4\u6216\u89E6\u8FBE\u72B6\u6001\u65E0\u6548");
     const note = !permissions.canFollowup && input.stage !== void 0 ? `\u5173\u7CFB\u9636\u6BB5\uFF1A${input.stage}` : input.note;
+    const changes = notificationValues([["contactStatus", ct.touchStatus, input.contactStatus], ["stage", ct.relationshipStage ?? null, input.stage]]);
     const activity = (await c.query("INSERT INTO crm_shared_activities(customer_id,interaction_id,actor_id,note,stage,method,occurred_at,recorded_at,created_at,contact_id,contact_status) VALUES($1,NULL,$2,$3,$4,$5,$6,$7,$7,$8,$9) RETURNING id::text", [ct.customerId, a.userId, note, input.stage ?? null, method, occurred, recorded, ct.contactId, input.contactStatus ?? null])).rows[0];
     const legacyStatus = input.contactStatus !== void 0 ? FOLLOWUP_LEGACY_STATUS[input.contactStatus] : null;
     await c.query("UPDATE contacts SET crm_touch_status=COALESCE($2,crm_touch_status),status=COALESCE($3,status),crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [ct.contactId, input.contactStatus ?? null, legacyStatus]);
     await refreshMailProjectionIn(c, input, ct.email);
-    await contactEvent(c, a, ct, CONTACT_ASSIGNMENT_EVENTS.followup, input.expectedVersion + 1, activity.id);
+    await contactEvent(c, a, ct, CONTACT_ASSIGNMENT_EVENTS.followup, input.expectedVersion + 1, activity.id, void 0, { stage: input.stage ?? null, contactStatus: input.contactStatus ?? null, method, changes });
     return contactDetailIn(c, a, input);
   }, () => contactDetailIn(c, a, input));
 }
@@ -11092,7 +11481,7 @@ var CANDIDATE_SELECT = `
   (SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.customer_id=c.customer_id AND ar.status IN ('pending','accepted','pending_transfer') ORDER BY ar.created_at DESC LIMIT 1) AS active_assignment_status,
   EXISTS(SELECT 1 FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.target_user_id=$1::uuid AND sh.status='accepted') AS shared
 `;
-async function emailCandidates(c, actor, email3) {
+async function emailCandidates(c, actor, email3, kind) {
   if (!email3)
     return [];
   const rows = await c.query(`SELECT ${CANDIDATE_SELECT}
@@ -11101,7 +11490,8 @@ async function emailCandidates(c, actor, email3) {
     JOIN crm_customers c ON c.customer_id=cc.customer_id
     JOIN companies co ON co.id=c.company_id
     WHERE lower(btrim(ct.email))=$2
-    FOR SHARE OF ct,c`, [actor.userId, email3]);
+      AND (($3='operations' AND c.origin='operations') OR ($3='personal' AND c.origin='personal' AND c.owner_user_id=$1))
+    FOR SHARE OF ct,c`, [actor.userId, email3, kind]);
   return rows.rows.map((row2) => snapshot(actor, row2, "exact_email", 1));
 }
 async function companyCandidates(c, actor, input) {
@@ -11116,10 +11506,10 @@ async function companyCandidates(c, actor, input) {
       ($2::text<>'' AND lower(btrim(co.domain)) LIKE '%'||split_part($2::text,'.',1)||'%')
       OR lower(btrim(co.name))=lower(btrim($3))
       OR ($4::text<>'' AND lower(btrim(co.name)) LIKE '%'||$4::text||'%')
-    )
+    ) AND (($5='operations' AND c.origin='operations') OR ($5='personal' AND c.origin='personal' AND c.owner_user_id=$1))
     ORDER BY co.id,ct.id
     LIMIT 200
-    FOR SHARE OF co`, [actor.userId, keys12.domain, input.company.name, token]);
+    FOR SHARE OF co`, [actor.userId, keys12.domain, input.company.name, token, input.kind]);
   const snapshots = rows.rows.map((row2) => snapshot(actor, row2, "none", 0));
   return classifyCompanyCandidates(input.company, snapshots.map((row2) => {
     return {
@@ -11145,7 +11535,7 @@ async function candidatesIn(c, actor, input) {
   const emails = [...new Set(input.contacts.map((contact2) => (contact2.email ?? "").trim().toLowerCase()).filter(Boolean))];
   const exact = [];
   for (const email3 of emails)
-    exact.push(...await emailCandidates(c, actor, email3));
+    exact.push(...await emailCandidates(c, actor, email3, input.kind));
   const companies = input.target?.customerId ? [] : await companyCandidates(c, actor, input);
   return [...exact, ...companies];
 }
@@ -11248,7 +11638,7 @@ async function createCustomerIn(c, actor, input, companyId) {
   const customerId = (0, import_node_crypto15.randomUUID)();
   const inserted = await c.query(`INSERT INTO crm_customers(
     customer_id,company_id,source,customer_key,source_detail,created_by,origin,state,owner_user_id,business_type,development_restriction,source_created_at
-  ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(source,customer_key) DO NOTHING RETURNING customer_id`, [
+  ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING RETURNING customer_id`, [
     customerId,
     companyId,
     input.sourceChannel,
@@ -11537,6 +11927,78 @@ async function leadIngressDecisionIn(c, actor, source, idempotencyKey) {
   return success(decisionDTO(row2, assessment));
 }
 
+// server/adapters/postgres/lead-overlap-repository.ts
+async function recordImportOverlapsIn(c, customerId, contactIds) {
+  if (!contactIds.length)
+    return 0;
+  const exact = await c.query(`INSERT INTO crm_lead_overlaps(
+    source_contact_id,target_contact_id,source_customer_id,target_customer_id,match_type
+  )
+  SELECT source.id,target.id,source_customer.customer_id,target_customer.customer_id,'same_email'
+  FROM contacts source
+  JOIN crm_customers source_customer ON source_customer.customer_id=$1
+  JOIN contacts target ON target.id<>source.id AND target.crm_deleted_at IS NULL
+    AND lower(btrim(target.email))=lower(btrim(source.email))
+  JOIN crm_customer_contacts target_link ON target_link.contact_id=target.id
+  JOIN crm_customers target_customer ON target_customer.customer_id=target_link.customer_id
+  WHERE source.id=ANY($2::int[]) AND source.crm_deleted_at IS NULL AND source.email IS NOT NULL
+    AND target_customer.customer_id<>source_customer.customer_id
+    AND NOT(target_customer.origin=source_customer.origin AND target_customer.owner_user_id IS NOT DISTINCT FROM source_customer.owner_user_id)
+  ON CONFLICT(source_contact_id,target_contact_id,match_type) DO NOTHING`, [customerId, [...contactIds]]);
+  const company = await c.query(`INSERT INTO crm_lead_overlaps(
+    source_contact_id,target_contact_id,source_customer_id,target_customer_id,match_type
+  )
+  SELECT source.id,target.id,source_customer.customer_id,target_customer.customer_id,'same_company_country'
+  FROM contacts source
+  JOIN crm_customers source_customer ON source_customer.customer_id=$1
+  JOIN contacts target ON target.id<>source.id AND target.company_id=source.company_id AND target.crm_deleted_at IS NULL
+    AND lower(COALESCE(target.email,'')) IS DISTINCT FROM lower(COALESCE(source.email,''))
+  JOIN crm_customer_contacts target_link ON target_link.contact_id=target.id
+  JOIN crm_customers target_customer ON target_customer.customer_id=target_link.customer_id
+  WHERE source.id=ANY($2::int[]) AND source.crm_deleted_at IS NULL
+    AND target_customer.customer_id<>source_customer.customer_id
+    AND NOT(target_customer.origin=source_customer.origin AND target_customer.owner_user_id IS NOT DISTINCT FROM source_customer.owner_user_id)
+  ON CONFLICT(source_contact_id,target_contact_id,match_type) DO NOTHING`, [customerId, [...contactIds]]);
+  return (exact.rowCount ?? 0) + (company.rowCount ?? 0);
+}
+async function createDealOverlapNoticesIn(c, input) {
+  const inserted = await c.query(`WITH related AS (
+    SELECT ol.overlap_id,
+      CASE WHEN ol.source_customer_id=$1 THEN ol.source_contact_id ELSE ol.target_contact_id END AS winner_contact_id,
+      CASE WHEN ol.source_customer_id=$1 THEN ol.target_customer_id ELSE ol.source_customer_id END AS other_customer_id
+    FROM crm_lead_overlaps ol
+    WHERE (ol.source_customer_id=$1 OR ol.target_customer_id=$1) AND ol.status IN ('open','confirmed')
+  ), notices AS (
+    INSERT INTO crm_deal_overlap_notices(overlap_id,winner_contact_id,recipient_user_id,opportunity_id)
+    SELECT related.overlap_id,related.winner_contact_id,other_customer.owner_user_id,$2
+    FROM related JOIN crm_customers other_customer ON other_customer.customer_id=related.other_customer_id
+    WHERE other_customer.owner_user_id IS NOT NULL AND other_customer.owner_user_id<>$3
+    ON CONFLICT(opportunity_id,recipient_user_id,overlap_id) DO NOTHING
+    RETURNING notice_id,overlap_id,recipient_user_id,winner_contact_id
+  )
+  SELECT * FROM notices`, [input.customerId, input.opportunityId, input.actorId]);
+  if (inserted.rows.length) {
+    await c.query(`INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids)
+      SELECT $1,$2,'crm',$3,$4::uuid,jsonb_build_object(
+        'customerId',$4::text,'version',$3::integer,'opportunityId',$5::text,'noticeId',n.notice_id::text,
+        'overlapId',n.overlap_id::text,'contactId',n.winner_contact_id,'companyName',$6::text,'contactName',$7::text
+      ),ARRAY[n.recipient_user_id]::uuid[]
+      FROM jsonb_to_recordset($8::jsonb) AS n(notice_id uuid,overlap_id uuid,recipient_user_id uuid,winner_contact_id integer)`, [
+      DEAL_OVERLAP_EVENT,
+      input.actorId,
+      input.version,
+      input.customerId,
+      input.opportunityId,
+      input.companyName,
+      input.contactName,
+      JSON.stringify(inserted.rows)
+    ]);
+    await c.query(`UPDATE crm_lead_overlaps SET status='won',updated_at=clock_timestamp()
+      WHERE overlap_id=ANY($1::uuid[])`, [inserted.rows.map((row2) => row2.overlap_id)]);
+  }
+  return inserted.rowCount ?? 0;
+}
+
 // server/adapters/postgres/flat-lead-import.ts
 var optional = (value2) => value2?.trim() || null;
 var attemptKey = (key, index) => `${key.slice(0, 120)}:${index}`;
@@ -11548,22 +12010,34 @@ async function importFlatLeadsIn(c, actor, input) {
   await c.query("INSERT INTO crm_import_batches(batch_id,actor_id,source,source_detail,mapping) VALUES($1,$2,$3,$4,$5)", [batchId, actor.userId, input.source, input.sourceDetail, JSON.stringify(input.mapping ?? {})]);
   const rows = [];
   for (const [index, original] of input.rows.entries()) {
+    const sourceEmail = input.mapping?.email && original.rawRow ? String(original.rawRow[input.mapping.email] ?? original.email) : original.email;
+    const normalizedEmail = normalizeImportEmail(sourceEmail);
+    const normalizedCustomerType = normalizeImportCustomerType(original.customerType ?? "");
+    const unmatched = unmatchedImportRemark(original.rawRow, Object.values(input.mapping ?? {}));
     const row2 = {
       ...original,
       customerKey: original.customerKey.trim(),
       companyName: original.companyName.trim(),
-      email: original.email.trim().toLowerCase(),
-      remark: unmatchedImportRemark(original.rawRow, Object.values(input.mapping ?? {}))
+      email: normalizedEmail.email,
+      customerType: normalizedCustomerType,
+      remark: [
+        unmatched,
+        normalizedEmail.extras.length ? `\u5176\u4ED6\u90AE\u7BB1\uFF1A${normalizedEmail.extras.join("\uFF1B")}` : "",
+        normalizedCustomerType && normalizedCustomerType !== original.customerType?.trim() ? `\u539F\u59CB\u5BA2\u6237\u7C7B\u578B\uFF1A${original.customerType}` : ""
+      ].filter(Boolean).join("\n")
     };
     const rowId = (0, import_node_crypto16.randomUUID)();
     let status = "created";
     let message = importRowIssue(row2);
     let customerId;
     let conflict;
+    let overlapCount = 0;
     if (message)
       status = "invalid";
     else {
-      const existing = (await c.query("SELECT customer_id,company_id FROM crm_customers WHERE source=$1 AND customer_key=$2 FOR UPDATE", [input.source, row2.customerKey])).rows[0];
+      const existing = (await c.query(`SELECT customer_id,company_id FROM crm_customers
+        WHERE source=$1 AND customer_key=$2 AND origin=$3 AND owner_user_id IS NOT DISTINCT FROM $4
+        FOR UPDATE`, [input.source, row2.customerKey, input.kind ?? "operations", input.kind === "personal" ? actor.userId : null])).rows[0];
       const ingress = {
         source: ingressSource(input.source),
         sourceChannel: input.source,
@@ -11622,12 +12096,15 @@ async function importFlatLeadsIn(c, actor, input) {
           message = applied.error.message;
         } else {
           customerId = applied.data.customerId;
+          overlapCount = await recordImportOverlapsIn(c, applied.data.customerId, applied.data.contactIds ?? []);
           status = applied.data.createdContactIds?.length === 0 && applied.data.restoredContactIds.length === 0 ? "duplicate" : "created";
         }
       }
     }
     await c.query("INSERT INTO crm_import_rows(row_id,batch_id,row_index,customer_key,raw_row,customer_id,status) VALUES($1,$2,$3,$4,$5,$6,$7)", [rowId, batchId, index, row2.customerKey, JSON.stringify({ input: row2, rawRow: row2.rawRow ?? original }), customerId ?? null, status]);
-    rows.push({ rowId, index, status, ...customerId ? { customerId } : {}, ...message ? { message } : {}, ...conflict ? { conflict } : {} });
+    if (overlapCount && !message)
+      message = `\u5DF2\u5BFC\u5165\uFF0C\u53D1\u73B0 ${overlapCount} \u6761\u8303\u56F4\u91CD\u53E0`;
+    rows.push({ rowId, index, status, ...customerId ? { customerId } : {}, ...message ? { message } : {}, ...conflict ? { conflict } : {}, ...overlapCount ? { overlapCount } : {} });
   }
   return { batchId, version: 1, rows };
 }
@@ -11935,6 +12412,48 @@ async function updateShareIn(c, a, input) {
       await event(c, a, next.data, CONTACT_SHARING_EVENTS.updated);
     return next;
   }, (old) => result(c, a, old.shareId));
+}
+async function shareTeamIn(c, a, input) {
+  const ct = await contact(c, input, true);
+  if (!ct || !read(a, ct) || !contactPermissionsFor(a, ct).canShare)
+    return failure("FORBIDDEN", "\u5F53\u524D\u8054\u7CFB\u4EBA\u4E0D\u80FD\u8BBE\u4E3A\u56E2\u961F\u53EF\u89C1");
+  const team = (await c.query(`SELECT team.unit_id AS "teamId",team.name AS "teamName" FROM crm_org_assignments mine JOIN crm_org_units team ON team.unit_id=mine.unit_id AND team.kind='sales_team' AND team.dissolved_at IS NULL WHERE mine.user_id=$1 AND mine.role IN ('member','leader') AND mine.ended_at IS NULL ORDER BY mine.is_primary DESC,mine.created_at,team.unit_id LIMIT 1`, [a.userId])).rows[0];
+  if (!team)
+    return failure("INVALID_INPUT", "\u5F53\u524D\u8D26\u53F7\u672A\u52A0\u5165\u9500\u552E\u56E2\u961F");
+  const candidates = (await c.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",pa.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM crm_org_assignments member JOIN public.identity_users u ON u.user_id=member.user_id LEFT JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE member.unit_id=$1 AND member.ended_at IS NULL AND member.user_id<>$2 AND u.active AND NOT u.must_change_password`, [team.teamId, a.userId])).rows;
+  const eligible = candidates.filter((member2) => member2.roles.includes("sales") && effectiveCapabilitiesFor(member2.roles, member2.capabilities).includes("leads.develop")).map((member2) => member2.userId);
+  if (!eligible.length)
+    return failure("INVALID_INPUT", "\u56E2\u961F\u6682\u65E0\u53EF\u5171\u4EAB\u6210\u5458");
+  return cached(c, a, "contact-share:team", input, async () => {
+    const current = await contact(c, input, true);
+    if (!current || !contactPermissionsFor(a, current).canShare)
+      return failure("FORBIDDEN", "\u5F53\u524D\u8054\u7CFB\u4EBA\u4E0D\u80FD\u8BBE\u4E3A\u56E2\u961F\u53EF\u89C1");
+    if (current.contactVersion !== input.expectedVersion)
+      return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u91CD\u8BD5");
+    const existing = (await c.query("SELECT target_user_id,status FROM crm_contact_shares WHERE contact_id=$1 AND target_user_id=ANY($2::uuid[]) AND status IN ('pending','accepted')", [input.contactId, eligible])).rows;
+    const active = new Map(existing.map((row2) => [row2.target_user_id, row2.status])), created = [];
+    let alreadyShared = 0, pendingCount = 0;
+    for (const targetUserId of eligible) {
+      const status = active.get(targetUserId);
+      if (status === "accepted") {
+        alreadyShared++;
+        continue;
+      }
+      if (status === "pending") {
+        pendingCount++;
+        continue;
+      }
+      await c.query("INSERT INTO crm_contact_shares(share_id,contact_id,customer_id,grantor_user_id,target_user_id,editable_fields,can_followup,can_change_stage,status,version,decided_at) VALUES($1,$2,$3,$4,$5,'[]'::jsonb,false,false,'accepted',1,now())", [(0, import_node_crypto18.randomUUID)(), input.contactId, input.customerId, a.userId, targetUserId]);
+      created.push(targetUserId);
+    }
+    if (created.length) {
+      await c.query("UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [input.contactId]);
+      const latest = await contact(c, input);
+      if (latest)
+        await contactEvent(c, a, latest, CONTACT_TEAM_VISIBILITY_EVENT, latest.contactVersion ?? input.expectedVersion + 1, void 0, void 0, { teamId: team.teamId, teamName: team.teamName, sharedCount: created.length }, created);
+    }
+    return success({ teamId: team.teamId, teamName: team.teamName, sharedCount: created.length, alreadyShared, pendingCount });
+  });
 }
 
 // server/adapters/postgres/lead-repository.ts
@@ -12703,6 +13222,9 @@ var PostgresLeadRepository = class {
   createShare(hash, input) {
     return this.authorized(hash, (c, a) => createShareIn(c, a, input));
   }
+  shareTeam(hash, input) {
+    return this.authorized(hash, (c, a) => shareTeamIn(c, a, input));
+  }
   decideShare(hash, action, input) {
     return this.authorized(hash, (c, a) => decideShareIn(c, a, action, input));
   }
@@ -12826,15 +13348,36 @@ var PostgresLeadRepository = class {
     });
   }
   async memberRows(c) {
-    const rows = await c.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",pa.scope,pa.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role) AS roles FROM public.identity_users u JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE u.active AND NOT u.must_change_password ORDER BY u.display_name,u.user_id FOR SHARE OF u,pa`);
+    const rows = await c.query(`SELECT
+    u.user_id AS "userId",u.display_name AS "displayName",
+    COALESCE((SELECT email.email FROM public.identity_login_emails email WHERE email.user_id=u.user_id ORDER BY email.verified_at DESC NULLS LAST,email.email LIMIT 1),NULL) AS email,
+    COALESCE((SELECT jsonb_agg(DISTINCT unit.name ORDER BY unit.name)
+      FROM crm_org_assignments membership
+      JOIN crm_org_units unit ON unit.unit_id=membership.unit_id AND unit.kind='sales_team' AND unit.dissolved_at IS NULL
+      WHERE membership.user_id=u.user_id AND membership.ended_at IS NULL),'[]'::jsonb) AS "teamNames",
+    COALESCE((SELECT jsonb_agg(DISTINCT leader.display_name ORDER BY leader.display_name)
+      FROM crm_org_assignments membership
+      JOIN crm_org_units unit ON unit.unit_id=membership.unit_id AND unit.kind='sales_team' AND unit.dissolved_at IS NULL
+      JOIN crm_org_assignments lead ON lead.unit_id=unit.unit_id AND lead.role='leader' AND lead.is_primary AND lead.ended_at IS NULL
+      JOIN public.identity_users leader ON leader.user_id=lead.user_id
+      WHERE membership.user_id=u.user_id AND membership.role='member' AND membership.ended_at IS NULL),'[]'::jsonb) AS "supervisorNames",
+    EXISTS(SELECT 1 FROM crm_org_assignments leader WHERE leader.user_id=u.user_id AND leader.role='leader' AND leader.ended_at IS NULL) AS "isSupervisor",
+    pa.scope,pa.capabilities,
+    ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role) AS roles
+   FROM public.identity_users u
+   JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active
+   WHERE u.active AND NOT u.must_change_password
+   ORDER BY u.display_name,u.user_id FOR SHARE OF u,pa`);
     return rows.rows.filter((x) => x.roles.length).map((x) => ({ ...x, capabilities: effectiveCapabilitiesFor(x.roles, x.capabilities) })).filter((x) => x.capabilities.length);
   }
   members(hash, q) {
     return this.authorized(hash, async (c, a) => {
-      if (!a.capabilities.includes("members.read") || !a.capabilities.includes("leads.assign") || !(operational(a) || administrator2(a)))
+      const managementDirectory = a.capabilities.includes("members.read") && a.capabilities.includes("leads.assign") && (operational(a) || administrator2(a));
+      if (!managementDirectory && !a.capabilities.includes("leads.develop"))
         return failure("FORBIDDEN", "\u65E0\u5206\u914D\u6210\u5458\u76EE\u5F55\u6743\u9650");
-      const rows = (await this.memberRows(c)).filter((x) => x.displayName.toLocaleLowerCase().includes(q.search.toLocaleLowerCase()));
-      return success({ items: rows.slice(q.offset, q.offset + q.limit).map((x) => ({ userId: x.userId, displayName: x.displayName, assignable: isContactAssignmentTarget(x, a.userId) })), total: rows.length });
+      const needle = q.search.toLocaleLowerCase();
+      const rows = (await this.memberRows(c)).filter((x) => [x.displayName, x.email ?? "", ...x.teamNames ?? [], ...x.supervisorNames ?? []].join(" ").toLocaleLowerCase().includes(needle));
+      return success({ items: rows.slice(q.offset, q.offset + q.limit).map((x) => ({ userId: x.userId, displayName: x.displayName, assignable: isContactAssignmentTarget(x, a.userId), email: x.email, teamNames: x.teamNames ?? [], supervisorNames: x.supervisorNames ?? [], isSupervisor: !!x.isSupervisor })), total: rows.length });
     });
   }
   assign(hash, _input) {
@@ -13337,7 +13880,7 @@ function companyUpdate(v) {
   return success(v);
 }
 function contactAssignmentCreate(v) {
-  if (!record7(v) || !keys4(v, ["contacts", "targetUserId", "idempotencyKey"]) || !uuid3(v.targetUserId) || !text8(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > CONTACT_ASSIGNMENT_LIMITS.batch || v.contacts.some((x) => !record7(x) || !keys4(x, ["contactId", "customerId", "expectedVersion"]) || !ref(x) || !positive3(x.expectedVersion)) || new Set(v.contacts.map((x) => x.contactId)).size !== v.contacts.length)
+  if (!record7(v) || !keys4(v, ["contacts", "targetUserId", "supervisorUserIds", "idempotencyKey"]) || !uuid3(v.targetUserId) || !text8(v.idempotencyKey, CONTACT_ASSIGNMENT_LIMITS.key) || v.supervisorUserIds !== void 0 && (!Array.isArray(v.supervisorUserIds) || v.supervisorUserIds.length > CONTACT_ASSIGNMENT_LIMITS.notify || v.supervisorUserIds.some((x) => !uuid3(x)) || new Set(v.supervisorUserIds).size !== v.supervisorUserIds.length) || !Array.isArray(v.contacts) || !v.contacts.length || v.contacts.length > CONTACT_ASSIGNMENT_LIMITS.batch || v.contacts.some((x) => !record7(x) || !keys4(x, ["contactId", "customerId", "expectedVersion"]) || !ref(x) || !positive3(x.expectedVersion)) || new Set(v.contacts.map((x) => x.contactId)).size !== v.contacts.length)
     return invalid4();
   return success(v);
 }
@@ -13718,7 +14261,7 @@ var OPPORTUNITY_STAGES = ["inquiry", "quote_sent", "negotiation", "booking_confi
 var OPPORTUNITY_EVENTS = { created: "crm.opportunity.created", stageChanged: "crm.opportunity.stage_changed" };
 
 // server/adapters/postgres/notification-repository.ts
-var CONTACT_EVENTS = [...Object.values(CONTACT_ASSIGNMENT_EVENTS), ...Object.values(CONTACT_SHARING_EVENTS)];
+var CONTACT_EVENTS = [...Object.values(CONTACT_ASSIGNMENT_EVENTS), ...Object.values(CONTACT_SHARING_EVENTS), CONTACT_TEAM_VISIBILITY_EVENT];
 var ASSIGNMENT_REQUEST_EVENTS = [CONTACT_ASSIGNMENT_EVENTS.requested, CONTACT_ASSIGNMENT_EVENTS.accepted, CONTACT_ASSIGNMENT_EVENTS.rejected, CONTACT_ASSIGNMENT_EVENTS.cancelled, CONTACT_ASSIGNMENT_EVENTS.expired, CONTACT_ASSIGNMENT_EVENTS.transferRequested, CONTACT_ASSIGNMENT_EVENTS.transferred, CONTACT_ASSIGNMENT_EVENTS.transferCancelled];
 var CONTACT_REQUEST_EVENTS = [...ASSIGNMENT_REQUEST_EVENTS, ...Object.values(CONTACT_SHARING_EVENTS)];
 var OPPORTUNITY_EVENT_TYPES = Object.values(OPPORTUNITY_EVENTS);
@@ -13734,6 +14277,26 @@ function visible(a, c, eventType) {
   const ops = c.origin === "operations" && a.roles.includes("operations") && a.capabilities.some((v) => ["leads.import", "leads.publish", "followups.read"].includes(v)) && (a.scope === "shared" || a.scope === "summary");
   const sales = c.state === "published" && a.capabilities.includes("leads.claim") || c.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
   return ops || sales;
+}
+function notificationChange(row2) {
+  const eventType = String(row2.event_type ?? "");
+  const text16 = (value2) => typeof value2 === "string" && value2.trim() ? value2.trim() : null;
+  const changes = Array.isArray(row2.payload?.changes) ? row2.payload.changes.filter((value2) => !!value2 && typeof value2 === "object" && !Array.isArray(value2) && typeof value2.field === "string" && (value2.from === null || typeof value2.from === "string") && (value2.to === null || typeof value2.to === "string")) : [];
+  if ((eventType === "crm.lead.followup" || eventType === "crm.contact.followup") && row2.mail_event_id)
+    return { kind: "mail", direction: text16(row2.mail_direction), from: text16(row2.mail_from_email), method: "email", note: text16(row2.mail_subject) || text16(row2.mail_preview) };
+  if (eventType === "crm.lead.followup" || eventType === "crm.contact.followup")
+    return { kind: "followup", changes, stage: text16(row2.activity_stage), contactStatus: text16(row2.activity_contact_status), method: text16(row2.activity_method), note: text16(row2.activity_note) };
+  if (eventType === "crm.contact.updated")
+    return { kind: "fields", fields: Array.isArray(row2.payload?.fields) ? row2.payload.fields.filter((value2) => typeof value2 === "string") : [], changes };
+  if (eventType === TASK_DUE_EVENT)
+    return { kind: "task", title: text16(row2.task_title) };
+  if (OPPORTUNITY_EVENT_TYPES.includes(eventType))
+    return { kind: "opportunity", title: text16(row2.opportunity_title) };
+  if (eventType.startsWith("crm.contact.assignment."))
+    return { kind: "assignment" };
+  if (eventType.startsWith("crm.contact.share."))
+    return { kind: "share" };
+  return { kind: "customer" };
 }
 var PostgresNotificationRepository = class {
   constructor(pool, log) {
@@ -13848,7 +14411,25 @@ var PostgresNotificationRepository = class {
       if (BigInt(q.after) > BigInt(high))
         return success({ items: [], nextCursor: high, hasMore: false, resyncRequired: true });
       const after = q.latest ? String(BigInt(high) > BigInt(NOTIFICATION_LIMITS.history) ? BigInt(high) - BigInt(NOTIFICATION_LIMITS.history) : 0) : q.after;
-      const rows = await db.query(`SELECT d.*,c.created_by,c.owner_user_id,c.origin,c.state,co.name AS company_name,o.recipient_user_ids,o.payload,u.display_name AS actor_name,act.note AS activity_note,act.opportunity_id AS activity_opportunity_id,op.opportunity_id AS projected_opportunity_id,op.title AS opportunity_title,EXISTS(SELECT 1 FROM crm_notification_reads r WHERE r.user_id=$1 AND r.delivery_id=d.delivery_id) AS read FROM crm_event_deliveries d JOIN crm_customers c USING(customer_id) JOIN public.identity_outbox o ON o.event_id=d.event_id JOIN companies co ON co.id=c.company_id LEFT JOIN public.identity_users u ON u.user_id=o.user_id LEFT JOIN crm_shared_activities act ON act.customer_id=c.customer_id AND act.actor_id=o.user_id AND act.id::text=o.payload->>'activityId' AND o.event_type='crm.lead.followup' LEFT JOIN crm_opportunities op ON op.customer_id=c.customer_id AND op.opportunity_id::text=COALESCE(act.opportunity_id::text,o.payload->>'opportunityId') WHERE d.recipient_user_id=$1 AND d.delivery_seq>$2 AND d.delivery_seq<=$3 AND NOT(d.event_type=$5 AND o.user_id=$1) ORDER BY d.delivery_seq LIMIT $4 FOR SHARE OF c`, [a.userId, after, high, NOTIFICATION_LIMITS.scanMax, SELF_CREATED_EVENT]);
+      const rows = await db.query(`WITH candidates AS MATERIALIZED (SELECT d.*,c.created_by,c.owner_user_id,c.origin,c.state,co.name AS company_name,o.recipient_user_ids,o.payload,u.display_name AS actor_name,
+    act.note AS activity_note,act.stage AS activity_stage,act.method AS activity_method,act.contact_status AS activity_contact_status,act.opportunity_id AS activity_opportunity_id,
+    mail.event_id AS mail_event_id,mail.message_key AS mail_message_key,mail.direction AS mail_direction,mail.subject AS mail_subject,mail.preview AS mail_preview,mail.from_email AS mail_from_email,
+    op.opportunity_id AS projected_opportunity_id,op.title AS opportunity_title,task.title AS task_title,
+    EXISTS(SELECT 1 FROM crm_notification_reads r WHERE r.user_id=$1 AND r.delivery_id=d.delivery_id) AS read
+    FROM crm_event_deliveries d JOIN crm_customers c USING(customer_id) JOIN public.identity_outbox o ON o.event_id=d.event_id JOIN companies co ON co.id=c.company_id
+    LEFT JOIN public.identity_users u ON u.user_id=o.user_id
+    LEFT JOIN crm_shared_activities act ON act.customer_id=c.customer_id AND act.actor_id=o.user_id AND act.id::text=o.payload->>'activityId' AND o.event_type IN ('crm.lead.followup','crm.contact.followup')
+    LEFT JOIN crm_contact_mail_events mail ON mail.event_id::text=o.payload->>'mailEventId' AND o.event_type IN ('crm.lead.followup','crm.contact.followup')
+    LEFT JOIN crm_opportunities op ON op.customer_id=c.customer_id AND op.opportunity_id::text=COALESCE(act.opportunity_id::text,o.payload->>'opportunityId')
+    LEFT JOIN crm_followup_tasks task ON task.task_id::text=o.payload->>'taskId'
+    WHERE d.recipient_user_id=$1 AND d.delivery_seq>$2 AND d.delivery_seq<=$3 AND NOT(d.event_type=$5 AND o.user_id=$1)
+    ORDER BY d.delivery_seq LIMIT $4 FOR SHARE OF c),
+    deduped AS (SELECT candidates.*,ROW_NUMBER() OVER (PARTITION BY recipient_user_id,
+      CASE WHEN mail_message_key IS NOT NULL THEN concat_ws(':',customer_id,payload->>'contactId',
+        COALESCE(NULLIF(lower(regexp_replace(btrim(COALESCE(mail_subject,'')),'^((re|res|fw|fwd|aw|sv|\u56DE\u590D|\u7B54\u590D|\u56DE\u8986|\u8F6C\u53D1|\u8F49\u5BC4)[[:space:]]*[:\uFF1A][[:space:]]*)+','', 'i')),''),mail_message_key))
+      ELSE delivery_id::text END
+      ORDER BY delivery_seq DESC) AS duplicate_rank FROM candidates)
+    SELECT * FROM deduped WHERE duplicate_rank=1 ORDER BY delivery_seq`, [a.userId, after, high, NOTIFICATION_LIMITS.scanMax, SELF_CREATED_EVENT]);
       const items = [];
       let cursor = q.after;
       for (const r of rows.rows) {
@@ -13869,6 +14450,7 @@ var PostgresNotificationRepository = class {
             read: r.read,
             taskId: itemId || void 0,
             attentionItemId: itemId || void 0,
+            change: notificationChange(r),
             ...access2.canOpen && access2.contactId ? { contactId: access2.contactId } : {},
             ...access2.canOpen ? { summary: { companyName: r.company_name, contactName: access2.contactName, actorName: r.actor_name } } : {}
           });
@@ -13888,18 +14470,19 @@ var PostgresNotificationRepository = class {
           const monitorRecipient = !!requestRow && !shareEvent && requestRow.supervisor_user_ids?.includes(a.userId);
           const canOpen = requestEvent ? shareEvent ? !!requestRow && ([requestRow.actor_id, requestRow.target_user_id].includes(a.userId) || contactAccess) : !!requestRow && r.recipient_user_ids?.includes(a.userId) : contactAccess;
           const customerId = canOpen ? r.customer_id : "", version4 = canOpen ? r.version : 0;
-          items.push({ id: r.delivery_id, eventType: r.event_type, customerId, version: version4, canOpen, cursor, createdAt: new Date(r.created_at).toISOString(), read: r.read, ...canOpen ? { contactOpenMode: requestEvent ? shareEvent ? "contact" : monitorRecipient ? "monitor" : "assignment" : "contact" } : {}, ...requestEvent ? shareEvent ? { shareId: r.payload.shareId, shareStatus: requestRow?.status, shareTargetUserId: requestRow?.target_user_id } : { requestId: r.payload.requestId, assignmentStatus: requestRow?.status, ...typeof r.payload.groupId === "string" ? { assignmentGroupId: r.payload.groupId } : {}, ...Number.isSafeInteger(r.payload.groupCount) ? { assignmentGroupCount: r.payload.groupCount } : {} } : {}, ...contactAccess || requestEvent && !shareEvent ? { contactId: r.payload.contactId } : {}, summary: { companyName: r.company_name, actorName: r.actor_name, ...requestEvent ? { contactName: r.payload.contactName } : {} } });
+          items.push({ id: r.delivery_id, eventType: r.event_type, customerId, version: version4, canOpen, cursor, createdAt: new Date(r.created_at).toISOString(), read: r.read, change: notificationChange(r), ...canOpen ? { contactOpenMode: requestEvent ? shareEvent ? "contact" : monitorRecipient ? "monitor" : "assignment" : "contact" } : {}, ...requestEvent ? shareEvent ? { shareId: r.payload.shareId, shareStatus: requestRow?.status, shareTargetUserId: requestRow?.target_user_id } : { requestId: r.payload.requestId, assignmentStatus: requestRow?.status, ...typeof r.payload.groupId === "string" ? { assignmentGroupId: r.payload.groupId } : {}, ...Number.isSafeInteger(r.payload.groupCount) ? { assignmentGroupCount: r.payload.groupCount } : {} } : {}, ...contactAccess || requestEvent && !shareEvent ? { contactId: r.payload.contactId } : {}, ...r.mail_event_id ? { mailEventId: String(r.mail_event_id) } : {}, ...r.mail_message_key ? { mailMessageKey: String(r.mail_message_key) } : {}, summary: { companyName: r.company_name, actorName: r.actor_name, ...requestEvent ? { contactName: r.payload.contactName } : {} } });
           if (items.length === q.limit)
             break;
           continue;
         }
         const assigned = r.event_type === "crm.lead.assigned" && r.recipient_user_ids?.includes(a.userId);
+        const overlap = r.event_type === DEAL_OVERLAP_EVENT && r.recipient_user_ids?.includes(a.userId);
         const taskDue = r.event_type === TASK_DUE_EVENT;
         if (taskDue && !await canProjectTaskDue(db, r, a))
           continue;
-        if (taskDue || assigned || visible(a, r, r.event_type)) {
+        if (taskDue || assigned || overlap || visible(a, r, r.event_type)) {
           const canOpen = assigned ? canReadLead(a, r) : true;
-          items.push({ id: r.delivery_id, eventType: r.event_type, customerId: canOpen ? r.customer_id : "", version: canOpen ? r.version : 0, canOpen, cursor, createdAt: new Date(r.created_at).toISOString(), read: r.read, ...taskDue ? { taskId: r.payload.taskId } : {}, ...r.projected_opportunity_id && canOpen ? { opportunityId: r.projected_opportunity_id } : {}, ...canReadLead(a, r) ? { summary: { companyName: r.company_name, actorName: r.actor_name, ...typeof r.activity_note === "string" ? { note: r.activity_note.slice(0, SUMMARY_NOTE_MAX) } : OPPORTUNITY_EVENT_TYPES.includes(r.event_type) && r.opportunity_title ? { note: r.opportunity_title.slice(0, SUMMARY_NOTE_MAX) } : {} } } : {} });
+          items.push({ id: r.delivery_id, eventType: r.event_type, customerId: canOpen ? r.customer_id : "", version: canOpen ? r.version : 0, canOpen, cursor, createdAt: new Date(r.created_at).toISOString(), read: r.read, change: notificationChange(r), ...taskDue ? { taskId: r.payload.taskId } : {}, ...r.projected_opportunity_id && canOpen ? { opportunityId: r.projected_opportunity_id } : {}, ...r.mail_event_id ? { mailEventId: String(r.mail_event_id) } : {}, ...r.mail_message_key ? { mailMessageKey: String(r.mail_message_key) } : {}, ...canReadLead(a, r) || overlap ? { summary: { companyName: r.company_name, actorName: r.actor_name, ...typeof r.activity_note === "string" ? { note: r.activity_note.slice(0, SUMMARY_NOTE_MAX) } : OPPORTUNITY_EVENT_TYPES.includes(r.event_type) && r.opportunity_title ? { note: r.opportunity_title.slice(0, SUMMARY_NOTE_MAX) } : {} } } : {} });
           if (items.length === q.limit)
             break;
         }
@@ -13928,7 +14511,7 @@ var PostgresNotificationRepository = class {
         allowed = !!row2.recipient_user_ids?.includes(actor.data.userId);
       else if (CONTACT_EVENTS.includes(row2.event_type))
         allowed = await this.contactAccess(db, actor.data, row2.payload?.contactId, row2.customer_id);
-      else if (row2.event_type === "crm.lead.assigned")
+      else if (row2.event_type === "crm.lead.assigned" || row2.event_type === DEAL_OVERLAP_EVENT)
         allowed = !!row2.recipient_user_ids?.includes(actor.data.userId);
       else
         allowed = visible(actor.data, row2, row2.event_type);
@@ -13954,13 +14537,13 @@ var PostgresNotificationRepository = class {
       const recipients2 = await db.query("SELECT user_id FROM public.identity_users WHERE active AND NOT must_change_password ORDER BY user_id FOR SHARE");
       let count2 = 0;
       for (const event2 of events.rows) {
-        if (event2.product_id === "crm" && ["crm.customer.created", "crm.lead.published", "crm.lead.claimed", "crm.lead.followup", "crm.lead.assigned", TASK_DUE_EVENT, ...OPPORTUNITY_EVENT_TYPES, ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && event2.customer_id) {
+        if (event2.product_id === "crm" && ["crm.customer.created", "crm.lead.published", "crm.lead.claimed", "crm.lead.followup", "crm.lead.assigned", DEAL_OVERLAP_EVENT, TASK_DUE_EVENT, ...OPPORTUNITY_EVENT_TYPES, ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && event2.customer_id) {
           const customer2 = await db.query("SELECT * FROM crm_customers WHERE customer_id=$1 FOR SHARE", [event2.customer_id]);
           if (customer2.rows.length)
             for (const user of recipients2.rows) {
               if (event2.event_type === SELF_CREATED_EVENT && event2.user_id === user.user_id)
                 continue;
-              if ([TASK_DUE_EVENT, "crm.lead.assigned", ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && !event2.recipient_user_ids?.includes(user.user_id))
+              if ([TASK_DUE_EVENT, "crm.lead.assigned", DEAL_OVERLAP_EVENT, ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && !event2.recipient_user_ids?.includes(user.user_id))
                 continue;
               const a = await this.access(db, user.user_id);
               if (!a)
@@ -13974,7 +14557,7 @@ var PostgresNotificationRepository = class {
               } else if (TEAM_ATTENTION_EVENT_TYPES.includes(event2.event_type)) {
                 if (!(await this.teamAttentionAccess(db, a, event2.payload?.attentionItemId)).canOpen)
                   continue;
-              } else if (event2.event_type !== "crm.lead.assigned" && !visible(a, customer2.rows[0], event2.event_type))
+              } else if (event2.event_type !== "crm.lead.assigned" && event2.event_type !== DEAL_OVERLAP_EVENT && !visible(a, customer2.rows[0], event2.event_type))
                 continue;
               const old = await db.query("SELECT 1 FROM crm_event_deliveries WHERE event_id=$1 AND recipient_user_id=$2 AND projection_type='lead'", [event2.event_id, a.userId]);
               if (old.rows.length)
@@ -14143,6 +14726,9 @@ function startNotificationDispatcher(repo, log) {
   } };
 }
 
+// server/services/desktop-session.ts
+var import_node_crypto23 = require("node:crypto");
+
 // server/core/desktop-session.ts
 var DESKTOP_AUTH_ROUTES = {
   register: "/api/auth/desktop/register",
@@ -14156,6 +14742,25 @@ var DESKTOP_SESSION_LIMITS = { idle_seconds: 15 * 24 * 60 * 60, absolute_seconds
 var REGISTRATION_PRODUCTS = ["crm", "navigator"];
 var DESKTOP_DEVICE_PRODUCTS = ["crm"];
 
+// server/core/device-handoff.ts
+var DESKTOP_HANDOFF_ROUTES = {
+  begin: "/api/auth/desktop/handoff/begin",
+  status: "/api/auth/desktop/handoff/status",
+  pending: "/api/auth/desktop/handoff/pending",
+  prepare: "/api/auth/desktop/handoff/prepare",
+  complete: "/api/auth/desktop/handoff/complete",
+  takeover: "/api/auth/desktop/handoff/takeover",
+  cancel: "/api/auth/desktop/handoff/cancel"
+};
+var DEVICE_HANDOFF_LIMITS = {
+  expires_seconds: 15 * 60,
+  request_key_min: 8,
+  request_key_max: 128,
+  blocker_max: 20,
+  blocker_text_max: 160,
+  takeover_reason_max: 500
+};
+
 // server/services/desktop-session.ts
 var MILLISECONDS_PER_SECOND11 = 1e3;
 var TOKEN_PATTERN2 = /^[A-Za-z0-9_-]+$/;
@@ -14165,6 +14770,8 @@ var DEVICE_SAFE_TEXT_PATTERN = /^[^\u0000-\u001f\u007f]+$/;
 var DEVICE_CODE_PATTERN = /^[A-Za-z0-9._-]+$/;
 var DEVICE_TEXT_MAX = 120;
 var APP_VERSION_MAX = 64;
+var HANDOFF_REQUEST_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+var HANDOFF_COUNT_MAX = 1e9;
 var unauthorized = () => failure("UNAUTHORIZED", "\u767B\u5F55\u4FE1\u606F\u65E0\u6548\u6216\u4F1A\u8BDD\u5DF2\u5931\u6548");
 var validToken = (token) => typeof token === "string" && token.length === AUTH_LIMITS.tokenCharacters && TOKEN_PATTERN2.test(token);
 function object2(input, keys12) {
@@ -14186,6 +14793,22 @@ function desktopContext(input) {
     ...value2.replaceActiveDevice === void 0 ? {} : { replaceActiveDevice: value2.replaceActiveDevice }
   };
 }
+function handoffSummary(input) {
+  const value2 = object2(input, ["checkedAt", "counts", "blockers"]);
+  const counts2 = value2 ? object2(value2.counts, ["contactPending", "contactFailed", "offlinePending", "offlineFailed", "templates", "inboxLabels", "queuedSends", "activeCampaigns", "pendingMailChanges"]) : null;
+  const numbers = counts2 ? Object.values(counts2) : [];
+  if (!value2 || !counts2 || typeof value2.checkedAt !== "string" || !Number.isFinite(Date.parse(value2.checkedAt)) || numbers.some((number2) => typeof number2 !== "number" || !Number.isSafeInteger(number2) || number2 < 0 || number2 > HANDOFF_COUNT_MAX) || !Array.isArray(value2.blockers) || value2.blockers.length > DEVICE_HANDOFF_LIMITS.blocker_max || value2.blockers.some((blocker) => typeof blocker !== "string" || !blocker.trim() || blocker.length > DEVICE_HANDOFF_LIMITS.blocker_text_max || !DEVICE_SAFE_TEXT_PATTERN.test(blocker)))
+    return null;
+  return {
+    checkedAt: value2.checkedAt,
+    counts: counts2,
+    blockers: value2.blockers
+  };
+}
+function handoffTokenRequest(input) {
+  const value2 = object2(input, ["handoffToken"]);
+  return value2 && validToken(value2.handoffToken) ? { handoffToken: value2.handoffToken } : null;
+}
 function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds, offlineIssuer) {
   const date = (seconds) => new Date(clock.now() + seconds * MILLISECONDS_PER_SECOND11).toISOString();
   function loginResponse(token, refreshToken, expiresAt, identity, absoluteExpiresAt) {
@@ -14201,6 +14824,23 @@ function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds,
       return unauthorized();
     const identity = await repo.desktopIdentity(tokens.hash(token));
     return !identity.ok ? identity : identity.data ? success(identity.data) : unauthorized();
+  }
+  function handoffSessionDraft() {
+    const token = tokens.create(), refreshToken = tokens.create(), expiresAt = date(ttlSeconds);
+    return {
+      token,
+      refreshToken,
+      expiresAt,
+      draft: { tokenHash: tokens.hash(token), refreshHash: tokens.hash(refreshToken), expiresAt, idleExpiresAt: date(DESKTOP_SESSION_LIMITS.idle_seconds), absoluteExpiresAt: date(DESKTOP_SESSION_LIMITS.absolute_seconds) }
+    };
+  }
+  async function completeHandoff(input, takeoverReason) {
+    const value2 = handoffTokenRequest(input);
+    if (!value2)
+      return failure("INVALID_INPUT", "\u6362\u673A\u53C2\u6570\u65E0\u6548");
+    const next = handoffSessionDraft();
+    const completed = await repo.completeDesktopHandoff(tokens.hash(value2.handoffToken), next.draft, takeoverReason);
+    return !completed.ok ? completed : completed.data ? loginResponse(next.token, next.refreshToken, next.expiresAt, completed.data, next.draft.absoluteExpiresAt) : unauthorized();
   }
   return {
     me,
@@ -14250,6 +14890,60 @@ function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds,
     async logout(input) {
       const value2 = object2(input, ["refreshToken"]);
       return value2 && validToken(value2.refreshToken) ? repo.revokeDesktopSession(tokens.hash(value2.refreshToken)) : failure("INVALID_INPUT", "\u9000\u51FA\u53C2\u6570\u65E0\u6548");
+    },
+    async beginHandoff(input) {
+      const value2 = object2(input, ["email", "password", "requestKey", "desktop"]);
+      if (!value2 || typeof value2.email !== "string" || value2.email !== value2.email.trim() || !EMAIL_PATTERN2.test(value2.email) || value2.email.length > AUTH_LIMITS.emailMax || typeof value2.password !== "string" || value2.password.length < BOOTSTRAP_LOGIN_MIN || value2.password.length > AUTH_LIMITS.passwordMax || typeof value2.requestKey !== "string" || !HANDOFF_REQUEST_KEY_PATTERN.test(value2.requestKey))
+        return failure("INVALID_INPUT", "\u6362\u673A\u53C2\u6570\u65E0\u6548");
+      const desktop = desktopContext(value2.desktop);
+      if (!desktop)
+        return failure("INVALID_INPUT", "\u8BBE\u5907\u4FE1\u606F\u65E0\u6548");
+      const credential = await repo.credential(value2.email.toLowerCase());
+      if (!credential.ok)
+        return credential;
+      try {
+        const verified = await passwords.verify(value2.password, credential.data?.passwordHash ?? "");
+        if (!verified || !credential.data?.active || value2.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)
+          return unauthorized();
+      } catch {
+        return failure("UNAVAILABLE", "\u767B\u5F55\u6821\u9A8C\u6682\u4E0D\u53EF\u7528");
+      }
+      const handoffToken = tokens.create();
+      const started = await repo.beginDesktopHandoff({
+        handoffId: (0, import_node_crypto23.randomUUID)(),
+        tokenHash: tokens.hash(handoffToken),
+        requestKey: value2.requestKey,
+        userId: credential.data.userId,
+        desktop,
+        expiresAt: date(DEVICE_HANDOFF_LIMITS.expires_seconds)
+      });
+      return started.ok ? success({ handoffToken, state: started.data }) : started;
+    },
+    async handoffStatus(input) {
+      const value2 = handoffTokenRequest(input);
+      return value2 ? repo.desktopHandoffStatus(tokens.hash(value2.handoffToken)) : Promise.resolve(failure("INVALID_INPUT", "\u6362\u673A\u53C2\u6570\u65E0\u6548"));
+    },
+    async pendingHandoff(input) {
+      const value2 = object2(input, ["refreshToken"]);
+      return value2 && validToken(value2.refreshToken) ? repo.pendingDesktopHandoff(tokens.hash(value2.refreshToken)) : failure("INVALID_INPUT", "\u7EED\u671F\u53C2\u6570\u65E0\u6548");
+    },
+    async prepareHandoff(input) {
+      const value2 = object2(input, ["refreshToken", "summary"]);
+      const summary = value2 ? handoffSummary(value2.summary) : null;
+      return value2 && validToken(value2.refreshToken) && summary ? repo.prepareDesktopHandoff(tokens.hash(value2.refreshToken), { summary }) : failure("INVALID_INPUT", "\u6362\u673A\u51C6\u5907\u53C2\u6570\u65E0\u6548");
+    },
+    async completeHandoff(input) {
+      return completeHandoff(input);
+    },
+    async takeoverHandoff(input) {
+      const value2 = object2(input, ["handoffToken", "reason"]);
+      if (!value2 || !validToken(value2.handoffToken) || typeof value2.reason !== "string" || !value2.reason.trim() || value2.reason.length > DEVICE_HANDOFF_LIMITS.takeover_reason_max || !DEVICE_SAFE_TEXT_PATTERN.test(value2.reason))
+        return failure("INVALID_INPUT", "\u63A5\u7BA1\u8BF4\u660E\u65E0\u6548");
+      return completeHandoff({ handoffToken: value2.handoffToken }, value2.reason.trim());
+    },
+    async cancelHandoff(input) {
+      const value2 = handoffTokenRequest(input);
+      return value2 ? repo.cancelDesktopHandoff(tokens.hash(value2.handoffToken)) : Promise.resolve(failure("INVALID_INPUT", "\u6362\u673A\u53C2\u6570\u65E0\u6548"));
     },
     async changePassword(token, input) {
       const value2 = object2(input, ["currentPassword", "newPassword"]);
@@ -14301,24 +14995,41 @@ function createDesktopAuthHandler(service, gate, config) {
       send(response, gate.allow(email3, request2.socket.remoteAddress ?? "unknown") ? await service.login(input.data) : failure("RATE_LIMITED", "\u767B\u5F55\u5C1D\u8BD5\u8FC7\u591A\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"));
       return;
     }
+    if (path4 === DESKTOP_HANDOFF_ROUTES.begin) {
+      const email3 = input.data && typeof input.data === "object" && "email" in input.data && typeof input.data.email === "string" ? input.data.email.trim().toLowerCase() : "invalid";
+      send(response, gate.allow(email3, request2.socket.remoteAddress ?? "unknown") ? await service.beginHandoff(input.data) : failure("RATE_LIMITED", "\u767B\u5F55\u5C1D\u8BD5\u8FC7\u591A\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"));
+      return;
+    }
     if (path4 === DESKTOP_AUTH_ROUTES.refresh)
       send(response, await service.refresh(input.data));
     else if (path4 === DESKTOP_AUTH_ROUTES.logout)
       send(response, await service.logout(input.data));
     else if (path4 === DESKTOP_AUTH_ROUTES.password)
       send(response, await service.changePassword(token, input.data));
+    else if (path4 === DESKTOP_HANDOFF_ROUTES.status)
+      send(response, await service.handoffStatus(input.data));
+    else if (path4 === DESKTOP_HANDOFF_ROUTES.pending)
+      send(response, await service.pendingHandoff(input.data));
+    else if (path4 === DESKTOP_HANDOFF_ROUTES.prepare)
+      send(response, await service.prepareHandoff(input.data));
+    else if (path4 === DESKTOP_HANDOFF_ROUTES.complete)
+      send(response, await service.completeHandoff(input.data));
+    else if (path4 === DESKTOP_HANDOFF_ROUTES.takeover)
+      send(response, await service.takeoverHandoff(input.data));
+    else if (path4 === DESKTOP_HANDOFF_ROUTES.cancel)
+      send(response, await service.cancelHandoff(input.data));
     else
       send(response, failure("NOT_FOUND", "\u63A5\u53E3\u4E0D\u5B58\u5728"));
   };
 }
 
 // server/adapters/offline-access.ts
-var import_node_crypto23 = require("node:crypto");
+var import_node_crypto24 = require("node:crypto");
 var import_node_fs4 = require("node:fs");
 var import_node_path5 = require("node:path");
 
 // server/core/offline-access.ts
-var OFFLINE_ACCESS_LIMITS = { validity_seconds: 72 * 60 * 60, clock_skew_seconds: 60, payload_bytes: 16384, public_key_bytes: 4096, signature_bytes: 256 };
+var OFFLINE_ACCESS_LIMITS = { validity_seconds: 30 * 24 * 60 * 60, clock_skew_seconds: 60, payload_bytes: 16384, public_key_bytes: 4096, signature_bytes: 256 };
 var OFFLINE_ACCESS_AUDIENCE = "prospector-local";
 
 // server/adapters/offline-access.ts
@@ -14332,7 +15043,7 @@ function createOfflineAccessIssuer(privateKey, issuer) {
   const address = new URL(issuer);
   if (!["http:", "https:"].includes(address.protocol) || address.origin !== issuer || address.username || address.password)
     throw new Error("\u79BB\u7EBF\u7B7E\u53D1\u4E2D\u5FC3\u5730\u5740\u65E0\u6548");
-  const publicKey = (0, import_node_crypto23.createPublicKey)(privateKey).export({ format: "pem", type: "spki" }).toString();
+  const publicKey = (0, import_node_crypto24.createPublicKey)(privateKey).export({ format: "pem", type: "spki" }).toString();
   return {
     issue(identity, now, absoluteExpiresAt = Infinity) {
       if (identity.mustChangePassword)
@@ -14346,7 +15057,7 @@ function createOfflineAccessIssuer(privateKey, issuer) {
       const serialized = JSON.stringify(payload);
       if (Buffer.byteLength(serialized, "utf8") > OFFLINE_ACCESS_LIMITS.payload_bytes)
         throw new Error("\u79BB\u7EBF\u6388\u6743\u8EAB\u4EFD\u8D85\u51FA\u9650\u5236");
-      return { payload: serialized, signature: (0, import_node_crypto23.sign)(null, Buffer.from(serialized, "utf8"), privateKey).toString("base64url"), publicKey };
+      return { payload: serialized, signature: (0, import_node_crypto24.sign)(null, Buffer.from(serialized, "utf8"), privateKey).toString("base64url"), publicKey };
     }
   };
 }
@@ -14354,7 +15065,7 @@ function readPrivateKey(path4) {
   const info = (0, import_node_fs4.lstatSync)(path4);
   if (!info.isFile() || info.isSymbolicLink() || info.size > PRIVATE_KEY_BYTES)
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u6587\u4EF6\u65E0\u6548");
-  const key = (0, import_node_crypto23.createPrivateKey)((0, import_node_fs4.readFileSync)(path4));
+  const key = (0, import_node_crypto24.createPrivateKey)((0, import_node_fs4.readFileSync)(path4));
   if (key.type !== "private" || key.asymmetricKeyType !== "ed25519")
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u7C7B\u578B\u65E0\u6548");
   return key;
@@ -14370,8 +15081,8 @@ function loadOfflineAccessIssuer(runtimeDirectory, issuer) {
     if (error.code !== "ENOENT")
       throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u8BFB\u53D6\u5931\u8D25");
   }
-  const temporary = (0, import_node_path5.join)(directory, `.offline-access-${(0, import_node_crypto23.randomUUID)()}.tmp`);
-  const generated = (0, import_node_crypto23.generateKeyPairSync)("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
+  const temporary = (0, import_node_path5.join)(directory, `.offline-access-${(0, import_node_crypto24.randomUUID)()}.tmp`);
+  const generated = (0, import_node_crypto24.generateKeyPairSync)("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
   (0, import_node_fs4.writeFileSync)(temporary, generated, { flag: "wx", mode: PRIVATE_FILE_MODE2 });
   try {
     try {
@@ -14418,7 +15129,7 @@ function createTaskService(repo, tokens) {
       return run2(token, (h) => repo.create(h, v));
     },
     list(token, v) {
-      if (!record8(v) || !keys5(v, ["customerId", "status", "limit", "offset"]) || v.customerId !== void 0 && (typeof v.customerId !== "string" || !UUID10.test(v.customerId)) || v.status !== void 0 && !["open", "completed"].includes(v.status) || !positive4(v.limit) || Number(v.limit) > TASK_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || Number(v.offset) < 0)
+      if (!record8(v) || !keys5(v, ["customerId", "status", "mine", "limit", "offset"]) || v.customerId !== void 0 && (typeof v.customerId !== "string" || !UUID10.test(v.customerId)) || v.status !== void 0 && !["open", "completed"].includes(v.status) || v.mine !== void 0 && typeof v.mine !== "boolean" || !positive4(v.limit) || Number(v.limit) > TASK_LIMITS.pageMax || !Number.isSafeInteger(v.offset) || Number(v.offset) < 0)
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u5217\u8868\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.list(h, v));
     },
@@ -14447,7 +15158,12 @@ function createTaskHandler(service) {
     const url = new URL(request2.url ?? "/", "http://localhost");
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
     if (request2.method === "GET" && url.pathname === TASK_ROUTES.tasks) {
-      send(response, await service.list(token, { limit: Number(url.searchParams.get("limit") ?? TASK_LIMITS.page), offset: Number(url.searchParams.get("offset") ?? 0), ...url.searchParams.has("customerId") ? { customerId: url.searchParams.get("customerId") } : {}, ...url.searchParams.has("status") ? { status: url.searchParams.get("status") } : {} }));
+      const mine = url.searchParams.get("mine");
+      if (mine !== null && mine !== "true" && mine !== "false") {
+        send(response, failure("INVALID_INPUT", "\u4EFB\u52A1\u5217\u8868\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      send(response, await service.list(token, { limit: Number(url.searchParams.get("limit") ?? TASK_LIMITS.page), offset: Number(url.searchParams.get("offset") ?? 0), ...mine === null ? {} : { mine: mine === "true" }, ...url.searchParams.has("customerId") ? { customerId: url.searchParams.get("customerId") } : {}, ...url.searchParams.has("status") ? { status: url.searchParams.get("status") } : {} }));
       return;
     }
     const parts = url.pathname.slice(TASK_ROUTES.tasks.length + 1).split("/");
@@ -14511,7 +15227,7 @@ function startTaskDispatcher(service, log) {
 }
 
 // server/adapters/postgres/opportunity-repository.ts
-var import_node_crypto24 = require("node:crypto");
+var import_node_crypto25 = require("node:crypto");
 
 // server/adapters/postgres/opportunity-schema.ts
 var OPPORTUNITY_VERSION = "018-opportunities-public";
@@ -14644,7 +15360,7 @@ var PostgresOpportunityRepository = class {
     return success({ ...dates2(r.rows[0]), canManage: canManage2(a, customer2), history: await this.history(db, id) });
   }
   async cached(db, a, operation, input, fn) {
-    const digest2 = (0, import_node_crypto24.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
+    const digest2 = (0, import_node_crypto25.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
     if (old.rows.length) {
       if (old.rows[0].digest !== digest2)
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
@@ -14667,7 +15383,7 @@ var PostgresOpportunityRepository = class {
   }
   migrate() {
     return this.tx(async (db) => {
-      const hash = (0, import_node_crypto24.createHash)("sha256").update(OPPORTUNITY_SQL).digest("hex"), old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [OPPORTUNITY_VERSION]);
+      const hash = (0, import_node_crypto25.createHash)("sha256").update(OPPORTUNITY_SQL).digest("hex"), old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [OPPORTUNITY_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u5546\u673A\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
       if (!old.rows.length) {
@@ -14738,11 +15454,73 @@ var PostgresOpportunityRepository = class {
         if (!changed.ok)
           return changed;
         await this.record(db, a, changed.data, o.stage);
+        if (input.stage === "closed_won") {
+          const details = await db.query(`SELECT co.name AS company_name,COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),ct.email,'\u8054\u7CFB\u4EBA') AS contact_name FROM crm_customers c JOIN companies co ON co.id=c.company_id LEFT JOIN crm_customer_contacts cc ON cc.customer_id=c.customer_id LEFT JOIN contacts ct ON ct.id=cc.contact_id WHERE c.customer_id=$1 ORDER BY ct.id LIMIT 1`, [changed.data.customerId]);
+          const row2 = details.rows[0];
+          if (row2)
+            await createDealOverlapNoticesIn(db, { customerId: changed.data.customerId, opportunityId: input.opportunityId, actorId: a.userId, version: Number(changed.data.version), companyName: String(row2.company_name), contactName: String(row2.contact_name) });
+        }
         return this.one(db, input.opportunityId, a);
       });
     });
   }
 };
+
+// server/adapters/postgres/lead-overlap-schema.ts
+var import_node_crypto26 = require("node:crypto");
+var LEAD_OVERLAP_VERSION = "065-lead-scope-overlaps";
+var LEAD_OVERLAP_LOCK = 650065;
+var LEAD_OVERLAP_SQL = `
+DROP INDEX IF EXISTS idx_contacts_email;
+CREATE INDEX IF NOT EXISTS idx_contacts_email_lookup ON contacts(lower(btrim(email)));
+
+ALTER TABLE crm_customers DROP CONSTRAINT IF EXISTS crm_customers_source_customer_key_key;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_customers_scope_key
+  ON crm_customers(source,customer_key,origin,COALESCE(owner_user_id,'00000000-0000-0000-0000-000000000000'::uuid));
+
+CREATE TABLE IF NOT EXISTS crm_lead_overlaps (
+  overlap_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_contact_id integer NOT NULL REFERENCES contacts(id),
+  target_contact_id integer NOT NULL REFERENCES contacts(id),
+  source_customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+  target_customer_id uuid NOT NULL REFERENCES crm_customers(customer_id),
+  match_type text NOT NULL CHECK(match_type IN ('same_email','same_company_country','similar_company')),
+  status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','confirmed','ignored','won')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(source_contact_id,target_contact_id,match_type),
+  CHECK(source_contact_id<>target_contact_id)
+);
+CREATE INDEX IF NOT EXISTS idx_crm_lead_overlaps_source ON crm_lead_overlaps(source_contact_id,status);
+CREATE INDEX IF NOT EXISTS idx_crm_lead_overlaps_target ON crm_lead_overlaps(target_contact_id,status);
+
+CREATE TABLE IF NOT EXISTS crm_deal_overlap_notices (
+  notice_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  overlap_id uuid NOT NULL REFERENCES crm_lead_overlaps(overlap_id),
+  winner_contact_id integer NOT NULL REFERENCES contacts(id),
+  recipient_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  opportunity_id uuid NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','acknowledged','stop_requested','collaboration_requested')),
+  version integer NOT NULL DEFAULT 1 CHECK(version>0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(opportunity_id,recipient_user_id,overlap_id)
+);
+CREATE INDEX IF NOT EXISTS idx_crm_deal_overlap_notices_recipient ON crm_deal_overlap_notices(recipient_user_id,status,created_at DESC);
+`;
+async function migrateLeadOverlapSchema(c) {
+  await c.query("SELECT pg_advisory_xact_lock($1)", [LEAD_OVERLAP_LOCK]);
+  const checksum4 = (0, import_node_crypto26.createHash)("sha256").update(LEAD_OVERLAP_SQL).digest("hex");
+  const existing = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_OVERLAP_VERSION]);
+  if (existing.rows.length) {
+    if (existing.rows[0].checksum !== checksum4)
+      return failure("CONFLICT", "\u7EBF\u7D22\u8303\u56F4\u91CD\u53E0\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+    return success(void 0);
+  }
+  await c.query(LEAD_OVERLAP_SQL);
+  await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEAD_OVERLAP_VERSION, checksum4]);
+  return success(void 0);
+}
 
 // server/services/opportunities.ts
 var UUID11 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -14837,10 +15615,10 @@ function createAdminDataBrowserService(repo, tokens) {
 }
 
 // server/adapters/postgres/contact-change-repository.ts
-var import_node_crypto26 = require("node:crypto");
+var import_node_crypto28 = require("node:crypto");
 
 // server/adapters/postgres/contact-change-schema.ts
-var import_node_crypto25 = require("node:crypto");
+var import_node_crypto27 = require("node:crypto");
 var CONTACT_CHANGE_VERSION = "008-contact-change-import-capture-public";
 var CONTACT_CHANGE_LOCK = 19041007;
 var PUBLIC_OUTBOX_FK_REPAIR_VERSION = "063-public-outbox-fk-repair";
@@ -14897,8 +15675,8 @@ var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL = PUBLIC_OUTBOX_FK_REPAIR_SQL.replaceAll(
   "ALTER TABLE crm_",
   "ALTER TABLE public.crm_"
 );
-var PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM = (0, import_node_crypto25.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest("hex");
-var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM = (0, import_node_crypto25.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL).digest("hex");
+var PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM = (0, import_node_crypto27.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest("hex");
+var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM = (0, import_node_crypto27.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL).digest("hex");
 function acceptsPublicOutboxFkRepairChecksum(checksum4) {
   return checksum4 === PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM || checksum4 === PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM;
 }
@@ -14933,7 +15711,7 @@ var PostgresContactChangeRepository = class {
   }
   async migrate() {
     return this.tx(async (db) => {
-      const checksum4 = (0, import_node_crypto26.createHash)("sha256").update(CONTACT_CHANGE_SQL).digest("hex");
+      const checksum4 = (0, import_node_crypto28.createHash)("sha256").update(CONTACT_CHANGE_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_CHANGE_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== checksum4)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u53D8\u5316\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -15028,7 +15806,7 @@ function createContactChangeHandler(service) {
 }
 
 // server/adapters/postgres/campaign-repository.ts
-var import_node_crypto27 = require("node:crypto");
+var import_node_crypto29 = require("node:crypto");
 
 // server/core/campaigns.ts
 var CAMPAIGN_ROUTES = { campaigns: "/api/crm/campaigns", confirm: "confirm", pause: "pause", dryRunClaim: "dry-run-claim" };
@@ -15116,7 +15894,7 @@ var PostgresCampaignRepository = class {
   }
   async migrate() {
     return this.tx(async (db) => {
-      const hash = (0, import_node_crypto27.createHash)("sha256").update(CAMPAIGN_SQL).digest("hex");
+      const hash = (0, import_node_crypto29.createHash)("sha256").update(CAMPAIGN_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CAMPAIGN_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u81EA\u52A8\u5F00\u53D1\u4EFB\u52A1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -15198,7 +15976,7 @@ var PostgresCampaignRepository = class {
         return failure("FORBIDDEN", "\u53EA\u80FD\u4FEE\u6539\u81EA\u5DF1\u7684\u4EFB\u52A1");
       if (c.data.version !== input.expectedVersion || c.data.state !== "draft")
         return failure("CONFLICT", "\u53EA\u6709\u672A\u786E\u8BA4\u8349\u7A3F\u53EF\u4EE5\u6DFB\u52A0\u89E6\u70B9");
-      const digest2 = (0, import_node_crypto27.createHash)("sha256").update(JSON.stringify(input.targets)).digest("hex");
+      const digest2 = (0, import_node_crypto29.createHash)("sha256").update(JSON.stringify(input.targets)).digest("hex");
       const idem = await db.query("SELECT response,digest FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, `campaign:targets:${input.campaignId}`, input.idempotencyKey]);
       if (idem.rows.length) {
         if (idem.rows[0].digest !== digest2)
@@ -15367,7 +16145,7 @@ function createCampaignHandler(service) {
 }
 
 // server/adapters/postgres/team-repository.ts
-var import_node_crypto28 = require("node:crypto");
+var import_node_crypto30 = require("node:crypto");
 
 // server/core/organization.ts
 function canPlaceOrganizationUnit(parent, child) {
@@ -15950,6 +16728,16 @@ var ADMIN_TEAM_SELECT = `
     (SELECT count(*)::int FROM crm_org_assignments a WHERE a.unit_id=u.unit_id AND a.ended_at IS NULL) AS "memberCount",
     (SELECT count(*)::int FROM crm_org_invitations i WHERE i.unit_id=u.unit_id AND i.status='pending') AS "pendingInvitationCount",
     (SELECT count(*)::int FROM crm_org_units c WHERE c.parent_unit_id=u.unit_id AND c.dissolved_at IS NULL) AS "childCount",
+    COALESCE((SELECT count(DISTINCT r.request_id)::int
+      FROM crm_contact_assignment_requests r
+      JOIN crm_org_assignments target_membership ON target_membership.user_id=r.target_user_id
+        AND target_membership.unit_id=u.unit_id AND target_membership.ended_at IS NULL
+      WHERE u.kind='sales_team' AND r.status IN ('pending','accepted','pending_transfer')),0) AS "assignedLeadCount",
+    COALESCE((SELECT array_agg(DISTINCT r.source_org_unit_id::text)
+      FROM crm_contact_assignment_requests r
+      JOIN crm_org_assignments target_membership ON target_membership.user_id=r.target_user_id
+        AND target_membership.unit_id=u.unit_id AND target_membership.ended_at IS NULL
+      WHERE u.kind='sales_team' AND r.status IN ('pending','accepted','pending_transfer') AND r.source_org_unit_id IS NOT NULL),ARRAY[]::text[]) AS "assignmentSourceTeamIds",
     u.created_at AS "createdAt"
   FROM crm_org_units u
   LEFT JOIN crm_org_units p ON p.unit_id=u.parent_unit_id
@@ -15964,9 +16752,6 @@ function superAdmin(actor) {
 }
 function manager(actor) {
   return canGovernOrganization({ userId: actor.userId, identityAdmin: actor.identityAdmin, roles: actor.roles });
-}
-function participant(actor) {
-  return superAdmin(actor) || actor.roles.some((role) => role === "operations" || role === "sales");
 }
 function mapInvitation(row2, actor, canCancel) {
   return {
@@ -15987,7 +16772,7 @@ function treeOrder(rows) {
     children.set(parent, [...children.get(parent) ?? [], row2]);
   }
   for (const group of children.values())
-    group.sort((left, right) => left.name.localeCompare(right.name, "zh-CN") || left.teamId.localeCompare(right.teamId));
+    group.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || left.teamId.localeCompare(right.teamId));
   const result2 = [];
   const seen = /* @__PURE__ */ new Set();
   const visit = (parent, depth) => {
@@ -16000,9 +16785,9 @@ function treeOrder(rows) {
     }
   };
   visit(null, 0);
-  for (const row2 of rows)
-    if (!seen.has(row2.teamId))
-      result2.push({ ...row2, createdAt: row2.createdAt.toISOString(), depth: 0 });
+  for (const row2 of rows.filter((row3) => !seen.has(row3.teamId)).sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || left.teamId.localeCompare(right.teamId))) {
+    result2.push({ ...row2, createdAt: row2.createdAt.toISOString(), depth: 0 });
+  }
   return result2;
 }
 var PostgresTeamRepository = class {
@@ -16090,7 +16875,7 @@ var PostgresTeamRepository = class {
         [ORGANIZATION_ASSIGNMENT_INTEGRITY_VERSION, ORGANIZATION_ASSIGNMENT_INTEGRITY_SQL],
         [ORGANIZATION_DISSOLUTION_VERSION, ORGANIZATION_DISSOLUTION_SQL]
       ]) {
-        const checksum4 = (0, import_node_crypto28.createHash)("sha256").update(sql).digest("hex");
+        const checksum4 = (0, import_node_crypto30.createHash)("sha256").update(sql).digest("hex");
         const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [version4]);
         if (old.rows.length && old.rows[0].checksum !== checksum4)
           return failure("CONFLICT", `\u7EC4\u7EC7\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4: ${version4}`);
@@ -16109,24 +16894,22 @@ var PostgresTeamRepository = class {
       return null;
     const roles = row2.roles ?? [];
     const actor = { ...row2, roles, scope: row2.scope ?? "own", capabilities: [] };
-    if (!participant(actor))
-      return null;
     return { ...actor, capabilities: effectiveCapabilitiesFor(roles, row2.capabilities) };
   }
-  async members(client, unitId, full, viewerUserId) {
+  async members(client, unitId, _full, _viewerUserId) {
     return (await client.query(`
       SELECT a.user_id AS "userId",u.display_name AS "displayName",e.email,a.role,a.created_at AS "joinedAt"
       FROM crm_org_assignments a
       JOIN public.identity_users u ON u.user_id=a.user_id
       LEFT JOIN public.identity_login_emails e ON e.user_id=a.user_id
-      WHERE a.unit_id=$1 AND a.ended_at IS NULL AND ($2::boolean OR a.user_id=$3)
-      ORDER BY CASE a.role WHEN 'leader' THEN 0 ELSE 1 END,a.created_at,a.user_id
-    `, [unitId, full, viewerUserId])).rows.map((member2) => ({ ...member2, joinedAt: member2.joinedAt.toISOString() }));
+      WHERE a.unit_id=$1 AND a.ended_at IS NULL
+      ORDER BY a.created_at DESC,a.user_id
+    `, [unitId])).rows.map((member2) => ({ ...member2, joinedAt: member2.joinedAt.toISOString() }));
   }
   async memberGroups(client, unitId, full) {
     if (!full)
       return [];
-    const groups = (await client.query('SELECT group_id AS "groupId",unit_id AS "teamId",name,version FROM crm_org_member_groups WHERE unit_id=$1 ORDER BY name,group_id', [unitId])).rows;
+    const groups = (await client.query('SELECT group_id AS "groupId",unit_id AS "teamId",name,version FROM crm_org_member_groups WHERE unit_id=$1 ORDER BY created_at DESC,group_id', [unitId])).rows;
     if (!groups.length)
       return [];
     const members2 = (await client.query('SELECT group_id AS "groupId",user_id AS "userId" FROM crm_org_member_group_members WHERE unit_id=$1 ORDER BY group_id,user_id', [unitId])).rows;
@@ -16173,12 +16956,13 @@ var PostgresTeamRepository = class {
     const row2 = (await client.query(`${TEAM_SELECT} WHERE u.unit_id=$1 AND u.dissolved_at IS NULL`, [unitId])).rows[0];
     if (!row2)
       return null;
-    const full = await this.canManageUnit(client, actor, unitId);
+    const own = await this.assignment(client, actor.userId, unitId);
+    const full = !!own || await this.canManageUnit(client, actor, unitId);
     return { row: row2, team: await this.snapshot(client, row2, full, actor.userId, await this.canDissolveUnit(client, actor, unitId)) };
   }
   async teamForUser(client, actor) {
     const row2 = (await client.query(`${TEAM_SELECT} JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.kind='sales_team' AND u.dissolved_at IS NULL ORDER BY a.is_primary DESC,a.created_at,a.unit_id LIMIT 1`, [actor.userId])).rows[0];
-    return row2 ? this.snapshot(client, row2, row2.leaderUserId === actor.userId, actor.userId, await this.canDissolveUnit(client, actor, row2.teamId)) : null;
+    return row2 ? this.snapshot(client, row2, true, actor.userId, await this.canDissolveUnit(client, actor, row2.teamId)) : null;
   }
   async expireInvitations(client) {
     await client.query("UPDATE crm_org_invitations SET status='expired',version=version+1,decided_at=now() WHERE status='pending' AND expires_at<=now()");
@@ -16191,8 +16975,8 @@ var PostgresTeamRepository = class {
   }
   async invitations(client, actor, teamId, canManageCurrent) {
     await this.expireInvitations(client);
-    const incoming = (await client.query(`${INVITATION_SELECT} WHERE i.invitee_user_id=$1 AND i.status IN ('pending','expired') ORDER BY CASE i.status WHEN 'pending' THEN 0 ELSE 1 END,i.created_at DESC`, [actor.userId])).rows;
-    const outgoing = manager(actor) ? (await client.query(`${INVITATION_SELECT} WHERE ($1::uuid IS NULL OR i.unit_id=$1) AND i.status IN ('pending','expired') ORDER BY CASE i.status WHEN 'pending' THEN 0 ELSE 1 END,i.created_at DESC`, [teamId])).rows : teamId && canManageCurrent ? (await client.query(`${INVITATION_SELECT} WHERE i.unit_id=$1 AND i.status IN ('pending','expired') ORDER BY CASE i.status WHEN 'pending' THEN 0 ELSE 1 END,i.created_at DESC`, [teamId])).rows : [];
+    const incoming = (await client.query(`${INVITATION_SELECT} WHERE i.invitee_user_id=$1 AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [actor.userId])).rows;
+    const outgoing = manager(actor) ? (await client.query(`${INVITATION_SELECT} WHERE ($1::uuid IS NULL OR i.unit_id=$1) AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [teamId])).rows : teamId && canManageCurrent ? (await client.query(`${INVITATION_SELECT} WHERE i.unit_id=$1 AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [teamId])).rows : [];
     return {
       incoming: incoming.map((row2) => mapInvitation(row2, actor, manager(actor) || canManageCurrent && row2.teamId === teamId)),
       outgoing: outgoing.map((row2) => mapInvitation(row2, actor, manager(actor) || canManageCurrent && row2.teamId === teamId))
@@ -16205,7 +16989,7 @@ var PostgresTeamRepository = class {
     const companyRow = (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE kind='company'`)).rows[0];
     if (!companyRow)
       throw new Error("company root missing");
-    const rows = manager(actor) ? (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE kind<>'company' AND dissolved_at IS NULL ORDER BY kind,name,unit_id`)).rows : (await client.query('SELECT u.unit_id AS "unitId",u.kind,u.parent_unit_id AS "parentUnitId",u.name,u.version FROM crm_org_units u JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.dissolved_at IS NULL ORDER BY u.kind,u.name,u.unit_id', [actor.userId])).rows;
+    const rows = manager(actor) ? (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE kind<>'company' AND dissolved_at IS NULL ORDER BY created_at DESC,unit_id`)).rows : (await client.query('SELECT u.unit_id AS "unitId",u.kind,u.parent_unit_id AS "parentUnitId",u.name,u.version FROM crm_org_units u JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.dissolved_at IS NULL ORDER BY u.created_at DESC,u.unit_id', [actor.userId])).rows;
     return { company: companyRow, visibleUnits: rows };
   }
   async contextIn(client, actor) {
@@ -16237,9 +17021,10 @@ var PostgresTeamRepository = class {
       const found = await this.teamById(client, teamId, actor);
       if (!found || found.row.organizationKind === "company")
         return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
-      const full = await this.canManageUnit(client, actor, teamId);
+      const canManage4 = await this.canManageUnit(client, actor, teamId);
       const invitations = await this.invitations(client, actor, teamId, await this.canManageInvitation(client, actor, teamId));
-      const children = full ? treeOrder(await this.adminTeamRows(client, "AND u.parent_unit_id=$1", [teamId])).filter((row2) => row2.depth === 0) : [];
+      const allTeams = canManage4 ? treeOrder(await this.adminTeamRows(client)) : [];
+      const children = found.row.organizationKind === "operations_group" ? allTeams.filter((row2) => row2.unitType === "sales_team" && (row2.assignmentSourceTeamIds ?? []).includes(teamId)) : allTeams.filter((row2) => row2.parentTeamId === teamId);
       return success({ team: found.team, outgoingInvitations: invitations.outgoing, children });
     });
   }
@@ -16250,7 +17035,13 @@ var PostgresTeamRepository = class {
       const kind = role === "leader" && query2.unitType === "operations" ? "operations_group" : "sales_team";
       if (role === "leader" && !manager(actor))
         return failure("FORBIDDEN", "\u53EA\u6709\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u8C03\u6574\u8D1F\u8D23\u4EBA");
-      if (role === "member" && !manager(actor) && !leads)
+      const creatingSalesTeam = query2.purpose === "create" && role === "member";
+      if (creatingSalesTeam && !manager(actor)) {
+        const assignments = await this.assignmentsForUser(client, actor.userId);
+        if (assignments.some((item) => item.role === "member"))
+          return failure("CONFLICT", "\u5F53\u524D\u8D26\u53F7\u5DF2\u7ECF\u52A0\u5165\u9500\u552E\u56E2\u961F");
+      }
+      if (role === "member" && !manager(actor) && !leads && !creatingSalesTeam)
         return failure("FORBIDDEN", "\u53EA\u6709\u56E2\u961F\u8D1F\u8D23\u4EBA\u53EF\u4EE5\u9080\u8BF7\u6210\u5458");
       const search = `%${query2.search.replace(/[!%_]/g, "!$&")}%`;
       const access2 = "u.active AND NOT u.must_change_password AND EXISTS(SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND a.active)";
@@ -16294,7 +17085,7 @@ var PostgresTeamRepository = class {
     return row2.count === userIds2.length;
   }
   async cache(client, actorId, operation, key, input) {
-    const digest2 = (0, import_node_crypto28.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const digest2 = (0, import_node_crypto30.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
     const old = (await client.query("SELECT digest,response FROM crm_org_idempotency WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3 FOR UPDATE", [actorId, operation, key])).rows[0];
     if (!old)
       return { state: "new", digest: digest2 };
@@ -16313,13 +17104,18 @@ var PostgresTeamRepository = class {
       if (cached2.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const kind = (input.unitType ?? DEFAULT_TEAM_UNIT_TYPE) === "operations" ? "operations_group" : "sales_team";
-      const privileged = manager(actor);
-      if (!privileged && (kind !== "sales_team" || input.parentTeamId || input.leaderUserId && input.leaderUserId !== actor.userId))
-        return failure("FORBIDDEN", "\u53EA\u6709\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u521B\u5EFA\u8FD0\u8425\u7EC4\u6216\u6307\u6D3E\u56E2\u961F\u8D1F\u8D23\u4EBA");
-      if (privileged && !input.leaderUserId)
+      const admin = superAdmin(actor);
+      const roleAllowsKind = admin || kind === "operations_group" && actor.roles.includes("operations") || kind === "sales_team" && actor.roles.includes("sales");
+      if (!roleAllowsKind)
+        return failure("FORBIDDEN", kind === "operations_group" ? "\u53EA\u6709\u8FD0\u8425\u8D26\u53F7\u53EF\u4EE5\u521B\u5EFA\u8FD0\u8425\u7EC4" : "\u53EA\u6709\u9500\u552E\u8D26\u53F7\u53EF\u4EE5\u521B\u5EFA\u9500\u552E\u56E2\u961F");
+      if (kind === "sales_team" && input.parentTeamId)
+        return failure("INVALID_INPUT", "\u9500\u552E\u56E2\u961F\u4E0D\u80FD\u6302\u5728\u8FD0\u8425\u7EC4\uFF1B\u8BF7\u901A\u8FC7\u5206\u914D\u7EBF\u7D22\u5EFA\u7ACB\u56E2\u961F\u5173\u7CFB");
+      if (!admin && input.leaderUserId && input.leaderUserId !== actor.userId)
+        return failure("FORBIDDEN", "\u53EA\u80FD\u628A\u5F53\u524D\u8D26\u53F7\u8BBE\u4E3A\u8D1F\u8D23\u4EBA");
+      if (admin && !input.leaderUserId)
         return failure("INVALID_INPUT", "\u7BA1\u7406\u89D2\u8272\u521B\u5EFA\u7EC4\u7EC7\u65F6\u5FC5\u987B\u660E\u786E\u6307\u5B9A\u8D1F\u8D23\u4EBA");
-      const leaderUserId = input.leaderUserId ?? actor.userId;
-      if (!privileged && (await this.assignmentsForUser(client, actor.userId)).some((item) => item.role === "member"))
+      const leaderUserId = admin ? input.leaderUserId : actor.userId;
+      if (!admin && (await this.assignmentsForUser(client, actor.userId)).some((item) => item.role === "member"))
         return failure("CONFLICT", "\u5F53\u524D\u8D26\u53F7\u5DF2\u7ECF\u52A0\u5165\u9500\u552E\u56E2\u961F");
       if (input.inviteeUserIds.includes(leaderUserId))
         return failure("INVALID_INPUT", "\u8D1F\u8D23\u4EBA\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u53D7\u9080\u666E\u901A\u6210\u5458");
@@ -16341,13 +17137,13 @@ var PostgresTeamRepository = class {
         return failure("CONFLICT", "\u540C\u4E00\u5C42\u7EA7\u5DF2\u5B58\u5728\u540C\u540D\u7EC4\u7EC7");
       if (!await this.validInvitees(client, input.inviteeUserIds))
         return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
-      const teamId = (0, import_node_crypto28.randomUUID)();
+      const teamId = (0, import_node_crypto30.randomUUID)();
       await client.query("INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,created_by) VALUES($1,$2,$3,$4,$5)", [teamId, kind, parentUnitId, name, actor.userId]);
       const assigned = await this.insertAssignment(client, leaderUserId, teamId, kind, "leader");
       if (!assigned.ok)
         return assigned;
       for (const inviteeUserId of input.inviteeUserIds)
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)", [(0, import_node_crypto28.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)", [(0, import_node_crypto30.randomUUID)(), teamId, actor.userId, inviteeUserId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
@@ -16374,7 +17170,7 @@ var PostgresTeamRepository = class {
       if (!await this.validInvitees(client, input.userIds))
         return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
       for (const inviteeUserId of input.userIds)
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto28.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto30.randomUUID)(), teamId, actor.userId, inviteeUserId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
@@ -16446,6 +17242,8 @@ var PostgresTeamRepository = class {
       const company = (await client.query(`SELECT unit_id AS "unitId" FROM crm_org_units WHERE kind='company' AND dissolved_at IS NULL`)).rows[0];
       if (!company)
         return failure("DATABASE_ERROR", "\u7EC4\u7EC7\u6839\u4E0D\u5B58\u5728");
+      if (current.kind === "sales_team" && input.parentTeamId && input.parentTeamId !== company.unitId)
+        return failure("INVALID_INPUT", "\u9500\u552E\u56E2\u961F\u4E0D\u80FD\u6302\u5728\u8FD0\u8425\u7EC4\uFF1B\u8BF7\u901A\u8FC7\u5206\u914D\u7EBF\u7D22\u5EFA\u7ACB\u56E2\u961F\u5173\u7CFB");
       const parentUnitId = input.parentTeamId ?? company.unitId;
       const parent = await this.unit(client, parentUnitId);
       if (!parent || !canPlaceOrganizationUnit(parent.kind, current.kind))
@@ -16558,24 +17356,24 @@ var PostgresTeamRepository = class {
       const team = (await client.query('SELECT unit_id AS "unitId",kind,version FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
       if (!team || team.kind !== "sales_team")
         return failure("INVALID_INPUT", "\u53EA\u6709\u9500\u552E\u56E2\u961F\u53EF\u4EE5\u8C03\u6574\u666E\u901A\u6210\u5458");
-      if (!await this.canManageUnit(client, actor, teamId))
-        return failure("FORBIDDEN", "\u53EA\u6709\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u8C03\u6574\u6210\u5458");
       if (team.version !== input.expectedVersion)
         return failure("CONFLICT", "\u56E2\u961F\u7248\u672C\u5DF2\u53D8\u5316");
+      if (input.action === "leave" && input.userId !== actor.userId)
+        return failure("FORBIDDEN", "\u53EA\u80FD\u9000\u51FA\u81EA\u5DF1\u7684\u56E2\u961F");
+      if (input.action !== "leave" && !await this.canManageUnit(client, actor, teamId))
+        return failure("FORBIDDEN", "\u53EA\u6709\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u8C03\u6574\u6210\u5458");
       if (input.action === "add") {
         if (!await this.validInvitees(client, [input.userId]))
           return failure("INVALID_INPUT", "\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
-        const assigned = await this.insertAssignment(client, input.userId, teamId, team.kind, "member");
-        if (!assigned.ok)
-          return assigned;
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto30.randomUUID)(), teamId, actor.userId, input.userId]);
       } else {
         const existing = await this.assignment(client, input.userId, teamId);
         if (existing?.role !== "member")
           return failure("NOT_FOUND", "\u56E2\u961F\u6210\u5458\u4E0D\u5B58\u5728");
         await client.query("DELETE FROM crm_org_member_group_members WHERE unit_id=$1 AND user_id=$2", [teamId, input.userId]);
         await client.query("DELETE FROM crm_org_assignments WHERE unit_id=$1 AND user_id=$2 AND role='member' AND ended_at IS NULL", [teamId, input.userId]);
+        await client.query("UPDATE crm_org_units SET version=version+1,updated_at=now() WHERE unit_id=$1", [teamId]);
       }
-      await client.query("UPDATE crm_org_units SET version=version+1,updated_at=now() WHERE unit_id=$1", [teamId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
@@ -16613,7 +17411,7 @@ var PostgresTeamRepository = class {
         if (occupied.rows.length)
           return failure("CONFLICT", "\u6210\u5458\u5DF2\u7ECF\u5728\u5176\u4ED6\u5C55\u793A\u5206\u7EC4");
       }
-      const groupId = input.groupId ?? (0, import_node_crypto28.randomUUID)();
+      const groupId = input.groupId ?? (0, import_node_crypto30.randomUUID)();
       if (!input.groupId)
         await client.query("INSERT INTO crm_org_member_groups(group_id,unit_id,name) VALUES($1,$2,$3)", [groupId, teamId, input.name.trim()]);
       await client.query("DELETE FROM crm_org_member_group_members WHERE group_id=$1", [groupId]);
@@ -16677,20 +17475,25 @@ function requiresExplicitLeader(value2) {
 function candidateQuery(value2) {
   if (value2 === void 0)
     return { search: "", limit: TEAM_LIMITS.page, offset: 0, role: "member", unitType: "sales_team" };
-  if (!record11(value2) || !keys7(value2, ["search", "limit", "offset", "role", "unitType"]))
+  if (!record11(value2) || !keys7(value2, ["search", "limit", "offset", "role", "unitType", "purpose"]))
     return void 0;
   const search = value2.search ?? "";
   const limit = value2.limit ?? TEAM_LIMITS.page;
   const offset = value2.offset ?? 0;
   const role = value2.role ?? "member";
   const type = value2.unitType ?? "sales_team";
+  const purpose = value2.purpose ?? "invite";
   if (typeof search !== "string" || search.length > TEAM_LIMITS.text || !Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > TEAM_LIMITS.pageMax || !Number.isSafeInteger(offset) || Number(offset) < 0)
     return void 0;
   if (!["member", "leader"].includes(String(role)) || !["operations", "sales_team"].includes(String(type)))
     return void 0;
+  if (!["invite", "create"].includes(String(purpose)))
+    return void 0;
   if (role === "member" && type !== "sales_team")
     return void 0;
-  return { search: search.trim(), limit: Number(limit), offset: Number(offset), role, unitType: type };
+  if (purpose === "create" && role !== "member")
+    return void 0;
+  return { search: search.trim(), limit: Number(limit), offset: Number(offset), role, unitType: type, purpose };
 }
 function decision(value2) {
   if (!record11(value2) || !keys7(value2, ["expectedVersion", "idempotencyKey"]) || !Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !idempotency(value2.idempotencyKey))
@@ -16716,7 +17519,7 @@ function leaderInput(value2) {
   return value2;
 }
 function memberInput(value2) {
-  if (!record11(value2) || !keys7(value2, ["userId", "action", "expectedVersion", "idempotencyKey"]) || typeof value2.userId !== "string" || !UUID13.test(value2.userId) || value2.action !== "add" && value2.action !== "remove" || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+  if (!record11(value2) || !keys7(value2, ["userId", "action", "expectedVersion", "idempotencyKey"]) || typeof value2.userId !== "string" || !UUID13.test(value2.userId) || !["add", "remove", "leave"].includes(String(value2.action)) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
     return void 0;
   return value2;
 }
@@ -17001,7 +17804,7 @@ function createContactMailAnalysisHandler(service) {
 }
 
 // server/adapters/postgres/team-attention-repository.ts
-var import_node_crypto29 = require("node:crypto");
+var import_node_crypto31 = require("node:crypto");
 var ITEM_COLUMNS = `i.item_id AS "itemId",i.target_member_user_id AS "targetMemberUserId",target.display_name AS "targetMemberName",i.source_supervisor_user_id AS "sourceSupervisorUserId",source.display_name AS "sourceSupervisorName",i.customer_id AS "customerId",co.name AS "customerName",i.contact_id AS "contactId",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),NULLIF(ct.email,''),'\u8054\u7CFB\u4EBA') AS "contactName",ct.email AS "contactEmail",i.mail_event_id AS "mailEventId",i.analysis_id AS "analysisId",i.reason,i.priority,i.status,i.note,i.result,i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt",i.acknowledged_at AS "acknowledgedAt",i.resolved_at AS "resolvedAt",i.dismissed_at AS "dismissedAt"`;
 var ITEM_JOINS = `FROM crm_team_attention_items i JOIN public.identity_users target ON target.user_id=i.target_member_user_id JOIN public.identity_users source ON source.user_id=i.source_supervisor_user_id JOIN crm_customers c ON c.customer_id=i.customer_id JOIN companies co ON co.id=c.company_id JOIN contacts ct ON ct.id=i.contact_id`;
 function iso2(value2) {
@@ -17011,7 +17814,7 @@ function optionalIso(value2) {
   return value2 ? new Date(value2).toISOString() : null;
 }
 function digest(value2) {
-  return (0, import_node_crypto29.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+  return (0, import_node_crypto31.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
 }
 function oversight(actor) {
   return actor.roles.includes("admin") || actor.roles.includes("operations");
@@ -17350,7 +18153,7 @@ function teamMonitoringScopeFor(input) {
 }
 
 // server/adapters/postgres/team-monitoring-schema.ts
-var import_node_crypto30 = require("node:crypto");
+var import_node_crypto32 = require("node:crypto");
 var TEAM_MONITORING_SCHEMA_VERSION = "061-team-monitoring";
 var TEAM_MONITORING_LOCK = 610061;
 var TEAM_MONITORING_SQL = `
@@ -17406,7 +18209,7 @@ CREATE INDEX idx_crm_team_monitoring_tasks_responsible
   WHERE status='open' AND source_responsible_user_id IS NOT NULL;
 `;
 function checksum2() {
-  return (0, import_node_crypto30.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
+  return (0, import_node_crypto32.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
 }
 async function migrateTeamMonitoringSchema(client) {
   const digest2 = checksum2();
@@ -17805,7 +18608,7 @@ var PostgresTeamMonitoringRepository = class {
       const memberRows = await client.query(
         `${ctes}
         SELECT * FROM member_stats ${filter}
-        ORDER BY "displayName","userId" LIMIT $4 OFFSET $5`,
+        ORDER BY COALESCE("lastActivityAt","latestImportantReplyAt") DESC NULLS LAST,"displayName","userId" LIMIT $4 OFFSET $5`,
         [actor.userId, query2.teamId ?? null, query2.memberUserId ?? null, query2.limit, query2.offset]
       );
       const totalMembers = await client.query(
@@ -17849,7 +18652,7 @@ var PostgresTeamMonitoringRepository = class {
         LEFT JOIN member_stats member ON member."teamId"=unit.unit_id
         WHERE ($2::uuid IS NULL OR unit.unit_id=$2) AND ($3::uuid IS NULL OR member."userId"=$3)
         GROUP BY unit.unit_id,unit.name,unit.kind,unit.parent_unit_id
-        ORDER BY unit.name,unit.unit_id LIMIT $4 OFFSET $5`,
+        ORDER BY max(COALESCE(member."lastActivityAt",member."latestImportantReplyAt")) DESC NULLS LAST,unit.name,unit.unit_id LIMIT $4 OFFSET $5`,
         [actor.userId, query2.teamId ?? null, query2.memberUserId ?? null, query2.unitLimit, query2.unitOffset]
       );
       const totalUnits = await client.query(
@@ -18257,7 +19060,7 @@ function createTeamMonitoringHandler(service) {
 }
 
 // server/adapters/postgres/sales-performance-repository.ts
-var import_node_crypto32 = require("node:crypto");
+var import_node_crypto34 = require("node:crypto");
 
 // server/core/sales-performance.ts
 var SALES_PERFORMANCE_ROUTES = {
@@ -18316,7 +19119,7 @@ function customerGradeFor(signals2) {
 }
 
 // server/adapters/postgres/sales-performance-schema.ts
-var import_node_crypto31 = require("node:crypto");
+var import_node_crypto33 = require("node:crypto");
 var SALES_PERFORMANCE_SCHEMA_VERSION = "062-sales-performance-customer-grade";
 var SALES_PERFORMANCE_SCHEMA_LOCK = 620062;
 var SALES_PERFORMANCE_SQL = `
@@ -18405,7 +19208,7 @@ CREATE INDEX idx_crm_sales_perf_customer_origin_source
   ON crm_customers(origin,source,customer_id);
 `;
 function checksum3() {
-  return (0, import_node_crypto31.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
+  return (0, import_node_crypto33.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
 }
 async function migrateSalesPerformanceSchema(client) {
   const digest2 = checksum3();
@@ -19012,7 +19815,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto32.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto34.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, OVERRIDE_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -19048,7 +19851,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto32.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto34.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, CLEAR_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -19271,9 +20074,9 @@ function createSalesPerformanceHandler(service) {
 }
 
 // server/adapters/online-instance.ts
-var import_node_crypto33 = require("node:crypto");
+var import_node_crypto35 = require("node:crypto");
 var INSTANCE_ID_PATTERN = /^[a-f0-9]{64}$/;
-function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto33.randomBytes)(32).toString("hex")) {
+function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto35.randomBytes)(32).toString("hex")) {
   const configured = env.PROSPECTOR_ONLINE_INSTANCE?.trim();
   if (configured) {
     if (!INSTANCE_ID_PATTERN.test(configured))
@@ -19340,6 +20143,13 @@ async function main() {
     const opportunityRepo = new PostgresOpportunityRepository(pool, serverLog);
     if (!(await opportunityRepo.migrate()).ok)
       throw new Error("\u5546\u673A\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const overlapClient = await pool.connect();
+    try {
+      if (!(await migrateLeadOverlapSchema(overlapClient)).ok)
+        throw new Error("\u7EBF\u7D22\u8303\u56F4\u91CD\u53E0\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    } finally {
+      overlapClient.release();
+    }
     const salesPerformanceRepo = new PostgresSalesPerformanceRepository(pool, serverLog);
     if (!(await salesPerformanceRepo.migrate()).ok)
       throw new Error("\u9500\u552E\u7EE9\u6548\u8FC1\u79FB\u88AB\u62D2\u7EDD");
