@@ -89,12 +89,13 @@ export type BrowserHandler = (request: IncomingMessage, response: ServerResponse
 export function createOnlineServer(service: AuthService, gate: LoginGate, config: OnlineConfig, log: LogSink, instanceId = "integration", browser?: BrowserHandler, crm?: BrowserHandler, desktop?: BrowserHandler) {
   const dispatch = async (request: IncomingMessage, response: ServerResponse) => {
     const path = request.url ?? "", method = request.method;
+    if(process.env.PROSPECTOR_CENTER_HTTP_LOG === "1") log.write("INFO","identity.http",`请求 ${loggable(method)} ${loggable(path)} host=${loggable(request.headers.host)} remote=${loggable(request.socket.remoteAddress)} ua=${loggable(request.headers["user-agent"])} version=${centerVersion()}`);
     if((method === "GET" || method === "HEAD") && path === ACTUATOR_INFO_PATH) { await sendActuatorInfo(response,service,method === "HEAD"); return; }
-    if((method === "GET" || method === "HEAD") && path === API_ROUTES.live) { send(response,success({status:"live",instanceId,pid:process.pid})); return; }
+    if((method === "GET" || method === "HEAD") && path === API_ROUTES.live) { send(response,success({status:"live",instanceId,pid:process.pid,version:centerVersion()})); return; }
     if((method === "GET" || method === "HEAD") && path === API_ROUTES.ready) { send(response,await service.ready()); return; }
     const localHost = `${request.socket.localAddress}:${request.socket.localPort}`;
     const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
-    if(request.headers.host !== localHost && (!publicHost || request.headers.host !== publicHost)) {
+    if(!config.allow_any_host && request.headers.host !== localHost && (!publicHost || request.headers.host !== publicHost)) {
       log.write("WARN","identity.http",`拒绝 Host host=${loggable(request.headers.host)} url=${loggable(path)} remote=${loggable(request.socket.remoteAddress)} expected=${loggable(publicHost || localHost)} version=${centerVersion()}`);
       send(response,failure("FORBIDDEN","服务 Host 无效"));
       return;

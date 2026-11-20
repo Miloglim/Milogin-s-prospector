@@ -5787,12 +5787,14 @@ async function body(request2, maximum) {
 function createOnlineServer(service, gate, config, log, instanceId = "integration", browser, crm, desktop) {
   const dispatch = async (request2, response) => {
     const path4 = request2.url ?? "", method = request2.method;
+    if (process.env.PROSPECTOR_CENTER_HTTP_LOG === "1")
+      log.write("INFO", "identity.http", `\u8BF7\u6C42 ${loggable(method)} ${loggable(path4)} host=${loggable(request2.headers.host)} remote=${loggable(request2.socket.remoteAddress)} ua=${loggable(request2.headers["user-agent"])} version=${centerVersion()}`);
     if ((method === "GET" || method === "HEAD") && path4 === ACTUATOR_INFO_PATH) {
       await sendActuatorInfo(response, service, method === "HEAD");
       return;
     }
     if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.live) {
-      send(response, success({ status: "live", instanceId, pid: process.pid }));
+      send(response, success({ status: "live", instanceId, pid: process.pid, version: centerVersion() }));
       return;
     }
     if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.ready) {
@@ -5801,7 +5803,7 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
     }
     const localHost = `${request2.socket.localAddress}:${request2.socket.localPort}`;
     const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
-    if (request2.headers.host !== localHost && (!publicHost || request2.headers.host !== publicHost)) {
+    if (!config.allow_any_host && request2.headers.host !== localHost && (!publicHost || request2.headers.host !== publicHost)) {
       log.write("WARN", "identity.http", `\u62D2\u7EDD Host host=${loggable(request2.headers.host)} url=${loggable(path4)} remote=${loggable(request2.socket.remoteAddress)} expected=${loggable(publicHost || localHost)} version=${centerVersion()}`);
       send(response, failure("FORBIDDEN", "\u670D\u52A1 Host \u65E0\u6548"));
       return;
@@ -8443,7 +8445,8 @@ function readOnlineConfig(env = process.env) {
       test_mode: false,
       public_origin: origin,
       ...localHttp ? { local_http: true } : {},
-      ...localHttp || internalHttp ? { insecure_http: true } : {}
+      ...localHttp || internalHttp ? { insecure_http: true } : {},
+      ...env.PROSPECTOR_CENTER_ALLOW_ANY_HOST === "1" ? { allow_any_host: true } : {}
     };
   }
   if (env.PROSPECTOR_CENTER_MODE && env.PROSPECTOR_CENTER_MODE !== "test")
