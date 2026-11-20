@@ -5690,17 +5690,27 @@ var HTTP_STATUS = {
 var MILLISECONDS_PER_SECOND2 = 1e3;
 var ACTUATOR_INFO_PATH = "/actuator/info";
 var ACTUATOR_PROMETHEUS_PATH = "/actuator/prometheus";
+var CENTER_VERSION_HEADER = "X-Center-Version";
+var UNKNOWN_VERSION = "unknown";
+var LOG_FIELD_LIMIT = 120;
 var PROMETHEUS_BODY = [
   "# HELP prospector_center_up Whether the Prospector center process is serving requests.",
   "# TYPE prospector_center_up gauge",
   "prospector_center_up 1",
   ""
 ].join("\n");
+function centerVersion() {
+  return process.env.CODE_VERSION || process.env.IMAGE_TAG || UNKNOWN_VERSION;
+}
+function loggable(value2) {
+  return (value2 ?? "").slice(0, LOG_FIELD_LIMIT).replace(/[^\x20-\x7e]/g, "?");
+}
 function operationalHeaders(contentType) {
   return {
     "Content-Type": contentType,
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    [CENTER_VERSION_HEADER]: centerVersion(),
     "Connection": "close"
   };
 }
@@ -5712,7 +5722,7 @@ async function sendActuatorInfo(response, service, head) {
   }
   const readiness = await service.ready();
   const status = readiness.ok ? HTTP_STATUS.OK : HTTP_STATUS[readiness.error.code];
-  const payload = readiness.ok ? { status: "UP" } : readiness;
+  const payload = readiness.ok ? { status: "UP", version: centerVersion() } : readiness;
   response.writeHead(status, operationalHeaders("application/json; charset=utf-8"));
   response.end(JSON.stringify(payload));
 }
@@ -5727,6 +5737,7 @@ function send(response, result2) {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    [CENTER_VERSION_HEADER]: centerVersion(),
     "Connection": "close"
   });
   response.end(JSON.stringify(result2));
@@ -5791,6 +5802,7 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
     const localHost = `${request2.socket.localAddress}:${request2.socket.localPort}`;
     const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
     if (request2.headers.host !== localHost && (!publicHost || request2.headers.host !== publicHost)) {
+      log.write("WARN", "identity.http", `\u62D2\u7EDD Host host=${loggable(request2.headers.host)} url=${loggable(path4)} remote=${loggable(request2.socket.remoteAddress)} expected=${loggable(publicHost || localHost)} version=${centerVersion()}`);
       send(response, failure("FORBIDDEN", "\u670D\u52A1 Host \u65E0\u6548"));
       return;
     }

@@ -44,7 +44,7 @@ describe("ACK operational HTTP compatibility", () => {
       status: 200,
       contentType: "application/json; charset=utf-8",
     });
-    expect(JSON.parse(get.text)).toEqual({ status: "UP" });
+    expect(JSON.parse(get.text)).toMatchObject({ status: "UP" });
 
     const head = await response(base, "/actuator/info", "HEAD");
     expect(head).toMatchObject({ status: 200, text: "" });

@@ -6,6 +6,9 @@ import type { AuthService } from "../services/auth";
 const MILLISECONDS_PER_SECOND = 1000;
 const ACTUATOR_INFO_PATH = "/actuator/info";
 const ACTUATOR_PROMETHEUS_PATH = "/actuator/prometheus";
+const CENTER_VERSION_HEADER = "X-Center-Version";
+const UNKNOWN_VERSION = "unknown";
+const LOG_FIELD_LIMIT = 120;
 const PROMETHEUS_BODY = [
   "# HELP prospector_center_up Whether the Prospector center process is serving requests.",
   "# TYPE prospector_center_up gauge",
@@ -13,11 +16,20 @@ const PROMETHEUS_BODY = [
   "",
 ].join("\n");
 
+function centerVersion() {
+  return process.env.CODE_VERSION || process.env.IMAGE_TAG || UNKNOWN_VERSION;
+}
+
+function loggable(value: string | undefined) {
+  return (value ?? "").slice(0, LOG_FIELD_LIMIT).replace(/[^\x20-\x7e]/g, "?");
+}
+
 function operationalHeaders(contentType: string) {
   return {
     "Content-Type": contentType,
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    [CENTER_VERSION_HEADER]: centerVersion(),
     "Connection": "close",
   };
 }
@@ -30,7 +42,7 @@ async function sendActuatorInfo(response: ServerResponse, service: AuthService, 
   }
   const readiness = await service.ready();
   const status = readiness.ok ? HTTP_STATUS.OK : HTTP_STATUS[readiness.error.code];
-  const payload = readiness.ok ? { status: "UP" } : readiness;
+  const payload = readiness.ok ? { status: "UP", version: centerVersion() } : readiness;
   response.writeHead(status, operationalHeaders("application/json; charset=utf-8"));
   response.end(JSON.stringify(payload));
 }
@@ -44,7 +56,7 @@ export function send(response: ServerResponse, result: Result<unknown>) {
   if(response.destroyed || response.writableEnded) return;
   response.writeHead(result.ok ? HTTP_STATUS.OK : HTTP_STATUS[result.error.code], {
     "Content-Type":"application/json; charset=utf-8", "Cache-Control":"no-store",
-    "X-Content-Type-Options":"nosniff", "Connection":"close",
+    "X-Content-Type-Options":"nosniff", [CENTER_VERSION_HEADER]: centerVersion(), "Connection":"close",
   });
   response.end(JSON.stringify(result));
 }
@@ -82,7 +94,11 @@ export function createOnlineServer(service: AuthService, gate: LoginGate, config
     if((method === "GET" || method === "HEAD") && path === API_ROUTES.ready) { send(response,await service.ready()); return; }
     const localHost = `${request.socket.localAddress}:${request.socket.localPort}`;
     const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
-    if(request.headers.host !== localHost && (!publicHost || request.headers.host !== publicHost)) { send(response,failure("FORBIDDEN","服务 Host 无效")); return; }
+    if(request.headers.host !== localHost && (!publicHost || request.headers.host !== publicHost)) {
+      log.write("WARN","identity.http",`拒绝 Host host=${loggable(request.headers.host)} url=${loggable(path)} remote=${loggable(request.socket.remoteAddress)} expected=${loggable(publicHost || localHost)} version=${centerVersion()}`);
+      send(response,failure("FORBIDDEN","服务 Host 无效"));
+      return;
+    }
     if(browser && (path.startsWith('/admin-api/') || path === '/' || path.startsWith('/?') || path.startsWith('/assets/'))) {await browser(request,response);return;}
     if(request.headers.origin || request.headers["sec-fetch-site"] === "cross-site") { send(response,failure("FORBIDDEN","当前仅接受本机非浏览器跨站请求")); return; }
     if(method === "GET" && path === ACTUATOR_PROMETHEUS_PATH) { sendPrometheus(response); return; }
