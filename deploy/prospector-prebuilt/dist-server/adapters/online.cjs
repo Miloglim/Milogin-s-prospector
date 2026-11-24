@@ -10,9 +10,9 @@ var __commonJS = (cb, mod) => function __require() {
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    for (let key2 of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key2) && key2 !== except)
+        __defProp(to, key2, { get: () => from[key2], enumerable: !(desc = __getOwnPropDesc(from, key2)) || desc.enumerable });
   }
   return to;
 };
@@ -235,9 +235,9 @@ var require_mutable = __commonJS({
     function extend(target) {
       for (var i = 1; i < arguments.length; i++) {
         var source = arguments[i];
-        for (var key in source) {
-          if (hasOwnProperty.call(source, key)) {
-            target[key] = source[key];
+        for (var key2 in source) {
+          if (hasOwnProperty.call(source, key2)) {
+            target[key2] = source[key2];
           }
         }
       }
@@ -1242,20 +1242,20 @@ var require_utils2 = __commonJS({
       const outer = await md5(Buffer.concat([Buffer.from(inner), salt]));
       return "md5" + outer;
     }
-    async function sha256(text16) {
-      return await subtleCrypto.digest("SHA-256", text16);
+    async function sha256(text18) {
+      return await subtleCrypto.digest("SHA-256", text18);
     }
-    async function hashByName(hashName, text16) {
-      return await subtleCrypto.digest(hashName, text16);
+    async function hashByName(hashName, text18) {
+      return await subtleCrypto.digest(hashName, text18);
     }
     async function hmacSha256(keyBuffer, msg) {
-      const key = await subtleCrypto.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-      return await subtleCrypto.sign("HMAC", key, textEncoder.encode(msg));
+      const key2 = await subtleCrypto.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      return await subtleCrypto.sign("HMAC", key2, textEncoder.encode(msg));
     }
     async function deriveKey(password, salt, iterations) {
-      const key = await subtleCrypto.importKey("raw", textEncoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+      const key2 = await subtleCrypto.importKey("raw", textEncoder.encode(password), "PBKDF2", false, ["deriveBits"]);
       const params = { name: "PBKDF2", hash: "SHA-256", salt, iterations };
-      return await subtleCrypto.deriveBits(params, key, 32 * 8, ["deriveBits"]);
+      return await subtleCrypto.deriveBits(params, key2, 32 * 8, ["deriveBits"]);
     }
   }
 });
@@ -1387,12 +1387,12 @@ var require_sasl = __commonJS({
     }
     var DEFAULT_MAX_SCRAM_ITERATIONS = 1e5;
     function startSession(mechanisms, stream, scramMaxIterations = DEFAULT_MAX_SCRAM_ITERATIONS) {
-      const candidates = ["SCRAM-SHA-256"];
+      const candidates2 = ["SCRAM-SHA-256"];
       if (stream)
-        candidates.unshift("SCRAM-SHA-256-PLUS");
-      const mechanism = candidates.find((candidate) => mechanisms.includes(candidate));
+        candidates2.unshift("SCRAM-SHA-256-PLUS");
+      const mechanism = candidates2.find((candidate) => mechanisms.includes(candidate));
       if (!mechanism) {
-        throw new Error("SASL: Only mechanism(s) " + candidates.join(" and ") + " are supported");
+        throw new Error("SASL: Only mechanism(s) " + candidates2.join(" and ") + " are supported");
       }
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
@@ -1470,21 +1470,21 @@ var require_sasl = __commonJS({
         throw new Error("SASL: SCRAM-SERVER-FINAL-MESSAGE: server signature does not match");
       }
     }
-    function isPrintableChars(text16) {
-      if (typeof text16 !== "string") {
+    function isPrintableChars(text18) {
+      if (typeof text18 !== "string") {
         throw new TypeError("SASL: text must be a string");
       }
-      return text16.split("").map((_, i) => text16.charCodeAt(i)).every((c) => c >= 33 && c <= 43 || c >= 45 && c <= 126);
+      return text18.split("").map((_, i) => text18.charCodeAt(i)).every((c) => c >= 33 && c <= 43 || c >= 45 && c <= 126);
     }
-    function isBase64(text16) {
-      return /^(?:[a-zA-Z0-9+/]{4})*(?:[a-zA-Z0-9+/]{2}==|[a-zA-Z0-9+/]{3}=)?$/.test(text16);
+    function isBase64(text18) {
+      return /^(?:[a-zA-Z0-9+/]{4})*(?:[a-zA-Z0-9+/]{2}==|[a-zA-Z0-9+/]{3}=)?$/.test(text18);
     }
-    function parseAttributePairs(text16) {
-      if (typeof text16 !== "string") {
+    function parseAttributePairs(text18) {
+      if (typeof text18 !== "string") {
         throw new TypeError("SASL: attribute pairs text must be a string");
       }
       return new Map(
-        text16.split(",").map((attrValue) => {
+        text18.split(",").map((attrValue) => {
           if (!/^.=/.test(attrValue)) {
             throw new Error("SASL: Invalid attribute pair entry");
           }
@@ -1726,35 +1726,35 @@ var require_pg_connection_string = __commonJS({
       return config;
     }
     function toConnectionOptions(sslConfig) {
-      const connectionOptions = Object.entries(sslConfig).reduce((c, [key, value2]) => {
+      const connectionOptions = Object.entries(sslConfig).reduce((c, [key2, value2]) => {
         if (value2 !== void 0 && value2 !== null) {
-          c[key] = value2;
+          c[key2] = value2;
         }
         return c;
       }, /* @__PURE__ */ Object.create(null));
       return connectionOptions;
     }
     function toClientConfig(config) {
-      const poolConfig = Object.entries(config).reduce((c, [key, value2]) => {
-        if (key === "ssl") {
+      const poolConfig = Object.entries(config).reduce((c, [key2, value2]) => {
+        if (key2 === "ssl") {
           const sslConfig = value2;
           if (typeof sslConfig === "boolean") {
-            c[key] = sslConfig;
+            c[key2] = sslConfig;
           }
           if (typeof sslConfig === "object") {
-            c[key] = toConnectionOptions(sslConfig);
+            c[key2] = toConnectionOptions(sslConfig);
           }
         } else if (value2 !== void 0 && value2 !== null) {
-          if (key === "port") {
+          if (key2 === "port") {
             if (value2 !== "") {
               const v = parseInt(value2, 10);
               if (isNaN(v)) {
-                throw new Error(`Invalid ${key}: ${value2}`);
+                throw new Error(`Invalid ${key2}: ${value2}`);
               }
-              c[key] = v;
+              c[key2] = v;
             }
           } else {
-            c[key] = value2;
+            c[key2] = value2;
           }
         }
         return c;
@@ -1791,17 +1791,17 @@ var require_connection_parameters = __commonJS({
     var dns = require("dns");
     var defaults2 = require_defaults();
     var parse = require_pg_connection_string().parse;
-    var val = function(key, config, envVar) {
-      if (config[key]) {
-        return config[key];
+    var val = function(key2, config, envVar) {
+      if (config[key2]) {
+        return config[key2];
       }
       if (envVar === void 0) {
-        envVar = process.env["PG" + key.toUpperCase()];
+        envVar = process.env["PG" + key2.toUpperCase()];
       } else if (envVar === false) {
       } else {
         envVar = process.env[envVar];
       }
-      return envVar || defaults2[key];
+      return envVar || defaults2[key2];
     };
     var readSSLConfigFromEnvironment = function() {
       switch (process.env.PGSSLMODE) {
@@ -2367,19 +2367,19 @@ var require_messages = __commonJS({
     };
     exports2.ReadyForQueryMessage = ReadyForQueryMessage;
     var CommandCompleteMessage = class {
-      constructor(length, text16) {
+      constructor(length, text18) {
         this.length = length;
-        this.text = text16;
+        this.text = text18;
         this.name = "commandComplete";
       }
     };
     exports2.CommandCompleteMessage = CommandCompleteMessage;
     var DataRowMessage = class {
-      constructor(length, fields) {
+      constructor(length, fields2) {
         this.length = length;
-        this.fields = fields;
+        this.fields = fields2;
         this.name = "dataRow";
-        this.fieldCount = fields.length;
+        this.fieldCount = fields2.length;
       }
     };
     exports2.DataRowMessage = DataRowMessage;
@@ -2517,8 +2517,8 @@ var require_serializer = __commonJS({
     var writer = new buffer_writer_1.Writer();
     var startup = (opts) => {
       writer.addInt16(3).addInt16(0);
-      for (const key of Object.keys(opts)) {
-        writer.addCString(key).addCString(opts[key]);
+      for (const key2 of Object.keys(opts)) {
+        writer.addCString(key2).addCString(opts[key2]);
       }
       writer.addCString("client_encoding").addCString("UTF8");
       const bodyBuffer = writer.addCString("").flush();
@@ -2550,8 +2550,8 @@ var require_serializer = __commonJS({
         /* code.startup */
       );
     };
-    var query2 = (text16) => {
-      return writer.addCString(text16).flush(
+    var query2 = (text18) => {
+      return writer.addCString(text18).flush(
         81
         /* code.query */
       );
@@ -2668,8 +2668,8 @@ var require_serializer = __commonJS({
       return msg.name ? cstringMessage(68, `${msg.type}${msg.name || ""}`) : msg.type === "P" ? emptyDescribePortal : emptyDescribeStatement;
     };
     var close = (msg) => {
-      const text16 = `${msg.type}${msg.name || ""}`;
-      return cstringMessage(67, text16);
+      const text18 = `${msg.type}${msg.name || ""}`;
+      return cstringMessage(67, text18);
     };
     var copyData = (chunk) => {
       return writer.add(chunk).flush(
@@ -2941,8 +2941,8 @@ var require_parser = __commonJS({
       return new messages_1.ReadyForQueryMessage(LATEINIT_LENGTH, status);
     };
     var parseCommandCompleteMessage = (reader) => {
-      const text16 = reader.cstring();
-      return new messages_1.CommandCompleteMessage(LATEINIT_LENGTH, text16);
+      const text18 = reader.cstring();
+      return new messages_1.CommandCompleteMessage(LATEINIT_LENGTH, text18);
     };
     var parseCopyData = (reader, length) => {
       const chunk = reader.bytes(length - 4);
@@ -2993,12 +2993,12 @@ var require_parser = __commonJS({
     };
     var parseDataRowMessage = (reader) => {
       const fieldCount = reader.int16();
-      const fields = new Array(fieldCount);
+      const fields2 = new Array(fieldCount);
       for (let i = 0; i < fieldCount; i++) {
         const len = reader.int32();
-        fields[i] = len === -1 ? null : reader.string(len);
+        fields2[i] = len === -1 ? null : reader.string(len);
       }
-      return new messages_1.DataRowMessage(LATEINIT_LENGTH, fields);
+      return new messages_1.DataRowMessage(LATEINIT_LENGTH, fields2);
     };
     var parseParameterStatusMessage = (reader) => {
       const name = reader.cstring();
@@ -3058,30 +3058,30 @@ var require_parser = __commonJS({
       return message;
     };
     var parseErrorMessage = (reader, name) => {
-      const fields = {};
+      const fields2 = {};
       let fieldType = reader.string(1);
       while (fieldType !== "\0") {
-        fields[fieldType] = reader.cstring();
+        fields2[fieldType] = reader.cstring();
         fieldType = reader.string(1);
       }
-      const messageValue = fields.M;
+      const messageValue = fields2.M;
       const message = name === "notice" ? new messages_1.NoticeMessage(LATEINIT_LENGTH, messageValue) : new messages_1.DatabaseError(messageValue, LATEINIT_LENGTH, name);
-      message.severity = fields.S;
-      message.code = fields.C;
-      message.detail = fields.D;
-      message.hint = fields.H;
-      message.position = fields.P;
-      message.internalPosition = fields.p;
-      message.internalQuery = fields.q;
-      message.where = fields.W;
-      message.schema = fields.s;
-      message.table = fields.t;
-      message.column = fields.c;
-      message.dataType = fields.d;
-      message.constraint = fields.n;
-      message.file = fields.F;
-      message.line = fields.L;
-      message.routine = fields.R;
+      message.severity = fields2.S;
+      message.code = fields2.C;
+      message.detail = fields2.D;
+      message.hint = fields2.H;
+      message.position = fields2.P;
+      message.internalPosition = fields2.p;
+      message.internalQuery = fields2.q;
+      message.where = fields2.W;
+      message.schema = fields2.s;
+      message.table = fields2.t;
+      message.column = fields2.c;
+      message.dataType = fields2.d;
+      message.constraint = fields2.n;
+      message.file = fields2.F;
+      message.line = fields2.L;
+      message.routine = fields2.R;
       return message;
     };
   }
@@ -3329,8 +3329,8 @@ var require_connection = __commonJS({
         }
         return this.stream.write(buffer);
       }
-      query(text16) {
-        this._send(serialize.query(text16));
+      query(text18) {
+        this._send(serialize.query(text18));
       }
       // send parse message
       parse(query2) {
@@ -4726,9 +4726,9 @@ var require_pg_pool = __commonJS({
         this._idle.push(new IdleItem(client, idleListener, tid));
         this._pulseQueue();
       }
-      query(text16, values, cb) {
-        if (typeof text16 === "function") {
-          const response2 = promisify(this.Promise, text16);
+      query(text18, values, cb) {
+        if (typeof text18 === "function") {
+          const response2 = promisify(this.Promise, text18);
           setImmediate(function() {
             return response2.callback(new Error("Passing a function as the first parameter to pool.query is not supported"));
           });
@@ -4756,7 +4756,7 @@ var require_pg_pool = __commonJS({
           client.once("error", onError);
           this.log("dispatching query");
           try {
-            client.query(text16, values, (err2, res) => {
+            client.query(text18, values, (err2, res) => {
               this.log("query dispatched");
               client.removeListener("error", onError);
               if (clientReleased) {
@@ -4849,11 +4849,11 @@ var require_query2 = __commonJS({
       sourceFunction: "routine"
     };
     NativeQuery.prototype.handleError = function(err) {
-      const fields = this.native && this.native.pq.resultErrorFields();
-      if (fields) {
-        for (const key in fields) {
-          const normalizedFieldName = errorFieldMap[key] || key;
-          err[normalizedFieldName] = fields[key];
+      const fields2 = this.native && this.native.pq.resultErrorFields();
+      if (fields2) {
+        for (const key2 in fields2) {
+          const normalizedFieldName = errorFieldMap[key2] || key2;
+          err[normalizedFieldName] = fields2[key2];
         }
       }
       if (this.callback) {
@@ -5403,8 +5403,8 @@ function normalizeImportEmail(value2) {
     return { email: "", extras: [] };
   if (IMPORT_EMAIL_PATTERN.test(trimmed))
     return { email: trimmed.toLowerCase(), extras: [] };
-  const candidates = (trimmed.match(IMPORT_EMAIL_CANDIDATE) ?? []).map((candidate) => candidate.trim().replace(/[.,;:!?]+$/g, "").toLowerCase()).filter((candidate) => IMPORT_EMAIL_PATTERN.test(candidate));
-  const distinct = [...new Set(candidates)];
+  const candidates2 = (trimmed.match(IMPORT_EMAIL_CANDIDATE) ?? []).map((candidate) => candidate.trim().replace(/[.,;:!?]+$/g, "").toLowerCase()).filter((candidate) => IMPORT_EMAIL_PATTERN.test(candidate));
+  const distinct = [...new Set(candidates2)];
   return distinct.length ? { email: distinct[0], extras: distinct.slice(1) } : { email: trimmed, extras: [] };
 }
 var CUSTOMER_TYPE_ALIASES = {
@@ -5515,7 +5515,7 @@ function contactMailEvent(value2) {
   const v = value2;
   if (Object.hasOwn(v, "advanceSendStage") && (typeof v.advanceSendStage !== "boolean" || v.kind !== "sent" || v.direction !== "outbound"))
     return failure("INVALID_INPUT", "\u53D1\u9001\u8F6E\u6B21\u4EC5\u5141\u8BB8\u5DF2\u786E\u8BA4\u7684\u53D1\u51FA\u4E8B\u4EF6\u63A8\u8FDB");
-  if (Object.keys(v).some((key) => !FIELDS.includes(key)) || !Number.isSafeInteger(v.contactId) || Number(v.contactId) < 1 || typeof v.customerId !== "string" || !UUID.test(v.customerId) || !text(v.eventKey, CONTACT_MAIL_LIMITS.key, 1) || !text(v.mailboxKey, CONTACT_MAIL_LIMITS.mailboxKey, 1) || !text(v.messageKey, CONTACT_MAIL_LIMITS.key, 1) || !CONTACT_MAIL_KINDS.includes(v.kind) || !["inbound", "outbound"].includes(v.direction) || v.kind === "sent" && v.direction !== "outbound" || ["received", "replied", "autoreply", "bounced"].includes(v.kind) && v.direction !== "inbound" || !occurrence(v.occurredAt) || !text(v.subject, CONTACT_MAIL_LIMITS.subject) || !text(v.preview, CONTACT_MAIL_LIMITS.preview) || !email(v.fromEmail) || !recipients(v.toEmails) || !recipients(v.ccEmails))
+  if (Object.keys(v).some((key2) => !FIELDS.includes(key2)) || !Number.isSafeInteger(v.contactId) || Number(v.contactId) < 1 || typeof v.customerId !== "string" || !UUID.test(v.customerId) || !text(v.eventKey, CONTACT_MAIL_LIMITS.key, 1) || !text(v.mailboxKey, CONTACT_MAIL_LIMITS.mailboxKey, 1) || !text(v.messageKey, CONTACT_MAIL_LIMITS.key, 1) || !CONTACT_MAIL_KINDS.includes(v.kind) || !["inbound", "outbound"].includes(v.direction) || v.kind === "sent" && v.direction !== "outbound" || ["received", "replied", "autoreply", "bounced"].includes(v.kind) && v.direction !== "inbound" || !occurrence(v.occurredAt) || !text(v.subject, CONTACT_MAIL_LIMITS.subject) || !text(v.preview, CONTACT_MAIL_LIMITS.preview) || !email(v.fromEmail) || !recipients(v.toEmails) || !recipients(v.ccEmails))
     return failure("INVALID_INPUT", "\u90AE\u4EF6\u4E8B\u4EF6\u53C2\u6570\u65E0\u6548");
   if (Object.hasOwn(v, "correction")) {
     const correction = v.correction;
@@ -5555,14 +5555,14 @@ function invalid() {
   return failure("INVALID_INPUT", "\u53D1\u9001\u6388\u6743\u6216\u56DE\u6267\u53C2\u6570\u65E0\u6548");
 }
 function sendAuthorization(value2) {
-  if (!record(value2) || Object.keys(value2).some((key) => !["sendKey", "fromEmail", "subject", "recipients", "ccEmails"].includes(key)) || !text2(value2.sendKey, SEND_AUTHORIZATION_LIMITS.sendKey, 1) || !email2(value2.fromEmail) || !text2(value2.subject, CONTACT_MAIL_LIMITS.subject) || !Array.isArray(value2.recipients) || !value2.recipients.length || value2.recipients.length > SEND_AUTHORIZATION_LIMITS.recipients)
+  if (!record(value2) || Object.keys(value2).some((key2) => !["sendKey", "fromEmail", "subject", "recipients", "ccEmails"].includes(key2)) || !text2(value2.sendKey, SEND_AUTHORIZATION_LIMITS.sendKey, 1) || !email2(value2.fromEmail) || !text2(value2.subject, CONTACT_MAIL_LIMITS.subject) || !Array.isArray(value2.recipients) || !value2.recipients.length || value2.recipients.length > SEND_AUTHORIZATION_LIMITS.recipients)
     return invalid();
   if (value2.ccEmails !== void 0 && (!Array.isArray(value2.ccEmails) || value2.ccEmails.length > SEND_AUTHORIZATION_LIMITS.recipients || !value2.ccEmails.every(email2)))
     return invalid();
   const ccEmails = [...new Set((value2.ccEmails ?? []).map((value3) => value3.toLowerCase()))].sort();
   const recipients2 = [];
   for (const target of value2.recipients) {
-    if (!record(target) || Object.keys(target).some((key) => !["contactId", "customerId", "email"].includes(key)) || !Number.isSafeInteger(target.contactId) || Number(target.contactId) < 1 || typeof target.customerId !== "string" || !UUID2.test(target.customerId) || !email2(target.email))
+    if (!record(target) || Object.keys(target).some((key2) => !["contactId", "customerId", "email"].includes(key2)) || !Number.isSafeInteger(target.contactId) || Number(target.contactId) < 1 || typeof target.customerId !== "string" || !UUID2.test(target.customerId) || !email2(target.email))
       return invalid();
     recipients2.push({ contactId: Number(target.contactId), customerId: target.customerId, email: target.email.toLowerCase() });
   }
@@ -5571,7 +5571,7 @@ function sendAuthorization(value2) {
   return success({ sendKey: value2.sendKey, fromEmail: value2.fromEmail.toLowerCase(), subject: value2.subject, recipients: recipients2, ccEmails });
 }
 function sendAcceptance(value2) {
-  if (!record(value2) || Object.keys(value2).some((key) => !["authorizationId", "event", "observedEvent"].includes(key)) || typeof value2.authorizationId !== "string" || !UUID2.test(value2.authorizationId))
+  if (!record(value2) || Object.keys(value2).some((key2) => !["authorizationId", "event", "observedEvent"].includes(key2)) || typeof value2.authorizationId !== "string" || !UUID2.test(value2.authorizationId))
     return invalid();
   const parsed = contactMailEvent(value2.event);
   if (!parsed.ok)
@@ -5683,33 +5683,52 @@ var HTTP_STATUS = {
   UNAVAILABLE: 503,
   PASSWORD_CHANGE_REQUIRED: 403,
   DEVICE_REPLACEMENT_REQUIRED: 409,
-  DEVICE_REPLACED: 401
+  DEVICE_REPLACED: 401,
+  ACCOUNT_NOT_FOUND: 404,
+  ACCOUNT_NOT_CONFIGURED: 409,
+  ACCOUNT_DISABLED: 403,
+  INVALID_CREDENTIALS: 401
 };
 
 // server/transport/http.ts
 var MILLISECONDS_PER_SECOND2 = 1e3;
 var ACTUATOR_INFO_PATH = "/actuator/info";
 var ACTUATOR_PROMETHEUS_PATH = "/actuator/prometheus";
+var CENTER_VERSION_HEADER = "X-Center-Version";
+var UNKNOWN_VERSION = "unknown";
+var LOG_FIELD_LIMIT = 120;
 var PROMETHEUS_BODY = [
   "# HELP prospector_center_up Whether the Prospector center process is serving requests.",
   "# TYPE prospector_center_up gauge",
   "prospector_center_up 1",
   ""
 ].join("\n");
+function centerVersion() {
+  return process.env.CODE_VERSION || process.env.IMAGE_TAG || UNKNOWN_VERSION;
+}
+function loggable(value2) {
+  return (value2 ?? "").slice(0, LOG_FIELD_LIMIT).replace(/[^\x20-\x7e]/g, "?");
+}
 function operationalHeaders(contentType) {
   return {
     "Content-Type": contentType,
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    [CENTER_VERSION_HEADER]: centerVersion(),
     "Connection": "close"
   };
 }
 async function sendActuatorInfo(response, service, head) {
+  if (head) {
+    response.writeHead(HTTP_STATUS.OK, operationalHeaders("application/json; charset=utf-8"));
+    response.end();
+    return;
+  }
   const readiness = await service.ready();
   const status = readiness.ok ? HTTP_STATUS.OK : HTTP_STATUS[readiness.error.code];
-  const payload = readiness.ok ? { status: "UP" } : readiness;
+  const payload = readiness.ok ? { status: "UP", version: centerVersion() } : readiness;
   response.writeHead(status, operationalHeaders("application/json; charset=utf-8"));
-  response.end(head ? void 0 : JSON.stringify(payload));
+  response.end(JSON.stringify(payload));
 }
 function sendPrometheus(response) {
   response.writeHead(HTTP_STATUS.OK, operationalHeaders("text/plain; version=0.0.4; charset=utf-8"));
@@ -5722,6 +5741,7 @@ function send(response, result2) {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    [CENTER_VERSION_HEADER]: centerVersion(),
     "Connection": "close"
   });
   response.end(JSON.stringify(result2));
@@ -5771,9 +5791,22 @@ async function body(request2, maximum) {
 function createOnlineServer(service, gate, config, log, instanceId = "integration", browser, crm, desktop) {
   const dispatch = async (request2, response) => {
     const path4 = request2.url ?? "", method = request2.method;
+    if ((method === "GET" || method === "HEAD") && path4 === ACTUATOR_INFO_PATH) {
+      await sendActuatorInfo(response, service, method === "HEAD");
+      return;
+    }
+    if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.live) {
+      send(response, success({ status: "live", instanceId, pid: process.pid }));
+      return;
+    }
+    if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.ready) {
+      send(response, await service.ready());
+      return;
+    }
     const localHost = `${request2.socket.localAddress}:${request2.socket.localPort}`;
     const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
     if (request2.headers.host !== localHost && (!publicHost || request2.headers.host !== publicHost)) {
+      log.write("WARN", "identity.http", `\u62D2\u7EDD Host host=${loggable(request2.headers.host)} url=${loggable(path4)} remote=${loggable(request2.socket.remoteAddress)} expected=${loggable(publicHost || localHost)} version=${centerVersion()}`);
       send(response, failure("FORBIDDEN", "\u670D\u52A1 Host \u65E0\u6548"));
       return;
     }
@@ -5785,10 +5818,6 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
       send(response, failure("FORBIDDEN", "\u5F53\u524D\u4EC5\u63A5\u53D7\u672C\u673A\u975E\u6D4F\u89C8\u5668\u8DE8\u7AD9\u8BF7\u6C42"));
       return;
     }
-    if ((method === "GET" || method === "HEAD") && path4 === ACTUATOR_INFO_PATH) {
-      await sendActuatorInfo(response, service, method === "HEAD");
-      return;
-    }
     if (method === "GET" && path4 === ACTUATOR_PROMETHEUS_PATH) {
       sendPrometheus(response);
       return;
@@ -5797,18 +5826,14 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
       await desktop(request2, response);
       return;
     }
-    if (crm && path4.startsWith("/api/crm/") && path4 !== API_ROUTES.crmAccess) {
+    if (crm && (path4.startsWith("/api/crm/") && path4 !== API_ROUTES.crmAccess || path4.startsWith("/api/ai/"))) {
       await crm(request2, response);
       return;
     }
     const authorization = request2.headers.authorization ?? "";
     const token = /^Bearer ([A-Za-z0-9_-]+)$/.exec(authorization)?.[1] ?? "";
     let result2;
-    if (method === "GET" && path4 === API_ROUTES.live)
-      result2 = success({ status: "live", instanceId, pid: process.pid });
-    else if (method === "GET" && path4 === API_ROUTES.ready)
-      result2 = await service.ready();
-    else if (method === "POST" && path4 === API_ROUTES.login) {
+    if (method === "POST" && path4 === API_ROUTES.login) {
       const input = await body(request2, config.request_body_bytes);
       if (!input.ok)
         result2 = input;
@@ -6044,9 +6069,9 @@ function credentialFromSecret(raw) {
   if (!value2 || typeof value2 !== "object" || Array.isArray(value2)) {
     throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
   }
-  const record16 = value2;
-  const username = text3(record16.AccountName) || text3(record16.username);
-  const password = text3(record16.AccountPassword) || text3(record16.password);
+  const record18 = value2;
+  const username = text3(record18.AccountName) || text3(record18.username);
+  const password = text3(record18.AccountPassword) || text3(record18.password);
   if (!username || !password)
     throw new Error("\u4E2D\u5FC3\u6570\u636E\u5E93 KMS \u51ED\u636E\u65E0\u6548");
   return { username, password };
@@ -6098,7 +6123,7 @@ var CRM_TEST_HOST = postgres_test_settings_default.host;
 var CRM_RUNTIME_MARKER = postgres_test_settings_default.marker;
 var MILLISECONDS_PER_SECOND3 = 1e3;
 var CONNECTION_MAX = 4;
-var PRODUCTION_DATABASE = "milogin_center";
+var DEFAULT_PRODUCTION_DATABASE = "milogin_center";
 var DEFAULT_PRODUCTION_USER = "milogin_app";
 var LOCAL_HOST = "127.0.0.1";
 var DEFAULT_PRODUCTION_PORT = 5432;
@@ -6118,11 +6143,17 @@ function productionUser(env) {
     throw new Error("\u6B63\u5F0F\u4E2D\u5FC3\u6570\u636E\u5E93\u7528\u6237\u540D\u65E0\u6548");
   return user;
 }
-function productionPool(host, port, user, password) {
+function productionDatabase(env) {
+  const database = (env.PROSPECTOR_CENTER_PG_DATABASE || DEFAULT_PRODUCTION_DATABASE).trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(database))
+    throw new Error("\u6B63\u5F0F\u4E2D\u5FC3\u6570\u636E\u5E93\u540D\u79F0\u65E0\u6548");
+  return database;
+}
+function productionPool(host, port, user, password, database) {
   return {
     host,
     port,
-    database: PRODUCTION_DATABASE,
+    database,
     user,
     password,
     max: CONNECTION_MAX,
@@ -6153,12 +6184,13 @@ function readProductionDatabaseConfig(env = process.env) {
   const dsn = env.PROSPECTOR_CENTER_PG_DSN;
   const expectedHost = productionHost(env);
   const expectedUser = productionUser(env);
+  const expectedDatabase = productionDatabase(env);
   if (!dsn) {
     const password = env.PROSPECTOR_CENTER_PG_PASSWORD;
     const port2 = Number(env.PROSPECTOR_CENTER_PG_PORT || DEFAULT_PRODUCTION_PORT);
     if (!password || !Number.isSafeInteger(port2) || port2 < 1 || port2 > MAX_PORT)
       throw new Error("\u7F3A\u5C11\u6B63\u5F0F\u4E2D\u5FC3\u6570\u636E\u5E93\u8FDE\u63A5\u914D\u7F6E");
-    return productionPool(expectedHost, port2, expectedUser, password);
+    return productionPool(expectedHost, port2, expectedUser, password, expectedDatabase);
   }
   let url;
   try {
@@ -6167,9 +6199,9 @@ function readProductionDatabaseConfig(env = process.env) {
     throw new Error("\u6B63\u5F0F\u4E2D\u5FC3\u6570\u636E\u5E93\u8FDE\u63A5\u914D\u7F6E\u65E0\u6548");
   }
   const port = Number(url.port || DEFAULT_PRODUCTION_PORT);
-  if (!["postgres:", "postgresql:"].includes(url.protocol) || url.hostname !== expectedHost || !Number.isSafeInteger(port) || port < 1 || port > MAX_PORT || url.pathname !== `/${PRODUCTION_DATABASE}` || decodeURIComponent(url.username) !== expectedUser || !url.password || url.search || url.hash)
+  if (!["postgres:", "postgresql:"].includes(url.protocol) || url.hostname !== expectedHost || !Number.isSafeInteger(port) || port < 1 || port > MAX_PORT || url.pathname !== `/${expectedDatabase}` || decodeURIComponent(url.username) !== expectedUser || !url.password || url.search || url.hash)
     throw new Error("\u6B63\u5F0F\u4E2D\u5FC3\u53EA\u80FD\u8FDE\u63A5\u672C\u673A\u72EC\u7ACB\u5E94\u7528\u6570\u636E\u5E93");
-  return productionPool(expectedHost, port, expectedUser, decodeURIComponent(url.password));
+  return productionPool(expectedHost, port, expectedUser, decodeURIComponent(url.password), expectedDatabase);
 }
 function readOnlineDatabaseConfig(env = process.env) {
   if (!env.PROSPECTOR_CENTER_MODE || env.PROSPECTOR_CENTER_MODE === "test")
@@ -6266,15 +6298,15 @@ var EMAIL_CONFLICT = "23505";
 var FOREIGN_KEY_ERROR = "23503";
 var CHECK_ERROR = "23514";
 function dates(row2) {
-  return Object.fromEntries(Object.entries(row2).map(([key, value2]) => [key, value2 instanceof Date ? value2.toISOString() : value2]));
+  return Object.fromEntries(Object.entries(row2).map(([key2, value2]) => [key2, value2 instanceof Date ? value2.toISOString() : value2]));
 }
 function sqlCode(error) {
   if (error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z0-9]+$/.test(error.code))
     return error.code;
   return "UNKNOWN";
 }
-function literalSearch(text16) {
-  return `%${text16.replace(/[\\%_]/g, "\\$&")}%`;
+function literalSearch(text18) {
+  return `%${text18.replace(/[\\%_]/g, "\\$&")}%`;
 }
 var PostgresCrmRepository = class {
   constructor(pool, log) {
@@ -6290,7 +6322,7 @@ var PostgresCrmRepository = class {
       return await action();
     } catch (error) {
       const code2 = sqlCode(error);
-      this.log.write("ERROR", context, `\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25 code=${code2}`);
+      this.log.write("ERROR", context, `\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25 code=${code2} message=${error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500)}`);
       if (code2 === EMAIL_CONFLICT)
         return failure("CONFLICT", "\u8D44\u6599\u5DF2\u5B58\u5728\uFF0C\u672A\u8986\u76D6\u73B0\u6709\u8BB0\u5F55");
       if (code2 === FOREIGN_KEY_ERROR || code2 === CHECK_ERROR)
@@ -6496,7 +6528,13 @@ var ADMIN_ROUTES = {
   dashboard: "/admin-api/dashboard",
   operations: "/admin-api/operations",
   data: "/admin-api/data",
-  navigatorDashboard: "/admin-api/navigator/dashboard"
+  navigatorDashboard: "/admin-api/navigator/dashboard",
+  aiPolicies: "/admin-api/ai/policies",
+  aiPolicy: "/admin-api/ai/policy",
+  aiUsage: "/admin-api/ai/usage",
+  aiModels: "/admin-api/ai/models",
+  aiModel: "/admin-api/ai/model",
+  aiUsageEvents: "/admin-api/ai/usage-events"
 };
 var ADMIN_LIMITS = { page: 25, pageMax: 100, searchMax: 254, reasonMax: 500, displayNameMax: 80, challenge_ttl_seconds: 900 };
 var SCOPES = ["own", "shared", "summary"];
@@ -6969,7 +7007,7 @@ var PostgresAdminRepository = class {
       const count2 = await c.query(`SELECT count(*)::int AS n FROM ${relation} ${where}`, searchParams);
       const limitParam = searchParams.length + 1, offsetParam = searchParams.length + 2;
       const selected = await c.query(`SELECT ${safe.map((column) => quoteIdentifier(column.columnName)).join(",")} FROM ${relation} ${where} ORDER BY ${quoteIdentifier(sort)} ${direction},${quoteIdentifier(table.keyColumn)} ${direction} LIMIT $${limitParam} OFFSET $${offsetParam}`, [...searchParams, q.limit, q.offset]);
-      return success({ table: adminDataTableInfo(table), columns, rows: selected.rows.map((row2) => Object.fromEntries(Object.entries(row2).map(([key, value2]) => [key, databaseValue(value2)]))), total: Number(count2.rows[0]?.n ?? 0), limit: q.limit, offset: q.offset, search, sort, direction, keyColumn: table.keyColumn });
+      return success({ table: adminDataTableInfo(table), columns, rows: selected.rows.map((row2) => Object.fromEntries(Object.entries(row2).map(([key2, value2]) => [key2, databaseValue(value2)]))), total: Number(count2.rows[0]?.n ?? 0), limit: q.limit, offset: q.offset, search, sort, direction, keyColumn: table.keyColumn });
     });
   }
   users(hash, q) {
@@ -7017,20 +7055,20 @@ var PostgresAdminRepository = class {
         c.query("SELECT analysis_id::text AS id,created_at,source,confidence,requires_action,human_locked FROM crm_contact_mail_analyses WHERE is_current ORDER BY created_at DESC,analysis_id LIMIT $1", [DASHBOARD_LIMITS.receipts])
       ]);
       const value2 = (r) => Number(r.rows[0]?.n ?? 0);
-      const iso5 = (v) => v instanceof Date ? v.toISOString() : typeof v === "string" ? new Date(v).toISOString() : null;
+      const iso7 = (v) => v instanceof Date ? v.toISOString() : typeof v === "string" ? new Date(v).toISOString() : null;
       const customerCount = value2(customers), taskCount = value2(tasks), pendingCount = value2(pending), overdueCount = Number(tasks.rows[0]?.overdue ?? 0), staleCount = Number(pending.rows[0]?.stale ?? 0);
       const mailEventCount = value2(mailEvents), mailAnalysisCount = value2(mailAnalyses), mailActionCount = Number(mailAnalyses.rows[0]?.actions ?? 0), humanLockedCount = Number(mailAnalyses.rows[0]?.human_locked ?? 0), mailSuggestionCount = value2(mailSuggestions), suggestedCount = Number(mailSuggestions.rows[0]?.suggested ?? 0);
       const databases = [
         { id: "identity", name: "\u8EAB\u4EFD\u6570\u636E\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 public.identity_*", state: "healthy", records: value2(users), updatedAt: null, detail: "\u4E0E\u4E1A\u52A1\u533A\u5171\u7528 public schema\uFF1B\u8D26\u53F7\u8868\u4F7F\u7528 identity_ \u524D\u7F00", recordLabel: "\u542F\u7528\u8D26\u53F7" },
-        { id: "crm", name: "Prospector \u4E1A\u52A1\u6570\u636E\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 public", state: "healthy", records: customerCount, updatedAt: iso5(customers.rows[0]?.updated_at), detail: "\u5BA2\u6237\u3001\u8054\u7CFB\u4EBA\u3001\u8DDF\u8FDB\u4E0E\u534F\u4F5C\u4E8B\u4EF6\uFF1B\u65F6\u95F4\u4E3A\u6700\u8FD1\u5BA2\u6237\u521B\u5EFA\u65F6\u95F4", recordLabel: "\u5BA2\u6237" },
-        { id: "mail-analysis", name: "Prospector \u90AE\u4EF6\u5206\u6790\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 \u90AE\u4EF6\u4E8B\u4EF6\u4E0E\u5206\u6790", state: mailEventCount > 0 && mailAnalysisCount === 0 ? "attention" : "healthy", records: mailEventCount, updatedAt: iso5(mailAnalyses.rows[0]?.updated_at) ?? iso5(mailEvents.rows[0]?.updated_at), detail: `${mailAnalysisCount} \u5C01\u5F53\u524D\u5206\u6790\uFF0C${mailActionCount} \u5C01\u9700\u8981\u52A8\u4F5C\uFF0C${humanLockedCount} \u5C01\u4EBA\u5DE5\u9501\u5B9A`, recordLabel: "\u90AE\u4EF6\u4E8B\u4EF6" },
+        { id: "crm", name: "Prospector \u4E1A\u52A1\u6570\u636E\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 public", state: "healthy", records: customerCount, updatedAt: iso7(customers.rows[0]?.updated_at), detail: "\u5BA2\u6237\u3001\u8054\u7CFB\u4EBA\u3001\u8DDF\u8FDB\u4E0E\u534F\u4F5C\u4E8B\u4EF6\uFF1B\u65F6\u95F4\u4E3A\u6700\u8FD1\u5BA2\u6237\u521B\u5EFA\u65F6\u95F4", recordLabel: "\u5BA2\u6237" },
+        { id: "mail-analysis", name: "Prospector \u90AE\u4EF6\u5206\u6790\u533A", kind: "\u4E2D\u5FC3 PostgreSQL \xB7 \u90AE\u4EF6\u4E8B\u4EF6\u4E0E\u5206\u6790", state: mailEventCount > 0 && mailAnalysisCount === 0 ? "attention" : "healthy", records: mailEventCount, updatedAt: iso7(mailAnalyses.rows[0]?.updated_at) ?? iso7(mailEvents.rows[0]?.updated_at), detail: `${mailAnalysisCount} \u5C01\u5F53\u524D\u5206\u6790\uFF0C${mailActionCount} \u5C01\u9700\u8981\u52A8\u4F5C\uFF0C${humanLockedCount} \u5C01\u4EBA\u5DE5\u9501\u5B9A`, recordLabel: "\u90AE\u4EF6\u4E8B\u4EF6" },
         { id: "local", name: "\u684C\u9762\u4E2A\u4EBA\u6570\u636E", kind: "SQLite", state: "not_connected", records: null, updatedAt: null, detail: "\u5C1A\u672A\u63A5\u5165\u4E2D\u5FC3\u9065\u6D4B", recordLabel: "\u8BB0\u5F55" }
       ];
       const flows = [
-        { id: "import", label: "\u5BFC\u5165 \u2192 \u5BA2\u6237\u5E93", state: "healthy", records: value2(imports), updatedAt: iso5(imports.rows[0]?.updated_at), detail: "\u5DF2\u8BB0\u5F55\u7684\u4E2D\u5FC3\u5BFC\u5165\u6279\u6B21", recordLabel: "\u5BFC\u5165\u6279\u6B21", timeLabel: "\u6700\u8FD1\u5BFC\u5165", stages: ["\u6587\u4EF6\u89E3\u6790", "\u5B57\u6BB5\u6821\u9A8C", "\u5BA2\u6237\u5165\u5E93"] },
-        { id: "events", label: "\u4E1A\u52A1\u4E8B\u4EF6 \u2192 \u901A\u77E5", state: staleCount > 0 ? "attention" : "healthy", records: value2(deliveries), updatedAt: iso5(deliveries.rows[0]?.updated_at), detail: pendingCount > 0 ? `\u6709 ${pendingCount} \u6761\u4E8B\u4EF6\u7B49\u5F85\u5904\u7406\uFF0C${staleCount} \u6761\u8D85\u8FC7\u4E00\u5206\u949F` : "\u5F85\u5904\u7406\u961F\u5217\u4E3A\u7A7A", recordLabel: "\u901A\u77E5\u8BB0\u5F55", timeLabel: "\u6700\u8FD1\u6295\u9012", stages: ["\u4E1A\u52A1\u4E8B\u4EF6", "\u6743\u9650\u6295\u5F71", "\u901A\u77E5\u6295\u9012"] },
-        { id: "tasks", label: "\u8DDF\u8FDB\u4EFB\u52A1 \u2192 \u5230\u671F\u63D0\u9192", state: overdueCount > 0 ? "attention" : "healthy", records: taskCount, updatedAt: iso5(tasks.rows[0]?.next_due), detail: `${taskCount} \u6761\u5F00\u653E\u4EFB\u52A1\uFF0C${overdueCount} \u6761\u5DF2\u5230\u671F`, recordLabel: "\u5F00\u653E\u4EFB\u52A1", timeLabel: "\u6700\u8FD1\u5230\u671F", stages: ["\u4EFB\u52A1\u521B\u5EFA", "\u5230\u671F\u626B\u63CF", "\u63D0\u9192\u6295\u9012"] },
-        { id: "mail-analysis", label: "\u5BA2\u6237\u90AE\u4EF6 \u2192 AI \u5206\u6790 \u2192 \u5F85\u529E\u5EFA\u8BAE", state: mailEventCount > 0 && mailAnalysisCount === 0 ? "attention" : "healthy", records: mailAnalysisCount, updatedAt: iso5(mailAnalyses.rows[0]?.updated_at), detail: `${mailActionCount} \u5C01\u9700\u8981\u52A8\u4F5C\uFF0C${humanLockedCount} \u5C01\u4EBA\u5DE5\u9501\u5B9A\uFF0C${suggestedCount} \u6761\u5EFA\u8BAE\u5F85\u786E\u8BA4`, recordLabel: "\u5F53\u524D\u5206\u6790", timeLabel: "\u6700\u8FD1\u5206\u6790", stages: ["\u90AE\u4EF6\u4E8B\u4EF6", "\u89C4\u5219/AI \u5206\u62E3", "\u4EBA\u5DE5\u4FEE\u6B63", "\u4EFB\u52A1\u5EFA\u8BAE"] }
+        { id: "import", label: "\u5BFC\u5165 \u2192 \u5BA2\u6237\u5E93", state: "healthy", records: value2(imports), updatedAt: iso7(imports.rows[0]?.updated_at), detail: "\u5DF2\u8BB0\u5F55\u7684\u4E2D\u5FC3\u5BFC\u5165\u6279\u6B21", recordLabel: "\u5BFC\u5165\u6279\u6B21", timeLabel: "\u6700\u8FD1\u5BFC\u5165", stages: ["\u6587\u4EF6\u89E3\u6790", "\u5B57\u6BB5\u6821\u9A8C", "\u5BA2\u6237\u5165\u5E93"] },
+        { id: "events", label: "\u4E1A\u52A1\u4E8B\u4EF6 \u2192 \u901A\u77E5", state: staleCount > 0 ? "attention" : "healthy", records: value2(deliveries), updatedAt: iso7(deliveries.rows[0]?.updated_at), detail: pendingCount > 0 ? `\u6709 ${pendingCount} \u6761\u4E8B\u4EF6\u7B49\u5F85\u5904\u7406\uFF0C${staleCount} \u6761\u8D85\u8FC7\u4E00\u5206\u949F` : "\u5F85\u5904\u7406\u961F\u5217\u4E3A\u7A7A", recordLabel: "\u901A\u77E5\u8BB0\u5F55", timeLabel: "\u6700\u8FD1\u6295\u9012", stages: ["\u4E1A\u52A1\u4E8B\u4EF6", "\u6743\u9650\u6295\u5F71", "\u901A\u77E5\u6295\u9012"] },
+        { id: "tasks", label: "\u8DDF\u8FDB\u4EFB\u52A1 \u2192 \u5230\u671F\u63D0\u9192", state: overdueCount > 0 ? "attention" : "healthy", records: taskCount, updatedAt: iso7(tasks.rows[0]?.next_due), detail: `${taskCount} \u6761\u5F00\u653E\u4EFB\u52A1\uFF0C${overdueCount} \u6761\u5DF2\u5230\u671F`, recordLabel: "\u5F00\u653E\u4EFB\u52A1", timeLabel: "\u6700\u8FD1\u5230\u671F", stages: ["\u4EFB\u52A1\u521B\u5EFA", "\u5230\u671F\u626B\u63CF", "\u63D0\u9192\u6295\u9012"] },
+        { id: "mail-analysis", label: "\u5BA2\u6237\u90AE\u4EF6 \u2192 AI \u5206\u6790 \u2192 \u5F85\u529E\u5EFA\u8BAE", state: mailEventCount > 0 && mailAnalysisCount === 0 ? "attention" : "healthy", records: mailAnalysisCount, updatedAt: iso7(mailAnalyses.rows[0]?.updated_at), detail: `${mailActionCount} \u5C01\u9700\u8981\u52A8\u4F5C\uFF0C${humanLockedCount} \u5C01\u4EBA\u5DE5\u9501\u5B9A\uFF0C${suggestedCount} \u6761\u5EFA\u8BAE\u5F85\u786E\u8BA4`, recordLabel: "\u5F53\u524D\u5206\u6790", timeLabel: "\u6700\u8FD1\u5206\u6790", stages: ["\u90AE\u4EF6\u4E8B\u4EF6", "\u89C4\u5219/AI \u5206\u62E3", "\u4EBA\u5DE5\u4FEE\u6B63", "\u4EFB\u52A1\u5EFA\u8BAE"] }
       ];
       const alerts = [
         ...staleCount > 0 ? [{ id: "pending-events", level: "warning", title: "\u4E8B\u4EF6\u7B49\u5F85\u8D85\u8FC7\u4E00\u5206\u949F", detail: `${staleCount} \u6761\u4E8B\u4EF6\u5C1A\u672A\u5B8C\u6210\u6D88\u8D39\uFF1B\u6D88\u8D39\u56DE\u6267\u4E0D\u7B49\u4E8E\u7528\u6237\u5DF2\u8BFB` }] : [],
@@ -7039,10 +7077,10 @@ var PostgresAdminRepository = class {
         { id: "local-telemetry", level: "warning", title: "\u684C\u9762\u4E2A\u4EBA\u6570\u636E\u672A\u63A5\u5165", detail: "\u90AE\u4EF6\u5E93\u3001\u8FD0\u4EF7\u955C\u50CF\u7B49\u672C\u5730\u6570\u636E\u6682\u4E0D\u7EB3\u5165\u4E2D\u5FC3\u5065\u5EB7\u5224\u65AD" }
       ];
       const receipts = [
-        ...batchReceipts.rows.map((r) => ({ id: r.id, flowId: "import", createdAt: iso5(r.created_at), status: r.review ? "\u5F85\u6838\u5BF9" : r.total ? "\u5DF2\u6709\u56DE\u6267" : "\u6682\u65E0\u884C\u56DE\u6267", detail: `${r.total} \u884C\uFF1A\u65B0\u589E ${r.created}\uFF0C\u91CD\u590D ${r.duplicate}\uFF0C\u5F85\u6838\u5BF9 ${r.review}` })),
-        ...eventReceipts.rows.map((r) => ({ id: r.id, flowId: "events", createdAt: iso5(r.created_at), status: r.consumed_at ? "\u5DF2\u6D88\u8D39" : "\u5F85\u6D88\u8D39", detail: `${r.deliveries} \u4EFD\u901A\u77E5\u6295\u5F71\uFF1B\u6D88\u8D39\u4E0D\u4EE3\u8868\u5DF2\u8BFB` })),
-        ...taskReceipts.rows.map((r) => ({ id: r.id, flowId: "tasks", createdAt: iso5(r.created_at), status: r.status === "completed" ? "\u5DF2\u5B8C\u6210" : r.reminded ? "\u63D0\u9192\u5DF2\u5165\u961F" : "\u5F00\u653E", detail: `\u5230\u671F ${iso5(r.due_at)}\uFF1B\u5F53\u524D\u7248\u672C${r.reminded ? "\u6709" : "\u65E0"}\u63D0\u9192\u56DE\u6267` })),
-        ...analysisReceipts.rows.map((r) => ({ id: r.id, flowId: "mail-analysis", createdAt: iso5(r.created_at), status: r.human_locked ? "\u4EBA\u5DE5\u9501\u5B9A" : r.requires_action ? "\u9700\u8981\u52A8\u4F5C" : "\u5DF2\u5206\u6790", detail: `${r.source} \xB7 \u7F6E\u4FE1\u5EA6 ${Math.round(Number(r.confidence ?? 0) * 100)}%` }))
+        ...batchReceipts.rows.map((r) => ({ id: r.id, flowId: "import", createdAt: iso7(r.created_at), status: r.review ? "\u5F85\u6838\u5BF9" : r.total ? "\u5DF2\u6709\u56DE\u6267" : "\u6682\u65E0\u884C\u56DE\u6267", detail: `${r.total} \u884C\uFF1A\u65B0\u589E ${r.created}\uFF0C\u91CD\u590D ${r.duplicate}\uFF0C\u5F85\u6838\u5BF9 ${r.review}` })),
+        ...eventReceipts.rows.map((r) => ({ id: r.id, flowId: "events", createdAt: iso7(r.created_at), status: r.consumed_at ? "\u5DF2\u6D88\u8D39" : "\u5F85\u6D88\u8D39", detail: `${r.deliveries} \u4EFD\u901A\u77E5\u6295\u5F71\uFF1B\u6D88\u8D39\u4E0D\u4EE3\u8868\u5DF2\u8BFB` })),
+        ...taskReceipts.rows.map((r) => ({ id: r.id, flowId: "tasks", createdAt: iso7(r.created_at), status: r.status === "completed" ? "\u5DF2\u5B8C\u6210" : r.reminded ? "\u63D0\u9192\u5DF2\u5165\u961F" : "\u5F00\u653E", detail: `\u5230\u671F ${iso7(r.due_at)}\uFF1B\u5F53\u524D\u7248\u672C${r.reminded ? "\u6709" : "\u65E0"}\u63D0\u9192\u56DE\u6267` })),
+        ...analysisReceipts.rows.map((r) => ({ id: r.id, flowId: "mail-analysis", createdAt: iso7(r.created_at), status: r.human_locked ? "\u4EBA\u5DE5\u9501\u5B9A" : r.requires_action ? "\u9700\u8981\u52A8\u4F5C" : "\u5DF2\u5206\u6790", detail: `${r.source} \xB7 \u7F6E\u4FE1\u5EA6 ${Math.round(Number(r.confidence ?? 0) * 100)}%` }))
       ];
       return success({ generatedAt: (/* @__PURE__ */ new Date()).toISOString(), overview: { databases: databases.length, healthy: databases.filter((row2) => row2.state === "healthy").length, activeUsers: value2(users), customers: customerCount, openTasks: taskCount, pendingEvents: pendingCount, mailAnalyses: mailAnalysisCount, mailActions: mailActionCount, humanLockedMail: humanLockedCount }, databases, flows, alerts, receipts });
     });
@@ -7778,7 +7816,8 @@ var PostgresAuthRepository = class {
   credential(email3) {
     return this.execute(async () => {
       const rows = await this.pool.query(`SELECT u.user_id AS "userId",c.password_hash AS "passwordHash",u.active,u.security_revision AS "securityRevision",u.must_change_password AS "mustChangePassword"
-        FROM public.identity_login_emails e JOIN public.identity_users u USING(user_id) JOIN public.identity_credentials c USING(user_id) WHERE e.email=$1`, [email3]);
+        FROM public.identity_login_emails e JOIN public.identity_users u USING(user_id)
+        LEFT JOIN public.identity_credentials c USING(user_id) WHERE e.email=$1`, [email3]);
       return success(rows.rows[0] ?? null);
     });
   }
@@ -8156,6 +8195,15 @@ var PostgresAuthRepository = class {
       return replaced.rows.length ? failure("DEVICE_REPLACED", "\u8BE5\u8D26\u53F7\u5DF2\u5728\u53E6\u4E00\u53F0\u7535\u8111\u767B\u5F55") : success(null);
     });
   }
+  touchPresence(tokenHash) {
+    return this.execute(async () => {
+      await this.pool.query(`INSERT INTO public.identity_desktop_presence(user_id,last_seen_at)
+        SELECT s.user_id,clock_timestamp() FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
+        WHERE ${SESSION_FILTER} AND s.client='api'
+        ON CONFLICT(user_id) DO UPDATE SET last_seen_at=clock_timestamp()`, [tokenHash]);
+      return success(void 0);
+    });
+  }
   revokeDesktopSession(refreshHash) {
     return this.execute(() => this.tx(async (client) => {
       const revoked = await client.query(`UPDATE public.identity_sessions s SET revoked_at=now(),revocation_reason='logout' FROM public.identity_desktop_refresh_tokens r WHERE r.token_hash=$1 AND r.session_id=s.session_id AND s.revoked_at IS NULL RETURNING s.user_id`, [refreshHash]);
@@ -8211,7 +8259,7 @@ var PasswordAdapter = class {
       throw new Error("\u5BC6\u7801\u6821\u9A8C\u5E76\u53D1\u5DF2\u6EE1");
     this.active++;
     try {
-      return await new Promise((resolve3, reject) => (0, import_node_crypto5.scrypt)(password, salt, HASH_BYTES, PASSWORD_PARAMETERS, (error, key) => error ? reject(error) : resolve3(key)));
+      return await new Promise((resolve3, reject) => (0, import_node_crypto5.scrypt)(password, salt, HASH_BYTES, PASSWORD_PARAMETERS, (error, key2) => error ? reject(error) : resolve3(key2)));
     } finally {
       this.active--;
     }
@@ -8227,15 +8275,15 @@ var PasswordAdapter = class {
         iterations,
         LEGACY_HASH_BYTES,
         LEGACY_HASH_DIGEST,
-        (error, key) => error ? reject(error) : resolve3(key)
+        (error, key2) => error ? reject(error) : resolve3(key2)
       ));
     } finally {
       this.active--;
     }
   }
   async hash(password) {
-    const salt = (0, import_node_crypto5.randomBytes)(SALT_BYTES), key = await this.derive(password, salt);
-    return `${HASH_PREFIX}$${salt.toString("hex")}$${key.toString("hex")}`;
+    const salt = (0, import_node_crypto5.randomBytes)(SALT_BYTES), key2 = await this.derive(password, salt);
+    return `${HASH_PREFIX}$${salt.toString("hex")}$${key2.toString("hex")}`;
   }
   async verify(password, hash) {
     const match = HASH_PATTERN.exec(hash);
@@ -8270,12 +8318,12 @@ var LoginRateGate = class {
     this.clock = clock;
   }
   buckets = /* @__PURE__ */ new Map();
-  consume(key, maximum) {
+  consume(key2, maximum) {
     const now = this.clock.now();
     for (const [id, bucket2] of this.buckets)
       if (bucket2.expires <= now)
         this.buckets.delete(id);
-    const bucket = this.buckets.get(key);
+    const bucket = this.buckets.get(key2);
     if (bucket) {
       if (bucket.count >= maximum)
         return false;
@@ -8284,13 +8332,13 @@ var LoginRateGate = class {
     }
     if (this.buckets.size >= this.config.rate_bucket_max)
       return false;
-    this.buckets.set(key, { count: 1, expires: now + this.config.login_window_seconds * MILLISECONDS_PER_SECOND4 });
+    this.buckets.set(key2, { count: 1, expires: now + this.config.login_window_seconds * MILLISECONDS_PER_SECOND4 });
     return true;
   }
-  allow(key, address) {
+  allow(key2, address) {
     if (address && !this.consume(`ip:${address}`, this.config.login_ip_max_attempts))
       return false;
-    return this.consume(`account:${key}`, this.config.login_max_attempts);
+    return this.consume(`account:${key2}`, this.config.login_max_attempts);
   }
 };
 
@@ -8373,7 +8421,7 @@ function readOnlineConfig(env = process.env) {
   if (env.PROSPECTOR_CENTER_MODE && env.PROSPECTOR_CENTER_MODE !== "test")
     throw new Error("\u672A\u77E5\u4E2D\u5FC3\u8FD0\u884C\u6A21\u5F0F");
   const input = JSON.parse((0, import_node_fs2.readFileSync)(ONLINE_CONFIG_PATH, "utf8"));
-  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => !(key in ONLINE_DEFAULTS)) || input.host !== ONLINE_DEFAULTS.host || input.port !== ONLINE_DEFAULTS.port || typeof input.test_mode !== "boolean" || typeof input.navigator_url !== "string" || typeof input.navigator_entry_url !== "string")
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key2) => !(key2 in ONLINE_DEFAULTS)) || input.host !== ONLINE_DEFAULTS.host || input.port !== ONLINE_DEFAULTS.port || typeof input.test_mode !== "boolean" || typeof input.navigator_url !== "string" || typeof input.navigator_entry_url !== "string")
     throw new Error("\u672C\u8282\u70B9\u4EC5\u652F\u6301\u56FA\u5B9A\u56DE\u73AF\u6D4B\u8BD5\u670D\u52A1\u914D\u7F6E");
   for (const candidate of [input.navigator_url, input.navigator_entry_url]) {
     try {
@@ -8384,8 +8432,8 @@ function readOnlineConfig(env = process.env) {
       throw new Error("Navigator \u670D\u52A1\u5730\u5740\u65E0\u6548");
     }
   }
-  for (const [key, value2] of Object.entries(ONLINE_DEFAULTS)) {
-    if (typeof value2 === "number" && (!Number.isSafeInteger(input[key]) || input[key] < 1))
+  for (const [key2, value2] of Object.entries(ONLINE_DEFAULTS)) {
+    if (typeof value2 === "number" && (!Number.isSafeInteger(input[key2]) || input[key2] < 1))
       throw new Error("\u5728\u7EBF\u914D\u7F6E\u9608\u503C\u65E0\u6548");
   }
   if (input.port > PORT_MAX || input.session_ttl_seconds > SESSION_TTL_MAX_SECONDS || input.password_concurrency > ONLINE_DEFAULTS.password_concurrency || input.request_body_bytes > ONLINE_DEFAULTS.request_body_bytes)
@@ -8444,7 +8492,7 @@ function normalizeAccountProfilePatch(value2) {
   if (!value2 || typeof value2 !== "object" || Array.isArray(value2))
     throw new Error("\u8D26\u53F7\u8D44\u6599\u53C2\u6570\u65E0\u6548");
   const input = value2;
-  if (Object.keys(input).some((key) => !["displayName", "avatarId", "bio"].includes(key)))
+  if (Object.keys(input).some((key2) => !["displayName", "avatarId", "bio"].includes(key2)))
     throw new Error("\u8D26\u53F7\u8D44\u6599\u5305\u542B\u672A\u77E5\u5B57\u6BB5");
   const patch = {};
   if (input.displayName !== void 0) {
@@ -8475,7 +8523,11 @@ var MILLISECONDS_PER_SECOND5 = 1e3;
 var EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 var TOKEN_PATTERN = /^[A-Za-z0-9_-]+$/;
 function createAuthService(repo, passwords, tokens, clock, ttlSeconds) {
-  const unauthorized2 = () => failure("UNAUTHORIZED", "\u767B\u5F55\u4FE1\u606F\u65E0\u6548\u6216\u4F1A\u8BDD\u5DF2\u5931\u6548");
+  const unauthorized2 = () => failure("UNAUTHORIZED", "\u4F1A\u8BDD\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55");
+  const accountNotFound2 = () => failure("ACCOUNT_NOT_FOUND", "\u8BE5\u90AE\u7BB1\u5C1A\u672A\u5728\u4E2D\u5FC3\u6CE8\u518C\uFF0C\u8BF7\u68C0\u67E5\u90AE\u7BB1\u6216\u521B\u5EFA\u8D26\u53F7");
+  const accountNotConfigured2 = () => failure("ACCOUNT_NOT_CONFIGURED", "\u8BE5\u8D26\u53F7\u5C1A\u672A\u8BBE\u7F6E\u4E2D\u5FC3\u767B\u5F55\u5BC6\u7801\uFF0C\u8BF7\u8054\u7CFB\u8D85\u7EA7\u7BA1\u7406\u5458\u91CD\u7F6E\u5BC6\u7801");
+  const accountDisabled2 = () => failure("ACCOUNT_DISABLED", "\u8BE5\u8D26\u53F7\u5DF2\u505C\u7528\uFF0C\u8BF7\u8054\u7CFB\u8D85\u7EA7\u7BA1\u7406\u5458");
+  const invalidCredentials2 = () => failure("INVALID_CREDENTIALS", "\u5BC6\u7801\u4E0D\u6B63\u786E\uFF0C\u8BF7\u91CD\u65B0\u8F93\u5165\u6216\u8054\u7CFB\u8D85\u7EA7\u7BA1\u7406\u5458\u91CD\u7F6E\u5BC6\u7801");
   async function me(token, client = "api") {
     if (token.length !== AUTH_LIMITS.tokenCharacters || !TOKEN_PATTERN.test(token))
       return unauthorized2();
@@ -8490,23 +8542,33 @@ function createAuthService(repo, passwords, tokens, clock, ttlSeconds) {
     ready: () => repo.ready(),
     async login(input, client = "api") {
       if (!input || typeof input !== "object" || Array.isArray(input))
-        return failure("INVALID_INPUT", "\u767B\u5F55\u53C2\u6570\u65E0\u6548");
+        return failure("INVALID_INPUT", "\u767B\u5F55\u8BF7\u6C42\u683C\u5F0F\u9519\u8BEF");
       const value2 = input;
-      if (Object.keys(value2).some((key) => key !== "email" && key !== "password") || typeof value2.email !== "string" || typeof value2.password !== "string" || value2.email.length > AUTH_LIMITS.emailMax || value2.email !== value2.email.trim() || !EMAIL_PATTERN.test(value2.email.trim()) || value2.password.length < BOOTSTRAP_LOGIN_MIN || value2.password.length > AUTH_LIMITS.passwordMax)
-        return failure("INVALID_INPUT", "\u767B\u5F55\u53C2\u6570\u65E0\u6548");
+      if (Object.keys(value2).some((key2) => key2 !== "email" && key2 !== "password") || typeof value2.email !== "string" || typeof value2.password !== "string")
+        return failure("INVALID_INPUT", "\u767B\u5F55\u8BF7\u6C42\u683C\u5F0F\u9519\u8BEF");
+      if (!value2.email.length || value2.email.length > AUTH_LIMITS.emailMax || value2.email !== value2.email.trim() || !EMAIL_PATTERN.test(value2.email.trim()))
+        return failure("INVALID_INPUT", "\u90AE\u7BB1\u5730\u5740\u683C\u5F0F\u4E0D\u6B63\u786E");
+      if (value2.password.length < BOOTSTRAP_LOGIN_MIN || value2.password.length > AUTH_LIMITS.passwordMax)
+        return failure("INVALID_INPUT", `\u5BC6\u7801\u957F\u5EA6\u5E94\u4E3A ${BOOTSTRAP_LOGIN_MIN}-${AUTH_LIMITS.passwordMax} \u4E2A\u5B57\u7B26`);
       const credential = await repo.credential(value2.email.trim().toLowerCase());
       if (!credential.ok)
         return credential;
-      if (value2.password.length < AUTH_LIMITS.passwordMin && !credential.data?.mustChangePassword)
-        return unauthorized2();
+      if (!credential.data)
+        return accountNotFound2();
+      if (!credential.data.active)
+        return accountDisabled2();
+      if (!credential.data.passwordHash)
+        return accountNotConfigured2();
+      if (value2.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)
+        return invalidCredentials2();
       let verified;
       try {
-        verified = await passwords.verify(value2.password, credential.data?.passwordHash ?? "");
+        verified = await passwords.verify(value2.password, credential.data.passwordHash);
       } catch {
         return failure("UNAVAILABLE", "\u767B\u5F55\u6821\u9A8C\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
       }
-      if (!verified || !credential.data?.active)
-        return unauthorized2();
+      if (!verified)
+        return invalidCredentials2();
       if (credential.data.mustChangePassword && client === "api")
         return failure("PASSWORD_CHANGE_REQUIRED", "\u8BF7\u5148\u5728\u7BA1\u7406\u9875\u9762\u4FEE\u6539\u521D\u59CB\u5BC6\u7801");
       const token = tokens.create(), expiresAt = new Date(clock.now() + ttlSeconds * MILLISECONDS_PER_SECOND5).toISOString();
@@ -8563,16 +8625,20 @@ function createAuthService(repo, passwords, tokens, clock, ttlSeconds) {
       if (!input || typeof input !== "object" || Array.isArray(input))
         return failure("INVALID_INPUT", "\u6539\u5BC6\u8BF7\u6C42\u65E0\u6548");
       const value2 = input;
-      if (Object.keys(value2).some((key) => key !== "currentPassword" && key !== "newPassword") || typeof value2.currentPassword !== "string" || !value2.currentPassword.length || value2.currentPassword.length > AUTH_LIMITS.passwordMax || !isNewAccountPassword(value2.newPassword) || value2.newPassword === value2.currentPassword)
+      if (Object.keys(value2).some((key2) => key2 !== "currentPassword" && key2 !== "newPassword") || typeof value2.currentPassword !== "string" || !value2.currentPassword.length || value2.currentPassword.length > AUTH_LIMITS.passwordMax || !isNewAccountPassword(value2.newPassword) || value2.newPassword === value2.currentPassword)
         return failure("INVALID_INPUT", "\u65B0\u5BC6\u7801\u81F3\u5C116\u4F4D\uFF0C\u4EC5\u5141\u8BB8\u82F1\u6587\u5B57\u6BCD\u548C\u6570\u5B57\uFF0C\u4E14\u5FC5\u987B\u4E0E\u5F53\u524D\u5BC6\u7801\u4E0D\u540C");
       const credential = await repo.credential(identity.data.email);
       if (!credential.ok)
         return credential;
-      if (!credential.data?.active)
-        return unauthorized2();
+      if (!credential.data)
+        return accountNotFound2();
+      if (!credential.data.active)
+        return accountDisabled2();
+      if (!credential.data.passwordHash)
+        return accountNotConfigured2();
       try {
         if (!await passwords.verify(value2.currentPassword, credential.data.passwordHash))
-          return failure("UNAUTHORIZED", "\u5F53\u524D\u5BC6\u7801\u4E0D\u6B63\u786E");
+          return failure("INVALID_CREDENTIALS", "\u5F53\u524D\u5BC6\u7801\u4E0D\u6B63\u786E");
         return await repo.changePassword(tokens.hash(token), credential.data.passwordHash, credential.data.securityRevision, await passwords.hash(value2.newPassword), "api");
       } catch {
         return failure("UNAVAILABLE", "\u6539\u5BC6\u6682\u4E0D\u53EF\u7528");
@@ -8773,6 +8839,21 @@ function createAdminService(repo, authRepo, passwords, tokens, clock, auth) {
   };
 }
 
+// server/core/ai.ts
+var AI_ROUTES = {
+  status: "/api/ai/status",
+  chat: "/api/ai/chat/completions",
+  receipts: "/api/ai/receipts"
+};
+var AI_FEATURES = ["agent", "draft", "backcheck", "mail_analysis", "summary"];
+var AI_WIRE_APIS = ["chat_completions", "responses"];
+function isAiFeature(value2) {
+  return typeof value2 === "string" && AI_FEATURES.includes(value2);
+}
+function canManageAi(identity) {
+  return identity.identityAdmin || identity.crmRoles.includes("admin");
+}
+
 // server/transport/admin-http.ts
 var COOKIE = "milogin_admin";
 var TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -8820,7 +8901,7 @@ async function navigatorHealth(config) {
     return { id: "navigator", label: "Navigator", state: "offline", value: "\u79BB\u7EBF", valueLabel: "\u670D\u52A1\u72B6\u6001", detail: "\u6682\u65E0\u6CD5\u8FDE\u63A5 Navigator \u670D\u52A1" };
   }
 }
-function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, passwordChange, dashboard, dataBrowser) {
+function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, passwordChange, dashboard, dataBrowser, ai) {
   const cookieFlags = `HttpOnly; SameSite=Strict; Path=/` + (config.test_mode || config.local_http || config.insecure_http ? "" : "; Secure");
   return async (request2, response) => {
     response.setHeader("Referrer-Policy", "no-referrer");
@@ -8926,6 +9007,124 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
     }
     if (method === "GET" && path4 === ADMIN_ROUTES.dashboard) {
       send(response, dashboard ? await dashboard.dashboard(token) : failure("UNAVAILABLE", "\u6570\u636E\u770B\u677F\u6682\u4E0D\u53EF\u7528"));
+      return;
+    }
+    if (method === "GET" && path4 === ADMIN_ROUTES.aiPolicies) {
+      if (!ai) {
+        send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
+        return;
+      }
+      const identity = await auth.me(token, "browser");
+      if (!identity.ok) {
+        send(response, identity);
+        return;
+      }
+      const result2 = await ai.policies(identity.data);
+      send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
+      return;
+    }
+    if (method === "GET" && path4 === ADMIN_ROUTES.aiUsage) {
+      if (!ai) {
+        send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
+        return;
+      }
+      const identity = await auth.me(token, "browser");
+      if (!identity.ok) {
+        send(response, identity);
+        return;
+      }
+      const days = Number(url.searchParams.get("days") ?? 30);
+      if (!Number.isSafeInteger(days) || days < 1 || days > 365) {
+        send(response, failure("INVALID_INPUT", "\u7528\u91CF\u5468\u671F\u65E0\u6548"));
+        return;
+      }
+      const result2 = await ai.usage(identity.data, days);
+      send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
+      return;
+    }
+    if (method === "GET" && path4 === ADMIN_ROUTES.aiModels) {
+      if (!ai) {
+        send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
+        return;
+      }
+      const identity = await auth.me(token, "browser");
+      if (!identity.ok) {
+        send(response, identity);
+        return;
+      }
+      const result2 = await ai.models(identity.data);
+      send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
+      return;
+    }
+    if (method === "GET" && path4 === ADMIN_ROUTES.aiUsageEvents) {
+      if (!ai) {
+        send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
+        return;
+      }
+      const identity = await auth.me(token, "browser");
+      if (!identity.ok) {
+        send(response, identity);
+        return;
+      }
+      const days = Number(url.searchParams.get("days") ?? 30), limit = Number(url.searchParams.get("limit") ?? 50), offset = Number(url.searchParams.get("offset") ?? 0);
+      const status = url.searchParams.get("status") || void 0, feature = url.searchParams.get("feature") || void 0, userId = url.searchParams.get("userId") || void 0;
+      if (!Number.isSafeInteger(days) || days < 1 || days > 365 || !Number.isSafeInteger(limit) || limit < 1 || limit > 200 || !Number.isSafeInteger(offset) || offset < 0 || status && !["ok", "error", "blocked"].includes(status) || feature && !AI_FEATURES.includes(feature)) {
+        send(response, failure("INVALID_INPUT", "AI \u7528\u91CF\u7B5B\u9009\u65E0\u6548"));
+        return;
+      }
+      const result2 = await ai.usageEvents(identity.data, { ...userId ? { userId } : {}, ...feature ? { feature } : {}, ...status ? { status } : {}, days, limit, offset });
+      send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
+      return;
+    }
+    if (method === "POST" && path4 === ADMIN_ROUTES.aiPolicy) {
+      if (!ai) {
+        send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
+        return;
+      }
+      if (!gate.allow(`ai-policy:${tokens.hash(token)}`, address)) {
+        send(response, failure("RATE_LIMITED", "AI \u7B56\u7565\u64CD\u4F5C\u8FC7\u591A"));
+        return;
+      }
+      const input = await body(request2, config.request_body_bytes);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      if (!record3(input.data) || typeof input.data.userId !== "string" || typeof input.data.enabled !== "boolean" || !Number.isSafeInteger(input.data.dailyTokenLimit) || input.data.dailyTokenLimit < 0 || !Number.isSafeInteger(input.data.monthlyTokenLimit) || input.data.monthlyTokenLimit < 0 || !Number.isSafeInteger(input.data.maxOutputTokens) || input.data.maxOutputTokens < 128 || input.data.maxOutputTokens > 32768 || !Array.isArray(input.data.allowedFeatures) || input.data.allowedFeatures.some((feature) => !AI_FEATURES.includes(feature)) || typeof input.data.reason !== "string" || !input.data.reason.trim() || input.data.reason.length > ADMIN_LIMITS.reasonMax) {
+        send(response, failure("INVALID_INPUT", "AI \u7B56\u7565\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      const actor = await auth.me(token, "browser");
+      if (!actor.ok) {
+        send(response, actor);
+        return;
+      }
+      const result2 = await ai.updatePolicy(actor.data, input.data);
+      send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
+      return;
+    }
+    if (method === "POST" && path4 === ADMIN_ROUTES.aiModel) {
+      if (!ai) {
+        send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
+        return;
+      }
+      const input = await body(request2, config.request_body_bytes);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      const v = input.data;
+      if (!record3(v) || typeof v.modelId !== "string" || !v.modelId.trim() || typeof v.label !== "string" || !v.label.trim() || typeof v.baseUrl !== "string" || !/^https?:\/\//.test(v.baseUrl) || typeof v.modelName !== "string" || !v.modelName.trim() || typeof v.keyEnv !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(v.keyEnv) || !AI_WIRE_APIS.includes(v.wireApi) || !Array.isArray(v.allowedFeatures) || v.allowedFeatures.some((feature) => !AI_FEATURES.includes(feature)) || typeof v.enabled !== "boolean" || typeof v.isDefault !== "boolean" || !Number.isSafeInteger(v.maxOutputTokens) || v.maxOutputTokens < 128 || v.maxOutputTokens > 32768) {
+        send(response, failure("INVALID_INPUT", "AI \u6A21\u578B\u914D\u7F6E\u65E0\u6548"));
+        return;
+      }
+      const actor = await auth.me(token, "browser");
+      if (!actor.ok) {
+        send(response, actor);
+        return;
+      }
+      const result2 = await ai.saveModel(actor.data, v);
+      send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
       return;
     }
     if (method === "GET" && path4 === ADMIN_ROUTES.operations) {
@@ -9047,11 +9246,15 @@ function createPasswordChangeService(repo, authRepo, passwords, tokens, auth) {
     const credential = await authRepo.credential(identity.data.email);
     if (!credential.ok)
       return credential;
-    if (!credential.data?.active)
-      return failure("UNAUTHORIZED", "\u4F1A\u8BDD\u5DF2\u5931\u6548");
+    if (!credential.data)
+      return failure("ACCOUNT_NOT_FOUND", "\u8D26\u53F7\u8D44\u6599\u4E0D\u5B58\u5728\uFF0C\u8BF7\u8054\u7CFB\u8D85\u7EA7\u7BA1\u7406\u5458");
+    if (!credential.data.active)
+      return failure("ACCOUNT_DISABLED", "\u8D26\u53F7\u5DF2\u505C\u7528\uFF0C\u8BF7\u8054\u7CFB\u8D85\u7EA7\u7BA1\u7406\u5458");
+    if (!credential.data.passwordHash)
+      return failure("ACCOUNT_NOT_CONFIGURED", "\u8BE5\u8D26\u53F7\u5C1A\u672A\u8BBE\u7F6E\u4E2D\u5FC3\u767B\u5F55\u5BC6\u7801\uFF0C\u8BF7\u8054\u7CFB\u8D85\u7EA7\u7BA1\u7406\u5458\u91CD\u7F6E\u5BC6\u7801");
     try {
       if (!await passwords.verify(value2.currentPassword, credential.data.passwordHash))
-        return failure("UNAUTHORIZED", "\u5F53\u524D\u5BC6\u7801\u4E0D\u6B63\u786E");
+        return failure("INVALID_CREDENTIALS", "\u5F53\u524D\u5BC6\u7801\u4E0D\u6B63\u786E");
       return await repo.changePassword(tokens.hash(token), credential.data.passwordHash, credential.data.securityRevision, await passwords.hash(value2.newPassword));
     } catch {
       return failure("UNAVAILABLE", "\u6539\u5BC6\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
@@ -9060,10 +9263,10 @@ function createPasswordChangeService(repo, authRepo, passwords, tokens, auth) {
 }
 
 // server/adapters/postgres/flat-lead-import.ts
-var import_node_crypto16 = require("node:crypto");
+var import_node_crypto19 = require("node:crypto");
 
 // server/adapters/postgres/lead-match-repository.ts
-var import_node_crypto15 = require("node:crypto");
+var import_node_crypto18 = require("node:crypto");
 
 // server/core/lead-conflict.ts
 var LEGAL_SUFFIXES = /* @__PURE__ */ new Set(["co", "company", "corp", "corporation", "inc", "ltd", "limited", "llc", "sa", "sas", "srl", "gmbh", "ag", "bv", "nv", "pty", "plc"]);
@@ -9119,12 +9322,12 @@ function companyNameSimilarity(left, right) {
   }
   return 2 * overlap / (first.length + bigrams(b).length);
 }
-function matchCompanyConflict(input, candidates) {
+function matchCompanyConflict(input, candidates2) {
   const domain2 = normalizeCompanyDomain(input.domain);
   const normalizedName = normalizeCompanyName(input.companyName);
   const country = normalizeLeadCountry(input.country);
   let best = null;
-  for (const candidate of candidates) {
+  for (const candidate of candidates2) {
     const candidateDomain = normalizeCompanyDomain(candidate.domain);
     if (domain2 && candidateDomain && domain2 === candidateDomain)
       return { ...candidate, score: 1, level: "exact_domain" };
@@ -9148,7 +9351,7 @@ var UUID5 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var record4 = (value2) => !!value2 && typeof value2 === "object" && !Array.isArray(value2);
 var text4 = (value2, max = LEAD_INGRESS_LIMITS.text, min = 1) => typeof value2 === "string" && value2.trim().length >= min && value2.length <= max;
 function validateLeadIngressResolution(value2) {
-  if (!record4(value2) || Object.keys(value2).some((key) => !["decisionId", "action", "expectedVersion", "idempotencyKey"].includes(key)))
+  if (!record4(value2) || Object.keys(value2).some((key2) => !["decisionId", "action", "expectedVersion", "idempotencyKey"].includes(key2)))
     return failure("INVALID_INPUT", "\u51B2\u7A81\u5904\u7406\u53C2\u6570\u65E0\u6548");
   if (!text4(value2.decisionId, 64) || !UUID5.test(value2.decisionId) || !["create_new", "attach_company", "restore"].includes(String(value2.action)) || !Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !text4(value2.idempotencyKey, LEAD_INGRESS_LIMITS.key))
     return failure("INVALID_INPUT", "\u51B2\u7A81\u5904\u7406\u53C2\u6570\u65E0\u6548");
@@ -9162,9 +9365,9 @@ function validateLeadIngressDecisionQuery(source, idempotencyKey) {
 function sameTarget(input, candidate) {
   return input.target?.contactId !== void 0 && input.target.contactId === candidate.contactId || input.target?.contactId === void 0 && input.target?.customerId !== void 0 && input.target.customerId === candidate.customerId;
 }
-function accessibleByCompany(candidates) {
+function accessibleByCompany(candidates2) {
   const byCompany = /* @__PURE__ */ new Map();
-  for (const candidate of candidates) {
+  for (const candidate of candidates2) {
     const previous = byCompany.get(candidate.companyId);
     if (!previous || candidate.level === "exact_email" && previous.level !== "exact_email" || candidate.canResolve && !previous.canResolve || (candidate.score ?? 0) > (previous.score ?? 0)) {
       byCompany.set(candidate.companyId, candidate);
@@ -9172,9 +9375,9 @@ function accessibleByCompany(candidates) {
   }
   return [...byCompany.values()].sort((left, right) => (right.score ?? 0) - (left.score ?? 0));
 }
-function assessLeadIngress(input, candidates) {
-  const exact = candidates.find((candidate2) => candidate2.level === "exact_email" && candidate2.canResolve);
-  const privateExact = candidates.find((candidate2) => candidate2.level === "exact_email" && !candidate2.canResolve);
+function assessLeadIngress(input, candidates2) {
+  const exact = candidates2.find((candidate2) => candidate2.level === "exact_email" && candidate2.canResolve);
+  const privateExact = candidates2.find((candidate2) => candidate2.level === "exact_email" && !candidate2.canResolve);
   if (exact) {
     if (exact.softDeleted && exact.restorable) {
       return { status: "restore", level: "exact_email", candidate: exact, candidates: [exact], suggestedActions: ["restore"], message: "\u90AE\u7BB1\u5C5E\u4E8E\u5DF2\u5220\u9664\u8054\u7CFB\u4EBA\uFF0C\u53EF\u6062\u590D\u539F\u8BB0\u5F55" };
@@ -9194,7 +9397,7 @@ function assessLeadIngress(input, candidates) {
     return { status: "clear", level: "none", candidates: [], suggestedActions: ["create_new"], message: "\u53EF\u5728\u73B0\u6709\u5BA2\u6237\u4E0B\u65B0\u589E\u8054\u7CFB\u4EBA" };
   }
   const domain2 = normalizeCompanyDomain(input.company.domain);
-  const companyMatches = candidates.filter((candidate2) => ["exact_domain", "exact_company", "strong_company"].includes(candidate2.level ?? "none")).filter((candidate2) => domain2 || candidate2.level !== "exact_domain").filter((candidate2) => candidate2.companyId !== input.target?.companyId);
+  const companyMatches = candidates2.filter((candidate2) => ["exact_domain", "exact_company", "strong_company"].includes(candidate2.level ?? "none")).filter((candidate2) => domain2 || candidate2.level !== "exact_domain").filter((candidate2) => candidate2.companyId !== input.target?.companyId);
   const resolved = accessibleByCompany(companyMatches);
   const restricted = resolved.find((candidate2) => !candidate2.canResolve);
   const candidate = resolved.find((item) => item.canResolve);
@@ -9213,9 +9416,9 @@ function assessLeadIngress(input, candidates) {
   }
   return { status: "clear", level: "none", candidates: [], suggestedActions: ["create_new"], message: "\u672A\u53D1\u73B0\u51B2\u7A81" };
 }
-function classifyCompanyCandidates(input, candidates) {
+function classifyCompanyCandidates(input, candidates2) {
   const grouped = /* @__PURE__ */ new Map();
-  for (const candidate of candidates)
+  for (const candidate of candidates2)
     grouped.set(candidate.companyId, [...grouped.get(candidate.companyId) ?? [], candidate]);
   const result2 = [];
   for (const rows of grouped.values()) {
@@ -9400,7 +9603,7 @@ function sharedAccessSql(actorSql, ownerSql) {
 }
 
 // server/adapters/postgres/contact-assignment-repository.ts
-var import_node_crypto13 = require("node:crypto");
+var import_node_crypto16 = require("node:crypto");
 
 // server/core/contact-assignment-state.ts
 var CONTACT_ASSIGNMENT_STATUSES = [
@@ -9463,14 +9666,14 @@ function isContactAssignmentTarget(member2, actorId) {
 }
 
 // server/adapters/postgres/contact-mail-repository.ts
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto14 = require("node:crypto");
 
 // server/adapters/postgres/contact-mail-analysis-repository.ts
-var import_node_crypto10 = require("node:crypto");
+var import_node_crypto13 = require("node:crypto");
 
 // server/core/mail-analysis.ts
 var MAIL_RELEVANCE_VALUES = ["customer_business", "internal", "notification", "vendor", "spam", "unknown"];
-var MAIL_INTENT_CODES = ["price_inquiry", "quote_request", "schedule_request", "order_followup", "complaint", "cooperation", "no_action", "other"];
+var MAIL_INTENT_CODES = ["price_inquiry", "quote_request", "schedule_request", "order_followup", "contract_signed", "booking_confirmed", "deal_won", "complaint", "cooperation", "no_action", "other"];
 var MAIL_PRIORITIES = ["normal", "important", "urgent"];
 var CONTACT_MAIL_ANALYSIS_ROUTES = {
   analyses: "/api/crm/contact-mail-analyses",
@@ -9489,10 +9692,18 @@ var CONTACT_MAIL_ANALYSIS_LIMITS = {
   history: 100,
   bodyBytes: 65536
 };
+var DEAL_WON_EVIDENCE = [
+  { code: "contract_signed", label: "\u5408\u540C\u5DF2\u7B7E\u7F72", words: ["contract signed", "signed contract", "\u5408\u540C\u5DF2\u7B7E", "\u5408\u540C\u7B7E\u7F72"] },
+  { code: "booking_confirmed", label: "\u8BA2\u8231\u5DF2\u786E\u8BA4", words: ["booking confirmed", "booking number", "\u8BA2\u8231\u786E\u8BA4", "\u8BA2\u8231\u53F7", "\u8BA2\u8231\u7F16\u53F7"] },
+  { code: "deal_won", label: "\u786E\u8BA4\u6210\u4EA4", words: ["deal won", "order confirmed", "\u6210\u4EA4\u786E\u8BA4", "\u5DF2\u6210\u4EA4", "\u786E\u8BA4\u6210\u4EA4"] }
+];
 var INTERNAL_WORDS = ["internal", "\u5185\u90E8", "\u540C\u4E8B", "\u5458\u5DE5"];
 var VENDOR_WORDS = ["invoice", "receipt", "subscription", "newsletter", "\u5E7F\u544A", "\u4F9B\u5E94\u5546", "\u8D26\u5355"];
 var SPAM_WORDS = ["unsubscribe", "promotion", "marketing", "\u4FC3\u9500", "\u8425\u9500", "\u9000\u8BA2"];
 var INTENT_RULES = [
+  { code: "contract_signed", label: "\u5408\u540C\u5DF2\u7B7E\u7F72", words: ["contract signed", "signed contract", "\u5408\u540C\u5DF2\u7B7E", "\u5408\u540C\u7B7E\u7F72"] },
+  { code: "booking_confirmed", label: "\u8BA2\u8231\u5DF2\u786E\u8BA4", words: ["booking confirmed", "booking number", "\u8BA2\u8231\u786E\u8BA4", "\u8BA2\u8231\u53F7", "\u8BA2\u8231\u7F16\u53F7"] },
+  { code: "deal_won", label: "\u786E\u8BA4\u6210\u4EA4", words: ["deal won", "order confirmed", "\u6210\u4EA4\u786E\u8BA4", "\u5DF2\u6210\u4EA4", "\u786E\u8BA4\u6210\u4EA4"] },
   { code: "complaint", label: "\u5BA2\u6237\u6295\u8BC9", words: ["complaint", "claim", "damaged", "\u6295\u8BC9", "\u7D22\u8D54", "\u7834\u635F", "\u5EF6\u8BEF"] },
   { code: "quote_request", label: "\u62A5\u4EF7\u8BF7\u6C42", words: ["quotation", "quote", "rfq", "\u62A5\u4EF7", "\u8BE2\u4EF7"] },
   { code: "price_inquiry", label: "\u4EF7\u683C\u54A8\u8BE2", words: ["price", "rate", "cost", "\u4EF7\u683C", "\u8FD0\u8D39"] },
@@ -9518,6 +9729,8 @@ function actionabilityFor(input) {
     return { requiresAction: false, nextAction: null, priority: "normal", dueHint: null };
   if (input.intent === "complaint")
     return { requiresAction: true, nextAction: "\u4F18\u5148\u5904\u7406\u5BA2\u6237\u95EE\u9898", priority: "urgent", dueHint: "24 \u5C0F\u65F6\u5185" };
+  if (input.intent === "contract_signed" || input.intent === "booking_confirmed" || input.intent === "deal_won")
+    return { requiresAction: true, nextAction: "\u6838\u5BF9\u6210\u4EA4\u4FE1\u606F\uFF1B\u4E0D\u7B26\u5408\u8BF7\u53D6\u6D88\u8BB0\u5F55", priority: "important", dueHint: "24 \u5C0F\u65F6\u5185" };
   if (input.intent === "price_inquiry" || input.intent === "quote_request")
     return { requiresAction: true, nextAction: "\u56DE\u590D\u5BA2\u6237\u8BE2\u4EF7", priority: input.confidence >= 0.85 ? "important" : "normal", dueHint: "24 \u5C0F\u65F6\u5185" };
   if (input.intent === "schedule_request")
@@ -9527,6 +9740,22 @@ function actionabilityFor(input) {
   if (input.intent === "cooperation")
     return { requiresAction: true, nextAction: "\u8BC4\u4F30\u5408\u4F5C\u8BC9\u6C42", priority: "normal", dueHint: "48 \u5C0F\u65F6\u5185" };
   return { requiresAction: false, nextAction: null, priority: "normal", dueHint: null };
+}
+function dealWonSignalFor(record18) {
+  if (record18.classification !== "replied" || record18.relevance !== "customer_business")
+    return void 0;
+  const explicit = record18.signals.find((signal) => ["contract_signed", "booking_confirmed", "deal_won"].includes(signal.code) && signal.confidence >= 0.85);
+  if (explicit)
+    return explicit;
+  const evidenceText = record18.evidence.join("\n").toLocaleLowerCase();
+  if (!evidenceText)
+    return void 0;
+  for (const rule of DEAL_WON_EVIDENCE) {
+    const evidence2 = rule.words.find((word) => evidenceText.includes(word.toLocaleLowerCase()));
+    if (evidence2)
+      return { code: rule.code, label: rule.label, confidence: 0.86, evidence: evidence2 };
+  }
+  return void 0;
 }
 function shouldCreateTaskSuggestion(analysis) {
   if (analysis.relevance !== "customer_business" || !analysis.actionability.requiresAction)
@@ -9544,28 +9773,28 @@ function contactStateForMail(kind, direction, fromEmail, primaryEmail) {
     return "replied";
   return null;
 }
-function containsAny(text16, words) {
-  return words.find((word) => text16.includes(word)) ?? null;
+function containsAny(text18, words) {
+  return words.find((word) => text18.includes(word)) ?? null;
 }
-function detectedIntent(text16) {
+function detectedIntent(text18) {
   for (const rule of INTENT_RULES) {
-    const evidence2 = containsAny(text16, rule.words);
+    const evidence2 = containsAny(text18, rule.words);
     if (evidence2)
       return { code: rule.code, label: rule.label, evidence: evidence2, confidence: evidence2.length >= 5 ? 0.9 : 0.82 };
   }
   return null;
 }
 function mechanicalMailAnalysis(input) {
-  const text16 = `${input.subject}
+  const text18 = `${input.subject}
 ${input.preview}`.toLocaleLowerCase();
-  const vendor = containsAny(text16, VENDOR_WORDS);
-  const spam = containsAny(text16, SPAM_WORDS);
-  const internal = input.internal || !!containsAny(text16, INTERNAL_WORDS);
+  const vendor = containsAny(text18, VENDOR_WORDS);
+  const spam = containsAny(text18, SPAM_WORDS);
+  const internal = input.internal || !!containsAny(text18, INTERNAL_WORDS);
   const classification = input.kind === "bounced" ? "bounced" : input.kind === "autoreply" ? "autoreply" : input.kind === "replied" ? "replied" : "other";
   const personalReply = input.kind !== "replied" || input.direction === "inbound" && !!input.primaryEmail && input.fromEmail.trim().toLowerCase() === input.primaryEmail.trim().toLowerCase();
   const relevance = internal ? "internal" : spam ? "spam" : vendor ? "vendor" : mailRelevanceFor({ classification, matchedContact: input.matchedContact && personalReply, internal: false, ccOnly: input.kind === "cc" });
   const contactState = contactStateForMail(input.kind, input.direction, input.fromEmail, input.primaryEmail);
-  const intent = relevance === "customer_business" ? detectedIntent(text16) : null;
+  const intent = relevance === "customer_business" ? detectedIntent(text18) : null;
   const confidence2 = relevance === "customer_business" ? input.kind === "sent" || input.kind === "replied" || input.kind === "bounced" || input.kind === "autoreply" ? 0.99 : intent?.confidence ?? 0.7 : 0.95;
   const signals2 = intent ? [{
     code: intent.code,
@@ -9595,26 +9824,26 @@ function mailThreadKey(subject, messageKey) {
 function taskSuggestionKey(input) {
   return [input.actorId, String(input.contactId), input.threadKey, input.actionCode].join("|");
 }
-function taskSuggestionFor(record16) {
+function taskSuggestionFor(record18) {
   if (!shouldCreateTaskSuggestion({
-    relevance: record16.relevance,
-    confidence: record16.confidence,
-    source: record16.source,
+    relevance: record18.relevance,
+    confidence: record18.confidence,
+    source: record18.source,
     actionability: {
-      requiresAction: record16.requiresAction,
-      nextAction: record16.nextAction,
-      priority: record16.priority,
-      dueHint: record16.dueHint
+      requiresAction: record18.requiresAction,
+      nextAction: record18.nextAction,
+      priority: record18.priority,
+      dueHint: record18.dueHint
     }
-  }) || !record16.nextAction)
+  }) || !record18.nextAction)
     return null;
-  const actionCode = record16.classification === "bounced" ? "fix_email" : record16.signals[0]?.code ?? "other";
+  const actionCode = record18.classification === "bounced" ? "fix_email" : record18.signals[0]?.code ?? "other";
   return {
-    key: taskSuggestionKey({ actorId: record16.actorId, contactId: record16.contactId, threadKey: record16.threadKey, actionCode }),
+    key: taskSuggestionKey({ actorId: record18.actorId, contactId: record18.contactId, threadKey: record18.threadKey, actionCode }),
     actionCode,
-    nextAction: record16.nextAction,
-    priority: record16.priority,
-    dueHint: record16.dueHint
+    nextAction: record18.nextAction,
+    priority: record18.priority,
+    dueHint: record18.dueHint
   };
 }
 function analysisSourceRank(source) {
@@ -9937,10 +10166,10 @@ async function migrateTeamAttentionSchema(client) {
 }
 
 // server/adapters/postgres/task-repository.ts
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 
 // server/core/tasks.ts
-var TASK_ROUTES = { tasks: "/api/crm/tasks", rescheduleAction: "reschedule", completeAction: "complete" };
+var TASK_ROUTES = { tasks: "/api/crm/tasks", rescheduleAction: "reschedule", completeAction: "complete", cancelAction: "cancel" };
 var TASK_LIMITS = { title: 500, feedback: 2e4, key: 128, page: 25, pageMax: 100, dueBatch: 50, dueBatchMax: 100, poll_seconds: 5 };
 var TASK_DUE_EVENT = "crm.task.due";
 var TIME_LIMITS2 = { hours: 24, minutes: 60, seconds: 60 };
@@ -9983,6 +10212,29 @@ BEGIN
 END $$;
 CREATE TRIGGER crm_tasks_customer_owner_changed AFTER UPDATE OF owner_user_id ON crm_customers FOR EACH ROW EXECUTE FUNCTION crm_tasks_customer_owner_changed();
 `;
+
+// server/adapters/postgres/task-cancellation-schema.ts
+var import_node_crypto9 = require("node:crypto");
+var TASK_CANCELLATION_VERSION = "070-task-cancellation";
+var SQL = `
+ALTER TABLE crm_followup_tasks DROP CONSTRAINT IF EXISTS crm_followup_tasks_status_check;
+ALTER TABLE crm_followup_tasks DROP CONSTRAINT IF EXISTS crm_followup_tasks_check;
+ALTER TABLE crm_followup_tasks ADD CONSTRAINT crm_followup_tasks_status_check CHECK(status IN ('open','completed','cancelled'));
+ALTER TABLE crm_followup_tasks ADD CONSTRAINT crm_followup_tasks_check CHECK(
+  (status='open' AND completed_at IS NULL AND completed_by IS NULL AND feedback IS NULL)
+  OR (status IN ('completed','cancelled') AND completed_at IS NOT NULL AND completed_by IS NOT NULL
+      AND feedback IS NOT NULL AND btrim(feedback)<>'' AND length(feedback)<=${TASK_LIMITS.feedback})
+);
+`;
+async function migrateTaskCancellationSchema(client) {
+  const checksum4 = (0, import_node_crypto9.createHash)("sha256").update(SQL).digest("hex");
+  const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TASK_CANCELLATION_VERSION]);
+  if (old.rows.length)
+    return old.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u4EFB\u52A1\u53D6\u6D88\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  await client.query(SQL);
+  await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [TASK_CANCELLATION_VERSION, checksum4]);
+  return success(void 0);
+}
 
 // server/adapters/postgres/task-repository.ts
 var UUID6 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -10037,7 +10289,7 @@ async function canProjectTaskDue(db, event2, a) {
   const current = await access(db, a.userId);
   return !!current && canManage(current, row2);
 }
-var COLUMNS = `t.opportunity_id AS "opportunityId",(SELECT op.title FROM crm_opportunities op WHERE op.opportunity_id=t.opportunity_id AND op.customer_id=t.customer_id) AS "opportunityTitle",t.task_id AS "taskId",t.customer_id AS "customerId",t.title,t.due_at AS "dueAt",t.status,t.version,t.created_by AS "createdBy",t.created_at AS "createdAt",t.updated_at AS "updatedAt",t.completed_at AS "completedAt",t.completed_by AS "completedBy",t.feedback,to_jsonb(t)->>'source_kind' AS "sourceKind",to_jsonb(t)->>'source_suggestion_id' AS "sourceSuggestionId",to_jsonb(t)->>'source_analysis_id' AS "sourceAnalysisId",(to_jsonb(t)->>'source_contact_id')::int AS "sourceContactId",to_jsonb(t)->>'source_thread_key' AS "sourceThreadKey",to_jsonb(t)->>'source_action_code' AS "sourceActionCode",COALESCE(c.owner_user_id,c.created_by) AS "responsibleUserId",u.display_name AS "responsibleName"`;
+var COLUMNS = `t.opportunity_id AS "opportunityId",(SELECT op.title FROM crm_opportunities op WHERE op.opportunity_id=t.opportunity_id AND op.customer_id=t.customer_id) AS "opportunityTitle",t.task_id AS "taskId",t.customer_id AS "customerId",t.title,t.due_at AS "dueAt",t.status,t.version,t.created_by AS "createdBy",t.created_at AS "createdAt",t.updated_at AS "updatedAt",t.completed_at AS "completedAt",t.completed_by AS "completedBy",t.feedback,to_jsonb(t)->>'source_kind' AS "sourceKind",to_jsonb(t)->>'source_suggestion_id' AS "sourceSuggestionId",to_jsonb(t)->>'source_analysis_id' AS "sourceAnalysisId",(to_jsonb(t)->>'source_contact_id')::int AS "sourceContactId",to_jsonb(t)->>'source_message_key' AS "sourceMessageKey",to_jsonb(t)->>'source_thread_key' AS "sourceThreadKey",to_jsonb(t)->>'source_action_code' AS "sourceActionCode",COALESCE(c.owner_user_id,c.created_by) AS "responsibleUserId",u.display_name AS "responsibleName"`;
 function taskRow(r, manage2) {
   return { ...r, dueAt: r.dueAt.toISOString(), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), completedAt: r.completedAt instanceof Date ? r.completedAt.toISOString() : null, canManage: manage2 };
 }
@@ -10094,7 +10346,7 @@ var PostgresTaskRepository = class {
     return success(taskRow(r.rows[0], canManage(a, c)));
   }
   async cached(db, a, operation, input, fn) {
-    const digest2 = (0, import_node_crypto9.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const digest2 = (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
     const old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
     if (old.rows.length) {
       if (old.rows[0].digest !== digest2)
@@ -10109,14 +10361,14 @@ var PostgresTaskRepository = class {
   async migrate() {
     return this.tx(async (db) => {
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TASK_VERSION]);
-      const hash = (0, import_node_crypto9.createHash)("sha256").update(TASK_SQL).digest("hex");
+      const hash = (0, import_node_crypto10.createHash)("sha256").update(TASK_SQL).digest("hex");
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u4EFB\u52A1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
       if (!old.rows.length) {
         await db.query(TASK_SQL);
         await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [TASK_VERSION, hash]);
       }
-      return success(void 0);
+      return migrateTaskCancellationSchema(db);
     });
   }
   create(hash, input) {
@@ -10144,7 +10396,12 @@ var PostgresTaskRepository = class {
         const responsible = c.owner_user_id ?? c.created_by, member2 = await access(db, responsible);
         if (!member2 || !canManage(member2, c))
           return failure("CONFLICT", "\u4EFB\u52A1\u8D1F\u8D23\u4EBA\u5DF2\u505C\u7528\u6216\u65E0\u5F00\u53D1\u6743\u9650");
-        const r = await db.query(`INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,opportunity_id) VALUES($1,$2,$3,$4,$5) RETURNING task_id`, [input.customerId, input.title.trim(), input.dueAt, a.userId, input.opportunityId ?? null]);
+        if (input.sourceMessageKey) {
+          const existing = await db.query(`SELECT task_id FROM crm_followup_tasks WHERE customer_id=$1 AND source_message_key=$2 AND source_kind='mail_manual' AND status='open' ORDER BY created_at,task_id LIMIT 1`, [input.customerId, input.sourceMessageKey]);
+          if (existing.rows[0])
+            return this.one(db, existing.rows[0].task_id, a);
+        }
+        const r = await db.query(`INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,opportunity_id,source_kind,source_message_key,source_thread_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING task_id`, [input.customerId, input.title.trim(), input.dueAt, a.userId, input.opportunityId ?? null, input.sourceMessageKey ? "mail_manual" : null, input.sourceMessageKey ?? null, input.sourceThreadKey ?? null]);
         return this.one(db, r.rows[0].task_id, a);
       });
     });
@@ -10154,7 +10411,7 @@ var PostgresTaskRepository = class {
       const owner = a.capabilities.includes("leads.develop"), ops = operations(a);
       const scopeVisibility = administrator(a) ? "($1::uuid IS NOT NULL)" : ops ? `(c.origin='operations'${owner ? " OR c.owner_user_id=$1" : ""})` : owner ? "c.owner_user_id=$1" : "FALSE AND $1::uuid IS NOT NULL";
       const visibility2 = input.mine ? `(${scopeVisibility}) AND COALESCE(c.owner_user_id,c.created_by)=$1` : scopeVisibility;
-      const filter = `WHERE (${visibility2}) AND ($2::uuid IS NULL OR c.customer_id=$2) AND ($3::text IS NULL OR t.status=$3)`;
+      const filter = `WHERE (${visibility2}) AND t.status<>'cancelled' AND ($2::uuid IS NULL OR c.customer_id=$2) AND ($3::text IS NULL OR t.status=$3)`;
       const params = [a.userId, input.customerId ?? null, input.status ?? null];
       const count2 = await db.query(`SELECT count(*)::int AS n FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) ${filter}`, params);
       const rows = await db.query(`SELECT ${COLUMNS},c.created_by,c.owner_user_id,c.origin,c.state FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) ${filter} ORDER BY CASE WHEN t.status='open' THEN 0 ELSE 1 END,t.due_at,t.task_id LIMIT $4 OFFSET $5`, [...params, input.limit, input.offset]);
@@ -10201,6 +10458,21 @@ var PostgresTaskRepository = class {
       });
     });
   }
+  cancel(hash, input) {
+    return this.authorized(hash, async (db, a) => {
+      const existing = await this.one(db, input.taskId, a, true);
+      if (!existing.ok)
+        return existing;
+      if (!existing.data.canManage)
+        return failure("FORBIDDEN", "\u53EA\u80FD\u5904\u7406\u81EA\u8EAB\u4EFB\u52A1");
+      return this.cached(db, a, `task:cancel:${input.taskId}`, input, async () => {
+        const r = await db.query(`UPDATE crm_followup_tasks SET status='cancelled',feedback=$2,completed_at=clock_timestamp(),completed_by=$3,version=version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND status='open' AND version=$4 RETURNING task_id`, [input.taskId, input.reason.trim(), a.userId, input.expectedVersion]);
+        if (!r.rows.length)
+          return failure("CONFLICT", "\u4EFB\u52A1\u5DF2\u5B8C\u6210\u3001\u5DF2\u53D6\u6D88\u6216\u7248\u672C\u5DF2\u53D8\u5316");
+        return this.one(db, input.taskId, a);
+      });
+    });
+  }
   async processDue(limit) {
     return this.tx(async (db) => {
       const rows = await db.query(`SELECT t.task_id,t.customer_id,t.opportunity_id,t.version,t.due_at,c.version AS customer_version,COALESCE(c.owner_user_id,c.created_by) AS responsible_user_id FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active WHERE t.status='open' AND t.due_at<=clock_timestamp() AND u.active AND NOT u.must_change_password AND EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role IN ('admin','operations','sales')) AND (a.capabilities IS NULL OR a.capabilities ? 'leads.develop') AND (c.owner_user_id=u.user_id OR c.owner_user_id IS NULL AND a.scope IN ('shared','summary') AND EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND (g.role='admin' AND (a.capabilities IS NULL OR a.capabilities ? 'leads.read.all') OR g.role='operations' AND (a.capabilities IS NULL OR a.capabilities ? 'followups.read')))) AND NOT EXISTS(SELECT 1 FROM crm_task_due_receipts d WHERE d.task_id=t.task_id AND d.task_version=t.version) ORDER BY t.due_at,t.task_id LIMIT $1 FOR UPDATE OF t SKIP LOCKED`, [limit]);
@@ -10218,11 +10490,1239 @@ var PostgresTaskRepository = class {
   }
 };
 
+// server/adapters/postgres/sales-case-repository.ts
+var import_node_crypto12 = require("node:crypto");
+
+// server/core/sales-case.ts
+var SALES_CASE_STATES = [
+  "lead_pending",
+  "lead_verified",
+  "outreach_ready",
+  "outreach_running",
+  "awaiting_reply",
+  "replied",
+  "inquiry_detected",
+  "quote_preparing",
+  "quote_review",
+  "quote_sent",
+  "negotiating",
+  "won",
+  "lost",
+  "paused"
+];
+var SALES_CASE_EVENT_TYPES = [
+  "lead.verified",
+  "campaign.proposed",
+  "campaign.confirmed",
+  "campaign.started",
+  "mail.sent",
+  "reply.received",
+  "mail.bounced",
+  "mail.unsubscribed",
+  "inquiry.detected",
+  "quote.requested",
+  "quote.confirmed",
+  "quote.rejected",
+  "case.paused",
+  "case.won",
+  "case.lost",
+  "proposal.applied",
+  "proposal.accepted",
+  "proposal.edited",
+  "proposal.ignored",
+  "proposal.cancelled"
+];
+var AI_PROPOSAL_TYPES = ["campaign_draft", "reply_draft", "quote_draft", "followup", "deal_won"];
+var AI_PROPOSAL_ACTIONS = ["accept", "edit", "ignore", "cancel"];
+var DEAL_WON_EVENT = "crm.ai.deal_won";
+var TRANSITIONS = {
+  lead_pending: ["lead_verified", "paused", "lost"],
+  lead_verified: ["outreach_ready", "inquiry_detected", "paused", "lost"],
+  outreach_ready: ["outreach_running", "inquiry_detected", "paused", "lost"],
+  outreach_running: ["awaiting_reply", "replied", "paused", "lost"],
+  awaiting_reply: ["replied", "paused", "lost"],
+  replied: ["inquiry_detected", "negotiating", "won", "lost", "paused"],
+  inquiry_detected: ["quote_preparing", "paused", "lost"],
+  quote_preparing: ["quote_review", "quote_sent", "paused", "lost"],
+  quote_review: ["quote_sent", "paused", "lost"],
+  quote_sent: ["negotiating", "won", "lost", "paused"],
+  negotiating: ["quote_preparing", "quote_review", "won", "lost", "paused"],
+  won: [],
+  lost: [],
+  paused: ["lead_verified", "outreach_ready", "awaiting_reply", "replied", "quote_preparing", "lost"]
+};
+function canTransitionSalesCase(from, to) {
+  return from === to || TRANSITIONS[from].includes(to);
+}
+function canActOnProposal(state) {
+  return state === "pending" || state === "applied_pending_confirmation";
+}
+function proposalActionState(action) {
+  if (action === "accept")
+    return "accepted";
+  if (action === "edit")
+    return "edited";
+  if (action === "cancel")
+    return "cancelled";
+  return "ignored";
+}
+
+// server/adapters/postgres/sales-case-schema.ts
+var SALES_CASE_SCHEMA_VERSION = "080-ai-sales-workflow-foundation";
+var SALES_WORKFLOW_INTEGRITY_VERSION = "082-ai-sales-workflow-integrity";
+var SALES_WORKFLOW_INTEGRITY_SQL = `
+CREATE UNIQUE INDEX IF NOT EXISTS uq_quote_cases_case_message ON crm_quote_cases(case_id,message_key);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_quote_drafts_case ON crm_quote_drafts(quote_case_id);
+CREATE INDEX IF NOT EXISTS idx_case_events_type ON crm_case_events(case_id,event_type,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quote_revisions_quote ON crm_quote_revisions(quote_id,version DESC);
+`;
+var SALES_CASE_PROPOSAL_SCHEMA_VERSION = "081-deal-won-proposals";
+var SALES_CASE_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS crm_sales_cases (
+  case_id text PRIMARY KEY,
+  customer_id uuid NOT NULL REFERENCES crm_customers(customer_id) ON DELETE CASCADE,
+  contact_id bigint NOT NULL,
+  owner_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  state text NOT NULL CHECK(state IN ('lead_pending','lead_verified','outreach_ready','outreach_running','awaiting_reply','replied','inquiry_detected','quote_preparing','quote_review','quote_sent','negotiating','won','lost','paused')),
+  source text NOT NULL,
+  verified_at timestamptz,
+  latest_message_key text,
+  latest_summary text,
+  next_action text,
+  next_action_at timestamptz,
+  stop_reason text,
+  version integer NOT NULL DEFAULT 1 CHECK(version > 0),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_sales_cases_owner_state ON crm_sales_cases(owner_user_id,state,next_action_at);
+CREATE INDEX IF NOT EXISTS idx_sales_cases_customer ON crm_sales_cases(customer_id,updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sales_cases_contact ON crm_sales_cases(contact_id,updated_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_cases_one_open_contact_owner
+  ON crm_sales_cases(contact_id,owner_user_id)
+  WHERE state NOT IN ('won','lost');
+
+CREATE TABLE IF NOT EXISTS crm_case_events (
+  event_id bigserial PRIMARY KEY,
+  case_id text NOT NULL REFERENCES crm_sales_cases(case_id) ON DELETE CASCADE,
+  event_key text NOT NULL UNIQUE,
+  event_type text NOT NULL,
+  source text NOT NULL CHECK(source IN ('rule','ai','user','system')),
+  payload_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  evidence_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  actor_user_id uuid REFERENCES public.identity_users(user_id),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_case_events_case ON crm_case_events(case_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS crm_ai_proposals (
+  proposal_id text PRIMARY KEY,
+  case_id text NOT NULL REFERENCES crm_sales_cases(case_id) ON DELETE CASCADE,
+  proposal_type text NOT NULL CHECK(proposal_type IN ('campaign_draft','reply_draft','quote_draft','followup')),
+  status text NOT NULL CHECK(status IN ('pending','accepted','edited','ignored','expired','blocked')),
+  payload_json jsonb NOT NULL,
+  evidence_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  confidence double precision NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+  model text,
+  version text,
+  expires_at timestamptz,
+  acted_by uuid REFERENCES public.identity_users(user_id),
+  acted_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_proposals_case ON crm_ai_proposals(case_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_proposals_pending ON crm_ai_proposals(status,expires_at);
+
+CREATE TABLE IF NOT EXISTS crm_quote_cases (
+  quote_case_id text PRIMARY KEY,
+  case_id text NOT NULL REFERENCES crm_sales_cases(case_id) ON DELETE CASCADE,
+  message_key text NOT NULL,
+  thread_key text NOT NULL,
+  state text NOT NULL,
+  fields_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  missing_fields_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  selected_quote_json jsonb,
+  version integer NOT NULL DEFAULT 1 CHECK(version > 0),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_quote_cases_case ON crm_quote_cases(case_id,updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quote_cases_thread ON crm_quote_cases(thread_key,updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS crm_quote_drafts (
+  quote_id text PRIMARY KEY,
+  quote_case_id text NOT NULL REFERENCES crm_quote_cases(quote_case_id) ON DELETE CASCADE,
+  version integer NOT NULL DEFAULT 1 CHECK(version > 0),
+  status text NOT NULL,
+  subject text,
+  body text,
+  selected_candidate_json jsonb,
+  candidates_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_quote_drafts_case ON crm_quote_drafts(quote_case_id,updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS crm_quote_revisions (
+  revision_id text PRIMARY KEY,
+  quote_id text NOT NULL REFERENCES crm_quote_drafts(quote_id) ON DELETE CASCADE,
+  version integer NOT NULL,
+  status text NOT NULL,
+  fields_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  selected_candidate_json jsonb,
+  candidates_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  subject text,
+  body text,
+  actor_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  reason text,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE(quote_id,version)
+);
+
+CREATE TABLE IF NOT EXISTS crm_quote_review_requests (
+  review_id text PRIMARY KEY,
+  quote_id text NOT NULL REFERENCES crm_quote_drafts(quote_id) ON DELETE CASCADE,
+  requested_by uuid NOT NULL REFERENCES public.identity_users(user_id),
+  reviewer_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  status text NOT NULL CHECK(status IN ('pending','approved','rejected','cancelled')),
+  reason text,
+  decision_note text,
+  linked_message_id text,
+  linked_task_id text,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  decided_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_quote_reviews_reviewer ON crm_quote_review_requests(reviewer_user_id,status,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS crm_ai_feedback_events (
+  feedback_id bigserial PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  object_type text NOT NULL,
+  object_id text NOT NULL,
+  action text NOT NULL,
+  before_json jsonb,
+  after_json jsonb,
+  reason text,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_feedback_user ON crm_ai_feedback_events(user_id,created_at DESC);
+`;
+var SALES_CASE_PROPOSAL_SCHEMA_SQL = `
+ALTER TABLE crm_ai_proposals DROP CONSTRAINT IF EXISTS crm_ai_proposals_proposal_type_check;
+ALTER TABLE crm_ai_proposals ADD CONSTRAINT crm_ai_proposals_proposal_type_check
+  CHECK(proposal_type IN ('campaign_draft','reply_draft','quote_draft','followup','deal_won'));
+ALTER TABLE crm_ai_proposals DROP CONSTRAINT IF EXISTS crm_ai_proposals_status_check;
+ALTER TABLE crm_ai_proposals ADD CONSTRAINT crm_ai_proposals_status_check
+  CHECK(status IN ('pending','applied_pending_confirmation','accepted','edited','ignored','cancelled','expired','blocked'));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_deal_won_active_case
+  ON crm_ai_proposals(case_id)
+  WHERE proposal_type='deal_won' AND status='applied_pending_confirmation';
+`;
+
+// server/core/customer-state.ts
+var CUSTOMER_JOURNEY_STEPS = [
+  { key: "uncontacted", label: "\u672A\u89E6\u8FBE" },
+  { key: "contacted", label: "\u5DF2\u89E6\u8FBE" },
+  { key: "replied", label: "\u5DF2\u56DE\u590D" },
+  { key: "quoting", label: "\u8BE2\u4EF7/\u62A5\u4EF7" },
+  { key: "negotiating", label: "\u8BD5\u5355/\u8C08\u5224" },
+  { key: "won_pending", label: "\u6210\u4EA4\u5F85\u786E\u8BA4" },
+  { key: "won", label: "\u5DF2\u6210\u4EA4" }
+];
+var LABELS = {
+  uncontacted: "\u672A\u89E6\u8FBE",
+  contacted: "\u5DF2\u89E6\u8FBE",
+  replied: "\u5DF2\u56DE\u590D",
+  quoting: "\u8BE2\u4EF7/\u62A5\u4EF7",
+  negotiating: "\u8BD5\u5355/\u8C08\u5224",
+  won_pending: "\u6210\u4EA4\u5F85\u786E\u8BA4",
+  won: "\u5DF2\u6210\u4EA4",
+  lost: "\u5DF2\u6D41\u5931"
+};
+function touched(statuses3) {
+  return statuses3.some((status) => ["contacted", "replied", "autoreply"].includes(status ?? ""));
+}
+function replied(statuses3) {
+  return statuses3.includes("replied");
+}
+function customerJourneyView(facts) {
+  const statuses3 = facts.touchStatuses ?? [];
+  let state;
+  let source;
+  if (facts.status) {
+    state = facts.status;
+    source = facts.sourceLabel ?? "\u72B6\u6001\u8D26\u672C";
+  } else if (facts.aiDealPending) {
+    state = "won_pending";
+    source = "AI \u8BC6\u522B";
+  } else if (facts.relationshipStage === "lost") {
+    state = "lost";
+    source = "\u5173\u7CFB\u9636\u6BB5";
+  } else if (facts.relationshipStage === "cooperating") {
+    state = "won";
+    source = "\u5173\u7CFB\u9636\u6BB5";
+  } else if (facts.relationshipStage === "trial") {
+    state = "negotiating";
+    source = "\u5173\u7CFB\u9636\u6BB5";
+  } else if (facts.relationshipStage === "quoting") {
+    state = "quoting";
+    source = "\u5173\u7CFB\u9636\u6BB5";
+  } else if (replied(statuses3)) {
+    state = "replied";
+    source = "\u8054\u7CFB\u8BB0\u5F55";
+  } else if (facts.relationshipStage === "reaching" || touched(statuses3)) {
+    state = "contacted";
+    source = "\u8054\u7CFB\u8BB0\u5F55";
+  } else {
+    state = "uncontacted";
+    source = "\u8054\u7CFB\u8BB0\u5F55";
+  }
+  const currentIndex = CUSTOMER_JOURNEY_STEPS.findIndex((step) => step.key === state);
+  return {
+    state,
+    label: LABELS[state],
+    source,
+    currentIndex,
+    lost: state === "lost",
+    steps: CUSTOMER_JOURNEY_STEPS.map((step, index) => ({
+      ...step,
+      status: state === "lost" ? "upcoming" : index < currentIndex ? "done" : index === currentIndex ? "current" : "upcoming"
+    }))
+  };
+}
+
+// server/core/customer-status.ts
+var CUSTOMER_STATUSES = ["uncontacted", "contacted", "replied", "quoting", "negotiating", "won_pending", "won", "lost"];
+var CUSTOMER_STATUS_RANK = {
+  uncontacted: 0,
+  contacted: 1,
+  replied: 2,
+  quoting: 3,
+  negotiating: 4,
+  won_pending: 5,
+  won: 6
+};
+var CUSTOMER_STATUS_LIMITS = { events: 50, reason: 1e3, key: 128, text: 500 };
+var CUSTOMER_STATUS_ROUTES = { base: "/api/crm/customer-status" };
+function opportunityCustomerStatus(stage) {
+  if (stage === "inquiry" || stage === "quote_sent")
+    return "quoting";
+  if (stage === "negotiation")
+    return "negotiating";
+  if (stage === "booking_confirmed")
+    return "won_pending";
+  if (stage === "closed_won")
+    return "won";
+  if (stage === "closed_lost")
+    return "lost";
+  return null;
+}
+function salesCaseCustomerStatus(state) {
+  if (state === "replied")
+    return "replied";
+  if (state === "inquiry_detected" || state === "quote_preparing" || state === "quote_review" || state === "quote_sent")
+    return "quoting";
+  if (state === "negotiating")
+    return "negotiating";
+  if (state === "won")
+    return "won";
+  if (state === "lost")
+    return "lost";
+  return null;
+}
+function customerStatusChange(input) {
+  const before = customerJourneyView({
+    relationshipStage: input.relationshipStage,
+    touchStatuses: input.touchStatuses,
+    aiDealPending: input.aiDealPending
+  }).state;
+  let after = customerJourneyView({
+    relationshipStage: input.nextRelationshipStage === void 0 ? input.relationshipStage : input.nextRelationshipStage,
+    touchStatuses: input.nextTouchStatus === void 0 ? input.touchStatuses : [input.nextTouchStatus],
+    aiDealPending: input.aiDealPending
+  }).state;
+  if (!input.allowRegression && customerStatusIsRegression(before, after))
+    after = before;
+  return { before, after, changed: before !== after };
+}
+function customerStatusIsRegression(from, to) {
+  if (from === to)
+    return false;
+  if (from === "lost")
+    return true;
+  if (to === "lost")
+    return false;
+  return CUSTOMER_STATUS_RANK[to] < CUSTOMER_STATUS_RANK[from];
+}
+
+// server/adapters/postgres/customer-status-repository.ts
+var STATUS_EVENT_COLUMNS = `event_id AS "eventId",event_key AS "eventKey",customer_id AS "customerId",contact_id AS "contactId",status,previous_status AS "previousStatus",source,signal,actor_user_id AS "actorUserId",reason,evidence_json AS evidence,payload_json AS payload,occurred_at AS "occurredAt",recorded_at AS "recordedAt"`;
+var STATUS_STATE_COLUMNS = `customer_id AS "customerId",status,previous_status AS "previousStatus",source,signal,contact_id AS "contactId",actor_user_id AS "actorUserId",reason,occurred_at AS "occurredAt",updated_at AS "updatedAt",manual_locked AS "manualLocked",manual_reason AS "manualReason",manual_by AS "manualBy",manual_at AS "manualAt",version`;
+function iso(value2) {
+  return value2 instanceof Date ? value2.toISOString() : new Date(String(value2)).toISOString();
+}
+function mapEvent(row2) {
+  return {
+    eventId: Number(row2.eventId),
+    eventKey: String(row2.eventKey),
+    customerId: String(row2.customerId),
+    contactId: row2.contactId === null || row2.contactId === void 0 ? null : Number(row2.contactId),
+    status: String(row2.status),
+    previousStatus: row2.previousStatus ? String(row2.previousStatus) : null,
+    source: String(row2.source),
+    signal: String(row2.signal),
+    actorUserId: row2.actorUserId ? String(row2.actorUserId) : null,
+    reason: row2.reason ? String(row2.reason) : null,
+    evidence: Array.isArray(row2.evidence) ? row2.evidence : [],
+    payload: row2.payload && typeof row2.payload === "object" ? row2.payload : {},
+    occurredAt: iso(row2.occurredAt),
+    recordedAt: iso(row2.recordedAt)
+  };
+}
+function mapState(row2) {
+  return {
+    customerId: String(row2.customerId),
+    status: String(row2.status),
+    previousStatus: row2.previousStatus ? String(row2.previousStatus) : null,
+    source: String(row2.source),
+    signal: String(row2.signal),
+    contactId: row2.contactId === null || row2.contactId === void 0 ? null : Number(row2.contactId),
+    actorUserId: row2.actorUserId ? String(row2.actorUserId) : null,
+    reason: row2.reason ? String(row2.reason) : null,
+    occurredAt: iso(row2.occurredAt),
+    updatedAt: iso(row2.updatedAt),
+    manualLocked: row2.manualLocked === true,
+    manualReason: row2.manualReason ? String(row2.manualReason) : null,
+    manualBy: row2.manualBy ? String(row2.manualBy) : null,
+    manualAt: row2.manualAt ? iso(row2.manualAt) : null,
+    version: Number(row2.version)
+  };
+}
+async function customerHasAiDealPendingIn(client, customerId) {
+  const result2 = await client.query(
+    `SELECT 1 FROM crm_ai_proposals proposal
+     JOIN crm_sales_cases sales_case ON sales_case.case_id=proposal.case_id
+     WHERE sales_case.customer_id=$1 AND proposal.proposal_type='deal_won'
+       AND proposal.status='applied_pending_confirmation' LIMIT 1`,
+    [customerId]
+  );
+  return (result2.rowCount ?? 0) > 0;
+}
+async function customerStatusStateIn(client, customerId, lock = false) {
+  const result2 = await client.query(`SELECT ${STATUS_STATE_COLUMNS} FROM crm_customer_status_state WHERE customer_id=$1${lock ? " FOR UPDATE" : ""}`, [customerId]);
+  return result2.rows[0] ? mapState(result2.rows[0]) : null;
+}
+async function customerStatusEventsIn(client, customerId, limit) {
+  const result2 = await client.query(`SELECT ${STATUS_EVENT_COLUMNS} FROM crm_customer_status_events WHERE customer_id=$1 ORDER BY occurred_at DESC,event_id DESC LIMIT $2`, [customerId, limit]);
+  return result2.rows.map(mapEvent);
+}
+async function appendCustomerStatusEventIn(client, input) {
+  if (input.previousStatus === input.status && !input.recordWhenUnchanged)
+    return null;
+  const result2 = await client.query(
+    `INSERT INTO crm_customer_status_events(event_key,customer_id,contact_id,status,previous_status,source,signal,actor_user_id,reason,evidence_json,payload_json,occurred_at)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12)
+     ON CONFLICT(event_key) DO NOTHING
+     RETURNING ${STATUS_EVENT_COLUMNS}`,
+    [
+      input.eventKey,
+      input.customerId,
+      input.contactId ?? null,
+      input.status,
+      input.previousStatus ?? null,
+      input.source,
+      input.signal,
+      input.actorUserId ?? null,
+      input.reason ?? null,
+      JSON.stringify(input.evidence ?? []),
+      JSON.stringify(input.payload ?? {}),
+      input.occurredAt
+    ]
+  );
+  return result2.rows[0] ? mapEvent(result2.rows[0]) : null;
+}
+async function writeCustomerStatusStateIn(client, input, manualLocked, manualReason = null, manualBy = null) {
+  await client.query(
+    `INSERT INTO crm_customer_status_state(customer_id,status,previous_status,source,signal,contact_id,actor_user_id,reason,occurred_at,manual_locked,manual_reason,manual_by,manual_at,version)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $10 THEN clock_timestamp() ELSE NULL END,1)
+     ON CONFLICT(customer_id) DO UPDATE SET status=EXCLUDED.status,previous_status=EXCLUDED.previous_status,source=EXCLUDED.source,signal=EXCLUDED.signal,
+       contact_id=EXCLUDED.contact_id,actor_user_id=EXCLUDED.actor_user_id,reason=EXCLUDED.reason,occurred_at=EXCLUDED.occurred_at,updated_at=clock_timestamp(),
+       manual_locked=CASE WHEN $13::boolean IS NULL THEN crm_customer_status_state.manual_locked ELSE $13 END,
+       manual_reason=CASE WHEN $13::boolean IS NULL THEN crm_customer_status_state.manual_reason ELSE $14 END,
+       manual_by=CASE WHEN $13::boolean IS NULL THEN crm_customer_status_state.manual_by ELSE $15 END,
+       manual_at=CASE WHEN $13::boolean IS NULL THEN crm_customer_status_state.manual_at WHEN $13 THEN clock_timestamp() ELSE NULL END,
+       version=crm_customer_status_state.version+1`,
+    [
+      input.customerId,
+      input.status,
+      input.previousStatus ?? null,
+      input.source,
+      input.signal,
+      input.contactId ?? null,
+      input.actorUserId ?? null,
+      input.reason ?? null,
+      input.occurredAt,
+      manualLocked === true,
+      manualReason,
+      manualBy,
+      manualLocked,
+      manualReason,
+      manualBy
+    ]
+  );
+}
+async function recordCustomerStatusEventIn(client, input) {
+  const state = await customerStatusStateIn(client, input.customerId, true);
+  if (state?.manualLocked && input.source !== "human")
+    return null;
+  const event2 = await appendCustomerStatusEventIn(client, input);
+  if (event2)
+    await writeCustomerStatusStateIn(client, input, null);
+  return event2;
+}
+async function derivedCustomerStatusIn(client, customerId) {
+  const result2 = await client.query(
+    `SELECT customer.relationship_stage AS "relationshipStage",
+       (SELECT contact.crm_touch_status FROM crm_customer_contacts link JOIN contacts contact ON contact.id=link.contact_id
+        WHERE link.customer_id=customer.customer_id AND contact.crm_deleted_at IS NULL ORDER BY contact.id LIMIT 1) AS "touchStatus"
+     FROM crm_customers customer WHERE customer.customer_id=$1`,
+    [customerId]
+  );
+  const row2 = result2.rows[0];
+  if (!row2)
+    return null;
+  return customerStatusChange({ relationshipStage: row2.relationshipStage, touchStatuses: [row2.touchStatus], aiDealPending: await customerHasAiDealPendingIn(client, customerId) }).before;
+}
+function administrator2(a) {
+  return a.roles.includes("admin") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.read.all");
+}
+function operational(a) {
+  return a.roles.includes("operations") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("followups.read");
+}
+function canCorrect(a, customer2) {
+  return a.capabilities.includes("leads.develop") && (administrator2(a) || operational(a) && customer2.origin === "operations" || customer2.owner_user_id === a.userId);
+}
+var PostgresCustomerStatusRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+  }
+  async run(hash, action) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await authorizeLeadActor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      await client.query("BEGIN");
+      const result2 = await action(client, actor);
+      await client.query(result2.ok ? "COMMIT" : "ROLLBACK");
+      return result2;
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+      }
+      this.log.write("ERROR", "customer-status.pg", `\u72B6\u6001\u547D\u4EE4\u5931\u8D25 ${error instanceof Error ? error.message : "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u5BA2\u6237\u72B6\u6001\u670D\u52A1\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  view(hash, customerId) {
+    return this.run(hash, async (client, actor) => {
+      const customer2 = (await client.query("SELECT customer_id,created_by,owner_user_id,origin FROM crm_customers WHERE customer_id=$1", [customerId])).rows[0];
+      if (!customer2 || !canReadLead(actor, { ...customer2, state: "owned" }))
+        return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728");
+      return success({ state: await customerStatusStateIn(client, customerId), events: await customerStatusEventsIn(client, customerId, 50) });
+    });
+  }
+  correct(hash, input) {
+    return this.run(hash, async (client, actor) => {
+      const customer2 = (await client.query("SELECT customer_id,created_by,owner_user_id,origin FROM crm_customers WHERE customer_id=$1 FOR UPDATE", [input.customerId])).rows[0];
+      if (!customer2 || !canCorrect(actor, customer2))
+        return failure("FORBIDDEN", "\u6CA1\u6709\u7EA0\u6B63\u5BA2\u6237\u72B6\u6001\u6743\u9650");
+      const state = await customerStatusStateIn(client, input.customerId, true);
+      if ((state?.version ?? 0) !== input.expectedVersion)
+        return failure("CONFLICT", "\u5BA2\u6237\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+      const previous = state?.status ?? await derivedCustomerStatusIn(client, input.customerId) ?? "uncontacted";
+      const event2 = {
+        eventKey: `correction:${input.customerId}:${input.idempotencyKey}`,
+        customerId: input.customerId,
+        contactId: input.contactId ?? state?.contactId ?? null,
+        status: input.status,
+        previousStatus: previous,
+        source: "human",
+        signal: "correction",
+        actorUserId: actor.userId,
+        reason: input.reason,
+        payload: { manualLocked: true },
+        occurredAt: /* @__PURE__ */ new Date(),
+        recordWhenUnchanged: true
+      };
+      const appended = await appendCustomerStatusEventIn(client, event2);
+      if (!appended) {
+        const existing = await customerStatusStateIn(client, input.customerId);
+        return existing ? success(existing) : failure("CONFLICT", "\u72B6\u6001\u7EA0\u6B63\u8BF7\u6C42\u5DF2\u5904\u7406");
+      }
+      await writeCustomerStatusStateIn(client, event2, true, input.reason, actor.userId);
+      const saved = await customerStatusStateIn(client, input.customerId);
+      return saved ? success(saved) : failure("DATABASE_ERROR", "\u72B6\u6001\u7EA0\u6B63\u672A\u4FDD\u5B58");
+    });
+  }
+  resumeAi(hash, input) {
+    return this.run(hash, async (client, actor) => {
+      const customer2 = (await client.query("SELECT customer_id,created_by,owner_user_id,origin FROM crm_customers WHERE customer_id=$1 FOR UPDATE", [input.customerId])).rows[0];
+      if (!customer2 || !canCorrect(actor, customer2))
+        return failure("FORBIDDEN", "\u6CA1\u6709\u6062\u590D\u5BA2\u6237\u72B6\u6001\u6743\u9650");
+      const state = await customerStatusStateIn(client, input.customerId, true);
+      if (!state)
+        return failure("NOT_FOUND", "\u5BA2\u6237\u72B6\u6001\u5C1A\u672A\u5EFA\u7ACB");
+      if (state.version !== input.expectedVersion)
+        return failure("CONFLICT", "\u5BA2\u6237\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+      if (!state.manualLocked)
+        return success(state);
+      const event2 = {
+        eventKey: `ai-resume:${input.customerId}:${input.idempotencyKey}`,
+        customerId: input.customerId,
+        contactId: state.contactId,
+        status: state.status,
+        previousStatus: state.status,
+        source: "human",
+        signal: "ai_resume",
+        actorUserId: actor.userId,
+        reason: "\u6062\u590D AI \u81EA\u52A8\u7EF4\u62A4",
+        payload: {},
+        occurredAt: /* @__PURE__ */ new Date(),
+        recordWhenUnchanged: true
+      };
+      const appended = await appendCustomerStatusEventIn(client, event2);
+      if (!appended) {
+        const existing = await customerStatusStateIn(client, input.customerId);
+        return existing ? success(existing) : failure("CONFLICT", "\u6062\u590D\u8BF7\u6C42\u5DF2\u5904\u7406");
+      }
+      await writeCustomerStatusStateIn(client, event2, false);
+      const saved = await customerStatusStateIn(client, input.customerId);
+      return saved ? success(saved) : failure("DATABASE_ERROR", "\u6062\u590D AI \u7EF4\u62A4\u672A\u4FDD\u5B58");
+    });
+  }
+};
+
+// server/adapters/postgres/customer-status-schema.ts
+var import_node_crypto11 = require("node:crypto");
+var CUSTOMER_STATUS_SCHEMA_VERSION = "083-customer-status-events";
+var CUSTOMER_STATUS_SCHEMA_LOCK = 830083;
+var CUSTOMER_STATUS_STATE_SCHEMA_VERSION = "084-customer-status-command";
+var CUSTOMER_STATUS_STATE_SCHEMA_LOCK = 840084;
+var CUSTOMER_STATUS_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS crm_customer_status_events (
+  event_id bigserial PRIMARY KEY,
+  event_key text NOT NULL UNIQUE,
+  customer_id uuid NOT NULL REFERENCES crm_customers(customer_id) ON DELETE CASCADE,
+  contact_id bigint REFERENCES contacts(id) ON DELETE SET NULL,
+  status text NOT NULL CHECK(status IN ('uncontacted','contacted','replied','quoting','negotiating','won_pending','won','lost')),
+  previous_status text CHECK(previous_status IS NULL OR previous_status IN ('uncontacted','contacted','replied','quoting','negotiating','won_pending','won','lost')),
+  source text NOT NULL CHECK(source IN ('ai','human','system','import')),
+  signal text NOT NULL CHECK(signal IN ('followup','mail','deal_won','correction','import')),
+  actor_user_id uuid REFERENCES public.identity_users(user_id),
+  reason text,
+  evidence_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  payload_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  occurred_at timestamptz NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_customer_status_events_customer ON crm_customer_status_events(customer_id,occurred_at DESC,event_id DESC);
+CREATE INDEX IF NOT EXISTS idx_customer_status_events_contact ON crm_customer_status_events(contact_id,occurred_at DESC,event_id DESC);
+`;
+async function migrateCustomerStatusSchemaIn(client) {
+  await client.query("SELECT pg_advisory_xact_lock($1)", [CUSTOMER_STATUS_SCHEMA_LOCK]);
+  const checksum4 = (0, import_node_crypto11.createHash)("sha256").update(CUSTOMER_STATUS_SCHEMA_SQL).digest("hex");
+  const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CUSTOMER_STATUS_SCHEMA_VERSION]);
+  if (old.rows.length && old.rows[0].checksum !== checksum4)
+    return failure("CONFLICT", "\u5BA2\u6237\u72B6\u6001\u4E8B\u4EF6\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  if (!old.rows.length) {
+    await client.query(CUSTOMER_STATUS_SCHEMA_SQL);
+    await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CUSTOMER_STATUS_SCHEMA_VERSION, checksum4]);
+  }
+  return migrateCustomerStatusStateSchemaIn(client);
+}
+var CUSTOMER_STATUS_STATE_SCHEMA_SQL = `
+ALTER TABLE crm_customer_status_events DROP CONSTRAINT IF EXISTS crm_customer_status_events_signal_check;
+ALTER TABLE crm_customer_status_events ADD CONSTRAINT crm_customer_status_events_signal_check
+  CHECK(signal IN ('followup','mail','deal_won','opportunity','sales_case','correction','ai_resume','import'));
+CREATE TABLE IF NOT EXISTS crm_customer_status_state (
+  customer_id uuid PRIMARY KEY REFERENCES crm_customers(customer_id) ON DELETE CASCADE,
+  status text NOT NULL CHECK(status IN ('uncontacted','contacted','replied','quoting','negotiating','won_pending','won','lost')),
+  previous_status text CHECK(previous_status IS NULL OR previous_status IN ('uncontacted','contacted','replied','quoting','negotiating','won_pending','won','lost')),
+  source text NOT NULL CHECK(source IN ('ai','human','system','import')),
+  signal text NOT NULL CHECK(signal IN ('followup','mail','deal_won','opportunity','sales_case','correction','ai_resume','import')),
+  contact_id bigint REFERENCES contacts(id) ON DELETE SET NULL,
+  actor_user_id uuid REFERENCES public.identity_users(user_id),
+  reason text,
+  occurred_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  manual_locked boolean NOT NULL DEFAULT false,
+  manual_reason text,
+  manual_by uuid REFERENCES public.identity_users(user_id),
+  manual_at timestamptz,
+  version integer NOT NULL DEFAULT 1 CHECK(version > 0),
+  CHECK(NOT manual_locked OR manual_reason IS NOT NULL AND manual_by IS NOT NULL AND manual_at IS NOT NULL)
+);
+`;
+async function migrateCustomerStatusStateSchemaIn(client) {
+  await client.query("SELECT pg_advisory_xact_lock($1)", [CUSTOMER_STATUS_STATE_SCHEMA_LOCK]);
+  const checksum4 = (0, import_node_crypto11.createHash)("sha256").update(CUSTOMER_STATUS_STATE_SCHEMA_SQL).digest("hex");
+  const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CUSTOMER_STATUS_STATE_SCHEMA_VERSION]);
+  if (old.rows.length && old.rows[0].checksum !== checksum4)
+    return failure("CONFLICT", "\u5BA2\u6237\u72B6\u6001\u547D\u4EE4\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  if (!old.rows.length) {
+    await client.query(CUSTOMER_STATUS_STATE_SCHEMA_SQL);
+    await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CUSTOMER_STATUS_STATE_SCHEMA_VERSION, checksum4]);
+  }
+  return success(void 0);
+}
+
+// server/adapters/postgres/sales-case-repository.ts
+var CASE_COLUMNS = `c.case_id AS "caseId",c.customer_id AS "customerId",c.contact_id AS "contactId",c.owner_user_id AS "ownerUserId",c.state,c.source,c.verified_at AS "verifiedAt",c.latest_message_key AS "latestMessageKey",c.latest_summary AS "latestSummary",c.next_action AS "nextAction",c.next_action_at AS "nextActionAt",c.stop_reason AS "stopReason",c.version,c.created_at AS "createdAt",c.updated_at AS "updatedAt"`;
+function iso2(value2) {
+  return value2 instanceof Date ? value2.toISOString() : typeof value2 === "string" ? new Date(value2).toISOString() : null;
+}
+function mapCase(row2) {
+  return {
+    caseId: String(row2.caseId),
+    customerId: String(row2.customerId),
+    contactId: Number(row2.contactId),
+    ownerUserId: String(row2.ownerUserId),
+    state: String(row2.state),
+    source: String(row2.source),
+    verifiedAt: iso2(row2.verifiedAt),
+    latestMessageKey: row2.latestMessageKey ? String(row2.latestMessageKey) : null,
+    latestSummary: row2.latestSummary ? String(row2.latestSummary) : null,
+    nextAction: row2.nextAction ? String(row2.nextAction) : null,
+    nextActionAt: iso2(row2.nextActionAt),
+    stopReason: row2.stopReason ? String(row2.stopReason) : null,
+    version: Number(row2.version),
+    createdAt: iso2(row2.createdAt),
+    updatedAt: iso2(row2.updatedAt)
+  };
+}
+function mapProposal(row2) {
+  return {
+    proposalId: String(row2.proposal_id),
+    caseId: String(row2.case_id),
+    proposalType: row2.proposal_type,
+    status: row2.status,
+    payload: row2.payload_json || {},
+    evidence: row2.evidence_json || [],
+    confidence: Number(row2.confidence),
+    model: row2.model,
+    version: row2.version,
+    expiresAt: iso2(row2.expires_at),
+    actedBy: row2.acted_by ? String(row2.acted_by) : null,
+    actedAt: iso2(row2.acted_at),
+    createdAt: iso2(row2.created_at)
+  };
+}
+function mapEvent2(row2) {
+  return {
+    eventId: Number(row2.event_id),
+    caseId: String(row2.case_id),
+    eventKey: String(row2.event_key),
+    eventType: row2.event_type,
+    source: row2.source,
+    payload: row2.payload_json || {},
+    evidence: row2.evidence_json || [],
+    actorUserId: row2.actor_user_id ? String(row2.actor_user_id) : null,
+    createdAt: iso2(row2.created_at)
+  };
+}
+async function ensureSalesCaseIn(client, input) {
+  const existing = await client.query(
+    `SELECT case_id FROM crm_sales_cases WHERE contact_id=$1 AND owner_user_id=$2 AND state NOT IN ('won','lost') FOR UPDATE`,
+    [input.contactId, input.ownerUserId]
+  );
+  if (existing.rows.length)
+    return { caseId: String(existing.rows[0].case_id), created: false };
+  const caseId = (0, import_node_crypto12.randomUUID)();
+  await client.query(
+    `INSERT INTO crm_sales_cases(case_id,customer_id,contact_id,owner_user_id,state,source,verified_at,latest_summary,next_action)
+     VALUES($1,$2,$3,$4,'lead_verified',$5,clock_timestamp(),$6,'\u51C6\u5907\u5BA2\u6237\u5F00\u53D1\u4EFB\u52A1')`,
+    [caseId, input.customerId, input.contactId, input.ownerUserId, input.source, input.summary || null]
+  );
+  await client.query(
+    `INSERT INTO crm_case_events(case_id,event_key,event_type,source,payload_json,evidence_json,actor_user_id)
+     VALUES($1,$2,'lead.verified','rule',$3,'[]'::jsonb,$4) ON CONFLICT(event_key) DO NOTHING`,
+    [caseId, `lead.verified:${caseId}`, JSON.stringify({ contactId: input.contactId, customerId: input.customerId, source: input.source }), input.ownerUserId]
+  );
+  return { caseId, created: true };
+}
+async function applyDealWonProposalIn(client, input) {
+  const active = await client.query(
+    `SELECT proposal_id FROM crm_ai_proposals WHERE case_id=$1 AND proposal_type='deal_won' AND status='applied_pending_confirmation' LIMIT 1 FOR UPDATE`,
+    [input.caseId]
+  );
+  if (active.rows.length)
+    return { proposalId: String(active.rows[0].proposal_id), applied: false };
+  const current = await client.query("SELECT state,version FROM crm_sales_cases WHERE case_id=$1 FOR UPDATE", [input.caseId]);
+  const row2 = current.rows[0];
+  if (!row2 || ["won", "lost"].includes(String(row2.state)))
+    return { proposalId: "", applied: false };
+  const proposalId = (0, import_node_crypto12.randomUUID)();
+  const previousState = String(row2.state);
+  const payload = { previousState, signalCode: input.signalCode, summary: input.summary, messageKey: input.messageKey, customerId: input.customerId, contactId: input.contactId };
+  await client.query(
+    `INSERT INTO crm_ai_proposals(proposal_id,case_id,proposal_type,status,payload_json,evidence_json,confidence,model,version)
+     VALUES($1,$2,'deal_won','applied_pending_confirmation',$3::jsonb,$4::jsonb,$5,'center-managed',$6)`,
+    [proposalId, input.caseId, JSON.stringify(payload), JSON.stringify(input.evidence), input.confidence, input.messageKey]
+  );
+  const nextVersion = Number(row2.version) + 1;
+  await client.query(
+    `UPDATE crm_sales_cases SET state='won',latest_message_key=$2,latest_summary=$3,next_action='\u6838\u5BF9\u6210\u4EA4\u4FE1\u606F\uFF1B\u4E0D\u7B26\u5408\u8BF7\u53D6\u6D88 AI \u6210\u4EA4\u8BB0\u5F55',stop_reason='ai_deal_won_pending_confirmation',version=$4,updated_at=clock_timestamp() WHERE case_id=$1`,
+    [input.caseId, input.messageKey, input.summary, nextVersion]
+  );
+  await client.query(
+    `INSERT INTO crm_case_events(case_id,event_key,event_type,source,payload_json,evidence_json,actor_user_id)
+     VALUES($1,$2,'case.won','ai',$3::jsonb,$4::jsonb,$5) ON CONFLICT(event_key) DO NOTHING`,
+    [input.caseId, `deal-won:${input.caseId}:${input.messageKey}`, JSON.stringify({ proposalId, previousState, signalCode: input.signalCode }), JSON.stringify(input.evidence), input.actorUserId]
+  );
+  const previousStatus = (await customerStatusStateIn(client, input.customerId))?.status ?? await derivedCustomerStatusIn(client, input.customerId) ?? "uncontacted";
+  if (!customerStatusIsRegression(previousStatus, "won_pending"))
+    await recordCustomerStatusEventIn(client, { eventKey: `deal-won:${input.caseId}:${input.messageKey}`, customerId: input.customerId, contactId: input.contactId, status: "won_pending", previousStatus, source: "ai", signal: "deal_won", actorUserId: input.actorUserId, reason: input.summary, evidence: input.evidence, payload: { caseId: input.caseId, proposalId, previousState, signalCode: input.signalCode }, occurredAt: /* @__PURE__ */ new Date() });
+  const leaders = await client.query(
+    `SELECT DISTINCT leader.user_id
+     FROM crm_org_assignments member
+     JOIN crm_org_units unit ON unit.unit_id=member.unit_id AND unit.kind='sales_team' AND unit.dissolved_at IS NULL
+     JOIN crm_org_assignments leader ON leader.unit_id=member.unit_id AND leader.role='leader' AND leader.ended_at IS NULL
+     WHERE member.user_id=$1 AND member.ended_at IS NULL`,
+    [input.ownerUserId]
+  );
+  const operations3 = await client.query(
+    `SELECT DISTINCT grants.user_id FROM public.identity_product_grants grants
+     JOIN public.identity_product_access access USING(user_id,product_id)
+     WHERE grants.product_id='crm' AND grants.role='operations' AND grants.active AND access.active`
+  );
+  const recipients2 = [.../* @__PURE__ */ new Set([input.actorUserId, input.ownerUserId, ...leaders.rows.map((row3) => String(row3.user_id)), ...operations3.rows.map((row3) => String(row3.user_id))])].sort();
+  await client.query(
+    `INSERT INTO public.identity_outbox(event_type,user_id,product_id,revision,customer_id,payload,recipient_user_ids)
+     VALUES($1,$2,'crm',$3,$4,$5::jsonb,$6::uuid[])`,
+    [DEAL_WON_EVENT, input.actorUserId, nextVersion, input.customerId, JSON.stringify({ caseId: input.caseId, proposalId, customerId: input.customerId, contactId: input.contactId, signalCode: input.signalCode, summary: input.summary, version: nextVersion }), recipients2]
+  );
+  return { proposalId, applied: true };
+}
+var PostgresSalesCaseRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+  }
+  async migrate() {
+    const client = await this.pool.connect();
+    try {
+      const checksum4 = (0, import_node_crypto12.createHash)("sha256").update(SALES_CASE_SCHEMA_SQL).digest("hex");
+      const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [SALES_CASE_SCHEMA_VERSION]);
+      if (old.rows.length && old.rows[0].checksum !== checksum4)
+        return failure("CONFLICT", "AI \u9500\u552E\u5DE5\u4F5C\u6D41\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+      if (!old.rows.length) {
+        await client.query("BEGIN");
+        try {
+          await client.query(SALES_CASE_SCHEMA_SQL);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [SALES_CASE_SCHEMA_VERSION, checksum4]);
+          await client.query("COMMIT");
+          this.log.write("INFO", "sales-case.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${SALES_CASE_SCHEMA_VERSION}`);
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        }
+      }
+      const proposalChecksum = (0, import_node_crypto12.createHash)("sha256").update(SALES_CASE_PROPOSAL_SCHEMA_SQL).digest("hex");
+      const proposalOld = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [SALES_CASE_PROPOSAL_SCHEMA_VERSION]);
+      if (proposalOld.rows.length && proposalOld.rows[0].checksum !== proposalChecksum)
+        return failure("CONFLICT", "AI \u6210\u4EA4\u5EFA\u8BAE\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+      if (!proposalOld.rows.length) {
+        await client.query("BEGIN");
+        try {
+          await client.query(SALES_CASE_PROPOSAL_SCHEMA_SQL);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [SALES_CASE_PROPOSAL_SCHEMA_VERSION, proposalChecksum]);
+          await client.query("COMMIT");
+          this.log.write("INFO", "sales-case.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${SALES_CASE_PROPOSAL_SCHEMA_VERSION}`);
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        }
+      }
+      const integrityChecksum = (0, import_node_crypto12.createHash)("sha256").update(SALES_WORKFLOW_INTEGRITY_SQL).digest("hex");
+      const integrityOld = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [SALES_WORKFLOW_INTEGRITY_VERSION]);
+      if (integrityOld.rows.length && integrityOld.rows[0].checksum !== integrityChecksum)
+        return failure("CONFLICT", "AI \u9500\u552E\u5DE5\u4F5C\u6D41\u5B8C\u6574\u6027\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+      if (!integrityOld.rows.length) {
+        await client.query("BEGIN");
+        try {
+          await client.query(SALES_WORKFLOW_INTEGRITY_SQL);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [SALES_WORKFLOW_INTEGRITY_VERSION, integrityChecksum]);
+          await client.query("COMMIT");
+          this.log.write("INFO", "sales-case.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${SALES_WORKFLOW_INTEGRITY_VERSION}`);
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        }
+      }
+      await client.query("BEGIN");
+      try {
+        const statusMigration = await migrateCustomerStatusSchemaIn(client);
+        await client.query(statusMigration.ok ? "COMMIT" : "ROLLBACK");
+        return statusMigration;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    } catch (error) {
+      this.log.write("ERROR", "sales-case.pg", `AI \u9500\u552E\u5DE5\u4F5C\u6D41\u8FC1\u79FB\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "AI \u9500\u552E\u5DE5\u4F5C\u6D41\u8FC1\u79FB\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+  async actor(db, hash) {
+    const result2 = await db.query(`SELECT u.user_id,u.identity_admin,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role) AS roles
+      FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
+      WHERE s.token_hash=$1 AND s.client='api' AND s.revoked_at IS NULL AND s.expires_at>now() AND u.active AND NOT u.must_change_password AND s.security_revision=u.security_revision`, [hash]);
+    return result2.rows.length ? { userId: String(result2.rows[0].user_id), identityAdmin: Boolean(result2.rows[0].identity_admin), roles: result2.rows[0].roles || [] } : null;
+  }
+  canSee(actor, scope) {
+    if (actor.identityAdmin || actor.roles.includes("admin"))
+      return true;
+    if (actor.roles.includes("operations") && scope.origin === "operations")
+      return true;
+    return [scope.ownerUserId, scope.createdBy].includes(actor.userId);
+  }
+  async list(hash, limit, offset) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const admin = actor.identityAdmin || actor.roles.includes("admin");
+      const operations3 = actor.roles.includes("operations");
+      const visibility2 = admin ? "TRUE" : operations3 ? `(customer.origin='operations' OR customer.owner_user_id=$1 OR customer.created_by=$1)` : "(customer.owner_user_id=$1 OR customer.created_by=$1)";
+      const limitIndex = admin ? 1 : 2;
+      const result2 = await client.query(`SELECT ${CASE_COLUMNS} FROM crm_sales_cases c JOIN crm_customers customer USING(customer_id) WHERE ${visibility2} ORDER BY COALESCE(c.next_action_at,c.updated_at) DESC LIMIT $${limitIndex}::int OFFSET $${limitIndex + 1}::int`, admin ? [limit, offset] : [actor.userId, limit, offset]);
+      return success(result2.rows.map(mapCase));
+    } catch (error) {
+      this.log.write("ERROR", "sales-case.pg", `\u9500\u552E Case \u5217\u8868\u5931\u8D25 code=${error?.code || "UNKNOWN"} message=${error?.message || ""}`);
+      return failure("DATABASE_ERROR", "\u9500\u552E Case \u5217\u8868\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  async detail(hash, caseId) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const result2 = await client.query(`SELECT ${CASE_COLUMNS},customer.origin,customer.owner_user_id,customer.created_by FROM crm_sales_cases c JOIN crm_customers customer USING(customer_id) WHERE c.case_id=$1`, [caseId]);
+      if (!result2.rows.length)
+        return failure("NOT_FOUND", "\u9500\u552E Case \u4E0D\u5B58\u5728");
+      const row2 = result2.rows[0];
+      if (!this.canSee(actor, { customerId: String(row2.customerId), origin: String(row2.origin), ownerUserId: row2.owner_user_id ? String(row2.owner_user_id) : null, createdBy: String(row2.created_by) }))
+        return failure("NOT_FOUND", "\u9500\u552E Case \u4E0D\u5B58\u5728");
+      return success(mapCase(row2));
+    } catch (error) {
+      this.log.write("ERROR", "sales-case.pg", `\u9500\u552E Case \u8BE6\u60C5\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u9500\u552E Case \u8BE6\u60C5\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  async detailWithProposals(hash, caseId) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const row2 = (await client.query(
+        `SELECT ${CASE_COLUMNS},customer.origin,customer.owner_user_id,customer.created_by
+         FROM crm_sales_cases c JOIN crm_customers customer USING(customer_id) WHERE c.case_id=$1`,
+        [caseId]
+      )).rows[0];
+      if (!row2 || !this.canSee(actor, {
+        customerId: String(row2.customerId),
+        origin: String(row2.origin),
+        ownerUserId: row2.owner_user_id ? String(row2.owner_user_id) : null,
+        createdBy: String(row2.created_by)
+      }))
+        return failure("NOT_FOUND", "\u9500\u552E Case \u4E0D\u5B58\u5728");
+      const [events, proposals] = await Promise.all([
+        client.query("SELECT * FROM crm_case_events WHERE case_id=$1 ORDER BY created_at DESC,event_id DESC LIMIT 100", [caseId]),
+        client.query("SELECT * FROM crm_ai_proposals WHERE case_id=$1 ORDER BY created_at DESC LIMIT 100", [caseId])
+      ]);
+      return success({ case: mapCase(row2), events: events.rows.map(mapEvent2), proposals: proposals.rows.map(mapProposal) });
+    } catch (error) {
+      this.log.write("ERROR", "sales-case.pg", `\u9500\u552E Case \u8BE6\u60C5\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u9500\u552E Case \u8BE6\u60C5\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  async ensure(hash, contactId, customerId, source = "inquiry") {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const contact2 = (await client.query(
+        `SELECT customer.origin,customer.owner_user_id,customer.created_by,
+                COALESCE((SELECT own.owner_user_id FROM crm_contact_ownership own
+                  WHERE own.contact_id=ct.id AND own.customer_id=customer.customer_id AND own.ended_at IS NULL
+                  ORDER BY own.started_at DESC,own.ownership_id DESC LIMIT 1),customer.owner_user_id) AS contact_owner
+         FROM contacts ct
+         JOIN crm_customer_contacts link ON link.contact_id=ct.id
+         JOIN crm_customers customer ON customer.customer_id=link.customer_id
+         WHERE ct.id=$1 AND customer.customer_id=$2`,
+        [contactId, customerId]
+      )).rows[0];
+      if (!contact2)
+        return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
+      const scopeOwner = contact2.contact_owner ? String(contact2.contact_owner) : null;
+      if (!this.canSee(actor, { customerId, origin: String(contact2.origin), ownerUserId: scopeOwner, createdBy: String(contact2.created_by) })) {
+        return failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u4E0D\u5B58\u5728");
+      }
+      const ownerUserId = scopeOwner || actor.userId;
+      const ensured = await ensureSalesCaseIn(client, { customerId, contactId, ownerUserId, source });
+      return this.detailByActor(client, ownerUserId, ensured.caseId);
+    } catch (error) {
+      this.log.write("ERROR", "sales-case.pg", `\u9500\u552E Case \u786E\u8BA4\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u9500\u552E Case \u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  async listProposals(hash, caseId, status) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const caseRow = (await client.query(
+        `SELECT c.owner_user_id,customer.origin,customer.owner_user_id,customer.created_by
+         FROM crm_sales_cases c JOIN crm_customers customer USING(customer_id) WHERE c.case_id=$1`,
+        [caseId]
+      )).rows[0];
+      if (!caseRow || !this.canSee(actor, {
+        customerId: caseId,
+        origin: String(caseRow.origin),
+        ownerUserId: caseRow.owner_user_id ? String(caseRow.owner_user_id) : null,
+        createdBy: String(caseRow.created_by)
+      }))
+        return failure("NOT_FOUND", "\u9500\u552E Case \u4E0D\u5B58\u5728");
+      const result2 = status ? await client.query("SELECT * FROM crm_ai_proposals WHERE case_id=$1 AND status=$2 ORDER BY created_at DESC", [caseId, status]) : await client.query("SELECT * FROM crm_ai_proposals WHERE case_id=$1 ORDER BY created_at DESC", [caseId]);
+      return success(result2.rows.map(mapProposal));
+    } catch (error) {
+      this.log.write("ERROR", "sales-case.pg", `\u5EFA\u8BAE\u5217\u8868\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u5EFA\u8BAE\u5217\u8868\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  async proposal(hash, caseId, proposalId) {
+    const proposals = await this.listProposals(hash, caseId);
+    if (!proposals.ok)
+      return proposals;
+    const found = proposals.data.find((item) => item.proposalId === proposalId);
+    return found ? success(found) : failure("NOT_FOUND", "\u5EFA\u8BAE\u4E0D\u5B58\u5728");
+  }
+  async createProposal(hash, caseId, input) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const caseRow = (await client.query(
+        `SELECT c.owner_user_id,customer.origin,customer.owner_user_id,customer.created_by
+         FROM crm_sales_cases c JOIN crm_customers customer USING(customer_id) WHERE c.case_id=$1`,
+        [caseId]
+      )).rows[0];
+      if (!caseRow || !this.canSee(actor, {
+        customerId: caseId,
+        origin: String(caseRow.origin),
+        ownerUserId: caseRow.owner_user_id ? String(caseRow.owner_user_id) : null,
+        createdBy: String(caseRow.created_by)
+      }))
+        return failure("NOT_FOUND", "\u9500\u552E Case \u4E0D\u5B58\u5728");
+      const inserted = await client.query(
+        `INSERT INTO crm_ai_proposals(proposal_id,case_id,proposal_type,status,payload_json,evidence_json,confidence,model,version,expires_at)
+         VALUES($1,$2,$3,'pending',$4,$5,$6,$7,$8,$9)
+         ON CONFLICT(proposal_id) DO UPDATE SET proposal_id=EXCLUDED.proposal_id
+         RETURNING *`,
+        [
+          input.proposalId,
+          caseId,
+          input.proposalType,
+          JSON.stringify(input.payload),
+          JSON.stringify(input.evidence || []),
+          input.confidence,
+          input.model || null,
+          input.version || null,
+          input.expiresAt || null
+        ]
+      );
+      return success(mapProposal(inserted.rows[0]));
+    } catch (error) {
+      this.log.write("ERROR", "sales-case.pg", `\u5EFA\u8BAE\u521B\u5EFA\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u5EFA\u8BAE\u521B\u5EFA\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+  async create(actorUserId, input) {
+    const client = await this.pool.connect();
+    try {
+      const result2 = await client.query(`INSERT INTO crm_sales_cases(case_id,customer_id,contact_id,owner_user_id,state,source,latest_summary,next_action,next_action_at)
+        VALUES($1,$2,$3,$4,'lead_pending',$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING case_id`, [input.caseId, input.customerId, input.contactId, actorUserId, input.source, input.summary || null, input.nextAction || "\u9A8C\u8BC1\u7EBF\u7D22", input.nextActionAt || null]);
+      if (!result2.rows.length)
+        return failure("CONFLICT", "\u8BE5\u8054\u7CFB\u4EBA\u5DF2\u6709\u5F00\u653E\u9500\u552E Case");
+      return this.detailByActor(client, actorUserId, input.caseId);
+    } catch (error) {
+      this.log.write("ERROR", "sales-case.pg", `\u9500\u552E Case \u521B\u5EFA\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u9500\u552E Case \u521B\u5EFA\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+  async detailByActor(client, userId, caseId) {
+    const result2 = await client.query(`SELECT ${CASE_COLUMNS} FROM crm_sales_cases c WHERE c.case_id=$1 AND c.owner_user_id=$2`, [caseId, userId]);
+    return result2.rows.length ? success(mapCase(result2.rows[0])) : failure("NOT_FOUND", "\u9500\u552E Case \u4E0D\u5B58\u5728");
+  }
+  async appendEvent(input) {
+    try {
+      await this.pool.query(`INSERT INTO crm_case_events(case_id,event_key,event_type,source,payload_json,evidence_json,actor_user_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(event_key) DO NOTHING`, [input.caseId, input.eventKey, input.eventType, input.source, JSON.stringify(input.payload), JSON.stringify(input.evidence), input.actorUserId]);
+      return success(void 0);
+    } catch (error) {
+      this.log.write("ERROR", "sales-case.pg", `Case \u4E8B\u4EF6\u5199\u5165\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "Case \u4E8B\u4EF6\u5199\u5165\u5931\u8D25");
+    }
+  }
+  async transition(hash, caseId, input) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      await client.query("BEGIN");
+      const row2 = (await client.query(
+        `SELECT c.case_id,c.customer_id,c.contact_id,c.state,c.owner_user_id,c.version,customer.origin,customer.owner_user_id AS customer_owner,customer.created_by
+         FROM crm_sales_cases c JOIN crm_customers customer USING(customer_id) WHERE c.case_id=$1 FOR UPDATE OF c`,
+        [caseId]
+      )).rows[0];
+      if (!row2 || !this.canSee(actor, { customerId: caseId, origin: String(row2.origin), ownerUserId: row2.customer_owner ? String(row2.customer_owner) : null, createdBy: String(row2.created_by) })) {
+        await client.query("ROLLBACK");
+        return failure("NOT_FOUND", "\u9500\u552E Case \u4E0D\u5B58\u5728");
+      }
+      if (!canTransitionSalesCase(String(row2.state), input.state)) {
+        await client.query("ROLLBACK");
+        return failure("CONFLICT", "\u9500\u552E Case \u72B6\u6001\u4E0D\u5141\u8BB8\u8FD9\u6837\u63A8\u8FDB");
+      }
+      await client.query(`UPDATE crm_sales_cases SET state=$2,next_action=COALESCE($3,next_action),latest_summary=COALESCE($4,latest_summary),version=version+1,updated_at=clock_timestamp() WHERE case_id=$1`, [caseId, input.state, input.nextAction ?? null, input.summary ?? null]);
+      await client.query(`INSERT INTO crm_case_events(case_id,event_key,event_type,source,payload_json,evidence_json,actor_user_id) VALUES($1,$2,$3,'system',$4,$5,$6) ON CONFLICT(event_key) DO NOTHING`, [caseId, `${input.eventType || "case"}:${caseId}:${Date.now()}`, input.eventType || "proposal.accepted", JSON.stringify(input.payload || {}), JSON.stringify(input.evidence || []), actor.userId]);
+      const nextStatus = salesCaseCustomerStatus(input.state);
+      if (nextStatus) {
+        const previousStatus = (await customerStatusStateIn(client, String(row2.customer_id)))?.status ?? await derivedCustomerStatusIn(client, String(row2.customer_id)) ?? "uncontacted";
+        if (!customerStatusIsRegression(previousStatus, nextStatus))
+          await recordCustomerStatusEventIn(client, { eventKey: `sales-case:${caseId}:${Number(row2.version) + 1}`, customerId: String(row2.customer_id), contactId: Number(row2.contact_id), status: nextStatus, previousStatus, source: "human", signal: "sales_case", actorUserId: actor.userId, reason: `Case \u72B6\u6001\uFF1A${input.state}`, payload: { caseId, fromState: String(row2.state), toState: input.state, eventType: input.eventType ?? null }, occurredAt: /* @__PURE__ */ new Date() });
+      }
+      const updated = await client.query(`SELECT ${CASE_COLUMNS} FROM crm_sales_cases c WHERE c.case_id=$1`, [caseId]);
+      await client.query("COMMIT");
+      return success(mapCase(updated.rows[0]));
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+      }
+      this.log.write("ERROR", "sales-case.pg", `\u9500\u552E Case \u63A8\u8FDB\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u9500\u552E Case \u63A8\u8FDB\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+  async actProposal(hash, caseId, proposalId, action, payload) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      await client.query("BEGIN");
+      const result2 = await client.query("SELECT * FROM crm_ai_proposals WHERE proposal_id=$1 FOR UPDATE", [proposalId]);
+      if (!result2.rows.length) {
+        await client.query("ROLLBACK");
+        return failure("NOT_FOUND", "\u5EFA\u8BAE\u4E0D\u5B58\u5728");
+      }
+      const proposal = result2.rows[0];
+      if (String(proposal.case_id) !== caseId) {
+        await client.query("ROLLBACK");
+        return failure("NOT_FOUND", "\u5EFA\u8BAE\u4E0D\u5B58\u5728");
+      }
+      const caseResult = await client.query(
+        `SELECT c.customer_id,c.contact_id,c.owner_user_id,customer.origin,customer.owner_user_id,customer.created_by
+         FROM crm_sales_cases c JOIN crm_customers customer USING(customer_id) WHERE c.case_id=$1 FOR UPDATE OF c`,
+        [caseId]
+      );
+      if (!caseResult.rows.length) {
+        await client.query("ROLLBACK");
+        return failure("NOT_FOUND", "\u5EFA\u8BAE\u4E0D\u5B58\u5728");
+      }
+      const caseRow = caseResult.rows[0];
+      if (!this.canSee(actor, {
+        customerId: caseId,
+        origin: String(caseRow.origin),
+        ownerUserId: caseRow.owner_user_id ? String(caseRow.owner_user_id) : null,
+        createdBy: String(caseRow.created_by)
+      })) {
+        await client.query("ROLLBACK");
+        return failure("FORBIDDEN", "\u65E0\u6743\u5904\u7406\u8BE5\u5EFA\u8BAE");
+      }
+      if (!canActOnProposal(proposal.status)) {
+        await client.query("ROLLBACK");
+        return failure("CONFLICT", "\u5EFA\u8BAE\u5DF2\u5904\u7406");
+      }
+      if (proposal.status === "applied_pending_confirmation" && action !== "cancel") {
+        await client.query("ROLLBACK");
+        return failure("CONFLICT", "\u5F85\u786E\u8BA4\u6210\u4EA4\u53EA\u80FD\u53D6\u6D88");
+      }
+      if (proposal.proposal_type === "deal_won" && proposal.status === "applied_pending_confirmation" && action === "cancel") {
+        const previousState = typeof proposal.payload_json?.previousState === "string" ? proposal.payload_json.previousState : "replied";
+        const nextVersion = Number((await client.query("SELECT version FROM crm_sales_cases WHERE case_id=$1 FOR UPDATE", [caseId])).rows[0]?.version ?? 1) + 1;
+        await client.query(`UPDATE crm_sales_cases SET state=$2,next_action='\u5224\u65AD\u5BA2\u6237\u53CD\u9988',stop_reason=NULL,version=$3,updated_at=clock_timestamp() WHERE case_id=$1`, [caseId, previousState, nextVersion]);
+      }
+      if (action === "edit" && !payload) {
+        await client.query("ROLLBACK");
+        return failure("INVALID_INPUT", "\u4FEE\u6539\u5EFA\u8BAE\u5FC5\u987B\u63D0\u4F9B\u5185\u5BB9");
+      }
+      const status = proposalActionState(action);
+      const updated = await client.query(`UPDATE crm_ai_proposals SET status=$2,payload_json=COALESCE($3,payload_json),acted_by=$4,acted_at=now() WHERE proposal_id=$1 RETURNING *`, [proposalId, status, payload ? JSON.stringify(payload) : null, actor.userId]);
+      await client.query(`INSERT INTO crm_case_events(case_id,event_key,event_type,source,payload_json,evidence_json,actor_user_id) VALUES($1,$2,$3,'user',$4,'[]'::jsonb,$5) ON CONFLICT(event_key) DO NOTHING`, [proposal.case_id, `proposal:${proposalId}:${status}`, `proposal.${status}`, JSON.stringify({ proposalId, status }), actor.userId]);
+      if (proposal.proposal_type === "deal_won" && proposal.status === "applied_pending_confirmation" && action === "cancel") {
+        const previousStatus = (await customerStatusStateIn(client, String(caseRow.customer_id)))?.status ?? "won_pending";
+        const nextStatus = await derivedCustomerStatusIn(client, String(caseRow.customer_id)) ?? previousStatus;
+        await recordCustomerStatusEventIn(client, { eventKey: `deal-won-cancel:${proposalId}`, customerId: String(caseRow.customer_id), contactId: Number(caseRow.contact_id), status: nextStatus, previousStatus, source: "human", signal: "correction", actorUserId: actor.userId, reason: "\u53D6\u6D88 AI \u6210\u4EA4\u8BB0\u5F55", payload: { caseId, proposalId, previousState: typeof proposal.payload_json?.previousState === "string" ? proposal.payload_json.previousState : null }, occurredAt: /* @__PURE__ */ new Date(), recordWhenUnchanged: true });
+      }
+      await client.query("COMMIT");
+      return success(mapProposal(updated.rows[0]));
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+      }
+      this.log.write("ERROR", "sales-case.pg", `\u5EFA\u8BAE\u5904\u7406\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u5EFA\u8BAE\u5904\u7406\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+};
+
 // server/adapters/postgres/contact-mail-analysis-repository.ts
 var SUMMARY_MAX = 2e3;
 var DIGEST_FIELDS = ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "source", "inputSequence", "result", "classification", "relevance", "summary", "signals", "requiresAction", "nextAction", "priority", "dueHint", "confidence", "evidence"];
 function sha(value2) {
-  return (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+  return (0, import_node_crypto13.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
 }
 function jsonArray(value2) {
   if (Array.isArray(value2))
@@ -10268,10 +11768,10 @@ function mapped(row2) {
 var RECORD_COLUMNS = `analysis_id AS "analysisId",actor_id AS "actorId",event_id AS "eventId",contact_id AS "contactId",customer_id AS "customerId",mailbox_key AS "mailboxKey",message_key AS "messageKey",content_hash AS "contentHash",thread_key AS "threadKey",analyzer_version AS "analyzerVersion",input_sequence AS "inputSequence",source,relevance,classification,contact_state AS "contactState",summary,signals,requires_action AS "requiresAction",next_action AS "nextAction",priority,due_hint AS "dueHint",confidence,evidence,human_locked AS "humanLocked",supersedes_id AS "supersedesId",is_current AS "isCurrent",created_at AS "createdAt"`;
 function digestFor(value2) {
   const source = value2 && typeof value2 === "object" ? value2 : {};
-  const fields = Object.fromEntries(DIGEST_FIELDS.filter((key) => Object.hasOwn(source, key)).map((key) => [key, source[key]]));
+  const fields2 = Object.fromEntries(DIGEST_FIELDS.filter((key2) => Object.hasOwn(source, key2)).map((key2) => [key2, source[key2]]));
   if (source.source === "rule")
-    delete fields.inputSequence;
-  return sha(fields);
+    delete fields2.inputSequence;
+  return sha(fields2);
 }
 function streamLockKey(input) {
   return [input.actorId, input.contactId, input.mailboxKey, input.messageKey, input.contentHash].join("|");
@@ -10284,19 +11784,19 @@ async function existingReceipt(c, input, digest2) {
     return failure("CONFLICT", "\u5206\u6790\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u7ED3\u8BBA");
   return success(mapped(old.rows[0]));
 }
-async function syncSuggestionIn(c, record16, previousCurrentId) {
-  const suggestion = taskSuggestionFor(record16);
-  const actionCode = record16.classification === "bounced" ? "fix_email" : record16.signals[0]?.code ?? "other";
-  const actionable = record16.relevance === "customer_business" && record16.requiresAction && !!record16.nextAction?.trim();
+async function syncSuggestionIn(c, record18, previousCurrentId) {
+  const suggestion = taskSuggestionFor(record18);
+  const actionCode = record18.classification === "bounced" ? "fix_email" : record18.signals[0]?.code ?? "other";
+  const actionable = record18.relevance === "customer_business" && record18.requiresAction && !!record18.nextAction?.trim();
   if (!actionable) {
     if (previousCurrentId)
       await c.query("UPDATE crm_contact_mail_task_suggestions SET status='dismissed',version=version+1,updated_at=clock_timestamp() WHERE source_analysis_id=$1 AND status='suggested'", [previousCurrentId]);
     return success(null);
   }
-  const nextAction = suggestion?.nextAction ?? record16.nextAction;
-  const priority = suggestion?.priority ?? record16.priority;
-  const dueHint = suggestion?.dueHint ?? record16.dueHint;
-  const inserted = await c.query(`INSERT INTO crm_contact_mail_task_suggestions(actor_id,contact_id,customer_id,thread_key,action_code,source_analysis_id,next_action,priority,due_hint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(actor_id,contact_id,thread_key,action_code) DO UPDATE SET source_analysis_id=EXCLUDED.source_analysis_id,next_action=EXCLUDED.next_action,priority=EXCLUDED.priority,due_hint=EXCLUDED.due_hint,status=CASE WHEN crm_contact_mail_task_suggestions.status='dismissed' AND $10::boolean=false THEN crm_contact_mail_task_suggestions.status ELSE 'suggested' END,version=crm_contact_mail_task_suggestions.version+1,updated_at=clock_timestamp() RETURNING suggestion_id`, [record16.actorId, record16.contactId, record16.customerId, record16.threadKey, actionCode, record16.analysisId, nextAction, priority, dueHint, record16.source === "human"]);
+  const nextAction = suggestion?.nextAction ?? record18.nextAction;
+  const priority = suggestion?.priority ?? record18.priority;
+  const dueHint = suggestion?.dueHint ?? record18.dueHint;
+  const inserted = await c.query(`INSERT INTO crm_contact_mail_task_suggestions(actor_id,contact_id,customer_id,thread_key,action_code,source_analysis_id,next_action,priority,due_hint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(actor_id,contact_id,thread_key,action_code) DO UPDATE SET source_analysis_id=EXCLUDED.source_analysis_id,next_action=EXCLUDED.next_action,priority=EXCLUDED.priority,due_hint=EXCLUDED.due_hint,status=CASE WHEN crm_contact_mail_task_suggestions.status='dismissed' AND $10::boolean=false THEN crm_contact_mail_task_suggestions.status ELSE 'suggested' END,version=crm_contact_mail_task_suggestions.version+1,updated_at=clock_timestamp() RETURNING suggestion_id`, [record18.actorId, record18.contactId, record18.customerId, record18.threadKey, actionCode, record18.analysisId, nextAction, priority, dueHint, record18.source === "human"]);
   return success(inserted.rows.length ? String(inserted.rows[0].suggestion_id) : null);
 }
 async function insertAnalysisIn(c, input) {
@@ -10318,18 +11818,25 @@ async function insertAnalysisIn(c, input) {
   if (makeCurrent)
     await c.query("UPDATE crm_contact_mail_analyses SET is_current=false WHERE actor_id=$1 AND mailbox_key=$2 AND message_key=$3 AND contact_id=$4 AND content_hash=$5 AND is_current", [input.actorId, input.mailboxKey, input.messageKey, input.contactId, input.contentHash]);
   const inserted = (await c.query(`INSERT INTO crm_contact_mail_analyses(actor_id,event_id,contact_id,customer_id,mailbox_key,message_key,content_hash,thread_key,analyzer_version,input_sequence,source,relevance,classification,contact_state,summary,signals,requires_action,next_action,priority,due_hint,confidence,evidence,human_locked,idempotency_key,request_digest,supersedes_id,is_current) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27) RETURNING ${RECORD_COLUMNS}`, [input.actorId, input.eventId, input.contactId, input.customerId, input.mailboxKey, input.messageKey, input.contentHash, input.threadKey, input.analyzerVersion, input.inputSequence, input.source, input.relevance, input.classification, input.contactState, input.summary.slice(0, SUMMARY_MAX), JSON.stringify(input.signals), input.requiresAction, input.nextAction, input.priority, input.dueHint, input.confidence, JSON.stringify(input.evidence), input.source === "human", input.idempotencyKey, digest2, current?.analysisId ?? null, makeCurrent])).rows[0];
-  const record16 = mapped(inserted);
-  if (record16.isCurrent) {
-    const suggestion = await syncSuggestionIn(c, record16, current?.analysisId ? String(current.analysisId) : null);
+  const record18 = mapped(inserted);
+  if (record18.isCurrent) {
+    const suggestion = await syncSuggestionIn(c, record18, current?.analysisId ? String(current.analysisId) : null);
     if (!suggestion.ok)
       return suggestion;
     if (suggestion.data) {
-      const created = await createMailAnalysisTaskIn(c, { actorId: record16.actorId, suggestionId: suggestion.data, analysisId: record16.analysisId, customerId: record16.customerId, contactId: record16.contactId, threadKey: record16.threadKey, actionCode: record16.classification === "bounced" ? "fix_email" : record16.signals[0]?.code ?? "other", title: record16.nextAction ?? "\u5904\u7406\u5BA2\u6237\u90AE\u4EF6", priority: record16.priority, relevance: record16.relevance, classification: record16.classification, source: record16.source, confidence: record16.confidence, requiresAction: record16.requiresAction, nextAction: record16.nextAction, signals: record16.signals });
+      const created = await createMailAnalysisTaskIn(c, { actorId: record18.actorId, suggestionId: suggestion.data, analysisId: record18.analysisId, customerId: record18.customerId, contactId: record18.contactId, threadKey: record18.threadKey, actionCode: record18.classification === "bounced" ? "fix_email" : record18.signals[0]?.code ?? "other", title: record18.nextAction ?? "\u5904\u7406\u5BA2\u6237\u90AE\u4EF6", priority: record18.priority, relevance: record18.relevance, classification: record18.classification, source: record18.source, confidence: record18.confidence, requiresAction: record18.requiresAction, nextAction: record18.nextAction, signals: record18.signals });
       if (!created.ok)
         return created;
     }
+    const dealWonSignal = dealWonSignalFor(record18);
+    if (dealWonSignal) {
+      const ensured = await ensureSalesCaseIn(c, { customerId: record18.customerId, contactId: record18.contactId, ownerUserId: record18.actorId, source: "mail_analysis", summary: record18.summary });
+      const applied = await applyDealWonProposalIn(c, { caseId: ensured.caseId, customerId: record18.customerId, contactId: record18.contactId, ownerUserId: record18.actorId, actorUserId: record18.actorId, messageKey: record18.messageKey, signalCode: dealWonSignal.code, summary: record18.summary, evidence: record18.evidence.length ? record18.evidence : [dealWonSignal.evidence], confidence: dealWonSignal.confidence });
+      if (!applied.proposalId && applied.applied === false) {
+      }
+    }
   }
-  return success(record16);
+  return success(record18);
 }
 function domain(email3) {
   const at = email3.trim().toLowerCase().lastIndexOf("@");
@@ -10501,13 +12008,13 @@ async function contactMailEventsIn(client, input) {
   return rows.rows.map(mapped2);
 }
 function contactMailFingerprint(input) {
-  const fields = [input.contactId, input.customerId, input.eventKey, input.mailboxKey, input.messageKey, input.kind, input.direction, input.occurredAt, input.subject, input.preview, input.fromEmail, input.toEmails, input.ccEmails];
+  const fields2 = [input.contactId, input.customerId, input.eventKey, input.mailboxKey, input.messageKey, input.kind, input.direction, input.occurredAt, input.subject, input.preview, input.fromEmail, input.toEmails, input.ccEmails];
   if (input.correction)
-    fields.push([input.correction.previousEventKey, input.correction.classification]);
-  return (0, import_node_crypto11.createHash)("sha256").update(JSON.stringify(fields)).digest("hex");
+    fields2.push([input.correction.previousEventKey, input.correction.classification]);
+  return (0, import_node_crypto14.createHash)("sha256").update(JSON.stringify(fields2)).digest("hex");
 }
 function contactMailContentHash(input) {
-  return (0, import_node_crypto11.createHash)("sha256").update(JSON.stringify([input.contactId, input.customerId, input.mailboxKey, input.messageKey, input.subject, input.preview, input.fromEmail, input.toEmails, input.ccEmails])).digest("hex");
+  return (0, import_node_crypto14.createHash)("sha256").update(JSON.stringify([input.contactId, input.customerId, input.mailboxKey, input.messageKey, input.subject, input.preview, input.fromEmail, input.toEmails, input.ccEmails])).digest("hex");
 }
 async function recordContactMailEventIn(client, actor, input) {
   if (input.advanceSendStage !== void 0 && (typeof input.advanceSendStage !== "boolean" || input.kind !== "sent" || input.direction !== "outbound"))
@@ -10560,7 +12067,8 @@ async function recordContactMailEventIn(client, actor, input) {
   if (touch && !correctedStream) {
     const latest = (await client.query("SELECT max(occurred_at) AS stamp FROM crm_shared_activities WHERE contact_id=$1 AND customer_id=$2 AND opportunity_id IS NULL AND contact_status IS NOT NULL AND method IN ('email','phone','visit','other')", [input.contactId, input.customerId])).rows[0].stamp;
     activityId = (await client.query("INSERT INTO crm_shared_activities(customer_id,interaction_id,actor_id,note,method,occurred_at,recorded_at,created_at,contact_id,contact_status) VALUES($1,NULL,$2,$3,'email',$4,$5,$5,$6,$7) RETURNING id::text", [input.customerId, actor.userId, input.subject || input.preview, occurred, recorded, input.contactId, touch])).rows[0].id;
-    if (!(touch === "contacted" && ["replied", "bounced", "autoreply"].includes(contact2.touchStatus)) && (!latest || occurred.getTime() > new Date(latest).getTime() || occurred.getTime() === new Date(latest).getTime() && contact2.touchStatus !== touch))
+    const preservesTouch = touch === "bounced" && ["contacted", "replied", "autoreply"].includes(contact2.touchStatus) || touch === "contacted" && ["replied", "bounced", "autoreply"].includes(contact2.touchStatus);
+    if (!preservesTouch && (!latest || occurred.getTime() > new Date(latest).getTime() || occurred.getTime() === new Date(latest).getTime() && contact2.touchStatus !== touch))
       await client.query("UPDATE contacts SET crm_touch_status=$2 WHERE id=$1", [input.contactId, touch]);
   }
   const classification = input.kind === "bounced" ? "bounced" : input.kind === "autoreply" ? "autoreply" : touch === "replied" ? "replied" : touch === "contacted" && contact2.touchStatus !== "replied" ? "reached" : null;
@@ -10569,7 +12077,7 @@ async function recordContactMailEventIn(client, actor, input) {
     if (!newer)
       await client.query("UPDATE contacts SET status=$2 WHERE id=$1", [input.contactId, classification]);
   }
-  const eventId = (0, import_node_crypto11.randomUUID)();
+  const eventId = (0, import_node_crypto14.randomUUID)();
   await client.query("INSERT INTO crm_contact_mail_events(event_id,actor_id,contact_id,customer_id,event_key,mailbox_key,message_key,kind,direction,occurred_at,subject,preview,from_email,to_emails,cc_emails,digest,recorded_at,activity_id,classification_correction,classification_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16,$17,$18,$19::jsonb,$20)", [eventId, actor.userId, input.contactId, input.customerId, input.eventKey, input.mailboxKey, input.messageKey, input.kind, input.direction, occurred, input.subject, input.preview, input.fromEmail, JSON.stringify(input.toEmails), JSON.stringify(input.ccEmails), fingerprint2, recorded, activityId, input.correction ? JSON.stringify(input.correction) : null, revision.data]);
   if (input.advanceSendStage) {
     await advanceStage();
@@ -10577,6 +12085,11 @@ async function recordContactMailEventIn(client, actor, input) {
   }
   await refreshMailProjectionIn(client, input, contact2.email);
   await client.query("UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [input.contactId]);
+  const projectedTouch = (await client.query('SELECT crm_touch_status AS "touchStatus" FROM contacts WHERE id=$1', [input.contactId])).rows[0]?.touchStatus ?? contact2.touchStatus;
+  const aiDealPending = await customerHasAiDealPendingIn(client, input.customerId);
+  const statusChange = customerStatusChange({ relationshipStage: contact2.relationshipStage, touchStatuses: [contact2.touchStatus], aiDealPending, nextTouchStatus: projectedTouch });
+  if (statusChange.changed)
+    await recordCustomerStatusEventIn(client, { eventKey: `mail:${actor.userId}:${input.eventKey}`, customerId: input.customerId, contactId: input.contactId, status: statusChange.after, previousStatus: statusChange.before, source: "system", signal: "mail", actorUserId: actor.userId, reason: `${input.kind}:${input.direction}`, payload: { mailEventId: eventId, kind: input.kind, direction: input.direction, activityId, subject: input.subject, correctionRevision: revision.data ?? null }, occurredAt: occurred });
   await contactEvent(client, actor, contact2, CONTACT_ASSIGNMENT_EVENTS.followup, (contact2.contactVersion ?? 1) + 1, activityId ?? void 0, eventId);
   const analysis = await recordMechanicalMailAnalysisIn(client, actor, input, eventId, contentHash, primary ?? null, occurred.getTime() + (revision.data ?? 0));
   if (!analysis.ok)
@@ -10588,7 +12101,7 @@ async function recordContactMailEventIn(client, actor, input) {
 }
 
 // server/adapters/postgres/contact-assignment-group-schema.ts
-var import_node_crypto12 = require("node:crypto");
+var import_node_crypto15 = require("node:crypto");
 var CONTACT_ASSIGNMENT_GROUP_VERSION = "050-contact-assignment-groups";
 var CONTACT_ASSIGNMENT_GROUP_SQL = `
 CREATE TABLE IF NOT EXISTS crm_contact_assignment_group_members(
@@ -10599,7 +12112,7 @@ CREATE TABLE IF NOT EXISTS crm_contact_assignment_group_members(
 CREATE INDEX IF NOT EXISTS idx_crm_contact_assignment_group_member ON crm_contact_assignment_group_members(group_id,request_id);
 `;
 async function migrateContactAssignmentGroups(c) {
-  const checksum4 = (0, import_node_crypto12.createHash)("sha256").update(CONTACT_ASSIGNMENT_GROUP_SQL).digest("hex");
+  const checksum4 = (0, import_node_crypto15.createHash)("sha256").update(CONTACT_ASSIGNMENT_GROUP_SQL).digest("hex");
   const old = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_ASSIGNMENT_GROUP_VERSION]);
   if (old.rows.length && old.rows[0].checksum !== checksum4)
     return failure("CONFLICT", "\u5206\u914D\u7EC4\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -10619,17 +12132,23 @@ var CONTACT_OWNER_SQL = "COALESCE((SELECT own.owner_user_id FROM crm_contact_own
 var JOINS = `FROM contacts ct JOIN crm_customer_contacts cc ON cc.contact_id=ct.id JOIN crm_customers c ON c.customer_id=cc.customer_id JOIN companies co ON co.id=c.company_id`;
 var LAST_FOLLOWUP_AT = lastEffectiveFollowupSql("occurred_at");
 var LAST_FOLLOWUP_NOTE = lastEffectiveFollowupSql("note");
-var PROJECTION = `ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT COALESCE(array_agg(DISTINCT sid),'{}'::uuid[]) FROM crm_contact_assignment_requests sar CROSS JOIN LATERAL unnest(sar.supervisor_user_ids) sid WHERE sar.contact_id=ct.id AND sar.customer_id=c.customer_id AND sar.status='accepted') AS supervisor_user_ids,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted','pending_transfer')) AS active_assignment_status,(SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1) AS "relationshipStage",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
+var PRIMARY_CONTACT_ID_SQL = `(SELECT min(primary_contact.id) FROM crm_customer_contacts primary_link JOIN contacts primary_contact ON primary_contact.id=primary_link.contact_id WHERE primary_link.customer_id=c.customer_id AND primary_contact.crm_deleted_at IS NULL)`;
+var OPEN_TASK_MATCH_SQL = `ft.customer_id=c.customer_id AND ft.status='open' AND ((ft.source_contact_id IS NOT NULL AND ft.source_contact_id=ct.id) OR (ft.source_contact_id IS NULL AND ct.id=${PRIMARY_CONTACT_ID_SQL}))`;
+var OPEN_TASK_FOR_CONTACT_SQL = `EXISTS(SELECT 1 FROM crm_followup_tasks ft WHERE ${OPEN_TASK_MATCH_SQL})`;
+var ATTENTION_DUE_AT_SQL = `(SELECT min(ft.due_at) FROM crm_followup_tasks ft WHERE ${OPEN_TASK_MATCH_SQL})`;
+var ACTIVE_RELATIONSHIP_STAGE_SQL = `ct.id=${PRIMARY_CONTACT_ID_SQL} AND c.relationship_stage IN ('quoting','trial','cooperating')`;
+var BOARD_ATTENTION_SQL = `ct.crm_touch_status='replied' OR ${OPEN_TASK_FOR_CONTACT_SQL} OR (${ACTIVE_RELATIONSHIP_STAGE_SQL})`;
+var PROJECTION = `ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",EXISTS(SELECT 1 FROM crm_ai_proposals ap JOIN crm_sales_cases sc ON sc.case_id=ap.case_id WHERE sc.customer_id=c.customer_id AND ap.proposal_type='deal_won' AND ap.status='applied_pending_confirmation') AS "aiDealPending",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT COALESCE(array_agg(DISTINCT sid),'{}'::uuid[]) FROM crm_contact_assignment_requests sar CROSS JOIN LATERAL unnest(sar.supervisor_user_ids) sid WHERE sar.contact_id=ct.id AND sar.customer_id=c.customer_id AND sar.status='accepted') AS supervisor_user_ids,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted','pending_transfer')) AS active_assignment_status,COALESCE((SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1),CASE WHEN ct.id=${PRIMARY_CONTACT_ID_SQL} THEN c.relationship_stage END) AS "relationshipStage",CASE WHEN ct.crm_touch_status='replied' THEN 'reply' WHEN ${OPEN_TASK_FOR_CONTACT_SQL} THEN 'task' WHEN ${ACTIVE_RELATIONSHIP_STAGE_SQL} THEN 'stage' END AS "attentionReason",${ATTENTION_DUE_AT_SQL} AS "attentionDueAt",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
 var NOTIFICATION_VALUE_MAX = 240;
 function notificationValue(value2) {
   if (value2 === void 0 || value2 === null || value2 === "")
     return null;
-  const text16 = Array.isArray(value2) ? value2.join("\u3001") : typeof value2 === "object" ? JSON.stringify(value2) : String(value2);
-  return text16.length > NOTIFICATION_VALUE_MAX ? `${text16.slice(0, NOTIFICATION_VALUE_MAX)}\u2026` : text16;
+  const text18 = Array.isArray(value2) ? value2.join("\u3001") : typeof value2 === "object" ? JSON.stringify(value2) : String(value2);
+  return text18.length > NOTIFICATION_VALUE_MAX ? `${text18.slice(0, NOTIFICATION_VALUE_MAX)}\u2026` : text18;
 }
-function contactFieldValue(ct, key) {
+function contactFieldValue(ct, key2) {
   const values = { email: ct.email, firstName: ct.firstName, lastName: ct.lastName, title: ct.title, phone: ct.phone, whatsapp: ct.whatsapp, sourceLevel1: ct.sourceLevel1, sourceLevel2: ct.sourceLevel2, linkedinUrl: ct.linkedinUrl, country: ct.country, language: ct.language, stage: ct.stage, status: ct.status, tags: ct.tags, preferences: ct.extra?.preferences };
-  return values[key];
+  return values[key2];
 }
 function notificationValues(entries) {
   return entries.flatMap(([field, before, after]) => JSON.stringify(before ?? null) === JSON.stringify(after ?? null) ? [] : [{ field, from: notificationValue(before), to: notificationValue(after) }]);
@@ -10667,7 +12186,7 @@ function canDeleteContact(a, row2) {
 }
 function mapped3(a, row2) {
   const { created_by: _, development_restriction: __, active_assignment_status: ___, supervisor_user_ids: _____, shared_grants: ______, ...ct } = row2, permissions = contactPermissionsFor(a, row2), assignmentStatus = row2.active_assignment_status === "pending_transfer" ? "accepted" : row2.active_assignment_status;
-  return { ...ct, assignmentStatus, relationshipStage: ct.relationshipStage ?? (["contacted", "replied", "bounced", "autoreply"].includes(ct.touchStatus) ? "reaching" : "cold"), lastFollowupAt: ct.lastFollowupAt ? new Date(ct.lastFollowupAt).toISOString() : null, lastFollowupNote: ct.lastFollowupNote ?? null, createdAt: new Date(ct.createdAt).toISOString(), updatedAt: new Date(ct.updatedAt).toISOString(), canDelete: canDeleteContact(a, row2), permissions, isShared: !!row2.shared_grants?.some((g) => g.targetUserId === a.userId) && row2.ownerUserId !== a.userId, canSendMail: permissions.canSendMail, canEdit: edit(a, row2), canFollowup: permissions.canFollowup, canAssign: assign(a, row2) };
+  return { ...ct, assignmentStatus, relationshipStage: ct.relationshipStage ?? (["contacted", "replied", "bounced", "autoreply"].includes(ct.touchStatus) ? "reaching" : "cold"), attentionDueAt: ct.attentionDueAt ? new Date(ct.attentionDueAt).toISOString() : null, lastFollowupAt: ct.lastFollowupAt ? new Date(ct.lastFollowupAt).toISOString() : null, lastFollowupNote: ct.lastFollowupNote ?? null, createdAt: new Date(ct.createdAt).toISOString(), updatedAt: new Date(ct.updatedAt).toISOString(), canDelete: canDeleteContact(a, row2), permissions, isShared: !!row2.shared_grants?.some((g) => g.targetUserId === a.userId) && row2.ownerUserId !== a.userId, canSendMail: permissions.canSendMail, canEdit: edit(a, row2), canFollowup: permissions.canFollowup, canAssign: assign(a, row2) };
 }
 async function contact(c, input, lock = false, includeDeleted = false) {
   return (await c.query(`SELECT ${PROJECTION} ${JOINS} WHERE ct.id=$1 AND c.customer_id=$2 AND co.crm_deleted_at IS NULL ${includeDeleted ? "" : "AND ct.crm_deleted_at IS NULL"} ${lock ? "FOR UPDATE OF ct,c" : ""}`, [input.contactId, input.customerId])).rows[0];
@@ -10701,7 +12220,7 @@ async function contactMonitorDetailIn(c, a, input) {
     auditId: String(audit.id),
     accessedAt: new Date(audit.at).toISOString(),
     relationship: "direct_leader",
-    contact: { contactId: safe.contactId, customerId: safe.customerId, companyId: safe.companyId, companyName: safe.companyName, email: safe.email, firstName: safe.firstName, lastName: safe.lastName, title: safe.title, phone: safe.phone, whatsapp: safe.whatsapp, country: safe.country, clientType: safe.clientType, language: safe.language, stage: safe.stage, status: safe.status, tags: safe.tags, touchStatus: safe.touchStatus, source: safe.source, sourceDetail: safe.sourceDetail, createdAt: safe.createdAt, updatedAt: safe.updatedAt, ownerUserId: safe.ownerUserId, ownerName: safe.ownerName, origin: safe.origin },
+    contact: { contactId: safe.contactId, customerId: safe.customerId, companyId: safe.companyId, companyName: safe.companyName, email: safe.email, firstName: safe.firstName, lastName: safe.lastName, title: safe.title, phone: safe.phone, whatsapp: safe.whatsapp, country: safe.country, clientType: safe.clientType, language: safe.language, stage: safe.stage, status: safe.status, tags: safe.tags, touchStatus: safe.touchStatus, source: safe.source, sourceDetail: safe.sourceDetail, createdAt: safe.createdAt, updatedAt: safe.updatedAt, ownerUserId: safe.ownerUserId, ownerName: safe.ownerName, origin: safe.origin, relationshipStage: safe.relationshipStage, aiDealPending: !!safe.aiDealPending },
     company: { contactId: ct.contactId, customerId: ct.customerId, companyId: ct.companyId, name: ct.companyName, domain: co.domain, country: co.country },
     activities: activities.map((x) => ({ ...x, createdAt: new Date(x.createdAt).toISOString(), occurredAt: new Date(x.occurredAt).toISOString(), recordedAt: new Date(x.recordedAt).toISOString() })),
     mailEvents: await contactMailEventsIn(c, input),
@@ -10712,20 +12231,21 @@ async function listContactsIn(c, a, q, companyId) {
   const manager2 = contactManager(a), global3 = all(a), develop = a.capabilities.includes("leads.develop");
   if (!manager2 && !global3 && !develop)
     return failure("FORBIDDEN", "\u65E0\u8054\u7CFB\u4EBA\u67E5\u8BE2\u6743\u9650");
+  const attentionOnly = q.attentionOnly ?? q.followupOnly ?? false;
   const filter = `WHERE ct.crm_deleted_at IS NULL AND co.crm_deleted_at IS NULL ${companyId !== void 0 ? `AND co.id=${companyId}` : ""} AND ($1::boolean OR ($2::boolean AND c.origin='operations') OR ($3::boolean AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql("$4::uuid", CONTACT_OWNER_SQL)})))
  AND (ct.email ILIKE $5 ESCAPE '!' OR ct.first_name ILIKE $5 ESCAPE '!' OR ct.last_name ILIKE $5 ESCAPE '!' OR ct.title ILIKE $5 ESCAPE '!' OR co.name ILIKE $5 ESCAPE '!' OR COALESCE(ct.extra->>'note','') ILIKE $5 ESCAPE '!')
  AND ($6::text IS NULL OR ct.stage=$6) AND ($7::text IS NULL OR ct.status=$7) AND ($8::text IS NULL OR ct.tags ? $8) AND ($9::text IS NULL OR COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type)=$9) AND ($10::text IS NULL OR COALESCE(co.country,ct.country)=$10)
  AND ($11::text='all' OR ($11='personal' AND c.origin='personal' AND ${CONTACT_OWNER_SQL}=$4::uuid) OR ($11='assigned' AND c.origin='operations' AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql("$4::uuid", CONTACT_OWNER_SQL)})))
  AND ($12::text IS NULL OR ($12='accepted' AND EXISTS(SELECT 1 FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status='accepted')) OR ($12='unassigned' AND ${CONTACT_OWNER_SQL} IS NULL AND NOT EXISTS(SELECT 1 FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status='pending')))
- AND (NOT $13::boolean OR ct.crm_touch_status IN ('contacted','replied','bounced','autoreply'))
+ AND (NOT $13::boolean OR (${BOARD_ATTENTION_SQL}))
  AND ($14::text IS NULL OR COALESCE((SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1),CASE WHEN ct.crm_touch_status IN ('contacted','replied','bounced','autoreply') THEN 'reaching' ELSE 'cold' END)=$14)
  AND ($15::text IS NULL OR ct.crm_touch_status=$15) AND ($16::text IS NULL OR ct.language=$16)
  AND ($17::text IS NULL OR (CASE $17::text ${Object.entries(CONTACT_GROUP_SQL).map(([dimension, value2]) => `WHEN '${dimension}' THEN ${value2.key}`).join(" ")} END)=$18::text)`;
-  const p = [global3, manager2, develop, a.userId, `%${q.search.replace(/[!%_]/g, "!$&")}%`, q.stage ?? null, q.status ?? null, q.tags ?? null, q.clientType ?? null, q.country ?? null, q.scope ?? "all", q.assignment ?? null, q.followupOnly ?? false, q.crmStage ?? null, q.touchStatus ?? null, q.language ?? null, q.groupDimension ?? null, q.groupKey ?? null];
-  const order = q.followupOnly ? "page.last_followup_at DESC NULLS LAST," : "";
+  const p = [global3, manager2, develop, a.userId, `%${q.search.replace(/[!%_]/g, "!$&")}%`, q.stage ?? null, q.status ?? null, q.tags ?? null, q.clientType ?? null, q.country ?? null, q.scope ?? "all", q.assignment ?? null, attentionOnly, q.crmStage ?? null, q.touchStatus ?? null, q.language ?? null, q.groupDimension ?? null, q.groupKey ?? null];
+  const order = attentionOnly ? "page.last_followup_at DESC NULLS LAST," : "";
   const count2 = await c.query(`SELECT count(*)::int AS n ${JOINS} ${filter}`, p), rows = await c.query(`WITH contact_page AS MATERIALIZED (
- SELECT ct.id AS contact_id,c.customer_id,ct.updated_at ${q.followupOnly ? `,${LAST_FOLLOWUP_AT} AS last_followup_at` : ""}
- ${JOINS} ${filter} ORDER BY ${q.followupOnly ? "last_followup_at DESC NULLS LAST," : ""}ct.updated_at DESC,ct.id DESC LIMIT $19 OFFSET $20
+ SELECT ct.id AS contact_id,c.customer_id,ct.updated_at ${attentionOnly ? `,${LAST_FOLLOWUP_AT} AS last_followup_at` : ""}
+ ${JOINS} ${filter} ORDER BY ${attentionOnly ? "last_followup_at DESC NULLS LAST," : ""}ct.updated_at DESC,ct.id DESC LIMIT $19 OFFSET $20
  ) SELECT ${PROJECTION} FROM contact_page page JOIN contacts ct ON ct.id=page.contact_id JOIN crm_customer_contacts cc ON cc.contact_id=page.contact_id AND cc.customer_id=page.customer_id JOIN crm_customers c ON c.customer_id=page.customer_id JOIN companies co ON co.id=c.company_id
  ORDER BY ${order}page.updated_at DESC,page.contact_id DESC`, [...p, q.limit, q.offset]);
   return success({ items: rows.rows.map((row2) => mapped3(a, row2)), total: count2.rows[0].n });
@@ -10760,7 +12280,7 @@ async function listContactGroupsIn(c, a, q) {
   return success({ items: rows.rows.map((row2) => ({ key: String(row2.key), label: String(row2.label), count: Number(row2.count), companyCount: Number(row2.company_count), countryCount: Number(row2.country_count), touchedCount: Number(row2.touched_count), companies: row2.companies ?? [], countries: row2.countries ?? [], clientTypes: row2.client_types ?? [], sourceLevel1: row2.source_level1 ?? [], latestImportedAt: row2.latest_imported_at ? new Date(row2.latest_imported_at).toISOString() : null, latestUpdatedAt: row2.latest_updated_at ? new Date(row2.latest_updated_at).toISOString() : null })), total: Number(rows.rows[0]?.total ?? 0) });
 }
 async function cached(c, a, operation, input, work, replay) {
-  const digest2 = (0, import_node_crypto13.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = (await c.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey])).rows[0];
+  const digest2 = (0, import_node_crypto16.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = (await c.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey])).rows[0];
   if (old)
     return old.digest !== digest2 ? failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42") : replay ? replay(old.response) : success(old.response);
   const result2 = await work();
@@ -10811,7 +12331,7 @@ async function contactAssignmentsIn(c, a, q) {
     const rows2 = await c.query(`${REQUEST_SELECT} WHERE COALESCE(gm.group_id,r.request_id)=$2 AND ${visible2("$3")} ORDER BY r.created_at,r.request_id`, [a.userId, q.groupId, q.view === "outgoing" && (contactManager(a) || assignmentOversight(a))]);
     return success({ items: rows2.rows.map((r) => mapRequest(a, r)), total: rows2.rows.length });
   }
-  const filter = `WHERE ct.crm_deleted_at IS NULL AND ${visible2("$4")} AND r.status=$2 AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!')`, p = [a.userId, q.status, `%${q.search.replace(/[!%_]/g, "!$&")}%`, q.view === "outgoing" && (contactManager(a) || assignmentOversight(a))];
+  const filter = `WHERE ct.crm_deleted_at IS NULL AND ${visible2("$4")} AND ($2::text='all' OR r.status=$2) AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!')`, p = [a.userId, q.status, `%${q.search.replace(/[!%_]/g, "!$&")}%`, q.view === "outgoing" && (contactManager(a) || assignmentOversight(a))];
   const rows = await c.query(`${REQUEST_SELECT} ${filter} ORDER BY r.created_at DESC,r.request_id DESC LIMIT $5 OFFSET $6`, [...p, q.limit, q.offset]), count2 = await c.query(`SELECT count(*)::int AS n FROM crm_contact_assignment_requests r JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id ${filter}`, p);
   return success({ items: rows.rows.map((r) => mapRequest(a, r)), total: count2.rows[0].n });
 }
@@ -10836,7 +12356,7 @@ async function contactAssignmentGroupsIn(c, a, q) {
   JOIN public.identity_users actor ON actor.user_id=r.actor_id JOIN public.identity_users target ON target.user_id=r.target_user_id
   WHERE ct.crm_deleted_at IS NULL AND ${visible2}
   GROUP BY COALESCE(gm.group_id,r.request_id),r.target_user_id,r.actor_id
-  HAVING bool_or(r.status=$2 AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!'))
+  HAVING ($2::text='all' OR bool_or(r.status=$2)) AND bool_or(co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!')
  ) SELECT *,count(*) OVER()::int AS group_total FROM grouped ORDER BY created_at DESC,group_id DESC LIMIT $5 OFFSET $6`, [a.userId, q.status, search, manager2, q.limit, q.offset]);
   const items = rows.rows.map((row2) => {
     const pending = Number(row2.pending);
@@ -10859,7 +12379,7 @@ async function createContactAssignmentsIn(c, a, input) {
   const org = await assignmentOrgContext(c, a.userId, input.targetUserId), supervisorUserIds = [.../* @__PURE__ */ new Set([...org.supervisorUserIds, ...requestedSupervisors])].sort(), notifyUserIds = contactAssignmentRecipients(input.targetUserId, supervisorUserIds);
   return cached(c, a, "contact-assignments:create", input, async () => {
     const items = [];
-    const groupId = (0, import_node_crypto13.randomUUID)(), ordered = [...input.contacts].sort((x, y) => x.contactId - y.contactId);
+    const groupId = (0, import_node_crypto16.randomUUID)(), ordered = [...input.contacts].sort((x, y) => x.contactId - y.contactId);
     for (const [index, ref2] of ordered.entries()) {
       const ct = await contact(c, ref2, true);
       if (!ct || !read(a, ct))
@@ -10874,7 +12394,7 @@ async function createContactAssignmentsIn(c, a, input) {
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u6709\u8FDB\u884C\u4E2D\u7684\u5206\u914D");
       if ((await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE contact_id=$1 AND status IN ('pending','accepted','pending_transfer')", [ref2.contactId])).rows.length)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5DF2\u6709\u6709\u6548\u5206\u914D\u8BF7\u6C42");
-      const id = (0, import_node_crypto13.randomUUID)();
+      const id = (0, import_node_crypto16.randomUUID)();
       await c.query("INSERT INTO crm_contact_assignment_requests(request_id,contact_id,customer_id,target_user_id,actor_id,notify_user_ids,supervisor_user_ids,source_org_unit_id,source_org_unit_name) VALUES($1,$2,$3,$4,$5,$6::uuid[],$7::uuid[],$8,$9)", [id, ref2.contactId, ref2.customerId, input.targetUserId, a.userId, notifyUserIds, supervisorUserIds, org.sourceOrgUnitId, org.sourceOrgUnitName]);
       await c.query("INSERT INTO crm_contact_assignment_group_members(group_id,request_id) VALUES($1,$2)", [groupId, id]);
       const r = await request(c, a, id);
@@ -10931,6 +12451,14 @@ async function decideContactAssignmentIn(c, a, action, input, emitEvent = true) 
       await c.query("INSERT INTO crm_contact_ownership(contact_id,customer_id,owner_user_id,assignment_request_id,source_org_unit_id,created_by) VALUES($1,$2,$3,$4,$5,$6)", [row2.contact_id, row2.customer_id, row2.target_user_id, row2.request_id, row2.source_org_unit_id, a.userId]);
       await c.query("UPDATE crm_contact_assignment_requests SET status='accepted',version=version+1,decided_at=now() WHERE request_id=$1", [row2.request_id]);
       await c.query("UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [row2.contact_id]);
+      if ((await c.query("SELECT to_regclass('crm_sales_cases') AS table_name")).rows[0]?.table_name) {
+        const targetCase = (await c.query("SELECT case_id FROM crm_sales_cases WHERE contact_id=$1 AND owner_user_id=$2 AND state NOT IN ('won','lost') FOR UPDATE", [row2.contact_id, row2.target_user_id])).rows[0];
+        if (!targetCase)
+          await c.query("UPDATE crm_sales_cases SET owner_user_id=$2,updated_at=now(),version=version+1 WHERE contact_id=$1 AND state NOT IN ('won','lost')", [row2.contact_id, row2.target_user_id]);
+        const after = (await c.query("SELECT case_id FROM crm_sales_cases WHERE contact_id=$1 AND owner_user_id=$2 AND state NOT IN ('won','lost')", [row2.contact_id, row2.target_user_id])).rows[0];
+        if (!after)
+          await ensureSalesCaseIn(c, { customerId: row2.customer_id, contactId: Number(row2.contact_id), ownerUserId: row2.target_user_id, source: "assignment_accept", summary: ct.companyName });
+      }
       event2 = row2.status === "pending_transfer" ? CONTACT_ASSIGNMENT_EVENTS.transferred : CONTACT_ASSIGNMENT_EVENTS.accepted;
     } else if (action === "reject") {
       if (row2.target_user_id !== a.userId || !a.capabilities.includes("leads.develop") || !["pending", "pending_transfer"].includes(row2.status))
@@ -10979,7 +12507,7 @@ async function decideContactAssignmentGroupIn(c, a, action, input) {
     return failure("NOT_FOUND", "\u5206\u914D\u8BF7\u6C42\u4E0D\u5B58\u5728");
   const pendingRows = rows.filter((row2) => row2.status === "pending"), decided = [];
   for (const row2 of pendingRows) {
-    const decision2 = { requestId: row2.request_id, expectedVersion: Number(row2.version), idempotencyKey: (0, import_node_crypto13.createHash)("sha256").update(`${input.idempotencyKey}:${row2.request_id}`).digest("hex") };
+    const decision2 = { requestId: row2.request_id, expectedVersion: Number(row2.version), idempotencyKey: (0, import_node_crypto16.createHash)("sha256").update(`${input.idempotencyKey}:${row2.request_id}`).digest("hex") };
     const result3 = await decideContactAssignmentIn(c, a, action, decision2, false);
     if (!result3.ok)
       return result3;
@@ -11035,9 +12563,9 @@ async function processExpiredAssignmentsIn(c, a, input) {
   return success({ expired });
 }
 async function expireDueAssignmentsIn(c, limit) {
-  const candidates = (await c.query("SELECT request_id AS id FROM crm_contact_assignment_requests WHERE status IN ('pending','pending_transfer') AND expires_at<=clock_timestamp() ORDER BY expires_at,request_id LIMIT $1", [limit])).rows;
+  const candidates2 = (await c.query("SELECT request_id AS id FROM crm_contact_assignment_requests WHERE status IN ('pending','pending_transfer') AND expires_at<=clock_timestamp() ORDER BY expires_at,request_id LIMIT $1", [limit])).rows;
   const expiredIds = [], transferRestoredIds = [];
-  for (const candidate of candidates) {
+  for (const candidate of candidates2) {
     const initial = (await c.query("SELECT contact_id,customer_id FROM crm_contact_assignment_requests WHERE request_id=$1", [candidate.id])).rows[0];
     if (!initial)
       continue;
@@ -11136,16 +12664,16 @@ async function contactUpdateIn(c, a, input) {
   return cached(c, a, `contact-update:${input.contactId}`, input, async () => {
     if (ct.contactVersion !== input.expectedVersion)
       return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u7248\u672C\u5DF2\u53D8\u5316");
-    const fields = { email: "email", firstName: "first_name", lastName: "last_name", title: "title", phone: "phone", whatsapp: "whatsapp", sourceLevel1: "source_level1", sourceLevel2: "source_level2", linkedinUrl: "linkedin", country: "country", clientType: "client_type", language: "language", stage: "stage", status: "status", tags: "tags", preferences: "extra" };
+    const fields2 = { email: "email", firstName: "first_name", lastName: "last_name", title: "title", phone: "phone", whatsapp: "whatsapp", sourceLevel1: "source_level1", sourceLevel2: "source_level2", linkedinUrl: "linkedin", country: "country", clientType: "client_type", language: "language", stage: "stage", status: "status", tags: "tags", preferences: "extra" };
     const values = [input.contactId];
     const sets = [];
-    const changes = notificationValues(Object.entries(input.fields).map(([key, value2]) => [key, contactFieldValue(ct, key), key === "email" && typeof value2 === "string" ? value2.trim().toLowerCase() || null : value2]));
-    for (const [key, value2] of Object.entries(input.fields)) {
-      if (!Object.hasOwn(fields, key))
+    const changes = notificationValues(Object.entries(input.fields).map(([key2, value2]) => [key2, contactFieldValue(ct, key2), key2 === "email" && typeof value2 === "string" ? value2.trim().toLowerCase() || null : value2]));
+    for (const [key2, value2] of Object.entries(input.fields)) {
+      if (!Object.hasOwn(fields2, key2))
         return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u5B57\u6BB5\u4E0D\u53EF\u4FEE\u6539");
-      const json = key === "tags" || key === "preferences";
-      values.push(json ? JSON.stringify(value2) : key === "email" ? typeof value2 === "string" ? value2.trim().toLowerCase() || null : null : value2);
-      sets.push(key === "preferences" ? `extra=jsonb_set(COALESCE(extra,'{}'::jsonb),'{preferences}',$${values.length}::jsonb,true)` : `${fields[key]}=$${values.length}${json ? "::jsonb" : ""}`);
+      const json = key2 === "tags" || key2 === "preferences";
+      values.push(json ? JSON.stringify(value2) : key2 === "email" ? typeof value2 === "string" ? value2.trim().toLowerCase() || null : null : value2);
+      sets.push(key2 === "preferences" ? `extra=jsonb_set(COALESCE(extra,'{}'::jsonb),'{preferences}',$${values.length}::jsonb,true)` : `${fields2[key2]}=$${values.length}${json ? "::jsonb" : ""}`);
     }
     await c.query(`UPDATE contacts SET ${sets.join(",")},crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1`, values);
     await contactEvent(c, a, ct, CONTACT_ASSIGNMENT_EVENTS.updated, input.expectedVersion + 1, void 0, void 0, { fields: Object.keys(input.fields), changes });
@@ -11170,10 +12698,14 @@ async function contactFollowupIn(c, a, input) {
       return failure("INVALID_INPUT", "\u8DDF\u8FDB\u65F6\u95F4\u6216\u89E6\u8FBE\u72B6\u6001\u65E0\u6548");
     const note = !permissions.canFollowup && input.stage !== void 0 ? `\u5173\u7CFB\u9636\u6BB5\uFF1A${input.stage}` : input.note;
     const changes = notificationValues([["contactStatus", ct.touchStatus, input.contactStatus], ["stage", ct.relationshipStage ?? null, input.stage]]);
+    const aiDealPending = await customerHasAiDealPendingIn(c, ct.customerId);
+    const statusChange = customerStatusChange({ relationshipStage: ct.relationshipStage, touchStatuses: [ct.touchStatus], aiDealPending, nextRelationshipStage: input.stage, nextTouchStatus: input.contactStatus, allowRegression: true });
     const activity = (await c.query("INSERT INTO crm_shared_activities(customer_id,interaction_id,actor_id,note,stage,method,occurred_at,recorded_at,created_at,contact_id,contact_status) VALUES($1,NULL,$2,$3,$4,$5,$6,$7,$7,$8,$9) RETURNING id::text", [ct.customerId, a.userId, note, input.stage ?? null, method, occurred, recorded, ct.contactId, input.contactStatus ?? null])).rows[0];
     const legacyStatus = input.contactStatus !== void 0 ? FOLLOWUP_LEGACY_STATUS[input.contactStatus] : null;
     await c.query("UPDATE contacts SET crm_touch_status=COALESCE($2,crm_touch_status),status=COALESCE($3,status),crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [ct.contactId, input.contactStatus ?? null, legacyStatus]);
     await refreshMailProjectionIn(c, input, ct.email);
+    if (statusChange.changed)
+      await recordCustomerStatusEventIn(c, { eventKey: `followup:${ct.contactId}:${input.idempotencyKey}`, customerId: ct.customerId, contactId: ct.contactId, status: statusChange.after, previousStatus: statusChange.before, source: "human", signal: "followup", actorUserId: a.userId, reason: note, payload: { activityId: activity.id, stage: input.stage ?? null, contactStatus: input.contactStatus ?? null, method, changes }, occurredAt: occurred });
     await contactEvent(c, a, ct, CONTACT_ASSIGNMENT_EVENTS.followup, input.expectedVersion + 1, activity.id, void 0, { stage: input.stage ?? null, contactStatus: input.contactStatus ?? null, method, changes });
     return contactDetailIn(c, a, input);
   }, () => contactDetailIn(c, a, input));
@@ -11202,11 +12734,11 @@ async function companyUpdateIn(c, a, input) {
     const columns = { name: "name", customerType: "customer_type", domain: "domain", country: "country", industry: "industry", size: "size", backcheckData: "backcheck_data" };
     const values = [ct.companyId];
     const sets = [];
-    for (const [key, value2] of Object.entries(input.fields)) {
-      if (!Object.hasOwn(columns, key))
+    for (const [key2, value2] of Object.entries(input.fields)) {
+      if (!Object.hasOwn(columns, key2))
         return failure("INVALID_INPUT", "\u516C\u53F8\u5B57\u6BB5\u4E0D\u53EF\u4FEE\u6539");
-      values.push(key === "backcheckData" && value2 !== null ? JSON.stringify(value2) : value2);
-      sets.push(`${columns[key]}=$${values.length}${key === "backcheckData" ? "::jsonb" : ""}`);
+      values.push(key2 === "backcheckData" && value2 !== null ? JSON.stringify(value2) : value2);
+      sets.push(`${columns[key2]}=$${values.length}${key2 === "backcheckData" ? "::jsonb" : ""}`);
     }
     await c.query(`UPDATE companies SET ${sets.join(",")},updated_at=clock_timestamp() WHERE id=$1`, values);
     await contactEvent(c, a, ct, CONTACT_ASSIGNMENT_EVENTS.updated, ct.contactVersion ?? ct.customerVersion);
@@ -11276,7 +12808,7 @@ function workbookRowIssue(row2) {
 }
 
 // server/adapters/postgres/lead-match-schema.ts
-var import_node_crypto14 = require("node:crypto");
+var import_node_crypto17 = require("node:crypto");
 var LEAD_MATCH_SCHEMA_VERSION = "058-lead-ingress-conflict";
 var LEAD_MATCH_LOCK = 580058;
 var LEAD_MATCH_SQL = `
@@ -11339,7 +12871,7 @@ CREATE INDEX idx_crm_lead_match_decisions_selected_contact
   WHERE selected_contact_id IS NOT NULL;
 `;
 async function migrateLeadMatchSchema(client) {
-  const checksum4 = (0, import_node_crypto14.createHash)("sha256").update(LEAD_MATCH_SQL).digest("hex");
+  const checksum4 = (0, import_node_crypto17.createHash)("sha256").update(LEAD_MATCH_SQL).digest("hex");
   const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_MATCH_SCHEMA_VERSION]);
   if (existing.rows.length)
     return existing.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u7EBF\u7D22\u51B2\u7A81\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -11508,13 +13040,13 @@ function candidateDTO(candidate) {
 }
 function decisionDTO(row2, assessment) {
   const base2 = decisionBase(row2);
-  const candidates = assessment?.candidates ?? [];
+  const candidates2 = assessment?.candidates ?? [];
   return {
     ...base2,
     action: row2.action,
     suggestedActions: assessment?.suggestedActions ?? [],
-    candidates: candidates.map(candidateDTO),
-    ...candidates[0] ? { candidate: candidateDTO(candidates[0]) } : {}
+    candidates: candidates2.map(candidateDTO),
+    ...candidates2[0] ? { candidate: candidateDTO(candidates2[0]) } : {}
   };
 }
 async function decisionRow(c, actor, decisionId, lock = false) {
@@ -11522,7 +13054,7 @@ async function decisionRow(c, actor, decisionId, lock = false) {
 }
 async function saveAssessment(c, actor, input, assessment) {
   const keys12 = normalizedLeadIngressKeys(input);
-  const candidates = assessment.candidates.slice(0, LEAD_INGRESS_LIMITS.candidates);
+  const candidates2 = assessment.candidates.slice(0, LEAD_INGRESS_LIMITS.candidates);
   const selected = assessment.candidate;
   const digest2 = requestDigest(input);
   const existing = (await c.query("SELECT * FROM crm_lead_match_decisions WHERE actor_id=$1 AND ingress_source=$2 AND idempotency_key=$3 FOR UPDATE", [actor.userId, input.source, input.idempotencyKey])).rows[0];
@@ -11550,11 +13082,11 @@ async function saveAssessment(c, actor, input, assessment) {
     keys12.domain,
     keys12.company,
     keys12.country,
-    candidates.map((item) => item.contactId ?? null).filter((value2) => value2 !== void 0),
-    candidates.map((item) => item.customerId ?? null).filter((value2) => value2 !== null),
-    candidates.map((item) => item.companyId),
-    candidates.map((item) => item.score ?? 0),
-    candidates.map((item) => item.level ?? "none"),
+    candidates2.map((item) => item.contactId ?? null).filter((value2) => value2 !== void 0),
+    candidates2.map((item) => item.customerId ?? null).filter((value2) => value2 !== null),
+    candidates2.map((item) => item.companyId),
+    candidates2.map((item) => item.score ?? 0),
+    candidates2.map((item) => item.level ?? "none"),
     selected?.contactId ?? null,
     selected?.customerId ?? null,
     selected?.companyId ?? null
@@ -11571,7 +13103,7 @@ async function eventIn(c, actor, customerId, version4, type, contactId) {
   ]);
 }
 async function createCustomerIn(c, actor, input, companyId) {
-  const customerId = (0, import_node_crypto15.randomUUID)();
+  const customerId = (0, import_node_crypto18.randomUUID)();
   const inserted = await c.query(`INSERT INTO crm_customers(
     customer_id,company_id,source,customer_key,source_detail,created_by,origin,state,owner_user_id,business_type,development_restriction,source_created_at
   ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING RETURNING customer_id`, [
@@ -11937,12 +13469,12 @@ async function createDealOverlapNoticesIn(c, input) {
 
 // server/adapters/postgres/flat-lead-import.ts
 var optional = (value2) => value2?.trim() || null;
-var attemptKey = (key, index) => `${key.slice(0, 120)}:${index}`;
+var attemptKey = (key2, index) => `${key2.slice(0, 120)}:${index}`;
 function ingressSource(source) {
   return source.toLowerCase().includes("agent") ? "agent_import" : "flat_import";
 }
 async function importFlatLeadsIn(c, actor, input) {
-  const batchId = (0, import_node_crypto16.randomUUID)();
+  const batchId = (0, import_node_crypto19.randomUUID)();
   await c.query("INSERT INTO crm_import_batches(batch_id,actor_id,source,source_detail,mapping) VALUES($1,$2,$3,$4,$5)", [batchId, actor.userId, input.source, input.sourceDetail, JSON.stringify(input.mapping ?? {})]);
   const rows = [];
   for (const [index, original] of input.rows.entries()) {
@@ -11962,10 +13494,12 @@ async function importFlatLeadsIn(c, actor, input) {
         normalizedCustomerType && normalizedCustomerType !== original.customerType?.trim() ? `\u539F\u59CB\u5BA2\u6237\u7C7B\u578B\uFF1A${original.customerType}` : ""
       ].filter(Boolean).join("\n")
     };
-    const rowId = (0, import_node_crypto16.randomUUID)();
+    const rowId = (0, import_node_crypto19.randomUUID)();
     let status = "created";
     let message = importRowIssue(row2);
     let customerId;
+    let contactId;
+    let caseId;
     let conflict;
     let overlapCount = 0;
     if (message)
@@ -12032,6 +13566,17 @@ async function importFlatLeadsIn(c, actor, input) {
           message = applied.error.message;
         } else {
           customerId = applied.data.customerId;
+          contactId = applied.data.createdContactIds?.[0] ?? applied.data.contactIds[0];
+          if (contactId) {
+            const ensured = await ensureSalesCaseIn(c, {
+              customerId,
+              contactId,
+              ownerUserId: actor.userId,
+              source: input.kind === "personal" ? "personal_import" : "operations_import",
+              summary: row2.companyName || null
+            });
+            caseId = ensured.caseId;
+          }
           overlapCount = await recordImportOverlapsIn(c, applied.data.customerId, applied.data.contactIds ?? []);
           status = applied.data.createdContactIds?.length === 0 && applied.data.restoredContactIds.length === 0 ? "duplicate" : "created";
         }
@@ -12040,7 +13585,7 @@ async function importFlatLeadsIn(c, actor, input) {
     await c.query("INSERT INTO crm_import_rows(row_id,batch_id,row_index,customer_key,raw_row,customer_id,status) VALUES($1,$2,$3,$4,$5,$6,$7)", [rowId, batchId, index, row2.customerKey, JSON.stringify({ input: row2, rawRow: row2.rawRow ?? original }), customerId ?? null, status]);
     if (overlapCount && !message)
       message = `\u5DF2\u5BFC\u5165\uFF0C\u53D1\u73B0 ${overlapCount} \u6761\u8303\u56F4\u91CD\u53E0`;
-    rows.push({ rowId, index, status, ...customerId ? { customerId } : {}, ...message ? { message } : {}, ...conflict ? { conflict } : {}, ...overlapCount ? { overlapCount } : {} });
+    rows.push({ rowId, index, status, companyName: row2.companyName, contactName: row2.name || [row2.firstName, row2.lastName].filter(Boolean).join(" "), email: row2.email || void 0, country: row2.country || void 0, ...customerId ? { customerId } : {}, ...contactId ? { contactId } : {}, ...caseId ? { caseId } : {}, ...message ? { message } : {}, ...conflict ? { conflict } : {}, ...overlapCount ? { overlapCount } : {} });
   }
   return { batchId, version: 1, rows };
 }
@@ -12073,10 +13618,10 @@ CREATE TABLE crm_send_authorizations (
 `;
 
 // server/adapters/postgres/send-acceptance-repository.ts
-var import_node_crypto17 = require("node:crypto");
+var import_node_crypto20 = require("node:crypto");
 var MILLISECONDS_PER_SECOND8 = 1e3;
 var normalized = (emails) => [...new Set(emails.map((email3) => email3.toLowerCase()))].sort();
-var fingerprint = (value2) => (0, import_node_crypto17.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+var fingerprint = (value2) => (0, import_node_crypto20.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
 function mapped4(row2) {
   return {
     authorizationId: row2.authorization_id,
@@ -12169,7 +13714,7 @@ async function acceptSendIn(client, actor, input) {
     eventId = recorded.data.eventId;
     duplicate = recorded.data.duplicate;
   } else {
-    eventId = old?.event_id ?? (0, import_node_crypto17.randomUUID)();
+    eventId = old?.event_id ?? (0, import_node_crypto20.randomUUID)();
     duplicate = !!old;
     if (!old)
       await client.query(
@@ -12237,7 +13782,7 @@ CREATE INDEX idx_contact_share_outgoing ON crm_contact_shares(grantor_user_id,st
 `;
 
 // server/adapters/postgres/contact-sharing-repository.ts
-var import_node_crypto18 = require("node:crypto");
+var import_node_crypto21 = require("node:crypto");
 var SELECT2 = `SELECT sh.share_id AS "shareId",sh.contact_id AS "contactId",sh.customer_id AS "customerId",sh.grantor_user_id AS "grantorUserId",gu.display_name AS "grantorName",sh.target_user_id AS "targetUserId",tu.display_name AS "targetName",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),'\u8054\u7CFB\u4EBA') AS "contactName",co.name AS "companyName",sh.editable_fields AS "editableFields",sh.can_followup AS "canFollowup",sh.can_change_stage AS "canChangeStage",sh.status,sh.version,sh.created_at AS "createdAt",(${validShareSql(CONTACT_OWNER_SQL)}) AS valid,c.created_by,c.origin FROM crm_contact_shares sh JOIN contacts ct ON ct.id=sh.contact_id JOIN crm_customers c ON c.customer_id=sh.customer_id JOIN companies co ON co.id=c.company_id JOIN public.identity_users gu ON gu.user_id=sh.grantor_user_id JOIN public.identity_users tu ON tu.user_id=sh.target_user_id`;
 function manage(a, r) {
   return globalContactActor(a) || sourceContactManager(a, { ...r, ownerUserId: r.grantorUserId }) || r.grantorUserId === a.userId && r.valid;
@@ -12295,7 +13840,7 @@ async function createShareIn(c, a, input) {
     await c.query(`UPDATE crm_contact_shares sh SET status='revoked',version=sh.version+1,updated_at=now(),decided_at=now() FROM crm_customers c WHERE sh.contact_id=$1 AND sh.customer_id=c.customer_id AND sh.status IN ('pending','accepted') AND NOT (${validShareSql(CONTACT_OWNER_SQL.replaceAll("ct.id", "sh.contact_id"))})`, [input.contactId]);
     if ((await c.query("SELECT 1 FROM crm_contact_shares WHERE contact_id=$1 AND target_user_id=$2 AND status IN ('pending','accepted')", [input.contactId, input.targetUserId])).rowCount)
       return failure("CONFLICT", "\u8BE5\u7528\u6237\u5DF2\u6709\u5171\u4EAB\u9080\u8BF7\u6216\u534F\u4F5C\u6743\u9650");
-    const id = (0, import_node_crypto18.randomUUID)();
+    const id = (0, import_node_crypto21.randomUUID)();
     await c.query("INSERT INTO crm_contact_shares(share_id,contact_id,customer_id,grantor_user_id,target_user_id,editable_fields,can_followup,can_change_stage) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8)", [id, input.contactId, input.customerId, a.userId, input.targetUserId, JSON.stringify(input.editableFields), input.canFollowup, input.canChangeStage]);
     const r = await result(c, a, id);
     if (r.ok)
@@ -12356,8 +13901,8 @@ async function shareTeamIn(c, a, input) {
   const team = (await c.query(`SELECT team.unit_id AS "teamId",team.name AS "teamName" FROM crm_org_assignments mine JOIN crm_org_units team ON team.unit_id=mine.unit_id AND team.kind='sales_team' AND team.dissolved_at IS NULL WHERE mine.user_id=$1 AND mine.role IN ('member','leader') AND mine.ended_at IS NULL ORDER BY mine.is_primary DESC,mine.created_at,team.unit_id LIMIT 1`, [a.userId])).rows[0];
   if (!team)
     return failure("INVALID_INPUT", "\u5F53\u524D\u8D26\u53F7\u672A\u52A0\u5165\u9500\u552E\u56E2\u961F");
-  const candidates = (await c.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",pa.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM crm_org_assignments member JOIN public.identity_users u ON u.user_id=member.user_id LEFT JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE member.unit_id=$1 AND member.ended_at IS NULL AND member.user_id<>$2 AND u.active AND NOT u.must_change_password`, [team.teamId, a.userId])).rows;
-  const eligible = candidates.filter((member2) => member2.roles.includes("sales") && effectiveCapabilitiesFor(member2.roles, member2.capabilities).includes("leads.develop")).map((member2) => member2.userId);
+  const candidates2 = (await c.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",pa.capabilities,ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active) AS roles FROM crm_org_assignments member JOIN public.identity_users u ON u.user_id=member.user_id LEFT JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active WHERE member.unit_id=$1 AND member.ended_at IS NULL AND member.user_id<>$2 AND u.active AND NOT u.must_change_password`, [team.teamId, a.userId])).rows;
+  const eligible = candidates2.filter((member2) => member2.roles.includes("sales") && effectiveCapabilitiesFor(member2.roles, member2.capabilities).includes("leads.develop")).map((member2) => member2.userId);
   if (!eligible.length)
     return failure("INVALID_INPUT", "\u56E2\u961F\u6682\u65E0\u53EF\u5171\u4EAB\u6210\u5458");
   return cached(c, a, "contact-share:team", input, async () => {
@@ -12379,7 +13924,7 @@ async function shareTeamIn(c, a, input) {
         pendingCount++;
         continue;
       }
-      await c.query("INSERT INTO crm_contact_shares(share_id,contact_id,customer_id,grantor_user_id,target_user_id,editable_fields,can_followup,can_change_stage,status,version,decided_at) VALUES($1,$2,$3,$4,$5,'[]'::jsonb,false,false,'accepted',1,now())", [(0, import_node_crypto18.randomUUID)(), input.contactId, input.customerId, a.userId, targetUserId]);
+      await c.query("INSERT INTO crm_contact_shares(share_id,contact_id,customer_id,grantor_user_id,target_user_id,editable_fields,can_followup,can_change_stage,status,version,decided_at) VALUES($1,$2,$3,$4,$5,'[]'::jsonb,false,false,'accepted',1,now())", [(0, import_node_crypto21.randomUUID)(), input.contactId, input.customerId, a.userId, targetUserId]);
       created.push(targetUserId);
     }
     if (created.length) {
@@ -12393,7 +13938,7 @@ async function shareTeamIn(c, a, input) {
 }
 
 // server/adapters/postgres/lead-repository.ts
-var import_node_crypto21 = require("node:crypto");
+var import_node_crypto24 = require("node:crypto");
 
 // server/adapters/postgres/lead-schema.ts
 var LEAD_VERSION = "005-lead-collaboration-public";
@@ -12511,9 +14056,9 @@ ALTER TABLE crm_shared_activities ADD CONSTRAINT crm_shared_activities_contact_s
 `;
 
 // server/adapters/postgres/workbook-import-repository.ts
-var import_node_crypto19 = require("node:crypto");
+var import_node_crypto22 = require("node:crypto");
 var value = (input) => input?.trim() || null;
-var attemptKey2 = (key, index) => `${key.slice(0, 120)}:${index}`;
+var attemptKey2 = (key2, index) => `${key2.slice(0, 120)}:${index}`;
 function customerMatches(row2, current) {
   return current.company_name === row2.companyName?.trim() && current.country === value(row2.country) && current.customer_type === value(row2.customerType) && current.business_type === value(row2.businessType) && current.development_restriction === value(row2.developmentRestriction) && (current.source_created_at?.toISOString() ?? null) === (row2.sourceCreatedAt ? normalizeSourceDate(row2.sourceCreatedAt) : null);
 }
@@ -12542,7 +14087,7 @@ async function saveMapping(c, actor, input, row2, customerId, contactId) {
 }
 function contactMatches(row2, current) {
   const expected = contactValues(row2);
-  return Object.entries(expected).every(([key, item]) => key === "tags" ? JSON.stringify(current[key]) === JSON.stringify(item) : current[key] === item);
+  return Object.entries(expected).every(([key2, item]) => key2 === "tags" ? JSON.stringify(current[key2]) === JSON.stringify(item) : current[key2] === item);
 }
 function contactValues(row2) {
   return {
@@ -12675,7 +14220,7 @@ async function importContact(c, actor, input, row2, index, blocked) {
   return { status: applied.data.createdContactIds?.length === 0 && applied.data.restoredContactIds.length === 0 ? "duplicate" : "appended", customerId: current.customer_id };
 }
 async function importWorkbookIn(c, actor, input) {
-  const batchId = (0, import_node_crypto19.randomUUID)();
+  const batchId = (0, import_node_crypto22.randomUUID)();
   await c.query("INSERT INTO crm_import_batches(batch_id,actor_id,source,source_detail,mapping) VALUES($1,$2,$3,$4,$5)", [batchId, actor.userId, input.source, input.sourceDetail, JSON.stringify({ format: "workbook", kind: input.kind })]);
   const receipts = new Array(input.rows.length), blocked = /* @__PURE__ */ new Set();
   for (const entity of ["customer", "contact"])
@@ -12686,7 +14231,7 @@ async function importWorkbookIn(c, actor, input) {
       const outcome = issue ? { status: "invalid", message: issue } : entity === "customer" ? await importCustomer(c, actor, input, row2, index) : await importContact(c, actor, input, row2, index, blocked);
       if (entity === "customer" && !["created", "duplicate"].includes(outcome.status))
         blocked.add(row2.sourceRef.trim());
-      const receipt = { rowId: (0, import_node_crypto19.randomUUID)(), index, entity, sheetName: row2.sheetName, rowNumber: row2.rowNumber, ...outcome };
+      const receipt = { rowId: (0, import_node_crypto22.randomUUID)(), index, entity, sheetName: row2.sheetName, rowNumber: row2.rowNumber, ...outcome };
       await c.query("INSERT INTO crm_import_rows(row_id,batch_id,row_index,customer_key,raw_row,customer_id,status) VALUES($1,$2,$3,$4,$5,$6,$7)", [receipt.rowId, batchId, index, row2.sourceRef, JSON.stringify({ input: row2, rawRow: row2.rawRow, entity, sheetName: row2.sheetName, rowNumber: row2.rowNumber }), outcome.customerId ?? null, outcome.status]);
       receipts[index] = receipt;
     }
@@ -12712,7 +14257,7 @@ CREATE INDEX idx_crm_contact_assignment_actor ON crm_contact_assignment_requests
 `;
 
 // server/adapters/postgres/contact-assignment-state-schema.ts
-var import_node_crypto20 = require("node:crypto");
+var import_node_crypto23 = require("node:crypto");
 var CONTACT_ASSIGNMENT_STATE_VERSION = "057-contact-assignment-state";
 var CONTACT_ASSIGNMENT_STATE_LOCK = 570057;
 var CONTACT_ASSIGNMENT_STATE_SQL = `
@@ -12815,7 +14360,7 @@ CREATE INDEX idx_crm_contact_monitor_audits_contact
   ON crm_contact_monitor_audits(contact_id,created_at DESC,audit_id DESC);
 `;
 async function migrateContactAssignmentState(client) {
-  const checksum4 = (0, import_node_crypto20.createHash)("sha256").update(CONTACT_ASSIGNMENT_STATE_SQL).digest("hex");
+  const checksum4 = (0, import_node_crypto23.createHash)("sha256").update(CONTACT_ASSIGNMENT_STATE_SQL).digest("hex");
   const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_ASSIGNMENT_STATE_VERSION]);
   if (old.rows.length && old.rows[0].checksum !== checksum4) {
     return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5206\u914D\u72B6\u6001\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -12970,28 +14515,28 @@ async function authorizeLeadActor(c, hash) {
     return null;
   return { ...a, capabilities: effectiveCapabilitiesFor(a.roles, a.capabilities) };
 }
-function administrator2(a) {
+function administrator3(a) {
   return a.roles.includes("admin") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.read.all");
 }
 function canReadLead(a, c) {
-  return administrator2(a) || operational(a) && c.origin === "operations" || c.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
+  return administrator3(a) || operational2(a) && c.origin === "operations" || c.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
 }
 function canAssign(a, c) {
-  return !c.development_restriction?.trim() && a.capabilities.includes("leads.assign") && (operational(a) || administrator2(a)) && c.origin === "operations" && c.owner_user_id === null && ["draft", "published"].includes(c.state);
+  return !c.development_restriction?.trim() && a.capabilities.includes("leads.assign") && (operational2(a) || administrator3(a)) && c.origin === "operations" && c.owner_user_id === null && ["draft", "published"].includes(c.state);
 }
 function canDevelop(a, c) {
-  return a.capabilities.includes("leads.develop") && (administrator2(a) || c.owner_user_id === a.userId || operational(a) && c.origin === "operations" && c.owner_user_id === null && ["draft", "published"].includes(c.state));
+  return a.capabilities.includes("leads.develop") && (administrator3(a) || c.owner_user_id === a.userId || operational2(a) && c.origin === "operations" && c.owner_user_id === null && ["draft", "published"].includes(c.state));
 }
 function operationsOrigin(a) {
   return a.roles.some((role) => role === "operations" || role === "admin");
 }
-function operational(a) {
+function operational2(a) {
   return a.roles.includes("operations") && ["shared", "summary"].includes(a.scope) && (a.capabilities.includes("followups.read") || a.capabilities.includes("leads.import") || a.capabilities.includes("leads.publish") || a.capabilities.includes("leads.assign"));
 }
 var STAGE_PROJECTION = "c.relationship_stage";
 var CONTACTED_PREDICATE = "EXISTS(SELECT 1 FROM contacts ct JOIN crm_customer_contacts cx ON cx.contact_id=ct.id WHERE cx.customer_id=c.customer_id AND ct.crm_deleted_at IS NULL AND ct.crm_touch_status IN ('contacted','replied','bounced','autoreply'))";
 var BOARD_STAGE_PROJECTION = "CASE WHEN c.relationship_stage='cold' THEN 'reaching' ELSE c.relationship_stage END";
-var PREVIEW = `c.customer_id AS "customerId",co.name AS "companyName",co.country,c.state,c.version,c.origin,(SELECT ct.first_name FROM contacts ct JOIN crm_customer_contacts cx ON cx.contact_id=ct.id WHERE cx.customer_id=c.customer_id AND ct.crm_deleted_at IS NULL ORDER BY ct.id LIMIT 1) AS "primaryContactName",(SELECT ct.email FROM contacts ct JOIN crm_customer_contacts cx ON cx.contact_id=ct.id WHERE cx.customer_id=c.customer_id AND ct.crm_deleted_at IS NULL ORDER BY ct.id LIMIT 1) AS "primaryContactEmail",c.owner_user_id AS "ownerUserId",c.source,${STAGE_PROJECTION} AS stage,${CONTACTED_PREDICATE} AS "hasContacted",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=c.owner_user_id) AS "ownerName",(SELECT max(act.occurred_at) FROM crm_shared_activities act WHERE act.customer_id=c.customer_id AND act.method NOT IN ('legacy','note')) AS "recentActivityAt",(SELECT count(*)::int FROM crm_customer_contacts cc JOIN contacts cct ON cct.id=cc.contact_id WHERE cc.customer_id=c.customer_id AND cct.crm_deleted_at IS NULL) AS "contactCount"`;
+var PREVIEW = `c.customer_id AS "customerId",co.name AS "companyName",co.country,c.state,c.version,c.origin,(SELECT ct.first_name FROM contacts ct JOIN crm_customer_contacts cx ON cx.contact_id=ct.id WHERE cx.customer_id=c.customer_id AND ct.crm_deleted_at IS NULL ORDER BY ct.id LIMIT 1) AS "primaryContactName",(SELECT ct.email FROM contacts ct JOIN crm_customer_contacts cx ON cx.contact_id=ct.id WHERE cx.customer_id=c.customer_id AND ct.crm_deleted_at IS NULL ORDER BY ct.id LIMIT 1) AS "primaryContactEmail",c.owner_user_id AS "ownerUserId",c.source,${STAGE_PROJECTION} AS stage,${CONTACTED_PREDICATE} AS "hasContacted",EXISTS(SELECT 1 FROM crm_ai_proposals ap JOIN crm_sales_cases sc ON sc.case_id=ap.case_id WHERE sc.customer_id=c.customer_id AND ap.proposal_type='deal_won' AND ap.status='applied_pending_confirmation') AS "aiDealPending",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=c.owner_user_id) AS "ownerName",(SELECT max(act.occurred_at) FROM crm_shared_activities act WHERE act.customer_id=c.customer_id AND act.method NOT IN ('legacy','note')) AS "recentActivityAt",(SELECT count(*)::int FROM crm_customer_contacts cc JOIN contacts cct ON cct.id=cc.contact_id WHERE cc.customer_id=c.customer_id AND cct.crm_deleted_at IS NULL) AS "contactCount"`;
 var PostgresLeadRepository = class {
   constructor(pool, log) {
     this.pool = pool;
@@ -13021,7 +14566,7 @@ var PostgresLeadRepository = class {
   migrate() {
     return this.tx(async (c) => {
       await c.query("SELECT pg_advisory_xact_lock($1)", [LEAD_LOCK]);
-      const hash = (0, import_node_crypto21.createHash)("sha256").update(LEAD_SQL).digest("hex");
+      const hash = (0, import_node_crypto24.createHash)("sha256").update(LEAD_SQL).digest("hex");
       const old = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u7EBF\u7D22\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13029,7 +14574,7 @@ var PostgresLeadRepository = class {
         await c.query(LEAD_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEAD_VERSION, hash]);
       }
-      const nextHash = (0, import_node_crypto21.createHash)("sha256").update(CUSTOMER_SQL).digest("hex");
+      const nextHash = (0, import_node_crypto24.createHash)("sha256").update(CUSTOMER_SQL).digest("hex");
       const next = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CUSTOMER_VERSION]);
       if (next.rows.length && next.rows[0].checksum !== nextHash)
         return failure("CONFLICT", "\u5BA2\u6237\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13037,7 +14582,7 @@ var PostgresLeadRepository = class {
         await c.query(CUSTOMER_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CUSTOMER_VERSION, nextHash]);
       }
-      const profileHash = (0, import_node_crypto21.createHash)("sha256").update(CUSTOMER_PROFILE_SQL).digest("hex");
+      const profileHash = (0, import_node_crypto24.createHash)("sha256").update(CUSTOMER_PROFILE_SQL).digest("hex");
       const profile2 = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CUSTOMER_PROFILE_VERSION]);
       if (profile2.rows.length && profile2.rows[0].checksum !== profileHash)
         return failure("CONFLICT", "\u5BA2\u6237\u4E3B\u6863\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13045,7 +14590,7 @@ var PostgresLeadRepository = class {
         await c.query(CUSTOMER_PROFILE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CUSTOMER_PROFILE_VERSION, profileHash]);
       }
-      const followupHash = (0, import_node_crypto21.createHash)("sha256").update(FOLLOWUP_SQL).digest("hex");
+      const followupHash = (0, import_node_crypto24.createHash)("sha256").update(FOLLOWUP_SQL).digest("hex");
       const followup = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [FOLLOWUP_VERSION]);
       if (followup.rows.length && followup.rows[0].checksum !== followupHash)
         return failure("CONFLICT", "\u5BA2\u6237\u8DDF\u8FDB\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13053,7 +14598,7 @@ var PostgresLeadRepository = class {
         await c.query(FOLLOWUP_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [FOLLOWUP_VERSION, followupHash]);
       }
-      const contactHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_ASSIGNMENT_SQL).digest("hex");
+      const contactHash = (0, import_node_crypto24.createHash)("sha256").update(CONTACT_ASSIGNMENT_SQL).digest("hex");
       const contactOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_ASSIGNMENT_VERSION]);
       if (contactOld.rows.length && contactOld.rows[0].checksum !== contactHash)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u5206\u914D\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13061,7 +14606,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_ASSIGNMENT_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_ASSIGNMENT_VERSION, contactHash]);
       }
-      const mailHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_MAIL_SQL).digest("hex");
+      const mailHash = (0, import_node_crypto24.createHash)("sha256").update(CONTACT_MAIL_SQL).digest("hex");
       const mailOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_VERSION]);
       if (mailOld.rows.length && mailOld.rows[0].checksum !== mailHash)
         return failure("CONFLICT", "\u90AE\u4EF6\u4E8B\u4EF6\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13069,7 +14614,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_MAIL_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_MAIL_VERSION, mailHash]);
       }
-      const sendStageHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_MAIL_SEND_STAGE_SQL).digest("hex");
+      const sendStageHash = (0, import_node_crypto24.createHash)("sha256").update(CONTACT_MAIL_SEND_STAGE_SQL).digest("hex");
       const sendStageOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_MAIL_SEND_STAGE_VERSION]);
       if (sendStageOld.rows.length && sendStageOld.rows[0].checksum !== sendStageHash)
         return failure("CONFLICT", "\u53D1\u9001\u8F6E\u6B21\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13077,7 +14622,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_MAIL_SEND_STAGE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_MAIL_SEND_STAGE_VERSION, sendStageHash]);
       }
-      const lifecycleHash = (0, import_node_crypto21.createHash)("sha256").update(LIFECYCLE_SQL).digest("hex");
+      const lifecycleHash = (0, import_node_crypto24.createHash)("sha256").update(LIFECYCLE_SQL).digest("hex");
       const lifecycleOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LIFECYCLE_VERSION]);
       if (lifecycleOld.rows.length && lifecycleOld.rows[0].checksum !== lifecycleHash)
         return failure("CONFLICT", "\u751F\u547D\u5468\u671F\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13085,7 +14630,7 @@ var PostgresLeadRepository = class {
         await c.query(LIFECYCLE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LIFECYCLE_VERSION, lifecycleHash]);
       }
-      const shareHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_SHARING_SQL).digest("hex");
+      const shareHash = (0, import_node_crypto24.createHash)("sha256").update(CONTACT_SHARING_SQL).digest("hex");
       const shareOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_SHARING_VERSION]);
       if (shareOld.rows.length && shareOld.rows[0].checksum !== shareHash)
         return failure("CONFLICT", "\u5171\u4EAB\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13093,7 +14638,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_SHARING_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_SHARING_VERSION, shareHash]);
       }
-      const correctionHash = (0, import_node_crypto21.createHash)("sha256").update(MAIL_CORRECTION_SQL).digest("hex");
+      const correctionHash = (0, import_node_crypto24.createHash)("sha256").update(MAIL_CORRECTION_SQL).digest("hex");
       const correctionOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [MAIL_CORRECTION_VERSION]);
       if (correctionOld.rows.length && correctionOld.rows[0].checksum !== correctionHash)
         return failure("CONFLICT", "\u90AE\u4EF6\u66F4\u6B63\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13101,7 +14646,7 @@ var PostgresLeadRepository = class {
         await c.query(MAIL_CORRECTION_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [MAIL_CORRECTION_VERSION, correctionHash]);
       }
-      const acceptanceHash = (0, import_node_crypto21.createHash)("sha256").update(SEND_ACCEPTANCE_SQL).digest("hex");
+      const acceptanceHash = (0, import_node_crypto24.createHash)("sha256").update(SEND_ACCEPTANCE_SQL).digest("hex");
       const acceptanceOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [SEND_ACCEPTANCE_VERSION]);
       if (acceptanceOld.rows.length && acceptanceOld.rows[0].checksum !== acceptanceHash)
         return failure("CONFLICT", "\u53D1\u9001\u5F52\u6863\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13109,7 +14654,7 @@ var PostgresLeadRepository = class {
         await c.query(SEND_ACCEPTANCE_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [SEND_ACCEPTANCE_VERSION, acceptanceHash]);
       }
-      const extensionHash = (0, import_node_crypto21.createHash)("sha256").update(LEAD_FIELD_EXTENSION_SQL).digest("hex");
+      const extensionHash = (0, import_node_crypto24.createHash)("sha256").update(LEAD_FIELD_EXTENSION_SQL).digest("hex");
       const extension = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_FIELD_EXTENSION_VERSION]);
       if (extension.rows.length && extension.rows[0].checksum !== extensionHash)
         return failure("CONFLICT", "\u7EBF\u7D22\u5B57\u6BB5\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13117,7 +14662,7 @@ var PostgresLeadRepository = class {
         await c.query(LEAD_FIELD_EXTENSION_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEAD_FIELD_EXTENSION_VERSION, extensionHash]);
       }
-      const touchHash = (0, import_node_crypto21.createHash)("sha256").update(CONTACT_TOUCH_STATUS_SQL).digest("hex");
+      const touchHash = (0, import_node_crypto24.createHash)("sha256").update(CONTACT_TOUCH_STATUS_SQL).digest("hex");
       const touchOld = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_TOUCH_STATUS_VERSION]);
       if (touchOld.rows.length && touchOld.rows[0].checksum !== touchHash)
         return failure("CONFLICT", "\u8054\u7CFB\u72B6\u6001\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -13125,7 +14670,7 @@ var PostgresLeadRepository = class {
         await c.query(CONTACT_TOUCH_STATUS_SQL);
         await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [CONTACT_TOUCH_STATUS_VERSION, touchHash]);
       }
-      return success(void 0);
+      return migrateCustomerStatusSchemaIn(c);
     });
   }
   migrateAssignmentState() {
@@ -13194,7 +14739,7 @@ var PostgresLeadRepository = class {
     });
   }
   async cached(c, a, operation, input, action) {
-    const digest2 = (0, import_node_crypto21.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const digest2 = (0, import_node_crypto24.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
     const old = await c.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
     if (old.rows.length) {
       if (old.rows[0].digest !== digest2)
@@ -13226,7 +14771,7 @@ var PostgresLeadRepository = class {
       if (!a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop"))
         return failure("FORBIDDEN", "\u65E0\u5BA2\u6237\u521B\u5EFA\u6743\u9650");
       return this.cached(c, a, "create", input, async () => {
-        const ingressInput = { source: input.source.toLowerCase().includes("agent") ? "agent_import" : "manual", sourceChannel: input.source, sourceDetail: input.sourceDetail, kind: operationsOrigin(a) ? "operations" : "personal", idempotencyKey: input.idempotencyKey, customerKey: (0, import_node_crypto21.randomUUID)(), company: { name: input.companyName.trim(), country: input.country ?? null, customerType: input.customerType?.trim() || null, businessType: input.businessType?.trim() || null }, contacts: input.contacts.map((contact2) => ({ email: contact2.email.trim().toLowerCase() || null, name: contact2.name, country: contact2.country, phone: contact2.phone, whatsapp: contact2.whatsapp, title: contact2.title })), profile: { developmentRestriction: input.developmentRestriction, sourceCreatedAt: input.sourceCreatedAt } };
+        const ingressInput = { source: input.source.toLowerCase().includes("agent") ? "agent_import" : "manual", sourceChannel: input.source, sourceDetail: input.sourceDetail, kind: operationsOrigin(a) ? "operations" : "personal", idempotencyKey: input.idempotencyKey, customerKey: (0, import_node_crypto24.randomUUID)(), company: { name: input.companyName.trim(), country: input.country ?? null, customerType: input.customerType?.trim() || null, businessType: input.businessType?.trim() || null }, contacts: input.contacts.map((contact2) => ({ email: contact2.email.trim().toLowerCase() || null, name: contact2.name, country: contact2.country, phone: contact2.phone, whatsapp: contact2.whatsapp, title: contact2.title })), profile: { developmentRestriction: input.developmentRestriction, sourceCreatedAt: input.sourceCreatedAt } };
         const ingress = await evaluateLeadIngressIn(c, a, ingressInput);
         if (!ingress.ok)
           return ingress;
@@ -13251,7 +14796,7 @@ var PostgresLeadRepository = class {
         return failure("CONFLICT", "\u5BA2\u6237\u542B\u72EC\u7ACB\u5206\u914D\u8054\u7CFB\u4EBA\uFF0C\u8BF7\u4F7F\u7528\u8054\u7CFB\u4EBA\u4FEE\u6539");
       if (!customer2 || !canDevelop(a, customer2))
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728");
-      if (customer2.origin === "operations" && !administrator2(a) && !operational(a))
+      if (customer2.origin === "operations" && !administrator3(a) && !operational2(a))
         return failure("FORBIDDEN", "\u5206\u914D\u7EBF\u7D22\u8BF7\u4F7F\u7528\u8054\u7CFB\u4EBA\u5B57\u6BB5\u4FEE\u6539");
       return this.cached(c, a, `update:${input.customerId}`, input, async () => {
         if (customer2.version !== input.expectedVersion)
@@ -13308,7 +14853,7 @@ var PostgresLeadRepository = class {
   }
   members(hash, q) {
     return this.authorized(hash, async (c, a) => {
-      const managementDirectory = a.capabilities.includes("members.read") && a.capabilities.includes("leads.assign") && (operational(a) || administrator2(a));
+      const managementDirectory = a.capabilities.includes("members.read") && a.capabilities.includes("leads.assign") && (operational2(a) || administrator3(a));
       if (!managementDirectory && !a.capabilities.includes("leads.develop"))
         return failure("FORBIDDEN", "\u65E0\u5206\u914D\u6210\u5458\u76EE\u5F55\u6743\u9650");
       const needle = q.search.toLocaleLowerCase();
@@ -13330,7 +14875,7 @@ var PostgresLeadRepository = class {
     return this.authorized(hash, async (c, a) => {
       const personal = !operationsOrigin(a);
       input = { ...input, kind: personal ? "personal" : "operations" };
-      if (personal ? !a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop") : !administrator2(a) && (!a.capabilities.includes("leads.import") || !operational(a)))
+      if (personal ? !a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop") : !administrator3(a) && (!a.capabilities.includes("leads.import") || !operational2(a)))
         return failure("FORBIDDEN", "\u65E0\u5BFC\u5165\u6743\u9650\u6216\u6765\u6E90\u7BA1\u7406\u8303\u56F4");
       return this.cached(c, a, "workbook-import", input, () => importWorkbookIn(c, a, input));
     });
@@ -13339,14 +14884,14 @@ var PostgresLeadRepository = class {
     return this.authorized(hash, async (c, a) => {
       const personal = !operationsOrigin(a);
       input = { ...input, kind: personal ? "personal" : "operations", source: input.companyMatching && personal ? `${input.source}:${a.userId}` : input.source };
-      if (personal ? !a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop") : !administrator2(a) && (!a.capabilities.includes("leads.import") || !operational(a)))
+      if (personal ? !a.capabilities.includes("leads.create") || !a.capabilities.includes("leads.develop") : !administrator3(a) && (!a.capabilities.includes("leads.import") || !operational2(a)))
         return failure("FORBIDDEN", "\u65E0\u5BFC\u5165\u6743\u9650\u6216\u6765\u6E90\u7BA1\u7406\u8303\u56F4");
       return this.cached(c, a, "import", input, async () => success(await importFlatLeadsIn(c, a, input)));
     });
   }
   publish(hash, batchId, input) {
     return this.authorized(hash, async (c, a) => {
-      if (!a.capabilities.includes("leads.publish") || !operational(a))
+      if (!a.capabilities.includes("leads.publish") || !operational2(a))
         return failure("FORBIDDEN", "\u65E0\u53D1\u5E03\u6743\u9650");
       const batch = await c.query("SELECT * FROM crm_import_batches WHERE batch_id=$1 FOR UPDATE", [batchId]);
       if (!batch.rows.length || batch.rows[0].actor_id !== a.userId)
@@ -13416,7 +14961,7 @@ var PostgresLeadRepository = class {
   }
   list(hash, q) {
     return this.authorized(hash, async (c, a) => {
-      if (q.view === "all" && !administrator2(a) || q.view === "operations" && !operational(a) || q.view === "pool" && !a.capabilities.includes("leads.claim") || ["mine", "personal", "assigned"].includes(q.view) && !a.capabilities.includes("leads.develop"))
+      if (q.view === "all" && !administrator3(a) || q.view === "operations" && !operational2(a) || q.view === "pool" && !a.capabilities.includes("leads.claim") || ["mine", "personal", "assigned"].includes(q.view) && !a.capabilities.includes("leads.develop"))
         return failure("FORBIDDEN", "\u65E0\u5217\u8868\u6743\u9650");
       const where = q.view === "all" ? "($1::uuid IS NOT NULL)" : q.view === "operations" ? "($1::uuid IS NOT NULL) AND c.origin='operations'" : q.view === "pool" ? `($1::uuid IS NOT NULL) AND c.state='published'` : q.view === "personal" ? `c.owner_user_id=$1 AND c.origin='personal'` : q.view === "assigned" ? `c.owner_user_id=$1 AND c.origin='operations'` : `c.owner_user_id=$1`;
       const filter = `WHERE ${where} AND (co.name ILIKE $2 ESCAPE '!' ${q.view === "pool" ? "" : "OR EXISTS(SELECT 1 FROM contacts ct JOIN crm_customer_contacts cx ON cx.contact_id=ct.id WHERE cx.customer_id=c.customer_id AND ct.crm_deleted_at IS NULL AND (ct.email ILIKE $2 ESCAPE '!' OR ct.first_name ILIKE $2 ESCAPE '!'))"}) AND ($3::text IS NULL OR ($3='assigned' AND c.owner_user_id IS NOT NULL) OR ($3='unassigned' AND c.owner_user_id IS NULL AND c.state IN ('draft','published'))) AND ($4::text IS NULL OR ${q.followupOnly ? BOARD_STAGE_PROJECTION : STAGE_PROJECTION}=$4)${q.followupOnly ? ` AND ${CONTACTED_PREDICATE}` : ""}`;
@@ -13450,10 +14995,10 @@ var PostgresLeadRepository = class {
     }
     if (!v || !canReadLead(a, v))
       return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728");
-    if (!administrator2(a) && !(operational(a) && v.origin === "operations") && (await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE customer_id=$1 AND status='accepted' AND target_user_id<>$2 LIMIT 1", [id, a.userId])).rows.length)
+    if (!administrator3(a) && !(operational2(a) && v.origin === "operations") && (await c.query("SELECT 1 FROM crm_contact_assignment_requests WHERE customer_id=$1 AND status='accepted' AND target_user_id<>$2 LIMIT 1", [id, a.userId])).rows.length)
       return failure("NOT_FOUND", "\u8BF7\u4F7F\u7528\u8054\u7CFB\u4EBA\u8BE6\u60C5");
     const contacts2 = await c.query(`SELECT co.id AS "contactId",COALESCE(co.email,'') AS email,co.first_name AS name,co.country,co.phone,co.whatsapp,co.title,co.crm_touch_status AS "touchStatus" FROM contacts co JOIN crm_customer_contacts cc ON cc.contact_id=co.id WHERE cc.customer_id=$1 AND co.crm_deleted_at IS NULL ORDER BY co.id`, [id]);
-    const feedbackAllowed = administrator2(a) || operational(a) && v.origin === "operations" && a.capabilities.includes("followups.read") || v.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
+    const feedbackAllowed = administrator3(a) || operational2(a) && v.origin === "operations" && a.capabilities.includes("followups.read") || v.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
     const activities = feedbackAllowed ? await c.query(`SELECT act.id::text,act.actor_id AS "actorId",u.display_name AS "actorName",act.note,act.stage,act.created_at AS "createdAt",act.method,act.occurred_at AS "occurredAt",act.recorded_at AS "recordedAt",act.contact_id AS "contactId",ct.first_name AS "contactName",act.contact_status AS "contactStatus",act.opportunity_id AS "opportunityId",op.title AS "opportunityTitle" FROM crm_shared_activities act LEFT JOIN public.identity_users u ON u.user_id=act.actor_id LEFT JOIN contacts ct ON ct.id=act.contact_id LEFT JOIN crm_opportunities op ON op.opportunity_id=act.opportunity_id AND op.customer_id=act.customer_id WHERE act.customer_id=$1 ORDER BY act.occurred_at DESC,act.id DESC`, [id]) : { rows: [] };
     if (v.sourceCreatedAt)
       v.sourceCreatedAt = v.sourceCreatedAt.toISOString();
@@ -13504,10 +15049,15 @@ var PostgresLeadRepository = class {
         const MILLISECONDS_PER_SECOND13 = 1e3;
         if (!Number.isFinite(occurredAt.getTime()) || occurredAt.getTime() > recordedAt.getTime() + FOLLOWUP_TIME_LIMITS.future_skew_seconds * MILLISECONDS_PER_SECOND13)
           return failure("INVALID_INPUT", "\u53D1\u751F\u65F6\u95F4\u65E0\u6548\u6216\u8D85\u8FC7\u4E2D\u5FC3\u65F6\u95F4");
+        const currentTouch = input.contactId === void 0 ? null : (await c.query('SELECT crm_touch_status AS "touchStatus" FROM contacts WHERE id=$1', [input.contactId])).rows[0]?.touchStatus ?? null;
+        const aiDealPending = await customerHasAiDealPendingIn(c, input.customerId);
+        const statusChange = customerStatusChange({ relationshipStage: row2.rows[0].relationship_stage, touchStatuses: [currentTouch], aiDealPending, nextRelationshipStage: input.stage, nextTouchStatus: input.contactStatus, allowRegression: true });
         const activity = await c.query("INSERT INTO crm_shared_activities(customer_id,interaction_id,actor_id,note,stage,method,occurred_at,recorded_at,created_at,contact_id,contact_status,opportunity_id) VALUES($1,NULL,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10) RETURNING id::text", [input.customerId, a.userId, input.note, input.stage ?? null, method, occurredAt, recordedAt, input.contactId ?? null, input.contactStatus ?? null, input.opportunityId ?? null]);
         if (input.contactStatus !== void 0)
           await c.query("UPDATE contacts SET crm_touch_status=$2,crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1", [input.contactId, input.contactStatus]);
         await c.query("UPDATE crm_customers SET version=version+1,relationship_stage=COALESCE($2,relationship_stage),stage_needs_review=CASE WHEN $2 IS NOT NULL THEN false ELSE stage_needs_review END WHERE customer_id=$1", [input.customerId, input.stage ?? null]);
+        if (statusChange.changed)
+          await recordCustomerStatusEventIn(c, { eventKey: `followup:${input.customerId}:${input.idempotencyKey}`, customerId: input.customerId, contactId: input.contactId ?? null, status: statusChange.after, previousStatus: statusChange.before, source: "human", signal: "followup", actorUserId: a.userId, reason: input.note, payload: { activityId: activity.rows[0].id, stage: input.stage ?? null, contactStatus: input.contactStatus ?? null, method }, occurredAt });
         await this.event(c, a, input.customerId, input.expectedVersion + 1, "crm.lead.followup", activity.rows[0].id);
         return this.detailIn(c, a, input.customerId);
       });
@@ -13526,8 +15076,8 @@ function centerContactQuery(value2) {
   if (!value2 || typeof value2 !== "object" || Array.isArray(value2))
     return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u67E5\u8BE2\u53C2\u6570\u65E0\u6548");
   const input = value2;
-  const allowed = ["search", "limit", "offset", ...CENTER_CONTACT_FILTERS, "scope", "assignment", "followupOnly", "crmStage", "touchStatus", "groupDimension", "groupKey"];
-  if (Object.keys(input).some((key) => !allowed.includes(key)))
+  const allowed = ["search", "limit", "offset", ...CENTER_CONTACT_FILTERS, "scope", "assignment", "attentionOnly", "followupOnly", "crmStage", "touchStatus", "groupDimension", "groupKey"];
+  if (Object.keys(input).some((key2) => !allowed.includes(key2)))
     return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u67E5\u8BE2\u542B\u672A\u77E5\u53C2\u6570");
   const search = input.search ?? "";
   const limit = input.limit ?? CENTER_CONTACT_LIMITS.page;
@@ -13545,11 +15095,13 @@ function centerContactQuery(value2) {
       return failure("INVALID_INPUT", "\u5206\u914D\u72B6\u6001\u65E0\u6548");
     query2.assignment = "accepted";
   }
-  if (input.followupOnly !== void 0) {
-    if (typeof input.followupOnly !== "boolean")
-      return failure("INVALID_INPUT", "\u8DDF\u8FDB\u7B5B\u9009\u65E0\u6548");
-    query2.followupOnly = input.followupOnly;
-  }
+  if (input.attentionOnly !== void 0 && typeof input.attentionOnly !== "boolean")
+    return failure("INVALID_INPUT", "\u5173\u6CE8\u7B5B\u9009\u65E0\u6548");
+  if (input.followupOnly !== void 0 && typeof input.followupOnly !== "boolean")
+    return failure("INVALID_INPUT", "\u8DDF\u8FDB\u7B5B\u9009\u65E0\u6548");
+  const attentionOnly = input.attentionOnly ?? input.followupOnly;
+  if (attentionOnly !== void 0)
+    query2.attentionOnly = attentionOnly;
   if (input.crmStage !== void 0) {
     if (!["cold", ...CRM_STAGES].includes(input.crmStage))
       return failure("INVALID_INPUT", "\u5BA2\u6237\u5173\u7CFB\u9636\u6BB5\u65E0\u6548");
@@ -13560,14 +15112,14 @@ function centerContactQuery(value2) {
       return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u8054\u7CFB\u72B6\u6001\u65E0\u6548");
     query2.touchStatus = input.touchStatus;
   }
-  for (const key of CENTER_CONTACT_FILTERS) {
-    const item = input[key];
+  for (const key2 of CENTER_CONTACT_FILTERS) {
+    const item = input[key2];
     if (item === void 0)
       continue;
     if (typeof item !== "string" || item.length > CENTER_CONTACT_LIMITS.text)
       return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u7B5B\u9009\u53C2\u6570\u65E0\u6548");
     if (item.trim())
-      query2[key] = item.trim();
+      query2[key2] = item.trim();
   }
   if (input.groupDimension !== void 0 || input.groupKey !== void 0) {
     if (!CENTER_CONTACT_GROUP_DIMENSIONS.includes(input.groupDimension) || typeof input.groupKey !== "string" || !input.groupKey.trim() || input.groupKey.length > CENTER_CONTACT_LIMITS.text)
@@ -13581,7 +15133,7 @@ function centerContactGroupQuery(value2) {
   if (!value2 || typeof value2 !== "object" || Array.isArray(value2))
     return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u5206\u7EC4\u67E5\u8BE2\u65E0\u6548");
   const input = value2;
-  if (Object.keys(input).some((key) => !["dimension", "scope", "search", "limit", "offset"].includes(key)))
+  if (Object.keys(input).some((key2) => !["dimension", "scope", "search", "limit", "offset"].includes(key2)))
     return failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u5206\u7EC4\u67E5\u8BE2\u542B\u672A\u77E5\u53C2\u6570");
   const dimension = input.dimension ?? "batch";
   const scope = input.scope ?? "all";
@@ -13836,7 +15388,7 @@ function contactAssignmentQuery(v) {
   if (!record7(v) || !keys4(v, ["view", "status", "search", "limit", "offset", "requestId", "groupId"]) || v.requestId !== void 0 && !uuid3(v.requestId) || v.groupId !== void 0 && !uuid3(v.groupId) || v.requestId !== void 0 && v.groupId !== void 0)
     return invalid4();
   const query2 = { view: v.view ?? "incoming", status: v.status ?? "pending", search: v.search ?? "", limit: v.limit ?? CONTACT_ASSIGNMENT_LIMITS.page, offset: v.offset ?? 0, ...v.requestId !== void 0 ? { requestId: v.requestId } : {}, ...v.groupId !== void 0 ? { groupId: v.groupId } : {} };
-  if (!["incoming", "outgoing"].includes(query2.view) || !CONTACT_ASSIGNMENT_STATUSES.includes(query2.status) || !text8(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
+  if (!["incoming", "outgoing"].includes(query2.view) || !["all", ...CONTACT_ASSIGNMENT_STATUSES].includes(query2.status) || !text8(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
     return invalid4();
   return success({ ...query2, search: query2.search.trim() });
 }
@@ -13844,27 +15396,27 @@ function contactAssignmentGroupQuery(v) {
   if (!record7(v) || !keys4(v, ["view", "status", "search", "limit", "offset"]))
     return invalid4();
   const query2 = { view: v.view ?? "incoming", status: v.status ?? "pending", search: v.search ?? "", limit: v.limit ?? CONTACT_ASSIGNMENT_LIMITS.page, offset: v.offset ?? 0 };
-  if (!["incoming", "outgoing"].includes(query2.view) || !CONTACT_ASSIGNMENT_STATUSES.includes(query2.status) || !text8(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
+  if (!["incoming", "outgoing"].includes(query2.view) || !["all", ...CONTACT_ASSIGNMENT_STATUSES].includes(query2.status) || !text8(query2.search, CONTACT_ASSIGNMENT_LIMITS.text, 0) || !positive3(query2.limit) || Number(query2.limit) > CONTACT_ASSIGNMENT_LIMITS.pageMax || !Number.isSafeInteger(query2.offset) || Number(query2.offset) < 0)
     return invalid4();
   return success({ ...query2, search: query2.search.trim() });
 }
 function contactUpdate(v) {
   if (!record7(v) || !keys4(v, ["contactId", "customerId", "expectedVersion", "idempotencyKey", "fields"]) || !ref(v) || !version2(v) || !record7(v.fields) || !Object.keys(v.fields).length || !keys4(v.fields, UPDATE_FIELDS))
     return invalid4();
-  for (const [key, value2] of Object.entries(v.fields)) {
-    if (key === "tags") {
+  for (const [key2, value2] of Object.entries(v.fields)) {
+    if (key2 === "tags") {
       if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.pageMax || value2.some((x) => !text8(x, CONTACT_ASSIGNMENT_LIMITS.text)) || new Set(value2).size !== value2.length)
         return invalid4();
       continue;
     }
-    if (key === "preferences") {
+    if (key2 === "preferences") {
       if (!Array.isArray(value2) || value2.length > CONTACT_ASSIGNMENT_LIMITS.preferences || value2.some((x) => !text8(x, CONTACT_ASSIGNMENT_LIMITS.preferenceText)) || new Set(value2).size !== value2.length)
         return invalid4();
       continue;
     }
-    if (value2 !== null && !text8(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0) || ["stage", "status"].includes(key) && value2 === null)
+    if (value2 !== null && !text8(value2, CONTACT_ASSIGNMENT_LIMITS.text, 0) || ["stage", "status"].includes(key2) && value2 === null)
       return invalid4();
-    if (key === "email" && typeof value2 === "string" && value2.trim() && (value2.length > EMAIL_LIMIT2 || !/^\S+@[^\s@]+\.[^\s@]+$/.test(value2.trim())))
+    if (key2 === "email" && typeof value2 === "string" && value2.trim() && (value2.length > EMAIL_LIMIT2 || !/^\S+@[^\s@]+\.[^\s@]+$/.test(value2.trim())))
       return invalid4();
   }
   return success(v);
@@ -14059,24 +15611,24 @@ function createCrmHandler(service) {
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
     if (method === "GET" && path4 === CENTER_CONTACT_ROUTE) {
       const query2 = {};
-      for (const [key, value2] of url.searchParams) {
-        if (key in query2) {
+      for (const [key2, value2] of url.searchParams) {
+        if (key2 in query2) {
           send(response, failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u67E5\u8BE2\u53C2\u6570\u91CD\u590D"));
           return;
         }
-        query2[key] = ["limit", "offset"].includes(key) ? Number(value2) : key === "followupOnly" ? value2 === "true" ? true : value2 === "false" ? false : value2 : value2;
+        query2[key2] = ["limit", "offset"].includes(key2) ? Number(value2) : ["attentionOnly", "followupOnly"].includes(key2) ? value2 === "true" ? true : value2 === "false" ? false : value2 : value2;
       }
       send(response, await service.contacts(token, query2));
       return;
     }
     if (method === "GET" && path4 === CENTER_CONTACT_GROUP_ROUTE) {
       const query2 = {};
-      for (const [key, value2] of url.searchParams) {
-        if (key in query2) {
+      for (const [key2, value2] of url.searchParams) {
+        if (key2 in query2) {
           send(response, failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u5206\u7EC4\u67E5\u8BE2\u53C2\u6570\u91CD\u590D"));
           return;
         }
-        query2[key] = ["limit", "offset"].includes(key) ? Number(value2) : value2;
+        query2[key2] = ["limit", "offset"].includes(key2) ? Number(value2) : value2;
       }
       send(response, await service.contactGroups(token, query2));
       return;
@@ -14142,7 +15694,7 @@ function createLeadIngressHandler(service) {
     const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
     if (request2.method === "GET" && url.pathname === LEAD_INGRESS_ROUTES.decision) {
-      if ([...url.searchParams.keys()].some((key) => !["source", "idempotencyKey"].includes(key)) || url.searchParams.getAll("source").length !== 1 || url.searchParams.getAll("idempotencyKey").length !== 1) {
+      if ([...url.searchParams.keys()].some((key2) => !["source", "idempotencyKey"].includes(key2)) || url.searchParams.getAll("source").length !== 1 || url.searchParams.getAll("idempotencyKey").length !== 1) {
         send(response, failure("INVALID_INPUT", "\u51B2\u7A81\u8BB0\u5F55\u53C2\u6570\u65E0\u6548"));
         return;
       }
@@ -14162,7 +15714,7 @@ function createLeadIngressHandler(service) {
 }
 
 // server/adapters/postgres/notification-repository.ts
-var import_node_crypto22 = require("node:crypto");
+var import_node_crypto25 = require("node:crypto");
 
 // server/adapters/postgres/assignment-schema.ts
 var ASSIGNMENT_VERSION = "009-directed-assignment-public";
@@ -14216,18 +15768,20 @@ function visible(a, c, eventType) {
 }
 function notificationChange(row2) {
   const eventType = String(row2.event_type ?? "");
-  const text16 = (value2) => typeof value2 === "string" && value2.trim() ? value2.trim() : null;
+  const text18 = (value2) => typeof value2 === "string" && value2.trim() ? value2.trim() : null;
   const changes = Array.isArray(row2.payload?.changes) ? row2.payload.changes.filter((value2) => !!value2 && typeof value2 === "object" && !Array.isArray(value2) && typeof value2.field === "string" && (value2.from === null || typeof value2.from === "string") && (value2.to === null || typeof value2.to === "string")) : [];
   if ((eventType === "crm.lead.followup" || eventType === "crm.contact.followup") && row2.mail_event_id)
-    return { kind: "mail", direction: text16(row2.mail_direction), from: text16(row2.mail_from_email), method: "email", note: text16(row2.mail_subject) || text16(row2.mail_preview) };
+    return { kind: "mail", direction: text18(row2.mail_direction), from: text18(row2.mail_from_email), method: "email", note: text18(row2.mail_subject) || text18(row2.mail_preview) };
   if (eventType === "crm.lead.followup" || eventType === "crm.contact.followup")
-    return { kind: "followup", changes, stage: text16(row2.activity_stage), contactStatus: text16(row2.activity_contact_status), method: text16(row2.activity_method), note: text16(row2.activity_note) };
+    return { kind: "followup", changes, stage: text18(row2.activity_stage), contactStatus: text18(row2.activity_contact_status), method: text18(row2.activity_method), note: text18(row2.activity_note) };
   if (eventType === "crm.contact.updated")
     return { kind: "fields", fields: Array.isArray(row2.payload?.fields) ? row2.payload.fields.filter((value2) => typeof value2 === "string") : [], changes };
   if (eventType === TASK_DUE_EVENT)
-    return { kind: "task", title: text16(row2.task_title) };
+    return { kind: "task", title: text18(row2.task_title) };
+  if (eventType === DEAL_WON_EVENT)
+    return { kind: "deal_won", title: "AI \u5DF2\u8BB0\u5F55\u6210\u4EA4\uFF0C\u8BF7\u6838\u5BF9", note: text18(row2.payload?.summary) };
   if (OPPORTUNITY_EVENT_TYPES.includes(eventType))
-    return { kind: "opportunity", title: text16(row2.opportunity_title) };
+    return { kind: "opportunity", title: text18(row2.opportunity_title) };
   if (eventType.startsWith("crm.contact.assignment."))
     return { kind: "assignment" };
   if (eventType.startsWith("crm.contact.share."))
@@ -14264,7 +15818,7 @@ var PostgresNotificationRepository = class {
   async migrate() {
     return this.tx(async (db) => {
       await db.query("SELECT pg_advisory_xact_lock($1)", [NOTIFICATION_LOCK]);
-      const sum = (0, import_node_crypto22.createHash)("sha256").update(NOTIFICATION_SQL).digest("hex");
+      const sum = (0, import_node_crypto25.createHash)("sha256").update(NOTIFICATION_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [NOTIFICATION_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== sum)
         return failure("CONFLICT", "\u901A\u77E5\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -14272,7 +15826,7 @@ var PostgresNotificationRepository = class {
         await db.query(NOTIFICATION_SQL);
         await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [NOTIFICATION_VERSION, sum]);
       }
-      const nextSum = (0, import_node_crypto22.createHash)("sha256").update(ASSIGNMENT_SQL).digest("hex");
+      const nextSum = (0, import_node_crypto25.createHash)("sha256").update(ASSIGNMENT_SQL).digest("hex");
       const next = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [ASSIGNMENT_VERSION]);
       if (next.rows.length && next.rows[0].checksum !== nextSum)
         return failure("CONFLICT", "\u5206\u914D\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -14413,12 +15967,13 @@ var PostgresNotificationRepository = class {
         }
         const assigned = r.event_type === "crm.lead.assigned" && r.recipient_user_ids?.includes(a.userId);
         const overlap = r.event_type === DEAL_OVERLAP_EVENT && r.recipient_user_ids?.includes(a.userId);
+        const dealWon = r.event_type === DEAL_WON_EVENT && r.recipient_user_ids?.includes(a.userId);
         const taskDue = r.event_type === TASK_DUE_EVENT;
         if (taskDue && !await canProjectTaskDue(db, r, a))
           continue;
-        if (taskDue || assigned || overlap || visible(a, r, r.event_type)) {
+        if (taskDue || assigned || overlap || dealWon || visible(a, r, r.event_type)) {
           const canOpen = assigned ? canReadLead(a, r) : true;
-          items.push({ id: r.delivery_id, eventType: r.event_type, customerId: canOpen ? r.customer_id : "", version: canOpen ? r.version : 0, canOpen, cursor, createdAt: new Date(r.created_at).toISOString(), read: r.read, change: notificationChange(r), ...taskDue ? { taskId: r.payload.taskId } : {}, ...r.projected_opportunity_id && canOpen ? { opportunityId: r.projected_opportunity_id } : {}, ...r.mail_event_id ? { mailEventId: String(r.mail_event_id) } : {}, ...r.mail_message_key ? { mailMessageKey: String(r.mail_message_key) } : {}, ...canReadLead(a, r) || overlap ? { summary: { companyName: r.company_name, actorName: r.actor_name, ...typeof r.activity_note === "string" ? { note: r.activity_note.slice(0, SUMMARY_NOTE_MAX) } : OPPORTUNITY_EVENT_TYPES.includes(r.event_type) && r.opportunity_title ? { note: r.opportunity_title.slice(0, SUMMARY_NOTE_MAX) } : {} } } : {} });
+          items.push({ id: r.delivery_id, eventType: r.event_type, customerId: canOpen ? r.customer_id : "", version: canOpen ? r.version : 0, canOpen, cursor, createdAt: new Date(r.created_at).toISOString(), read: r.read, change: notificationChange(r), ...taskDue ? { taskId: r.payload.taskId } : {}, ...dealWon ? { salesCaseId: String(r.payload.caseId || ""), proposalId: String(r.payload.proposalId || "") } : {}, ...r.projected_opportunity_id && canOpen ? { opportunityId: r.projected_opportunity_id } : {}, ...r.mail_event_id ? { mailEventId: String(r.mail_event_id) } : {}, ...r.mail_message_key ? { mailMessageKey: String(r.mail_message_key) } : {}, ...canReadLead(a, r) || overlap ? { summary: { companyName: r.company_name, actorName: r.actor_name, ...typeof r.activity_note === "string" ? { note: r.activity_note.slice(0, SUMMARY_NOTE_MAX) } : OPPORTUNITY_EVENT_TYPES.includes(r.event_type) && r.opportunity_title ? { note: r.opportunity_title.slice(0, SUMMARY_NOTE_MAX) } : {} } } : {} });
           if (items.length === q.limit)
             break;
         }
@@ -14447,7 +16002,7 @@ var PostgresNotificationRepository = class {
         allowed = !!row2.recipient_user_ids?.includes(actor.data.userId);
       else if (CONTACT_EVENTS.includes(row2.event_type))
         allowed = await this.contactAccess(db, actor.data, row2.payload?.contactId, row2.customer_id);
-      else if (row2.event_type === "crm.lead.assigned" || row2.event_type === DEAL_OVERLAP_EVENT)
+      else if (row2.event_type === "crm.lead.assigned" || row2.event_type === DEAL_OVERLAP_EVENT || row2.event_type === DEAL_WON_EVENT)
         allowed = !!row2.recipient_user_ids?.includes(actor.data.userId);
       else
         allowed = visible(actor.data, row2, row2.event_type);
@@ -14473,13 +16028,13 @@ var PostgresNotificationRepository = class {
       const recipients2 = await db.query("SELECT user_id FROM public.identity_users WHERE active AND NOT must_change_password ORDER BY user_id FOR SHARE");
       let count2 = 0;
       for (const event2 of events.rows) {
-        if (event2.product_id === "crm" && ["crm.customer.created", "crm.lead.published", "crm.lead.claimed", "crm.lead.followup", "crm.lead.assigned", DEAL_OVERLAP_EVENT, TASK_DUE_EVENT, ...OPPORTUNITY_EVENT_TYPES, ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && event2.customer_id) {
+        if (event2.product_id === "crm" && ["crm.customer.created", "crm.lead.published", "crm.lead.claimed", "crm.lead.followup", "crm.lead.assigned", DEAL_OVERLAP_EVENT, DEAL_WON_EVENT, TASK_DUE_EVENT, ...OPPORTUNITY_EVENT_TYPES, ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && event2.customer_id) {
           const customer2 = await db.query("SELECT * FROM crm_customers WHERE customer_id=$1 FOR SHARE", [event2.customer_id]);
           if (customer2.rows.length)
             for (const user of recipients2.rows) {
               if (event2.event_type === SELF_CREATED_EVENT && event2.user_id === user.user_id)
                 continue;
-              if ([TASK_DUE_EVENT, "crm.lead.assigned", DEAL_OVERLAP_EVENT, ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && !event2.recipient_user_ids?.includes(user.user_id))
+              if ([TASK_DUE_EVENT, "crm.lead.assigned", DEAL_OVERLAP_EVENT, DEAL_WON_EVENT, ...CONTACT_EVENTS, ...TEAM_ATTENTION_EVENT_TYPES].includes(event2.event_type) && !event2.recipient_user_ids?.includes(user.user_id))
                 continue;
               const a = await this.access(db, user.user_id);
               if (!a)
@@ -14493,7 +16048,7 @@ var PostgresNotificationRepository = class {
               } else if (TEAM_ATTENTION_EVENT_TYPES.includes(event2.event_type)) {
                 if (!(await this.teamAttentionAccess(db, a, event2.payload?.attentionItemId)).canOpen)
                   continue;
-              } else if (event2.event_type !== "crm.lead.assigned" && event2.event_type !== DEAL_OVERLAP_EVENT && !visible(a, customer2.rows[0], event2.event_type))
+              } else if (event2.event_type !== "crm.lead.assigned" && event2.event_type !== DEAL_OVERLAP_EVENT && event2.event_type !== DEAL_WON_EVENT && !visible(a, customer2.rows[0], event2.event_type))
                 continue;
               const old = await db.query("SELECT 1 FROM crm_event_deliveries WHERE event_id=$1 AND recipient_user_id=$2 AND projection_type='lead'", [event2.event_id, a.userId]);
               if (old.rows.length)
@@ -14663,7 +16218,7 @@ function startNotificationDispatcher(repo, log) {
 }
 
 // server/services/desktop-session.ts
-var import_node_crypto23 = require("node:crypto");
+var import_node_crypto26 = require("node:crypto");
 
 // server/core/desktop-session.ts
 var DESKTOP_AUTH_ROUTES = {
@@ -14708,10 +16263,14 @@ var DEVICE_TEXT_MAX = 120;
 var APP_VERSION_MAX = 64;
 var HANDOFF_REQUEST_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 var HANDOFF_COUNT_MAX = 1e9;
-var unauthorized = () => failure("UNAUTHORIZED", "\u767B\u5F55\u4FE1\u606F\u65E0\u6548\u6216\u4F1A\u8BDD\u5DF2\u5931\u6548");
+var unauthorized = () => failure("UNAUTHORIZED", "\u4F1A\u8BDD\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55");
+var accountNotFound = () => failure("ACCOUNT_NOT_FOUND", "\u8BE5\u90AE\u7BB1\u5C1A\u672A\u5728\u4E2D\u5FC3\u6CE8\u518C\uFF0C\u8BF7\u68C0\u67E5\u90AE\u7BB1\u6216\u521B\u5EFA\u8D26\u53F7");
+var accountNotConfigured = () => failure("ACCOUNT_NOT_CONFIGURED", "\u8BE5\u8D26\u53F7\u5C1A\u672A\u8BBE\u7F6E\u4E2D\u5FC3\u767B\u5F55\u5BC6\u7801\uFF0C\u8BF7\u8054\u7CFB\u8D85\u7EA7\u7BA1\u7406\u5458\u91CD\u7F6E\u5BC6\u7801");
+var accountDisabled = () => failure("ACCOUNT_DISABLED", "\u8BE5\u8D26\u53F7\u5DF2\u505C\u7528\uFF0C\u8BF7\u8054\u7CFB\u8D85\u7EA7\u7BA1\u7406\u5458");
+var invalidCredentials = () => failure("INVALID_CREDENTIALS", "\u5BC6\u7801\u4E0D\u6B63\u786E\uFF0C\u8BF7\u91CD\u65B0\u8F93\u5165\u6216\u8054\u7CFB\u8D85\u7EA7\u7BA1\u7406\u5458\u91CD\u7F6E\u5BC6\u7801");
 var validToken = (token) => typeof token === "string" && token.length === AUTH_LIMITS.tokenCharacters && TOKEN_PATTERN2.test(token);
 function object2(input, keys12) {
-  return input && typeof input === "object" && !Array.isArray(input) && !Object.keys(input).some((key) => !keys12.includes(key)) ? input : null;
+  return input && typeof input === "object" && !Array.isArray(input) && !Object.keys(input).some((key2) => !keys12.includes(key2)) ? input : null;
 }
 function desktopContext(input) {
   if (input === void 0)
@@ -14759,7 +16318,10 @@ function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds,
     if (!validToken(token))
       return unauthorized();
     const identity = await repo.desktopIdentity(tokens.hash(token));
-    return !identity.ok ? identity : identity.data ? success(identity.data) : unauthorized();
+    if (!identity.ok || !identity.data)
+      return !identity.ok ? identity : unauthorized();
+    const presence = await repo.touchPresence?.(tokens.hash(token));
+    return success(identity.data);
   }
   function handoffSessionDraft() {
     const token = tokens.create(), refreshToken = tokens.create(), expiresAt = date(ttlSeconds);
@@ -14795,18 +16357,28 @@ function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds,
     },
     async login(input) {
       const value2 = object2(input, ["email", "password", "desktop"]);
-      if (!value2 || typeof value2.email !== "string" || value2.email !== value2.email.trim() || !EMAIL_PATTERN2.test(value2.email.trim()) || value2.email.length > AUTH_LIMITS.emailMax || typeof value2.password !== "string" || value2.password.length < BOOTSTRAP_LOGIN_MIN || value2.password.length > AUTH_LIMITS.passwordMax)
-        return failure("INVALID_INPUT", "\u767B\u5F55\u53C2\u6570\u65E0\u6548");
+      if (!value2 || typeof value2.email !== "string" || typeof value2.password !== "string")
+        return failure("INVALID_INPUT", "\u767B\u5F55\u8BF7\u6C42\u683C\u5F0F\u9519\u8BEF");
+      if (!value2.email.length || value2.email !== value2.email.trim() || !EMAIL_PATTERN2.test(value2.email.trim()) || value2.email.length > AUTH_LIMITS.emailMax)
+        return failure("INVALID_INPUT", "\u90AE\u7BB1\u5730\u5740\u683C\u5F0F\u4E0D\u6B63\u786E");
+      if (value2.password.length < BOOTSTRAP_LOGIN_MIN || value2.password.length > AUTH_LIMITS.passwordMax)
+        return failure("INVALID_INPUT", `\u5BC6\u7801\u957F\u5EA6\u5E94\u4E3A ${BOOTSTRAP_LOGIN_MIN}-${AUTH_LIMITS.passwordMax} \u4E2A\u5B57\u7B26`);
       const desktop = desktopContext(value2.desktop);
       if (desktop === null)
         return failure("INVALID_INPUT", "\u8BBE\u5907\u4FE1\u606F\u65E0\u6548");
       const credential = await repo.credential(value2.email.trim().toLowerCase());
       if (!credential.ok)
         return credential;
+      if (!credential.data)
+        return accountNotFound();
+      if (!credential.data.active)
+        return accountDisabled();
+      if (!credential.data.passwordHash)
+        return accountNotConfigured();
       try {
-        const verified = await passwords.verify(value2.password, credential.data?.passwordHash ?? "");
-        if (!verified || !credential.data?.active || value2.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)
-          return unauthorized();
+        const verified = await passwords.verify(value2.password, credential.data.passwordHash);
+        if (!verified || value2.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)
+          return invalidCredentials();
       } catch {
         return failure("UNAVAILABLE", "\u767B\u5F55\u6821\u9A8C\u6682\u4E0D\u53EF\u7528");
       }
@@ -14837,16 +16409,22 @@ function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds,
       const credential = await repo.credential(value2.email.toLowerCase());
       if (!credential.ok)
         return credential;
+      if (!credential.data)
+        return accountNotFound();
+      if (!credential.data.active)
+        return accountDisabled();
+      if (!credential.data.passwordHash)
+        return accountNotConfigured();
       try {
-        const verified = await passwords.verify(value2.password, credential.data?.passwordHash ?? "");
-        if (!verified || !credential.data?.active || value2.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)
-          return unauthorized();
+        const verified = await passwords.verify(value2.password, credential.data.passwordHash);
+        if (!verified || value2.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)
+          return invalidCredentials();
       } catch {
         return failure("UNAVAILABLE", "\u767B\u5F55\u6821\u9A8C\u6682\u4E0D\u53EF\u7528");
       }
       const handoffToken = tokens.create();
       const started = await repo.beginDesktopHandoff({
-        handoffId: (0, import_node_crypto23.randomUUID)(),
+        handoffId: (0, import_node_crypto26.randomUUID)(),
         tokenHash: tokens.hash(handoffToken),
         requestKey: value2.requestKey,
         userId: credential.data.userId,
@@ -14891,11 +16469,15 @@ function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds,
       const credential = await repo.credential(identity.data.email);
       if (!credential.ok)
         return credential;
-      if (!credential.data?.active)
-        return unauthorized();
+      if (!credential.data)
+        return accountNotFound();
+      if (!credential.data.active)
+        return accountDisabled();
+      if (!credential.data.passwordHash)
+        return accountNotConfigured();
       try {
         if (!await passwords.verify(value2.currentPassword, credential.data.passwordHash))
-          return unauthorized();
+          return invalidCredentials();
         return await repo.changePassword(tokens.hash(token), credential.data.passwordHash, credential.data.securityRevision, await passwords.hash(value2.newPassword), "api");
       } catch {
         return failure("UNAVAILABLE", "\u6539\u5BC6\u6682\u4E0D\u53EF\u7528");
@@ -14960,7 +16542,7 @@ function createDesktopAuthHandler(service, gate, config) {
 }
 
 // server/adapters/offline-access.ts
-var import_node_crypto24 = require("node:crypto");
+var import_node_crypto27 = require("node:crypto");
 var import_node_fs4 = require("node:fs");
 var import_node_path5 = require("node:path");
 
@@ -14979,7 +16561,7 @@ function createOfflineAccessIssuer(privateKey, issuer) {
   const address = new URL(issuer);
   if (!["http:", "https:"].includes(address.protocol) || address.origin !== issuer || address.username || address.password)
     throw new Error("\u79BB\u7EBF\u7B7E\u53D1\u4E2D\u5FC3\u5730\u5740\u65E0\u6548");
-  const publicKey = (0, import_node_crypto24.createPublicKey)(privateKey).export({ format: "pem", type: "spki" }).toString();
+  const publicKey = (0, import_node_crypto27.createPublicKey)(privateKey).export({ format: "pem", type: "spki" }).toString();
   return {
     issue(identity, now, absoluteExpiresAt = Infinity) {
       if (identity.mustChangePassword)
@@ -14993,7 +16575,7 @@ function createOfflineAccessIssuer(privateKey, issuer) {
       const serialized = JSON.stringify(payload);
       if (Buffer.byteLength(serialized, "utf8") > OFFLINE_ACCESS_LIMITS.payload_bytes)
         throw new Error("\u79BB\u7EBF\u6388\u6743\u8EAB\u4EFD\u8D85\u51FA\u9650\u5236");
-      return { payload: serialized, signature: (0, import_node_crypto24.sign)(null, Buffer.from(serialized, "utf8"), privateKey).toString("base64url"), publicKey };
+      return { payload: serialized, signature: (0, import_node_crypto27.sign)(null, Buffer.from(serialized, "utf8"), privateKey).toString("base64url"), publicKey };
     }
   };
 }
@@ -15001,10 +16583,10 @@ function readPrivateKey(path4) {
   const info = (0, import_node_fs4.lstatSync)(path4);
   if (!info.isFile() || info.isSymbolicLink() || info.size > PRIVATE_KEY_BYTES)
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u6587\u4EF6\u65E0\u6548");
-  const key = (0, import_node_crypto24.createPrivateKey)((0, import_node_fs4.readFileSync)(path4));
-  if (key.type !== "private" || key.asymmetricKeyType !== "ed25519")
+  const key2 = (0, import_node_crypto27.createPrivateKey)((0, import_node_fs4.readFileSync)(path4));
+  if (key2.type !== "private" || key2.asymmetricKeyType !== "ed25519")
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u7C7B\u578B\u65E0\u6548");
-  return key;
+  return key2;
 }
 function loadOfflineAccessIssuer(runtimeDirectory, issuer) {
   const directory = (0, import_node_path5.resolve)(runtimeDirectory), info = (0, import_node_fs4.lstatSync)(directory);
@@ -15017,8 +16599,8 @@ function loadOfflineAccessIssuer(runtimeDirectory, issuer) {
     if (error.code !== "ENOENT")
       throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u8BFB\u53D6\u5931\u8D25");
   }
-  const temporary = (0, import_node_path5.join)(directory, `.offline-access-${(0, import_node_crypto24.randomUUID)()}.tmp`);
-  const generated = (0, import_node_crypto24.generateKeyPairSync)("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
+  const temporary = (0, import_node_path5.join)(directory, `.offline-access-${(0, import_node_crypto27.randomUUID)()}.tmp`);
+  const generated = (0, import_node_crypto27.generateKeyPairSync)("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
   (0, import_node_fs4.writeFileSync)(temporary, generated, { flag: "wx", mode: PRIVATE_FILE_MODE2 });
   try {
     try {
@@ -15060,7 +16642,7 @@ function createTaskService(repo, tokens) {
   }
   return {
     create(token, v) {
-      if (!record8(v) || !keys5(v, ["customerId", "title", "dueAt", "expectedCustomerVersion", "idempotencyKey", "opportunityId", "mailSuggestionId"]) || typeof v.customerId !== "string" || !UUID10.test(v.customerId) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID10.test(v.opportunityId)) || v.mailSuggestionId !== void 0 && (typeof v.mailSuggestionId !== "string" || !UUID10.test(v.mailSuggestionId)) || !text9(v.title, TASK_LIMITS.title) || !validTaskTime(v.dueAt) || !positive4(v.expectedCustomerVersion) || !text9(v.idempotencyKey, TASK_LIMITS.key))
+      if (!record8(v) || !keys5(v, ["customerId", "title", "dueAt", "expectedCustomerVersion", "idempotencyKey", "opportunityId", "mailSuggestionId", "sourceKind", "sourceMessageKey", "sourceThreadKey"]) || typeof v.customerId !== "string" || !UUID10.test(v.customerId) || v.opportunityId !== void 0 && (typeof v.opportunityId !== "string" || !UUID10.test(v.opportunityId)) || v.mailSuggestionId !== void 0 && (typeof v.mailSuggestionId !== "string" || !UUID10.test(v.mailSuggestionId)) || v.sourceKind !== void 0 && v.sourceKind !== "mail_manual" || v.sourceMessageKey !== void 0 && !text9(v.sourceMessageKey, TASK_LIMITS.key) || v.sourceThreadKey !== void 0 && !text9(v.sourceThreadKey, TASK_LIMITS.key) || !text9(v.title, TASK_LIMITS.title) || !validTaskTime(v.dueAt) || !positive4(v.expectedCustomerVersion) || !text9(v.idempotencyKey, TASK_LIMITS.key))
         return Promise.resolve(failure("INVALID_INPUT", "\u4EFB\u52A1\u53C2\u6570\u65E0\u6548"));
       return run2(token, (h) => repo.create(h, v));
     },
@@ -15081,6 +16663,11 @@ function createTaskService(repo, tokens) {
       if (!command2(v) || !keys5(v, ["taskId", "expectedVersion", "idempotencyKey", "feedback"]) || !text9(v.feedback, TASK_LIMITS.feedback))
         return Promise.resolve(failure("INVALID_INPUT", "\u5B8C\u6210\u53CD\u9988\u65E0\u6548"));
       return run2(token, (h) => repo.complete(h, v));
+    },
+    cancel(token, v) {
+      if (!command2(v) || !keys5(v, ["taskId", "expectedVersion", "idempotencyKey", "reason"]) || !text9(v.reason, TASK_LIMITS.feedback))
+        return Promise.resolve(failure("INVALID_INPUT", "\u53D6\u6D88\u539F\u56E0\u65E0\u6548"));
+      return run2(token, (h) => repo.cancel(h, v));
     },
     processDue(limit = TASK_LIMITS.dueBatch) {
       return positive4(limit) && limit <= TASK_LIMITS.dueBatchMax ? repo.processDue(limit) : Promise.resolve(failure("INVALID_INPUT", "\u5230\u671F\u626B\u63CF\u6279\u6B21\u65E0\u6548"));
@@ -15117,13 +16704,13 @@ function createTaskHandler(service) {
         send(response, await service.create(token, input.data));
         return;
       }
-      if (url.pathname.startsWith(`${TASK_ROUTES.tasks}/`) && parts.length === 2 && (parts[1] === TASK_ROUTES.rescheduleAction || parts[1] === TASK_ROUTES.completeAction)) {
+      if (url.pathname.startsWith(`${TASK_ROUTES.tasks}/`) && parts.length === 2 && (parts[1] === TASK_ROUTES.rescheduleAction || parts[1] === TASK_ROUTES.completeAction || parts[1] === TASK_ROUTES.cancelAction)) {
         if (!input.data || typeof input.data !== "object" || Array.isArray(input.data) || "taskId" in input.data && input.data.taskId !== parts[0]) {
           send(response, failure("INVALID_INPUT", "\u8DEF\u5F84\u4E0E\u4EFB\u52A1\u7F16\u53F7\u4E0D\u4E00\u81F4"));
           return;
         }
         const command4 = { ...input.data, taskId: parts[0] };
-        send(response, parts[1] === TASK_ROUTES.completeAction ? await service.complete(token, command4) : await service.reschedule(token, command4));
+        send(response, parts[1] === TASK_ROUTES.completeAction ? await service.complete(token, command4) : parts[1] === TASK_ROUTES.cancelAction ? await service.cancel(token, command4) : await service.reschedule(token, command4));
         return;
       }
     }
@@ -15163,7 +16750,7 @@ function startTaskDispatcher(service, log) {
 }
 
 // server/adapters/postgres/opportunity-repository.ts
-var import_node_crypto25 = require("node:crypto");
+var import_node_crypto28 = require("node:crypto");
 
 // server/adapters/postgres/opportunity-schema.ts
 var OPPORTUNITY_VERSION = "018-opportunities-public";
@@ -15215,17 +16802,17 @@ CREATE INDEX idx_crm_task_opportunity ON crm_followup_tasks(opportunity_id) WHER
 `;
 
 // server/adapters/postgres/opportunity-repository.ts
-function administrator3(a) {
+function administrator4(a) {
   return a.roles.includes("admin") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("leads.read.all");
 }
 function operations2(a) {
   return a.roles.includes("operations") && ["shared", "summary"].includes(a.scope) && a.capabilities.includes("followups.read");
 }
 function canSee2(a, c) {
-  return administrator3(a) || operations2(a) && c.origin === "operations" || c.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
+  return administrator4(a) || operations2(a) && c.origin === "operations" || c.owner_user_id === a.userId && a.capabilities.includes("leads.develop");
 }
 function canManage2(a, c) {
-  return a.capabilities.includes("leads.develop") && (administrator3(a) || operations2(a) && c.origin === "operations" && c.owner_user_id === null || c.owner_user_id === a.userId && canSee2(a, c));
+  return a.capabilities.includes("leads.develop") && (administrator4(a) || operations2(a) && c.origin === "operations" && c.owner_user_id === null || c.owner_user_id === a.userId && canSee2(a, c));
 }
 var MONEY_TYPE = `numeric(${OPPORTUNITY_LIMITS.amountWholeDigits + OPPORTUNITY_LIMITS.amountFractionDigits},${OPPORTUNITY_LIMITS.amountFractionDigits})`;
 var COLUMNS2 = `o.opportunity_id AS "opportunityId",o.customer_id AS "customerId",o.title,o.description,o.pol,o.pod,o.container_type AS "containerType",o.source,o.stage,o.amount::${MONEY_TYPE}::text AS amount,o.currency,o.lost_reason AS "lostReason",o.evidence,o.version,o.created_by AS "createdBy",o.created_at AS "createdAt",o.updated_at AS "updatedAt",o.closed_at AS "closedAt",o.closed_by AS "closedBy",COALESCE(c.owner_user_id,c.created_by) AS "ownerUserId",u.display_name AS "ownerName"`;
@@ -15296,7 +16883,7 @@ var PostgresOpportunityRepository = class {
     return success({ ...dates2(r.rows[0]), canManage: canManage2(a, customer2), history: await this.history(db, id) });
   }
   async cached(db, a, operation, input, fn) {
-    const digest2 = (0, import_node_crypto25.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
+    const digest2 = (0, import_node_crypto28.createHash)("sha256").update(JSON.stringify(input)).digest("hex"), old = await db.query("SELECT digest,response FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, operation, input.idempotencyKey]);
     if (old.rows.length) {
       if (old.rows[0].digest !== digest2)
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
@@ -15319,7 +16906,7 @@ var PostgresOpportunityRepository = class {
   }
   migrate() {
     return this.tx(async (db) => {
-      const hash = (0, import_node_crypto25.createHash)("sha256").update(OPPORTUNITY_SQL).digest("hex"), old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [OPPORTUNITY_VERSION]);
+      const hash = (0, import_node_crypto28.createHash)("sha256").update(OPPORTUNITY_SQL).digest("hex"), old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [OPPORTUNITY_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u5546\u673A\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
       if (!old.rows.length) {
@@ -15327,7 +16914,7 @@ var PostgresOpportunityRepository = class {
         await db.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [OPPORTUNITY_VERSION, hash]);
         this.log.write("INFO", "opportunities.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${OPPORTUNITY_VERSION}`);
       }
-      return success(void 0);
+      return migrateCustomerStatusSchemaIn(db);
     });
   }
   create(hash, input) {
@@ -15386,6 +16973,11 @@ var PostgresOpportunityRepository = class {
         if (input.stage === "closed_won" && (!amount2 || !currency || !evidence2) || input.stage === "closed_lost" && !lostReason)
           return failure("INVALID_INPUT", "\u6210\u4EA4\u9700\u91D1\u989D\u3001\u5E01\u79CD\u548C\u8BC1\u636E\uFF1B\u4E22\u5355\u9700\u539F\u56E0");
         await db.query(`UPDATE crm_opportunities SET stage=$2,amount=$3,currency=$4,evidence=$5,lost_reason=$6,version=version+1,updated_at=clock_timestamp(),closed_at=CASE WHEN $2 IN ('closed_won','closed_lost') THEN clock_timestamp() ELSE NULL END,closed_by=CASE WHEN $2 IN ('closed_won','closed_lost') THEN $7::uuid ELSE NULL END WHERE opportunity_id=$1 AND version=$8`, [input.opportunityId, input.stage, amount2, currency, evidence2, lostReason, a.userId, input.expectedVersion]);
+        const nextStatus = opportunityCustomerStatus(input.stage);
+        if (nextStatus) {
+          const previousStatus = (await customerStatusStateIn(db, o.customerId))?.status ?? await derivedCustomerStatusIn(db, o.customerId) ?? "uncontacted";
+          await recordCustomerStatusEventIn(db, { eventKey: `opportunity:${input.opportunityId}:${input.idempotencyKey}`, customerId: o.customerId, contactId: null, status: nextStatus, previousStatus, source: "human", signal: "opportunity", actorUserId: a.userId, reason: `\u5546\u673A\u9636\u6BB5\uFF1A${input.stage}`, payload: { opportunityId: input.opportunityId, fromStage: o.stage, toStage: input.stage, amount: amount2, currency, evidence: evidence2 }, occurredAt: /* @__PURE__ */ new Date() });
+        }
         const changed = await this.one(db, input.opportunityId, a);
         if (!changed.ok)
           return changed;
@@ -15403,7 +16995,7 @@ var PostgresOpportunityRepository = class {
 };
 
 // server/adapters/postgres/lead-overlap-schema.ts
-var import_node_crypto26 = require("node:crypto");
+var import_node_crypto29 = require("node:crypto");
 var LEAD_OVERLAP_VERSION = "065-lead-scope-overlaps";
 var LEAD_OVERLAP_LOCK = 650065;
 var LEAD_OVERLAP_SQL = `
@@ -15446,7 +17038,7 @@ CREATE INDEX IF NOT EXISTS idx_crm_deal_overlap_notices_recipient ON crm_deal_ov
 `;
 async function migrateLeadOverlapSchema(c) {
   await c.query("SELECT pg_advisory_xact_lock($1)", [LEAD_OVERLAP_LOCK]);
-  const checksum4 = (0, import_node_crypto26.createHash)("sha256").update(LEAD_OVERLAP_SQL).digest("hex");
+  const checksum4 = (0, import_node_crypto29.createHash)("sha256").update(LEAD_OVERLAP_SQL).digest("hex");
   const existing = await c.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [LEAD_OVERLAP_VERSION]);
   if (existing.rows.length) {
     if (existing.rows[0].checksum !== checksum4)
@@ -15455,6 +17047,36 @@ async function migrateLeadOverlapSchema(c) {
   }
   await c.query(LEAD_OVERLAP_SQL);
   await c.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [LEAD_OVERLAP_VERSION, checksum4]);
+  return success(void 0);
+}
+
+// server/adapters/postgres/task-mail-link-schema.ts
+var import_node_crypto30 = require("node:crypto");
+var TASK_MAIL_LINK_VERSION = "073-task-mail-link";
+var TASK_MAIL_LINK_SQL = `
+ALTER TABLE crm_followup_tasks
+  ADD COLUMN IF NOT EXISTS source_message_key text,
+  DROP CONSTRAINT IF EXISTS crm_followup_tasks_source_kind_check,
+  ADD CONSTRAINT crm_followup_tasks_source_kind_check CHECK(source_kind IS NULL OR source_kind IN ('mail_analysis','mail_manual')),
+  DROP CONSTRAINT IF EXISTS crm_followup_tasks_mail_source_complete,
+  ADD CONSTRAINT crm_followup_tasks_mail_source_complete CHECK(
+    source_kind IS DISTINCT FROM 'mail_analysis' OR (
+      source_suggestion_id IS NOT NULL AND source_analysis_id IS NOT NULL
+      AND source_contact_id IS NOT NULL AND btrim(source_thread_key)<>''
+      AND btrim(source_action_code)<>'' AND source_responsible_user_id IS NOT NULL
+    )
+  );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_followup_tasks_open_mail_message
+  ON crm_followup_tasks(customer_id,source_message_key)
+  WHERE source_kind='mail_manual' AND source_message_key IS NOT NULL AND status='open';
+`;
+async function migrateTaskMailLinkSchema(client) {
+  const checksum4 = (0, import_node_crypto30.createHash)("sha256").update(TASK_MAIL_LINK_SQL).digest("hex");
+  const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [TASK_MAIL_LINK_VERSION]);
+  if (old.rows.length)
+    return old.rows[0].checksum === checksum4 ? success(void 0) : failure("CONFLICT", "\u4EFB\u52A1\u90AE\u4EF6\u5173\u8054\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
+  await client.query(TASK_MAIL_LINK_SQL);
+  await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [TASK_MAIL_LINK_VERSION, checksum4]);
   return success(void 0);
 }
 
@@ -15551,10 +17173,10 @@ function createAdminDataBrowserService(repo, tokens) {
 }
 
 // server/adapters/postgres/contact-change-repository.ts
-var import_node_crypto28 = require("node:crypto");
+var import_node_crypto32 = require("node:crypto");
 
 // server/adapters/postgres/contact-change-schema.ts
-var import_node_crypto27 = require("node:crypto");
+var import_node_crypto31 = require("node:crypto");
 var CONTACT_CHANGE_VERSION = "008-contact-change-import-capture-public";
 var CONTACT_CHANGE_LOCK = 19041007;
 var PUBLIC_OUTBOX_FK_REPAIR_VERSION = "063-public-outbox-fk-repair";
@@ -15611,8 +17233,8 @@ var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL = PUBLIC_OUTBOX_FK_REPAIR_SQL.replaceAll(
   "ALTER TABLE crm_",
   "ALTER TABLE public.crm_"
 );
-var PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM = (0, import_node_crypto27.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest("hex");
-var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM = (0, import_node_crypto27.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL).digest("hex");
+var PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM = (0, import_node_crypto31.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_SQL).digest("hex");
+var PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM = (0, import_node_crypto31.createHash)("sha256").update(PUBLIC_OUTBOX_FK_REPAIR_LEGACY_SQL).digest("hex");
 function acceptsPublicOutboxFkRepairChecksum(checksum4) {
   return checksum4 === PUBLIC_OUTBOX_FK_REPAIR_CHECKSUM || checksum4 === PUBLIC_OUTBOX_FK_REPAIR_LEGACY_CHECKSUM;
 }
@@ -15647,7 +17269,7 @@ var PostgresContactChangeRepository = class {
   }
   async migrate() {
     return this.tx(async (db) => {
-      const checksum4 = (0, import_node_crypto28.createHash)("sha256").update(CONTACT_CHANGE_SQL).digest("hex");
+      const checksum4 = (0, import_node_crypto32.createHash)("sha256").update(CONTACT_CHANGE_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CONTACT_CHANGE_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== checksum4)
         return failure("CONFLICT", "\u8054\u7CFB\u4EBA\u53D8\u5316\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -15742,7 +17364,7 @@ function createContactChangeHandler(service) {
 }
 
 // server/adapters/postgres/campaign-repository.ts
-var import_node_crypto29 = require("node:crypto");
+var import_node_crypto33 = require("node:crypto");
 
 // server/core/campaigns.ts
 var CAMPAIGN_ROUTES = { campaigns: "/api/crm/campaigns", confirm: "confirm", pause: "pause", dryRunClaim: "dry-run-claim" };
@@ -15783,9 +17405,9 @@ CREATE INDEX idx_crm_campaign_attempts_target ON crm_campaign_attempts(target_id
 // server/adapters/postgres/campaign-repository.ts
 var canManage3 = (a) => a.capabilities.includes("leads.develop");
 var canRead = (a) => a.capabilities.includes("leads.read.all");
-var iso = (v) => v instanceof Date ? v.toISOString() : String(v);
+var iso3 = (v) => v instanceof Date ? v.toISOString() : String(v);
 function campaignRow(r) {
-  return { campaignId: String(r.campaignId), createdBy: String(r.createdBy), name: String(r.name), state: r.state, version: Number(r.version), autoSend: Boolean(r.autoSend), confirmedAt: r.confirmedAt ? iso(r.confirmedAt) : null, pausedAt: r.pausedAt ? iso(r.pausedAt) : null, stoppedAt: r.stoppedAt ? iso(r.stoppedAt) : null, stopReason: r.stopReason ? String(r.stopReason) : null, nextRunAt: r.nextRunAt ? iso(r.nextRunAt) : null, createdAt: iso(r.createdAt), updatedAt: iso(r.updatedAt) };
+  return { campaignId: String(r.campaignId), createdBy: String(r.createdBy), name: String(r.name), state: r.state, version: Number(r.version), autoSend: Boolean(r.autoSend), confirmedAt: r.confirmedAt ? iso3(r.confirmedAt) : null, pausedAt: r.pausedAt ? iso3(r.pausedAt) : null, stoppedAt: r.stoppedAt ? iso3(r.stoppedAt) : null, stopReason: r.stopReason ? String(r.stopReason) : null, nextRunAt: r.nextRunAt ? iso3(r.nextRunAt) : null, createdAt: iso3(r.createdAt), updatedAt: iso3(r.updatedAt) };
 }
 var PostgresCampaignRepository = class {
   constructor(pool, log) {
@@ -15830,7 +17452,7 @@ var PostgresCampaignRepository = class {
   }
   async migrate() {
     return this.tx(async (db) => {
-      const hash = (0, import_node_crypto29.createHash)("sha256").update(CAMPAIGN_SQL).digest("hex");
+      const hash = (0, import_node_crypto33.createHash)("sha256").update(CAMPAIGN_SQL).digest("hex");
       const old = await db.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CAMPAIGN_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== hash)
         return failure("CONFLICT", "\u81EA\u52A8\u5F00\u53D1\u4EFB\u52A1\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4");
@@ -15912,7 +17534,7 @@ var PostgresCampaignRepository = class {
         return failure("FORBIDDEN", "\u53EA\u80FD\u4FEE\u6539\u81EA\u5DF1\u7684\u4EFB\u52A1");
       if (c.data.version !== input.expectedVersion || c.data.state !== "draft")
         return failure("CONFLICT", "\u53EA\u6709\u672A\u786E\u8BA4\u8349\u7A3F\u53EF\u4EE5\u6DFB\u52A0\u89E6\u70B9");
-      const digest2 = (0, import_node_crypto29.createHash)("sha256").update(JSON.stringify(input.targets)).digest("hex");
+      const digest2 = (0, import_node_crypto33.createHash)("sha256").update(JSON.stringify(input.targets)).digest("hex");
       const idem = await db.query("SELECT response,digest FROM crm_lead_idempotency WHERE actor_id=$1 AND operation=$2 AND key=$3", [a.userId, `campaign:targets:${input.campaignId}`, input.idempotencyKey]);
       if (idem.rows.length) {
         if (idem.rows[0].digest !== digest2)
@@ -15939,7 +17561,7 @@ var PostgresCampaignRepository = class {
         if (!attempt.rows.length)
           continue;
         await db.query(`UPDATE crm_campaign_targets SET state='leased',lease_owner=$2,lease_until=$3,attempt_count=attempt_count+1,updated_at=clock_timestamp() WHERE target_id=$1`, [row2.targetId, input.workerId, leaseUntil]);
-        out.push({ ...row2, state: "leased", leaseOwner: input.workerId, leaseUntil, attemptCount: Number(row2.attemptCount) + 1, attemptId: attempt.rows[0].attempt_id, executionKey, dryRun: true, nextTouchAt: row2.nextTouchAt ? iso(row2.nextTouchAt) : null });
+        out.push({ ...row2, state: "leased", leaseOwner: input.workerId, leaseUntil, attemptCount: Number(row2.attemptCount) + 1, attemptId: attempt.rows[0].attempt_id, executionKey, dryRun: true, nextTouchAt: row2.nextTouchAt ? iso3(row2.nextTouchAt) : null });
       }
       return success(out);
     });
@@ -16080,8 +17702,1552 @@ function createCampaignHandler(service) {
   };
 }
 
+// server/adapters/postgres/ai-repository.ts
+var import_node_crypto34 = require("node:crypto");
+var AI_SCHEMA_VERSION = "074-ai-user-policies";
+var AI_OPERATIONS_SCHEMA_VERSION = "075-ai-operations";
+var AI_SQL = `
+CREATE TABLE IF NOT EXISTS public.ai_user_policies (
+  user_id uuid PRIMARY KEY REFERENCES public.identity_users(user_id),
+  enabled boolean NOT NULL DEFAULT false,
+  daily_token_limit bigint NOT NULL DEFAULT 200000 CHECK(daily_token_limit >= 0),
+  monthly_token_limit bigint NOT NULL DEFAULT 3000000 CHECK(monthly_token_limit >= 0),
+  max_output_tokens integer NOT NULL DEFAULT 2048 CHECK(max_output_tokens BETWEEN 128 AND 32768),
+  allowed_features text[] NOT NULL DEFAULT ARRAY['agent','draft','backcheck','mail_analysis','summary']::text[],
+  updated_by uuid REFERENCES public.identity_users(user_id),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS public.ai_usage_events (
+  event_id bigserial PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  product text NOT NULL,
+  feature text NOT NULL CHECK(feature IN ('agent','draft','backcheck','mail_analysis','summary')),
+  model text NOT NULL,
+  input_tokens integer NOT NULL DEFAULT 0,
+  output_tokens integer NOT NULL DEFAULT 0,
+  status text NOT NULL CHECK(status IN ('ok','error','blocked')),
+  latency_ms integer NOT NULL DEFAULT 0,
+  request_id text NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user_created ON public.ai_usage_events(user_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON public.ai_usage_events(created_at DESC);
+`;
+var AI_OPERATIONS_SQL = `
+ALTER TABLE public.ai_usage_events
+  ADD COLUMN IF NOT EXISTS model_profile text,
+  ADD COLUMN IF NOT EXISTS http_status integer,
+  ADD COLUMN IF NOT EXISTS error_code text,
+  ADD COLUMN IF NOT EXISTS quota_remaining bigint;
+CREATE TABLE IF NOT EXISTS public.ai_model_profiles (
+  model_id text PRIMARY KEY,
+  label text NOT NULL,
+  base_url text NOT NULL,
+  model_name text NOT NULL,
+  wire_api text NOT NULL DEFAULT 'chat_completions' CHECK(wire_api IN ('chat_completions','responses')),
+  key_env text NOT NULL,
+  allowed_features text[] NOT NULL DEFAULT ARRAY['agent','draft','backcheck','mail_analysis','summary']::text[],
+  enabled boolean NOT NULL DEFAULT true,
+  is_default boolean NOT NULL DEFAULT false,
+  max_output_tokens integer NOT NULL DEFAULT 2048 CHECK(max_output_tokens BETWEEN 128 AND 32768),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS public.ai_policy_audit (
+  audit_id bigserial PRIMARY KEY,
+  actor_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  target_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  before_json jsonb,
+  after_json jsonb NOT NULL,
+  reason text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_policy_audit_target ON public.ai_policy_audit(target_user_id,created_at DESC);
+`;
+var DEFAULT_POLICY = {
+  enabled: false,
+  dailyTokenLimit: 2e5,
+  monthlyTokenLimit: 3e6,
+  maxOutputTokens: 2048,
+  allowedFeatures: ["agent", "draft", "backcheck", "mail_analysis", "summary"],
+  updatedAt: null,
+  updatedBy: null
+};
+function mapPolicy(row2) {
+  if (!row2)
+    return { userId: "", ...DEFAULT_POLICY };
+  return {
+    userId: String(row2.user_id),
+    enabled: Boolean(row2.enabled),
+    dailyTokenLimit: Number(row2.daily_token_limit),
+    monthlyTokenLimit: Number(row2.monthly_token_limit),
+    maxOutputTokens: Number(row2.max_output_tokens),
+    allowedFeatures: row2.allowed_features || DEFAULT_POLICY.allowedFeatures,
+    updatedAt: row2.updated_at ? new Date(row2.updated_at).toISOString() : null,
+    updatedBy: row2.updated_by ? String(row2.updated_by) : null
+  };
+}
+var PostgresAiRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+  }
+  async migrate() {
+    const client = await this.pool.connect();
+    try {
+      const checksum4 = (0, import_node_crypto34.createHash)("sha256").update(AI_SQL).digest("hex");
+      const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [AI_SCHEMA_VERSION]);
+      if (old.rows.length && old.rows[0].checksum !== checksum4)
+        return { ok: false, error: "AI \u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4" };
+      if (!old.rows.length) {
+        await client.query("BEGIN");
+        try {
+          await client.query(AI_SQL);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [AI_SCHEMA_VERSION, checksum4]);
+          await client.query("COMMIT");
+          this.log.write("INFO", "ai.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${AI_SCHEMA_VERSION}`);
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        }
+      }
+      const operationChecksum = (0, import_node_crypto34.createHash)("sha256").update(AI_OPERATIONS_SQL).digest("hex");
+      const operationOld = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [AI_OPERATIONS_SCHEMA_VERSION]);
+      if (operationOld.rows.length && operationOld.rows[0].checksum !== operationChecksum)
+        return { ok: false, error: "AI \u8FD0\u8425\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4" };
+      if (!operationOld.rows.length) {
+        await client.query("BEGIN");
+        try {
+          await client.query(AI_OPERATIONS_SQL);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [AI_OPERATIONS_SCHEMA_VERSION, operationChecksum]);
+          await client.query("COMMIT");
+          this.log.write("INFO", "ai.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${AI_OPERATIONS_SCHEMA_VERSION}`);
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        }
+      }
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "AI \u8FC1\u79FB\u5931\u8D25" };
+    } finally {
+      client.release();
+    }
+  }
+  async policy(userId) {
+    const result2 = await this.pool.query("SELECT * FROM public.ai_user_policies WHERE user_id=$1", [userId]);
+    return result2.rows.length ? mapPolicy(result2.rows[0]) : { userId, ...DEFAULT_POLICY };
+  }
+  async listPolicies() {
+    const result2 = await this.pool.query(`
+      SELECT u.user_id,e.email,u.display_name,p.enabled,p.daily_token_limit,p.monthly_token_limit,p.max_output_tokens,p.allowed_features,p.updated_at,p.updated_by,
+        ARRAY(SELECT role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' ORDER BY role) AS crm_roles,
+        COALESCE(day.input_tokens,0)+COALESCE(day.output_tokens,0) AS daily_tokens,
+        COALESCE(month.input_tokens,0)+COALESCE(month.output_tokens,0) AS monthly_tokens,
+        COALESCE(month.requests,0) AS request_count,
+        month.last_used_at
+      FROM public.identity_users u
+      JOIN public.identity_login_emails e USING(user_id)
+      LEFT JOIN public.ai_user_policies p ON p.user_id=u.user_id
+      LEFT JOIN LATERAL (
+        SELECT sum(input_tokens) AS input_tokens,sum(output_tokens) AS output_tokens
+        FROM public.ai_usage_events e WHERE e.user_id=u.user_id AND e.created_at >= date_trunc('day',clock_timestamp())
+      ) day ON true
+      LEFT JOIN LATERAL (
+        SELECT sum(input_tokens) AS input_tokens,sum(output_tokens) AS output_tokens,count(*) AS requests,max(created_at) AS last_used_at
+        FROM public.ai_usage_events e WHERE e.user_id=u.user_id AND e.created_at >= date_trunc('month',clock_timestamp())
+      ) month ON true
+      WHERE u.deleted_at IS NULL
+      ORDER BY e.email COLLATE "C" ASC
+    `);
+    return result2.rows.map((row2) => ({
+      ...mapPolicy(row2),
+      userId: String(row2.user_id),
+      email: String(row2.email),
+      displayName: row2.display_name ? String(row2.display_name) : null,
+      crmRoles: row2.crm_roles || [],
+      dailyTokens: Number(row2.daily_tokens) || 0,
+      monthlyTokens: Number(row2.monthly_tokens) || 0,
+      requestCount: Number(row2.request_count) || 0,
+      lastUsedAt: row2.last_used_at ? new Date(row2.last_used_at).toISOString() : null
+    }));
+  }
+  async updatePolicy(actorUserId, input) {
+    const before = await this.pool.query("SELECT * FROM public.ai_user_policies WHERE user_id=$1", [input.userId]);
+    const result2 = await this.pool.query(`
+      INSERT INTO public.ai_user_policies(user_id,enabled,daily_token_limit,monthly_token_limit,max_output_tokens,allowed_features,updated_by,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp())
+      ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled,daily_token_limit=excluded.daily_token_limit,monthly_token_limit=excluded.monthly_token_limit,max_output_tokens=excluded.max_output_tokens,allowed_features=excluded.allowed_features,updated_by=excluded.updated_by,updated_at=clock_timestamp()
+      RETURNING *
+    `, [input.userId, input.enabled, input.dailyTokenLimit, input.monthlyTokenLimit, input.maxOutputTokens, input.allowedFeatures, actorUserId]);
+    await this.pool.query(`INSERT INTO public.ai_policy_audit(actor_user_id,target_user_id,before_json,after_json,reason) VALUES($1,$2,$3,$4,$5)`, [actorUserId, input.userId, before.rows[0] ? JSON.stringify(before.rows[0]) : null, JSON.stringify(result2.rows[0]), input.reason.trim()]);
+    return mapPolicy(result2.rows[0]);
+  }
+  async usageSummary(days) {
+    const result2 = await this.pool.query(`
+      SELECT count(*) AS requests,COALESCE(sum(input_tokens),0) AS input_tokens,COALESCE(sum(output_tokens),0) AS output_tokens,
+        count(*) FILTER (WHERE status='error') AS errors,count(*) FILTER (WHERE status='blocked') AS blocked
+      FROM public.ai_usage_events WHERE created_at >= clock_timestamp() - ($1::int * interval '1 day')
+    `, [days]);
+    const row2 = result2.rows[0] || {};
+    return { days, requests: Number(row2.requests) || 0, inputTokens: Number(row2.input_tokens) || 0, outputTokens: Number(row2.output_tokens) || 0, errors: Number(row2.errors) || 0, blocked: Number(row2.blocked) || 0 };
+  }
+  async recordUsage(event2) {
+    await this.pool.query(`
+      INSERT INTO public.ai_usage_events(user_id,product,feature,model,input_tokens,output_tokens,status,latency_ms,request_id,model_profile,http_status,error_code,quota_remaining)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    `, [event2.userId, event2.product, event2.feature, event2.model, event2.inputTokens, event2.outputTokens, event2.status, event2.latencyMs, `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`, event2.modelProfile || null, event2.httpStatus || null, event2.errorCode || null, event2.quotaRemaining ?? null]);
+  }
+  async usageEvents(input) {
+    const result2 = await this.pool.query(`
+      SELECT e.*,le.email,u.display_name,
+        (COALESCE(p.monthly_token_limit,0) - COALESCE(month.tokens,0)) AS remaining
+      FROM public.ai_usage_events e
+      JOIN public.identity_users u ON u.user_id=e.user_id
+      JOIN public.identity_login_emails le ON le.user_id=e.user_id
+      LEFT JOIN public.ai_user_policies p ON p.user_id=e.user_id
+      LEFT JOIN LATERAL (SELECT COALESCE(sum(input_tokens),0)+COALESCE(sum(output_tokens),0) AS tokens FROM public.ai_usage_events x WHERE x.user_id=e.user_id AND x.created_at>=date_trunc('month',clock_timestamp())) month ON true
+      WHERE e.created_at >= clock_timestamp() - ($1::int * interval '1 day')
+        AND ($2::uuid IS NULL OR e.user_id=$2)
+        AND ($3::text IS NULL OR e.feature=$3)
+        AND ($4::text IS NULL OR e.status=$4)
+      ORDER BY e.created_at DESC LIMIT $5 OFFSET $6
+    `, [input.days, input.userId || null, input.feature || null, input.status || null, input.limit, input.offset]);
+    return result2.rows.map((r) => ({ eventId: Number(r.event_id), userId: r.user_id, userName: r.display_name, userEmail: r.email, product: r.product, feature: r.feature, model: r.model, inputTokens: Number(r.input_tokens), outputTokens: Number(r.output_tokens), status: r.status, latencyMs: Number(r.latency_ms), createdAt: new Date(r.created_at).toISOString(), httpStatus: r.http_status === null ? null : Number(r.http_status), errorCode: r.error_code, quotaRemaining: r.remaining === null ? null : Number(r.remaining) }));
+  }
+  async receipts(userId, limit) {
+    return this.usageEvents({ userId, days: 30, limit, offset: 0 });
+  }
+  async listModels() {
+    const result2 = await this.pool.query("SELECT * FROM public.ai_model_profiles ORDER BY is_default DESC,label ASC");
+    return result2.rows.map((r) => ({ modelId: r.model_id, label: r.label, baseUrl: r.base_url, modelName: r.model_name, wireApi: r.wire_api, keyEnv: r.key_env, allowedFeatures: r.allowed_features, enabled: Boolean(r.enabled), isDefault: Boolean(r.is_default), maxOutputTokens: Number(r.max_output_tokens), updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null }));
+  }
+  async saveModel(model) {
+    if (model.isDefault)
+      await this.pool.query("UPDATE public.ai_model_profiles SET is_default=false");
+    await this.pool.query(`
+      INSERT INTO public.ai_model_profiles(model_id,label,base_url,model_name,wire_api,key_env,allowed_features,enabled,is_default,max_output_tokens,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,clock_timestamp())
+      ON CONFLICT(model_id) DO UPDATE SET label=excluded.label,base_url=excluded.base_url,model_name=excluded.model_name,wire_api=excluded.wire_api,key_env=excluded.key_env,allowed_features=excluded.allowed_features,enabled=excluded.enabled,is_default=excluded.is_default,max_output_tokens=excluded.max_output_tokens,updated_at=clock_timestamp()
+    `, [model.modelId, model.label, model.baseUrl, model.modelName, model.wireApi, model.keyEnv, model.allowedFeatures, model.enabled, model.isDefault, model.maxOutputTokens]);
+    const rows = await this.listModels();
+    return rows.find((row2) => row2.modelId === model.modelId);
+  }
+};
+
+// server/adapters/environment-secret.ts
+var import_node_child_process = require("node:child_process");
+var WINDOWS_ENV_KEY = "HKCU\\Environment";
+var REGISTRY_LINE = /^\s*[^\s]+\s+REG_(?:SZ|EXPAND_SZ)\s+(.*)$/;
+var cached2 = /* @__PURE__ */ new Map();
+function parseWindowsEnvironmentValue(output, name) {
+  for (const line of output.split(/\r?\n/)) {
+    if (!line.includes(name))
+      continue;
+    const match = REGISTRY_LINE.exec(line);
+    if (match)
+      return match[1]?.trim() || "";
+  }
+  return "";
+}
+function readEnvironmentSecret(name) {
+  const direct = process.env[name]?.trim() || "";
+  if (direct)
+    return direct;
+  const cachedValue = cached2.get(name);
+  if (cachedValue)
+    return cachedValue;
+  if (process.platform !== "win32" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
+    return "";
+  try {
+    const output = (0, import_node_child_process.execFileSync)("reg.exe", ["query", WINDOWS_ENV_KEY, "/v", name], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 2e3,
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    const value2 = parseWindowsEnvironmentValue(output, name);
+    if (value2)
+      cached2.set(name, value2);
+    return value2;
+  } catch {
+    return "";
+  }
+}
+
+// server/services/ai.ts
+var PROVIDER_TIMEOUT_MS = 9e4;
+function upstreamConfig() {
+  const baseUrl = (process.env.CENTER_AI_BASE_URL || "").trim().replace(/\/$/, "");
+  const apiKey = readEnvironmentSecret("CENTER_AI_API_KEY");
+  const model = (process.env.CENTER_AI_MODEL || "").trim();
+  return { baseUrl, apiKey, model };
+}
+async function resolveModel(repo, feature) {
+  const models = await repo.listModels();
+  const selected = models.find((model) => model.enabled && model.allowedFeatures.includes(feature)) || models.find((model) => model.enabled && model.isDefault) || null;
+  if (!selected) {
+    const cfg = upstreamConfig();
+    return cfg.baseUrl && cfg.apiKey && cfg.model ? { profile: null, baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: "chat_completions", maxOutputTokens: 2048 } : null;
+  }
+  const key2 = readEnvironmentSecret(selected.keyEnv) || readEnvironmentSecret("CENTER_AI_API_KEY");
+  return key2 ? { profile: selected, baseUrl: selected.baseUrl.replace(/\/$/, ""), apiKey: key2, model: selected.modelName, wireApi: selected.wireApi, maxOutputTokens: selected.maxOutputTokens } : null;
+}
+function estimateTokens(text18) {
+  return Math.max(1, Math.ceil(text18.length / 4));
+}
+function usageTokens(payload, input, outputText) {
+  const inputTokens = Number(payload?.usage?.prompt_tokens ?? payload?.usage?.input_tokens);
+  const outputTokens = Number(payload?.usage?.completion_tokens ?? payload?.usage?.output_tokens);
+  return {
+    inputTokens: Number.isFinite(inputTokens) && inputTokens > 0 ? Math.floor(inputTokens) : input.messages.reduce((sum, item) => sum + estimateTokens(item.content || ""), 0),
+    outputTokens: Number.isFinite(outputTokens) && outputTokens > 0 ? Math.floor(outputTokens) : estimateTokens(outputText)
+  };
+}
+function responsesTools(tools) {
+  if (!tools?.length)
+    return void 0;
+  const converted = tools.flatMap((tool) => {
+    if (!tool || typeof tool !== "object" || Array.isArray(tool))
+      return [];
+    const value2 = tool;
+    if (value2.type !== "function" || typeof value2.function?.name !== "string")
+      return [];
+    return [{
+      type: "function",
+      name: value2.function.name,
+      ...typeof value2.function.description === "string" ? { description: value2.function.description } : {},
+      parameters: value2.function.parameters && typeof value2.function.parameters === "object" ? value2.function.parameters : { type: "object", properties: {} }
+    }];
+  });
+  return converted.length ? converted : void 0;
+}
+function responsesToolChoice(choice) {
+  if (typeof choice === "string")
+    return choice;
+  if (!choice || typeof choice !== "object" || Array.isArray(choice))
+    return void 0;
+  const value2 = choice;
+  return value2.type === "function" && typeof value2.function?.name === "string" ? { type: "function", name: value2.function.name } : void 0;
+}
+function responsesInput(messages) {
+  const input = [];
+  for (const message of messages) {
+    if (message.role === "tool") {
+      input.push({ type: "function_call_output", call_id: message.tool_call_id || "", output: typeof message.content === "string" ? message.content : "" });
+      continue;
+    }
+    if (message.role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length) {
+      if (message.content)
+        input.push({ role: "assistant", content: message.content });
+      for (const call of message.tool_calls) {
+        if (!call || typeof call !== "object" || Array.isArray(call))
+          continue;
+        const value2 = call;
+        if (typeof value2.function?.name !== "string")
+          continue;
+        input.push({
+          type: "function_call",
+          call_id: typeof value2.id === "string" ? value2.id : "",
+          name: value2.function.name,
+          arguments: typeof value2.function.arguments === "string" ? value2.function.arguments : JSON.stringify(value2.function.arguments ?? {})
+        });
+      }
+      continue;
+    }
+    input.push({ role: message.role, content: message.content ?? "" });
+  }
+  return input;
+}
+function normalizedResponse(payload) {
+  if (Array.isArray(payload?.choices)) {
+    const first = payload.choices[0];
+    const content = typeof first?.message?.content === "string" ? first.message.content : "";
+    return { choices: payload.choices, outputText: content };
+  }
+  const output = Array.isArray(payload?.output) ? payload.output : [];
+  const toolCalls = [];
+  let text18 = "";
+  for (const item of output) {
+    if (!item || typeof item !== "object")
+      continue;
+    if (item.type === "function_call") {
+      toolCalls.push({ id: item.call_id || item.id || "", type: "function", function: { name: item.name || "", arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}) } });
+    } else if (item.type === "message") {
+      for (const part of Array.isArray(item.content) ? item.content : [])
+        if (part?.type === "output_text" && typeof part.text === "string")
+          text18 += part.text;
+    }
+  }
+  if (!text18 && typeof payload?.output_text === "string")
+    text18 = payload.output_text;
+  text18 = text18.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "").replace(/<\/?think\b[^>]*>/gi, "").trim();
+  return {
+    choices: [{ message: { role: "assistant", content: text18 || null, ...toolCalls.length ? { tool_calls: toolCalls } : {} }, finish_reason: toolCalls.length ? "tool_calls" : "stop" }],
+    outputText: text18
+  };
+}
+function createAiService(repo) {
+  async function ensureQuota(identity, input) {
+    const policy = await repo.policy(identity.userId);
+    if (!policy)
+      return { policy: { userId: identity.userId, enabled: false, dailyTokenLimit: 0, monthlyTokenLimit: 0, maxOutputTokens: 0, allowedFeatures: [], updatedAt: null, updatedBy: null }, error: "AI \u7B56\u7565\u4E0D\u5B58\u5728" };
+    if (!policy.enabled)
+      return { policy, error: "\u5F53\u524D\u8D26\u53F7\u672A\u542F\u7528 AI" };
+    if (!policy.allowedFeatures.includes(input.feature))
+      return { policy, error: "\u5F53\u524D\u529F\u80FD\u672A\u6388\u6743" };
+    const rows = await repo.listPolicies();
+    const row2 = rows.find((item) => item.userId === identity.userId);
+    if (row2 && row2.dailyTokens >= policy.dailyTokenLimit)
+      return { policy, error: "\u4ECA\u65E5 AI \u7528\u91CF\u5DF2\u8FBE\u4E0A\u9650" };
+    if (row2 && row2.monthlyTokens >= policy.monthlyTokenLimit)
+      return { policy, error: "\u672C\u6708 AI \u7528\u91CF\u5DF2\u8FBE\u4E0A\u9650" };
+    return { policy };
+  }
+  return {
+    async status(identity) {
+      const policy = await repo.policy(identity.userId);
+      const model = await resolveModel(repo, "agent");
+      return { ...policy, available: Boolean(policy?.enabled && model) };
+    },
+    async chat(identity, input) {
+      const started = Date.now();
+      const checked = await ensureQuota(identity, input);
+      if (checked.error) {
+        await repo.recordUsage({ userId: identity.userId, product: "prospector", feature: input.feature, model: input.model || "blocked", inputTokens: 0, outputTokens: 0, status: "blocked", latencyMs: Date.now() - started });
+        return { status: 403, body: { error: { message: checked.error, type: "ai_policy_blocked" } } };
+      }
+      const cfg = await resolveModel(repo, input.feature);
+      if (!cfg) {
+        return { status: 503, body: { error: { message: "\u4E2D\u5FC3 AI \u670D\u52A1\u672A\u914D\u7F6E", type: "ai_unavailable" } } };
+      }
+      try {
+        const wireApi = cfg.wireApi || "chat_completions";
+        const maxTokens = Math.min(input.max_tokens || checked.policy.maxOutputTokens, checked.policy.maxOutputTokens, cfg.maxOutputTokens, input.feature === "agent" ? 1400 : cfg.maxOutputTokens);
+        const tools = wireApi === "responses" ? responsesTools(input.tools) : input.tools;
+        const toolChoice = wireApi === "responses" ? responsesToolChoice(input.tool_choice) : input.tool_choice;
+        const response = await fetch(`${cfg.baseUrl}/${wireApi === "responses" ? "responses" : "chat/completions"}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(wireApi === "responses" ? { model: cfg.model, input: responsesInput(input.messages), max_output_tokens: maxTokens, ...input.feature === "agent" ? { reasoning: { effort: "none" } } : {}, ...tools?.length ? { tools } : {}, ...toolChoice === void 0 ? {} : { tool_choice: toolChoice } } : { model: cfg.model, messages: input.messages, max_tokens: maxTokens, ...input.temperature === void 0 ? {} : { temperature: input.temperature }, ...tools?.length ? { tools } : {}, ...toolChoice === void 0 ? {} : { tool_choice: toolChoice } }),
+          signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
+        });
+        const text18 = await response.text();
+        let payload = null;
+        try {
+          payload = JSON.parse(text18);
+        } catch {
+          payload = { error: { message: "\u4E0A\u6E38\u8FD4\u56DE\u975E JSON", type: "bad_upstream_response" } };
+        }
+        const normalized2 = normalizedResponse(payload);
+        const outputText = normalized2.outputText;
+        const tokens = usageTokens(payload, input, outputText);
+        await repo.recordUsage({ userId: identity.userId, product: "prospector", feature: input.feature, model: cfg.model, ...tokens, status: response.ok ? "ok" : "error", latencyMs: Date.now() - started, modelProfile: cfg.profile?.modelId || "env", httpStatus: response.status, errorCode: response.ok ? null : String(payload?.error?.type || payload?.error?.code || "upstream_error") });
+        return { status: response.status, body: wireApi === "responses" && response.ok ? { choices: normalized2.choices, usage: payload?.usage || null } : payload };
+      } catch (error) {
+        await repo.recordUsage({ userId: identity.userId, product: "prospector", feature: input.feature, model: cfg.model, inputTokens: 0, outputTokens: 0, status: "error", latencyMs: Date.now() - started, modelProfile: cfg.profile?.modelId || "env", httpStatus: 0, errorCode: "upstream_exception" });
+        return { status: 502, body: { error: { message: error instanceof Error ? error.message : "\u4E2D\u5FC3 AI \u8BF7\u6C42\u5931\u8D25", type: "ai_upstream_error" } } };
+      }
+    },
+    async policies(identity) {
+      if (!canManageAi(identity))
+        return { ok: false, error: "FORBIDDEN" };
+      return { ok: true, data: await repo.listPolicies() };
+    },
+    async updatePolicy(identity, input) {
+      if (!canManageAi(identity))
+        return { ok: false, error: "FORBIDDEN" };
+      return { ok: true, data: await repo.updatePolicy(identity.userId, input) };
+    },
+    async usage(identity, days = 30) {
+      if (!canManageAi(identity))
+        return { ok: false, error: "FORBIDDEN" };
+      return { ok: true, data: await repo.usageSummary(days) };
+    },
+    async usageEvents(identity, input) {
+      if (!canManageAi(identity))
+        return { ok: false, error: "FORBIDDEN" };
+      return { ok: true, data: await repo.usageEvents(input) };
+    },
+    async receipts(identity, limit = 20) {
+      return await repo.receipts(identity.userId, limit);
+    },
+    async models(identity) {
+      if (!canManageAi(identity))
+        return { ok: false, error: "FORBIDDEN" };
+      return { ok: true, data: await repo.listModels() };
+    },
+    async saveModel(identity, input) {
+      if (!canManageAi(identity))
+        return { ok: false, error: "FORBIDDEN" };
+      return { ok: true, data: await repo.saveModel(input) };
+    }
+  };
+}
+
+// server/transport/ai-http.ts
+var BEARER = /^Bearer ([A-Za-z0-9_-]{43})$/;
+function messageText(value2) {
+  if (value2 === void 0)
+    return void 0;
+  if (value2 === null)
+    return null;
+  if (typeof value2 === "string")
+    return value2;
+  if (!Array.isArray(value2))
+    return void 0;
+  const parts = [];
+  for (const part of value2) {
+    if (typeof part === "string") {
+      parts.push(part);
+      continue;
+    }
+    if (!part || typeof part !== "object" || Array.isArray(part))
+      return void 0;
+    const text18 = part.text;
+    if (typeof text18 !== "string")
+      return void 0;
+    parts.push(text18);
+  }
+  return parts.join("");
+}
+function chatInput(value2) {
+  if (!value2 || typeof value2 !== "object" || Array.isArray(value2))
+    return null;
+  const input = value2;
+  const feature = input.feature === void 0 ? "agent" : input.feature;
+  if (!isAiFeature(feature) || !Array.isArray(input.messages) || input.messages.length < 1 || input.messages.length > 100)
+    return null;
+  const messages = input.messages.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item))
+      return null;
+    const row2 = item;
+    const content = messageText(row2.content);
+    if (typeof row2.role !== "string" || content === void 0 && !Array.isArray(row2.tool_calls))
+      return null;
+    if (typeof content === "string" && content.length > 2e5)
+      return null;
+    const toolCalls = Array.isArray(row2.tool_calls) ? row2.tool_calls.slice(0, 32) : void 0;
+    const toolCallId = typeof row2.tool_call_id === "string" ? row2.tool_call_id.slice(0, 200) : void 0;
+    const name = typeof row2.name === "string" ? row2.name.slice(0, 200) : void 0;
+    return { role: row2.role, content: content ?? null, ...toolCalls ? { tool_calls: toolCalls } : {}, ...toolCallId ? { tool_call_id: toolCallId } : {}, ...name ? { name } : {} };
+  });
+  if (messages.some((item) => !item))
+    return null;
+  const maxTokens = input.max_tokens === void 0 ? void 0 : Number(input.max_tokens);
+  const temperature = input.temperature === void 0 ? void 0 : Number(input.temperature);
+  if (maxTokens !== void 0 && (!Number.isSafeInteger(maxTokens) || maxTokens < 1 || maxTokens > 32768))
+    return null;
+  if (temperature !== void 0 && (!Number.isFinite(temperature) || temperature < 0 || temperature > 2))
+    return null;
+  const tools = Array.isArray(input.tools) && input.tools.length <= 128 ? input.tools : void 0;
+  return { feature, messages, ...typeof input.model === "string" ? { model: input.model.slice(0, 200) } : {}, ...maxTokens === void 0 ? {} : { max_tokens: maxTokens }, ...temperature === void 0 ? {} : { temperature }, ...tools ? { tools } : {}, ...input.tool_choice === void 0 ? {} : { tool_choice: input.tool_choice } };
+}
+function createAiHandler(auth, ai) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", "http://localhost");
+    if (!Object.values(AI_ROUTES).some((route) => route === url.pathname)) {
+      send(response, failure("NOT_FOUND", "AI \u63A5\u53E3\u4E0D\u5B58\u5728"));
+      return;
+    }
+    const token = BEARER.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (!token) {
+      send(response, failure("UNAUTHORIZED", "\u8BF7\u5148\u767B\u5F55\u4E2D\u5FC3\u8D26\u53F7"));
+      return;
+    }
+    const identity = await auth.me(token, "api");
+    if (!identity.ok) {
+      send(response, identity);
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === AI_ROUTES.status) {
+      send(response, success(await ai.status(identity.data)));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === AI_ROUTES.receipts) {
+      const limit = Number(url.searchParams.get("limit") ?? 20);
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+        send(response, failure("INVALID_INPUT", "\u56DE\u6267\u6570\u91CF\u65E0\u6548"));
+        return;
+      }
+      send(response, success(await ai.receipts(identity.data, limit)));
+      return;
+    }
+    if (request2.method === "POST" && url.pathname === AI_ROUTES.chat) {
+      const input = await body(request2, 1024 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      const parsed = chatInput(input.data);
+      if (!parsed) {
+        send(response, failure("INVALID_INPUT", "AI \u8BF7\u6C42\u53C2\u6570\u65E0\u6548"));
+        return;
+      }
+      const result2 = await ai.chat(identity.data, parsed);
+      response.statusCode = result2.status;
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.end(JSON.stringify(result2.body));
+      return;
+    }
+    send(response, failure("NOT_FOUND", "AI \u63A5\u53E3\u4E0D\u5B58\u5728"));
+  };
+}
+
+// server/services/sales-cases.ts
+var import_node_crypto35 = require("node:crypto");
+var DEFAULT_LIMIT = 25;
+var MAX_LIMIT = 100;
+function createSalesCaseService(repo, tokens) {
+  return {
+    list(token, input) {
+      const limit = input.limit ?? DEFAULT_LIMIT;
+      const offset = input.offset ?? 0;
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_LIMIT || !Number.isSafeInteger(offset) || offset < 0)
+        return Promise.resolve(failure("INVALID_INPUT", "\u5206\u9875\u53C2\u6570\u65E0\u6548"));
+      return repo.list(tokens.hash(token), limit, offset);
+    },
+    detail(token, caseId) {
+      if (!caseId.trim())
+        return Promise.resolve(failure("INVALID_INPUT", "Case ID \u65E0\u6548"));
+      return repo.detail(tokens.hash(token), caseId);
+    },
+    detailWithProposals(token, caseId) {
+      if (!caseId.trim())
+        return Promise.resolve(failure("INVALID_INPUT", "Case ID \u65E0\u6548"));
+      return repo.detailWithProposals(tokens.hash(token), caseId);
+    },
+    ensure(token, contactId, customerId, source = "inquiry") {
+      if (!Number.isSafeInteger(contactId) || contactId < 1 || typeof customerId !== "string" || !customerId.trim())
+        return Promise.resolve(failure("INVALID_INPUT", "Case \u8054\u7CFB\u4EBA\u53C2\u6570\u65E0\u6548"));
+      if (typeof source !== "string" || !source.trim() || source.length > 100)
+        return Promise.resolve(failure("INVALID_INPUT", "Case \u6765\u6E90\u65E0\u6548"));
+      return repo.ensure(tokens.hash(token), contactId, customerId, source.trim());
+    },
+    transition(token, caseId, input) {
+      if (!caseId.trim() || !input || typeof input !== "object" || Array.isArray(input))
+        return Promise.resolve(failure("INVALID_INPUT", "\u9500\u552E Case \u63A8\u8FDB\u53C2\u6570\u65E0\u6548"));
+      const value2 = input;
+      if (!SALES_CASE_STATES.includes(value2.state))
+        return Promise.resolve(failure("INVALID_INPUT", "\u9500\u552E Case \u72B6\u6001\u65E0\u6548"));
+      if (value2.nextAction !== void 0 && (typeof value2.nextAction !== "string" || value2.nextAction.length > 500))
+        return Promise.resolve(failure("INVALID_INPUT", "\u4E0B\u4E00\u6B65\u65E0\u6548"));
+      if (value2.summary !== void 0 && (typeof value2.summary !== "string" || value2.summary.length > 2e3))
+        return Promise.resolve(failure("INVALID_INPUT", "\u6458\u8981\u65E0\u6548"));
+      if (value2.eventType !== void 0 && !SALES_CASE_EVENT_TYPES.includes(value2.eventType))
+        return Promise.resolve(failure("INVALID_INPUT", "\u4E8B\u4EF6\u7C7B\u578B\u65E0\u6548"));
+      return repo.transition(tokens.hash(token), caseId, { state: value2.state, nextAction: typeof value2.nextAction === "string" ? value2.nextAction : null, summary: typeof value2.summary === "string" ? value2.summary : null, eventType: typeof value2.eventType === "string" ? value2.eventType : void 0, payload: value2.payload && typeof value2.payload === "object" && !Array.isArray(value2.payload) ? value2.payload : {}, evidence: Array.isArray(value2.evidence) ? value2.evidence : [] });
+    },
+    listProposals(token, caseId, status) {
+      if (!caseId.trim())
+        return Promise.resolve(failure("INVALID_INPUT", "Case ID \u65E0\u6548"));
+      if (status !== void 0 && !["pending", "applied_pending_confirmation", "accepted", "edited", "ignored", "cancelled", "expired", "blocked"].includes(status))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u72B6\u6001\u65E0\u6548"));
+      return repo.listProposals(tokens.hash(token), caseId, status);
+    },
+    proposal(token, caseId, proposalId) {
+      if (!caseId.trim() || !proposalId.trim())
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u53C2\u6570\u65E0\u6548"));
+      return repo.proposal(tokens.hash(token), caseId, proposalId);
+    },
+    createProposal(token, caseId, input) {
+      if (!caseId.trim())
+        return Promise.resolve(failure("INVALID_INPUT", "Case ID \u65E0\u6548"));
+      if (!input || typeof input !== "object" || Array.isArray(input))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u5185\u5BB9\u65E0\u6548"));
+      const value2 = input;
+      if (!AI_PROPOSAL_TYPES.includes(value2.proposalType))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u7C7B\u578B\u65E0\u6548"));
+      if (!value2.payload || typeof value2.payload !== "object" || Array.isArray(value2.payload))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u5185\u5BB9\u65E0\u6548"));
+      if (typeof value2.confidence !== "number" || !Number.isFinite(value2.confidence) || value2.confidence < 0 || value2.confidence > 1)
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u7F6E\u4FE1\u5EA6\u65E0\u6548"));
+      if (value2.evidence !== void 0 && (!Array.isArray(value2.evidence) || value2.evidence.length > 20))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u4F9D\u636E\u65E0\u6548"));
+      if (value2.expiresAt !== void 0 && value2.expiresAt !== null && (typeof value2.expiresAt !== "string" || !Number.isFinite(Date.parse(value2.expiresAt))))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u6709\u6548\u671F\u65E0\u6548"));
+      const parsed = {
+        proposalId: (0, import_node_crypto35.randomUUID)(),
+        proposalType: value2.proposalType,
+        payload: value2.payload,
+        evidence: value2.evidence,
+        confidence: value2.confidence,
+        model: typeof value2.model === "string" ? value2.model.slice(0, 120) : null,
+        version: typeof value2.version === "string" ? value2.version.slice(0, 80) : null,
+        expiresAt: typeof value2.expiresAt === "string" ? value2.expiresAt : null
+      };
+      return repo.createProposal(tokens.hash(token), caseId, parsed);
+    },
+    actProposal(token, caseId, proposalId, input) {
+      if (!caseId.trim() || !proposalId.trim())
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u53C2\u6570\u65E0\u6548"));
+      if (!input || typeof input !== "object" || Array.isArray(input))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u64CD\u4F5C\u65E0\u6548"));
+      const value2 = input;
+      if (!AI_PROPOSAL_ACTIONS.includes(value2.action))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u52A8\u4F5C\u65E0\u6548"));
+      if (value2.payload !== void 0 && (!value2.payload || typeof value2.payload !== "object" || Array.isArray(value2.payload)))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u5185\u5BB9\u65E0\u6548"));
+      if (value2.action === "edit" && value2.payload === void 0)
+        return Promise.resolve(failure("INVALID_INPUT", "\u4FEE\u6539\u5EFA\u8BAE\u5FC5\u987B\u63D0\u4F9B\u5185\u5BB9"));
+      return repo.actProposal(tokens.hash(token), caseId, proposalId, value2.action, value2.payload);
+    }
+  };
+}
+
+// server/transport/sales-case-http.ts
+var ROUTE = "/api/crm/sales-cases";
+var TOKEN3 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+function createSalesCaseHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", "http://localhost");
+    if (!url.pathname.startsWith(ROUTE)) {
+      send(response, failure("NOT_FOUND", "\u9500\u552E Case \u63A5\u53E3\u4E0D\u5B58\u5728"));
+      return;
+    }
+    const token = TOKEN3.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (!token) {
+      send(response, failure("UNAUTHORIZED", "\u8BF7\u5148\u767B\u5F55\u4E2D\u5FC3\u8D26\u53F7"));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === ROUTE) {
+      const limit = Number(url.searchParams.get("limit") ?? 25);
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      send(response, await service.list(token, { limit, offset }));
+      return;
+    }
+    if (request2.method === "POST" && url.pathname === `${ROUTE}/ensure`) {
+      const input = await body(request2, 64 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      const value2 = input.data && typeof input.data === "object" && !Array.isArray(input.data) ? input.data : {};
+      const contactId = Number(value2.contactId);
+      const customerId = typeof value2.customerId === "string" ? value2.customerId : "";
+      const source = typeof value2.source === "string" ? value2.source : "inquiry";
+      send(response, await service.ensure(token, contactId, customerId, source));
+      return;
+    }
+    const parts = url.pathname.slice(ROUTE.length + 1).split("/").filter(Boolean);
+    if (request2.method === "GET" && parts.length === 1) {
+      send(response, await service.detail(token, parts[0]));
+      return;
+    }
+    if (request2.method === "POST" && parts.length === 2 && parts[1] === "transition") {
+      const input = await body(request2, 256 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      send(response, await service.transition(token, parts[0], input.data));
+      return;
+    }
+    if (request2.method === "GET" && parts.length === 2 && parts[1] === "overview") {
+      send(response, await service.detailWithProposals(token, parts[0]));
+      return;
+    }
+    if (request2.method === "GET" && parts.length === 2 && parts[1] === "proposals") {
+      send(response, await service.listProposals(token, parts[0], url.searchParams.get("status") ?? void 0));
+      return;
+    }
+    if (request2.method === "POST" && parts.length === 2 && parts[1] === "proposals") {
+      const input = await body(request2, 1024 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      send(response, await service.createProposal(token, parts[0], input.data));
+      return;
+    }
+    if (request2.method === "GET" && parts.length === 3 && parts[1] === "proposals") {
+      send(response, await service.proposal(token, parts[0], parts[2]));
+      return;
+    }
+    if (request2.method === "POST" && parts.length === 3 && parts[1] === "proposals") {
+      const input = await body(request2, 1024 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      const result2 = await service.actProposal(token, parts[0], parts[2], input.data);
+      send(response, result2.ok ? success(result2.data) : result2);
+      return;
+    }
+    send(response, failure("NOT_FOUND", "\u9500\u552E Case \u63A5\u53E3\u4E0D\u5B58\u5728"));
+  };
+}
+
+// server/adapters/postgres/quote-case-repository.ts
+var import_node_crypto36 = require("node:crypto");
+
+// server/core/quote-case.ts
+var QUOTE_CASE_STATES = [
+  "detected",
+  "fields_pending",
+  "queries_prepared",
+  "querying",
+  "candidates_ready",
+  "draft_ready",
+  "review_pending",
+  "review_rejected",
+  "approved",
+  "sent",
+  "negotiating",
+  "accepted",
+  "rejected",
+  "expired"
+];
+var QUOTE_FIELD_KEYS = [
+  "pol",
+  "pod",
+  "containerTypes",
+  "quantity",
+  "commodity",
+  "weight",
+  "carrierPreference",
+  "carrierExclusion",
+  "etd",
+  "validity",
+  "incoterm",
+  "specialRequirements",
+  "targetPrice"
+];
+var QUOTE_TRANSITIONS = {
+  detected: ["fields_pending", "queries_prepared"],
+  fields_pending: ["queries_prepared", "expired"],
+  queries_prepared: ["querying", "expired"],
+  querying: ["candidates_ready", "fields_pending", "expired"],
+  candidates_ready: ["draft_ready", "querying", "expired"],
+  draft_ready: ["review_pending", "approved", "querying", "candidates_ready", "expired"],
+  review_pending: ["approved", "review_rejected", "expired"],
+  review_rejected: ["draft_ready", "querying", "expired"],
+  approved: ["sent", "expired"],
+  sent: ["accepted", "rejected", "negotiating"],
+  negotiating: ["draft_ready", "accepted", "rejected", "expired"],
+  accepted: [],
+  rejected: ["draft_ready"],
+  expired: ["querying"]
+};
+function canTransitionQuote(from, to) {
+  return from === to || (QUOTE_TRANSITIONS[from] || []).includes(to);
+}
+function missingQuoteFields(fields2) {
+  const required = ["pol", "pod"];
+  return required.filter((key2) => {
+    const value2 = fields2[key2]?.value;
+    return Array.isArray(value2) ? value2.length === 0 : !String(value2 || "").trim();
+  });
+}
+
+// server/adapters/postgres/quote-case-repository.ts
+var ISO = (value2) => value2 instanceof Date ? value2.toISOString() : typeof value2 === "string" && Number.isFinite(Date.parse(value2)) ? new Date(value2).toISOString() : null;
+var JSON_OBJECT = (value2) => value2 && typeof value2 === "object" && !Array.isArray(value2) ? value2 : {};
+function mapCandidate(value2) {
+  if (!value2 || typeof value2 !== "object" || Array.isArray(value2))
+    return null;
+  const row2 = value2;
+  return {
+    id: String(row2.id || ""),
+    carrier: typeof row2.carrier === "string" ? row2.carrier : null,
+    pol: typeof row2.pol === "string" ? row2.pol : null,
+    pod: typeof row2.pod === "string" ? row2.pod : null,
+    containerType: typeof row2.containerType === "string" ? row2.containerType : null,
+    price: typeof row2.price === "number" && Number.isFinite(row2.price) ? row2.price : null,
+    currency: typeof row2.currency === "string" ? row2.currency : null,
+    etd: typeof row2.etd === "string" ? row2.etd : null,
+    validFrom: typeof row2.validFrom === "string" ? row2.validFrom : null,
+    validTo: typeof row2.validTo === "string" ? row2.validTo : null,
+    sourceUpdatedAt: typeof row2.sourceUpdatedAt === "string" ? row2.sourceUpdatedAt : null,
+    evidence: Array.isArray(row2.evidence) ? row2.evidence : []
+  };
+}
+function mapCase2(row2) {
+  return {
+    quoteCaseId: String(row2.quote_case_id),
+    caseId: String(row2.case_id),
+    messageKey: String(row2.message_key),
+    threadKey: String(row2.thread_key),
+    state: String(row2.state),
+    fields: JSON_OBJECT(row2.fields_json),
+    missingFields: Array.isArray(row2.missing_fields_json) ? row2.missing_fields_json : [],
+    selectedQuote: mapCandidate(row2.selected_quote_json),
+    version: Number(row2.version),
+    createdAt: ISO(row2.created_at),
+    updatedAt: ISO(row2.updated_at)
+  };
+}
+function mapDraft(row2, quoteCase) {
+  const candidates2 = Array.isArray(row2.candidates_json) ? row2.candidates_json.map(mapCandidate).filter((item) => !!item) : [];
+  return {
+    quoteId: String(row2.quote_id),
+    quoteCaseId: String(row2.quote_case_id),
+    version: Number(row2.version),
+    status: String(row2.status),
+    fields: quoteCase.fields,
+    missingFields: quoteCase.missingFields,
+    selectedCandidate: mapCandidate(row2.selected_candidate_json),
+    candidates: candidates2,
+    subject: row2.subject ? String(row2.subject) : null,
+    body: row2.body ? String(row2.body) : null,
+    createdAt: ISO(row2.created_at),
+    updatedAt: ISO(row2.updated_at)
+  };
+}
+var PostgresQuoteCaseRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+  }
+  async actor(client, hash) {
+    const result2 = await client.query(
+      `SELECT u.user_id,u.identity_admin,ARRAY(
+         SELECT g.role FROM public.identity_product_grants g
+         WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role
+       ) AS roles
+       FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
+       WHERE s.token_hash=$1 AND s.client='api' AND s.revoked_at IS NULL
+         AND s.expires_at>now() AND u.active AND NOT u.must_change_password
+         AND s.security_revision=u.security_revision`,
+      [hash]
+    );
+    return result2.rows.length ? { userId: String(result2.rows[0].user_id), identityAdmin: Boolean(result2.rows[0].identity_admin), roles: result2.rows[0].roles || [] } : null;
+  }
+  async authorizeCase(client, actor, caseId) {
+    const row2 = (await client.query(
+      `SELECT c.owner_user_id AS case_owner,customer.origin,customer.owner_user_id AS customer_owner,customer.created_by
+       FROM crm_sales_cases c JOIN crm_customers customer USING(customer_id) WHERE c.case_id=$1`,
+      [caseId]
+    )).rows[0];
+    if (!row2)
+      return false;
+    if (actor.identityAdmin || actor.roles.includes("admin"))
+      return true;
+    if (actor.roles.includes("operations") && String(row2.origin) === "operations")
+      return true;
+    return [row2.case_owner, row2.customer_owner, row2.created_by].map(String).includes(actor.userId);
+  }
+  async detailIn(client, quoteCaseId) {
+    const caseRow = (await client.query("SELECT * FROM crm_quote_cases WHERE quote_case_id=$1", [quoteCaseId])).rows[0];
+    if (!caseRow)
+      return failure("NOT_FOUND", "\u62A5\u4EF7 Case \u4E0D\u5B58\u5728");
+    const quoteCase = mapCase2(caseRow);
+    const draftRow = (await client.query("SELECT * FROM crm_quote_drafts WHERE quote_case_id=$1 ORDER BY version DESC LIMIT 1", [quoteCaseId])).rows[0];
+    if (!draftRow)
+      return failure("NOT_FOUND", "\u62A5\u4EF7\u8349\u7A3F\u4E0D\u5B58\u5728");
+    return success({ quoteCase, draft: mapDraft(draftRow, quoteCase) });
+  }
+  async list(hash, input) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const admin = actor.identityAdmin || actor.roles.includes("admin");
+      const operations3 = actor.roles.includes("operations");
+      const rows = (await client.query(
+        `SELECT qc.* FROM crm_quote_cases qc
+         WHERE ($1::text IS NULL OR qc.case_id=$1) AND ($2::text IS NULL OR qc.message_key=$2)
+           AND ($3::boolean OR EXISTS(
+             SELECT 1 FROM crm_sales_cases c JOIN crm_customers customer USING(customer_id)
+             WHERE c.case_id=qc.case_id AND (
+               ($4::boolean AND customer.origin='operations')
+               OR c.owner_user_id=$5 OR customer.owner_user_id=$5 OR customer.created_by=$5
+             )
+           ))
+         ORDER BY qc.updated_at DESC LIMIT $6 OFFSET $7`,
+        [input.caseId || null, input.messageKey || null, admin, operations3, actor.userId, input.limit, input.offset]
+      )).rows;
+      return success(rows.map(mapCase2));
+    } catch (error) {
+      this.log.write("ERROR", "quote-case.pg", `\u62A5\u4EF7 Case \u5217\u8868\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u62A5\u4EF7 Case \u5217\u8868\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  async detail(hash, quoteCaseId) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const quote2 = (await client.query("SELECT case_id FROM crm_quote_cases WHERE quote_case_id=$1", [quoteCaseId])).rows[0];
+      if (!quote2 || !await this.authorizeCase(client, actor, String(quote2.case_id)))
+        return failure("NOT_FOUND", "\u62A5\u4EF7 Case \u4E0D\u5B58\u5728");
+      return this.detailIn(client, quoteCaseId);
+    } catch (error) {
+      this.log.write("ERROR", "quote-case.pg", `\u62A5\u4EF7 Case \u8BE6\u60C5\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u62A5\u4EF7 Case \u8BE6\u60C5\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  async upsert(hash, input, actorUserId) {
+    const client = await this.pool.connect();
+    try {
+      const actor = actorUserId ? { userId: actorUserId, identityAdmin: true, roles: ["admin"] } : await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      await client.query("BEGIN");
+      if (!await this.authorizeCase(client, actor, input.caseId)) {
+        await client.query("ROLLBACK");
+        return failure("NOT_FOUND", "\u9500\u552E Case \u4E0D\u5B58\u5728");
+      }
+      const current = (await client.query(
+        `SELECT qc.*,qd.quote_id,qd.version AS draft_version,qd.status AS draft_status,qd.subject,qd.body,qd.candidates_json,qd.selected_candidate_json
+         FROM crm_quote_cases qc LEFT JOIN LATERAL (
+           SELECT * FROM crm_quote_drafts d WHERE d.quote_case_id=qc.quote_case_id ORDER BY d.version DESC LIMIT 1
+         ) qd ON true WHERE qc.case_id=$1 AND qc.message_key=$2 FOR UPDATE OF qc`,
+        [input.caseId, input.messageKey]
+      )).rows[0];
+      const nextState = input.state || (input.candidates?.length ? "candidates_ready" : "fields_pending");
+      const missing = input.missingFields ?? missingQuoteFields(input.fields);
+      const selected = input.selectedCandidate ?? null;
+      const candidates2 = input.candidates ?? [];
+      let quoteCaseId;
+      let quoteId;
+      let version4;
+      if (!current) {
+        quoteCaseId = (0, import_node_crypto36.randomUUID)();
+        quoteId = (0, import_node_crypto36.randomUUID)();
+        version4 = 1;
+        await client.query(
+          `INSERT INTO crm_quote_cases(quote_case_id,case_id,message_key,thread_key,state,fields_json,missing_fields_json,selected_quote_json)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [quoteCaseId, input.caseId, input.messageKey, input.threadKey, nextState, JSON.stringify(input.fields), JSON.stringify(missing), selected ? JSON.stringify(selected) : null]
+        );
+        await client.query(
+          `INSERT INTO crm_quote_drafts(quote_id,quote_case_id,version,status,subject,body,selected_candidate_json,candidates_json)
+           VALUES($1,$2,1,$3,$4,$5,$6,$7)`,
+          [quoteId, quoteCaseId, nextState, input.subject || null, input.body || null, selected ? JSON.stringify(selected) : null, JSON.stringify(candidates2)]
+        );
+      } else {
+        quoteCaseId = String(current.quote_case_id);
+        quoteId = String(current.quote_id);
+        version4 = Number(current.draft_version) + 1;
+        const from = String(current.state);
+        if (from !== nextState && !canTransitionQuote(from, nextState)) {
+          await client.query("ROLLBACK");
+          return failure("CONFLICT", `\u62A5\u4EF7\u72B6\u6001\u4E0D\u80FD\u4ECE ${from} \u53D8\u4E3A ${nextState}`);
+        }
+        await client.query(
+          `UPDATE crm_quote_cases SET thread_key=$2,state=$3,fields_json=$4,missing_fields_json=$5,
+             selected_quote_json=$6,version=version+1,updated_at=clock_timestamp() WHERE quote_case_id=$1`,
+          [quoteCaseId, input.threadKey, nextState, JSON.stringify(input.fields), JSON.stringify(missing), selected ? JSON.stringify(selected) : null]
+        );
+        await client.query(
+          `UPDATE crm_quote_drafts SET version=$2,status=$3,subject=$4,body=$5,selected_candidate_json=$6,
+             candidates_json=$7,updated_at=clock_timestamp() WHERE quote_id=$1`,
+          [quoteId, version4, nextState, input.subject || null, input.body || null, selected ? JSON.stringify(selected) : null, JSON.stringify(candidates2)]
+        );
+      }
+      await client.query(
+        `INSERT INTO crm_quote_revisions(revision_id,quote_id,version,status,fields_json,selected_candidate_json,candidates_json,subject,body,actor_user_id,reason)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [
+          (0, import_node_crypto36.randomUUID)(),
+          quoteId,
+          version4,
+          nextState,
+          JSON.stringify(input.fields),
+          selected ? JSON.stringify(selected) : null,
+          JSON.stringify(candidates2),
+          input.subject || null,
+          input.body || null,
+          actor.userId,
+          input.reason || null
+        ]
+      );
+      const detail = await this.detailIn(client, quoteCaseId);
+      if (!detail.ok) {
+        await client.query("ROLLBACK");
+        return detail;
+      }
+      await client.query("COMMIT");
+      return detail;
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+      }
+      this.log.write("ERROR", "quote-case.pg", `\u62A5\u4EF7 Case \u4FDD\u5B58\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u62A5\u4EF7 Case \u4FDD\u5B58\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+  async review(hash, quoteId, input) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const quote2 = (await client.query(
+        `SELECT d.quote_id,qc.case_id FROM crm_quote_drafts d JOIN crm_quote_cases qc USING(quote_case_id) WHERE d.quote_id=$1`,
+        [quoteId]
+      )).rows[0];
+      if (!quote2 || !await this.authorizeCase(client, actor, String(quote2.case_id)))
+        return failure("NOT_FOUND", "\u62A5\u4EF7\u8349\u7A3F\u4E0D\u5B58\u5728");
+      const reviewer = (await client.query(
+        `SELECT 1 FROM public.identity_users u
+         WHERE u.user_id=$1 AND u.active AND (u.identity_admin
+           OR EXISTS(SELECT 1 FROM public.identity_product_access pa WHERE pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active)
+           OR EXISTS(SELECT 1 FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active))`,
+        [input.reviewerUserId]
+      )).rows[0];
+      if (!reviewer)
+        return failure("INVALID_INPUT", "\u5BA1\u6838\u4EBA\u4E0D\u53EF\u7528");
+      const pendingReview = (await client.query(
+        "SELECT 1 FROM crm_quote_review_requests WHERE quote_id=$1 AND status='pending'",
+        [quoteId]
+      )).rows[0];
+      if (pendingReview)
+        return failure("CONFLICT", "\u62A5\u4EF7\u5DF2\u5728\u5BA1\u6838\u4E2D");
+      const reviewId = (0, import_node_crypto36.randomUUID)();
+      const row2 = (await client.query(
+        `INSERT INTO crm_quote_review_requests(review_id,quote_id,requested_by,reviewer_user_id,status,reason,linked_message_id,linked_task_id)
+         VALUES($1,$2,$3,$4,'pending',$5,$6,$7) RETURNING *`,
+        [reviewId, quoteId, actor.userId, input.reviewerUserId, input.reason || null, input.linkedMessageId || null, input.linkedTaskId || null]
+      )).rows[0];
+      return success({
+        reviewId: String(row2.review_id),
+        quoteId: String(row2.quote_id),
+        requestedBy: String(row2.requested_by),
+        reviewerUserId: String(row2.reviewer_user_id),
+        status: row2.status,
+        reason: row2.reason || null,
+        decisionNote: row2.decision_note || null,
+        linkedMessageId: row2.linked_message_id || null,
+        linkedTaskId: row2.linked_task_id || null,
+        createdAt: ISO(row2.created_at),
+        decidedAt: ISO(row2.decided_at)
+      });
+    } catch (error) {
+      this.log.write("ERROR", "quote-case.pg", `\u62A5\u4EF7\u5BA1\u6838\u8BF7\u6C42\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u62A5\u4EF7\u5BA1\u6838\u8BF7\u6C42\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+  async listReviews(hash, status, limit, offset) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      const [rows, total] = await Promise.all([
+        client.query(
+          `SELECT r.*,qc.quote_case_id,qc.case_id,d.subject,d.selected_candidate_json,d.candidates_json,
+                  requester.display_name AS requested_by_name,company.name AS customer_name
+           FROM crm_quote_review_requests r
+           JOIN crm_quote_drafts d ON d.quote_id=r.quote_id
+           JOIN crm_quote_cases qc ON qc.quote_case_id=d.quote_case_id
+           JOIN crm_sales_cases sc ON sc.case_id=qc.case_id
+           JOIN crm_customers customer ON customer.customer_id=sc.customer_id
+           JOIN companies company ON company.id=customer.company_id
+           JOIN public.identity_users requester ON requester.user_id=r.requested_by
+           WHERE r.reviewer_user_id=$1 AND r.status=$2
+           ORDER BY r.created_at DESC LIMIT $3 OFFSET $4`,
+          [actor.userId, status, limit, offset]
+        ),
+        client.query("SELECT count(*)::int AS total FROM crm_quote_review_requests WHERE reviewer_user_id=$1 AND status=$2", [actor.userId, status])
+      ]);
+      return success({ items: rows.rows.map((row2) => this.mapReviewItem(row2)), total: Number(total.rows[0]?.total ?? 0) });
+    } catch (error) {
+      this.log.write("ERROR", "quote-case.pg", `\u62A5\u4EF7\u5BA1\u6838\u5217\u8868\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u62A5\u4EF7\u5BA1\u6838\u5217\u8868\u6682\u4E0D\u53EF\u7528");
+    } finally {
+      client.release();
+    }
+  }
+  async decideReview(hash, reviewId, action, note) {
+    const client = await this.pool.connect();
+    try {
+      const actor = await this.actor(client, hash);
+      if (!actor)
+        return failure("UNAUTHORIZED", "CRM \u4F1A\u8BDD\u5DF2\u5931\u6548");
+      await client.query("BEGIN");
+      const row2 = (await client.query(
+        `SELECT r.*,d.quote_case_id,qc.case_id FROM crm_quote_review_requests r
+         JOIN crm_quote_drafts d ON d.quote_id=r.quote_id
+         JOIN crm_quote_cases qc ON qc.quote_case_id=d.quote_case_id
+         WHERE r.review_id=$1 FOR UPDATE OF r`,
+        [reviewId]
+      )).rows[0];
+      if (!row2) {
+        await client.query("ROLLBACK");
+        return failure("NOT_FOUND", "\u62A5\u4EF7\u5BA1\u6838\u4E0D\u5B58\u5728");
+      }
+      if (String(row2.reviewer_user_id) !== actor.userId && !actor.identityAdmin && !actor.roles.includes("admin")) {
+        await client.query("ROLLBACK");
+        return failure("FORBIDDEN", "\u53EA\u6709\u6307\u5B9A\u5BA1\u6838\u4EBA\u53EF\u4EE5\u5904\u7406");
+      }
+      if (String(row2.status) !== "pending") {
+        await client.query("ROLLBACK");
+        return failure("CONFLICT", "\u62A5\u4EF7\u5BA1\u6838\u5DF2\u5904\u7406");
+      }
+      const status = action === "approve" ? "approved" : "rejected";
+      const quoteStatus = action === "approve" ? "approved" : "review_rejected";
+      const updated = (await client.query("UPDATE crm_quote_review_requests SET status=$2,decision_note=$3,decided_at=now() WHERE review_id=$1 RETURNING *", [reviewId, status, note || null])).rows[0];
+      await client.query("UPDATE crm_quote_drafts SET status=$2,updated_at=now() WHERE quote_id=$1", [row2.quote_id, quoteStatus]);
+      await client.query("UPDATE crm_quote_cases SET state=$2,updated_at=now(),version=version+1 WHERE quote_case_id=$1", [row2.quote_case_id, quoteStatus]);
+      await client.query(`UPDATE crm_sales_cases SET next_action=$2,latest_summary=$3,updated_at=now() WHERE case_id=$1`, [row2.case_id, action === "approve" ? "\u53D1\u9001\u62A5\u4EF7" : "\u4FEE\u6539\u62A5\u4EF7\u5E76\u91CD\u65B0\u63D0\u4EA4", action === "approve" ? "\u62A5\u4EF7\u5DF2\u901A\u8FC7\u4E3B\u7BA1\u786E\u8BA4" : "\u4E3B\u7BA1\u9000\u56DE\u62A5\u4EF7\uFF0C\u9700\u8981\u4FEE\u6539"]);
+      await client.query(
+        `INSERT INTO crm_case_events(case_id,event_key,event_type,source,payload_json,evidence_json,actor_user_id)
+        VALUES($1,$2,$3,'user',$4,'[]'::jsonb,$5) ON CONFLICT(event_key) DO NOTHING`,
+        [row2.case_id, `quote.review.${status}:${reviewId}`, action === "approve" ? "quote.confirmed" : "quote.rejected", JSON.stringify({ reviewId, action, note: note || null }), actor.userId]
+      );
+      await client.query("COMMIT");
+      return success({
+        reviewId: String(updated.review_id),
+        quoteId: String(updated.quote_id),
+        requestedBy: String(updated.requested_by),
+        reviewerUserId: String(updated.reviewer_user_id),
+        status: updated.status,
+        reason: updated.reason || null,
+        decisionNote: updated.decision_note || null,
+        linkedMessageId: updated.linked_message_id || null,
+        linkedTaskId: updated.linked_task_id || null,
+        createdAt: ISO(updated.created_at),
+        decidedAt: ISO(updated.decided_at)
+      });
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+      }
+      this.log.write("ERROR", "quote-case.pg", `\u62A5\u4EF7\u5BA1\u6838\u5904\u7406\u5931\u8D25 code=${error?.code || "UNKNOWN"}`);
+      return failure("DATABASE_ERROR", "\u62A5\u4EF7\u5BA1\u6838\u5904\u7406\u5931\u8D25");
+    } finally {
+      client.release();
+    }
+  }
+  mapReviewItem(row2) {
+    return {
+      reviewId: String(row2.review_id),
+      quoteId: String(row2.quote_id),
+      requestedBy: String(row2.requested_by),
+      reviewerUserId: String(row2.reviewer_user_id),
+      status: row2.status,
+      reason: row2.reason || null,
+      decisionNote: row2.decision_note || null,
+      linkedMessageId: row2.linked_message_id || null,
+      linkedTaskId: row2.linked_task_id || null,
+      createdAt: ISO(row2.created_at),
+      decidedAt: ISO(row2.decided_at),
+      quoteCaseId: String(row2.quote_case_id),
+      caseId: String(row2.case_id),
+      requestedByName: String(row2.requested_by_name || ""),
+      customerName: String(row2.customer_name || ""),
+      subject: row2.subject ? String(row2.subject) : null,
+      selectedCandidate: mapCandidate(row2.selected_candidate_json),
+      candidates: Array.isArray(row2.candidates_json) ? row2.candidates_json.map(mapCandidate).filter((item) => !!item) : []
+    };
+  }
+};
+
+// server/services/quotes.ts
+var QUOTE_ROUTES = {
+  list: "/api/crm/quote-cases",
+  upsert: "/api/crm/quote-cases/upsert",
+  reviews: "/api/crm/quote-cases/reviews"
+};
+var record11 = (value2) => !!value2 && typeof value2 === "object" && !Array.isArray(value2);
+var QUOTE_REVIEW_STATUSES = ["pending", "approved", "rejected", "cancelled"];
+var text12 = (value2, max = 500) => typeof value2 === "string" && !!value2.trim() && value2.trim().length <= max;
+var UUID13 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function quoteState(value2) {
+  return typeof value2 === "string" && QUOTE_CASE_STATES.includes(value2) ? value2 : null;
+}
+function fields(value2) {
+  if (!record11(value2))
+    return null;
+  const result2 = {};
+  for (const [key2, raw] of Object.entries(value2)) {
+    if (!QUOTE_FIELD_KEYS.includes(key2) || !record11(raw))
+      continue;
+    const fieldValue = raw.value;
+    if (!(typeof fieldValue === "string" || Array.isArray(fieldValue) && fieldValue.every((item) => typeof item === "string")))
+      return null;
+    if (typeof fieldValue === "string" && fieldValue.length > 500 || Array.isArray(fieldValue) && fieldValue.length > 20 || Array.isArray(fieldValue) && fieldValue.some((item) => item.length > 120))
+      return null;
+    if (!["email", "quote", "history", "user"].includes(String(raw.source)))
+      return null;
+    if (!Array.isArray(raw.evidence) || raw.evidence.length > 20 || raw.evidence.some((item) => typeof item !== "string" || item.length > 500))
+      return null;
+    if (typeof raw.confidence !== "number" || !Number.isFinite(raw.confidence) || raw.confidence < 0 || raw.confidence > 1)
+      return null;
+    result2[key2] = {
+      value: fieldValue,
+      source: raw.source,
+      evidence: raw.evidence,
+      confidence: raw.confidence,
+      resolver: typeof raw.resolver === "string" ? raw.resolver.slice(0, 120) : null
+    };
+  }
+  return result2;
+}
+function candidates(value2) {
+  if (value2 === void 0)
+    return [];
+  if (!Array.isArray(value2) || value2.length > 50)
+    return null;
+  const result2 = [];
+  for (const item of value2) {
+    if (!record11(item) || !text12(item.id, 200))
+      return null;
+    const optional4 = (key2) => typeof item[key2] === "string" ? String(item[key2]).slice(0, 300) : null;
+    if (item.price !== null && item.price !== void 0 && (typeof item.price !== "number" || !Number.isFinite(item.price)))
+      return null;
+    if (!Array.isArray(item.evidence) || item.evidence.length > 20)
+      return null;
+    result2.push({
+      id: item.id.trim(),
+      carrier: optional4("carrier"),
+      pol: optional4("pol"),
+      pod: optional4("pod"),
+      containerType: optional4("containerType"),
+      price: typeof item.price === "number" ? item.price : null,
+      currency: optional4("currency"),
+      etd: optional4("etd"),
+      validFrom: optional4("validFrom"),
+      validTo: optional4("validTo"),
+      sourceUpdatedAt: optional4("sourceUpdatedAt"),
+      evidence: item.evidence
+    });
+  }
+  return result2;
+}
+function parsedUpsert(value2) {
+  if (!record11(value2) || !text12(value2.caseId, 100) || !text12(value2.messageKey, 500) || !text12(value2.threadKey, 500))
+    return failure("INVALID_INPUT", "\u62A5\u4EF7 Case \u53C2\u6570\u65E0\u6548");
+  const parsedFields = fields(value2.fields);
+  if (!parsedFields)
+    return failure("INVALID_INPUT", "\u62A5\u4EF7\u5B57\u6BB5\u65E0\u6548");
+  const parsedCandidates = candidates(value2.candidates);
+  if (!parsedCandidates)
+    return failure("INVALID_INPUT", "\u62A5\u4EF7\u5019\u9009\u65E0\u6548");
+  const state = value2.state === void 0 ? void 0 : quoteState(value2.state);
+  if (value2.state !== void 0 && !state)
+    return failure("INVALID_INPUT", "\u62A5\u4EF7\u72B6\u6001\u65E0\u6548");
+  const missing = value2.missingFields === void 0 ? void 0 : Array.isArray(value2.missingFields) && value2.missingFields.every((item) => QUOTE_FIELD_KEYS.includes(String(item))) ? value2.missingFields : null;
+  if (missing === null)
+    return failure("INVALID_INPUT", "\u7F3A\u5931\u5B57\u6BB5\u65E0\u6548");
+  const selected = value2.selectedCandidate === void 0 || value2.selectedCandidate === null ? null : candidates([value2.selectedCandidate]);
+  if (value2.selectedCandidate !== void 0 && value2.selectedCandidate !== null && !selected)
+    return failure("INVALID_INPUT", "\u5DF2\u9009\u62A5\u4EF7\u65E0\u6548");
+  return {
+    ok: true,
+    data: {
+      caseId: value2.caseId.trim(),
+      messageKey: value2.messageKey.trim(),
+      threadKey: value2.threadKey.trim(),
+      fields: parsedFields,
+      missingFields: missing,
+      state: state ?? void 0,
+      selectedCandidate: selected?.[0] ?? null,
+      candidates: parsedCandidates,
+      subject: typeof value2.subject === "string" ? value2.subject.slice(0, 500) : null,
+      body: typeof value2.body === "string" ? value2.body.slice(0, 1e5) : null,
+      reason: typeof value2.reason === "string" ? value2.reason.slice(0, 500) : null
+    }
+  };
+}
+function createQuoteService(repo, tokens) {
+  return {
+    list(token, input) {
+      const limit = input.limit ?? 25;
+      const offset = input.offset ?? 0;
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0)
+        return Promise.resolve(failure("INVALID_INPUT", "\u5206\u9875\u53C2\u6570\u65E0\u6548"));
+      if (input.caseId !== void 0 && !text12(input.caseId, 100) || input.messageKey !== void 0 && !text12(input.messageKey, 500))
+        return Promise.resolve(failure("INVALID_INPUT", "\u62A5\u4EF7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+      return repo.list(tokens.hash(token), { caseId: input.caseId, messageKey: input.messageKey, limit, offset });
+    },
+    detail(token, quoteCaseId) {
+      if (!text12(quoteCaseId, 100))
+        return Promise.resolve(failure("INVALID_INPUT", "\u62A5\u4EF7 Case ID \u65E0\u6548"));
+      return repo.detail(tokens.hash(token), quoteCaseId);
+    },
+    upsert(token, input) {
+      const parsed = parsedUpsert(input);
+      return parsed.ok ? repo.upsert(tokens.hash(token), parsed.data) : Promise.resolve(parsed);
+    },
+    requery(token, quoteCaseId, input) {
+      if (!text12(quoteCaseId, 100) || !record11(input))
+        return Promise.resolve(failure("INVALID_INPUT", "\u91CD\u65B0\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+      return repo.detail(tokens.hash(token), quoteCaseId).then((current) => {
+        if (!current.ok)
+          return current;
+        const draft = current.data.draft;
+        const parsed = parsedUpsert({
+          ...input,
+          caseId: current.data.quoteCase.caseId,
+          messageKey: current.data.quoteCase.messageKey,
+          threadKey: current.data.quoteCase.threadKey,
+          fields: input.fields ?? draft.fields,
+          candidates: input.candidates ?? draft.candidates,
+          selectedCandidate: input.selectedCandidate ?? draft.selectedCandidate
+        });
+        return parsed.ok ? repo.upsert(tokens.hash(token), parsed.data) : Promise.resolve(parsed);
+      });
+    },
+    select(token, quoteCaseId, input) {
+      if (!text12(quoteCaseId, 100) || !record11(input))
+        return Promise.resolve(failure("INVALID_INPUT", "\u9009\u62E9\u62A5\u4EF7\u53C2\u6570\u65E0\u6548"));
+      return repo.detail(tokens.hash(token), quoteCaseId).then((current) => {
+        if (!current.ok)
+          return current;
+        const selectedCandidates = candidates([input]);
+        if (!selectedCandidates?.length)
+          return failure("INVALID_INPUT", "\u9009\u62E9\u62A5\u4EF7\u53C2\u6570\u65E0\u6548");
+        const value2 = current.data.draft;
+        return repo.upsert(tokens.hash(token), {
+          caseId: current.data.quoteCase.caseId,
+          messageKey: current.data.quoteCase.messageKey,
+          threadKey: current.data.quoteCase.threadKey,
+          fields: value2.fields,
+          missingFields: value2.missingFields,
+          state: "draft_ready",
+          selectedCandidate: selectedCandidates[0],
+          candidates: value2.candidates,
+          subject: value2.subject,
+          body: value2.body,
+          reason: "user_selected_quote"
+        });
+      });
+    },
+    review(token, quoteId, input) {
+      if (!text12(quoteId, 100) || !record11(input) || !text12(input.reviewerUserId, 100) || !UUID13.test(input.reviewerUserId))
+        return Promise.resolve(failure("INVALID_INPUT", "\u62A5\u4EF7\u5BA1\u6838\u53C2\u6570\u65E0\u6548"));
+      if (input.reason !== void 0 && (typeof input.reason !== "string" || input.reason.length > 500) || input.linkedMessageId !== void 0 && (typeof input.linkedMessageId !== "string" || input.linkedMessageId.length > 500) || input.linkedTaskId !== void 0 && (typeof input.linkedTaskId !== "string" || input.linkedTaskId.length > 100))
+        return Promise.resolve(failure("INVALID_INPUT", "\u62A5\u4EF7\u5BA1\u6838\u53C2\u6570\u65E0\u6548"));
+      return repo.review(tokens.hash(token), quoteId, {
+        reviewerUserId: input.reviewerUserId,
+        reason: typeof input.reason === "string" ? input.reason : void 0,
+        linkedMessageId: typeof input.linkedMessageId === "string" ? input.linkedMessageId : void 0,
+        linkedTaskId: typeof input.linkedTaskId === "string" ? input.linkedTaskId : void 0
+      });
+    },
+    listReviews(token, input) {
+      const status = input.status ?? "pending";
+      const limit = input.limit ?? 25;
+      const offset = input.offset ?? 0;
+      if (!QUOTE_REVIEW_STATUSES.includes(status))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5BA1\u6838\u72B6\u6001\u65E0\u6548"));
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0)
+        return Promise.resolve(failure("INVALID_INPUT", "\u5206\u9875\u53C2\u6570\u65E0\u6548"));
+      return repo.listReviews(tokens.hash(token), status, limit, offset);
+    },
+    decideReview(token, reviewId, input) {
+      if (!text12(reviewId, 100) || !UUID13.test(reviewId))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5BA1\u6838 ID \u65E0\u6548"));
+      if (!record11(input) || input.action !== "approve" && input.action !== "reject")
+        return Promise.resolve(failure("INVALID_INPUT", "\u5BA1\u6838\u52A8\u4F5C\u65E0\u6548"));
+      if (input.note !== void 0 && (typeof input.note !== "string" || input.note.length > 500))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5BA1\u6838\u610F\u89C1\u65E0\u6548"));
+      return repo.decideReview(tokens.hash(token), reviewId, input.action, typeof input.note === "string" ? input.note : void 0);
+    }
+  };
+}
+
+// server/transport/quote-http.ts
+var TOKEN4 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+var REVIEWS = `${QUOTE_ROUTES.list}/reviews`;
+var REVIEW_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function createQuoteHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", "http://localhost");
+    if (url.pathname !== QUOTE_ROUTES.list && !url.pathname.startsWith(`${QUOTE_ROUTES.list}/`)) {
+      send(response, failure("NOT_FOUND", "\u62A5\u4EF7\u63A5\u53E3\u4E0D\u5B58\u5728"));
+      return;
+    }
+    const token = TOKEN4.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (!token) {
+      send(response, failure("UNAUTHORIZED", "\u8BF7\u5148\u767B\u5F55\u4E2D\u5FC3\u8D26\u53F7"));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === QUOTE_ROUTES.list) {
+      const limit = Number(url.searchParams.get("limit") ?? 25);
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      send(response, await service.list(token, {
+        caseId: url.searchParams.get("caseId") ?? void 0,
+        messageKey: url.searchParams.get("messageKey") ?? void 0,
+        limit,
+        offset
+      }));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === REVIEWS) {
+      const limit = Number(url.searchParams.get("limit") ?? 25);
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      send(response, await service.listReviews(token, {
+        status: url.searchParams.get("status") ?? void 0,
+        limit,
+        offset
+      }));
+      return;
+    }
+    const reviewParts = url.pathname.startsWith(`${REVIEWS}/`) ? url.pathname.slice(REVIEWS.length + 1).split("/").filter(Boolean) : [];
+    if (request2.method === "POST" && reviewParts.length === 2 && reviewParts[1] === "decision" && REVIEW_ID.test(reviewParts[0] ?? "")) {
+      const input = await body(request2, 16 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      send(response, await service.decideReview(token, reviewParts[0], input.data));
+      return;
+    }
+    if (request2.method === "POST" && url.pathname === QUOTE_ROUTES.upsert) {
+      const input = await body(request2, 2 * 1024 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      send(response, await service.upsert(token, input.data));
+      return;
+    }
+    const parts = url.pathname.slice(QUOTE_ROUTES.list.length + 1).split("/").filter(Boolean);
+    if (request2.method === "GET" && parts.length === 1) {
+      send(response, await service.detail(token, parts[0]));
+      return;
+    }
+    if (request2.method === "POST" && parts.length === 2 && parts[1] === "requery") {
+      const input = await body(request2, 2 * 1024 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      send(response, await service.requery(token, parts[0], input.data));
+      return;
+    }
+    if (request2.method === "POST" && parts.length === 2 && parts[1] === "select") {
+      const input = await body(request2, 64 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      send(response, await service.select(token, parts[0], input.data));
+      return;
+    }
+    if (request2.method === "POST" && parts.length === 2 && parts[1] === "review") {
+      const input = await body(request2, 64 * 1024);
+      if (!input.ok) {
+        send(response, input);
+        return;
+      }
+      send(response, await service.review(token, parts[0], input.data));
+      return;
+    }
+    send(response, failure("NOT_FOUND", "\u62A5\u4EF7\u63A5\u53E3\u4E0D\u5B58\u5728"));
+  };
+}
+
 // server/adapters/postgres/team-repository.ts
-var import_node_crypto30 = require("node:crypto");
+var import_node_crypto37 = require("node:crypto");
+var import_promises3 = require("node:fs/promises");
+var import_node_path6 = require("node:path");
+var import_node_zlib = require("node:zlib");
 
 // server/core/organization.ts
 function canPlaceOrganizationUnit(parent, child) {
@@ -16107,10 +19273,8 @@ function canCreateOrganizationAssignment(kind, role, existing, unitId) {
   if (kind === "company")
     return { allowed: false, reason: "\u516C\u53F8\u6839\u4E0D\u63A5\u53D7\u6210\u5458\u5173\u7CFB" };
   if (role === "member") {
-    if (kind !== "sales_team")
-      return { allowed: false, reason: "\u53EA\u6709\u9500\u552E\u56E2\u961F\u63A5\u53D7\u666E\u901A\u6210\u5458" };
     if (existing.some((item) => item.role === "member" && item.unitId !== unitId))
-      return { allowed: false, reason: "\u666E\u901A\u6210\u5458\u53EA\u80FD\u5C5E\u4E8E\u4E00\u4E2A\u9500\u552E\u56E2\u961F" };
+      return { allowed: false, reason: "\u666E\u901A\u6210\u5458\u53EA\u80FD\u5C5E\u4E8E\u4E00\u4E2A\u56E2\u961F" };
     if (existing.some((item) => item.role === "leader"))
       return { allowed: false, reason: "\u8D1F\u8D23\u4EBA\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u666E\u901A\u6210\u5458\u52A0\u5165\u56E2\u961F" };
     return { allowed: true };
@@ -16133,8 +19297,20 @@ var TEAM_ROUTES = {
   context: "/api/crm/team-context",
   candidates: "/api/crm/team-invite-candidates",
   teams: "/api/crm/teams",
-  invitations: "/api/crm/team-invitations"
+  invitations: "/api/crm/team-invitations",
+  messages: "/api/crm/team-messages",
+  messagesRead: "/api/crm/team-messages/read",
+  messagesUnread: "/api/crm/team-messages/unread",
+  conversations: "/api/crm/team-conversations",
+  directory: "/api/crm/team-directory",
+  presence: "/api/crm/team-presence",
+  files: "/api/crm/team-files",
+  archive: "/api/crm/team-conversations/archive",
+  events: "/api/crm/team-events"
 };
+function isTeamRoute(path4) {
+  return Object.values(TEAM_ROUTES).some((route) => path4 === route || path4.startsWith(`${route}/`));
+}
 var TEAM_LIMITS = {
   name: 80,
   groupName: 40,
@@ -16144,13 +19320,14 @@ var TEAM_LIMITS = {
   inviteBatch: 20,
   groupMembers: 100,
   bodyBytes: 8192,
-  key: 128
+  fileBodyBytes: 12 * 1024 * 1024,
+  key: 128,
+  messageBody: 2e3,
+  fileBytes: 8 * 1024 * 1024,
+  filename: 240
 };
 var TEAM_INVITATION_TTL_SECONDS = 604800;
 var DEFAULT_TEAM_UNIT_TYPE = "sales_team";
-function teamAcceptsMembers(unitType2) {
-  return (unitType2 ?? DEFAULT_TEAM_UNIT_TYPE) === "sales_team";
-}
 
 // server/adapters/postgres/team-schema.ts
 var TEAM_SCHEMA_VERSION = "051-team-foundation-public";
@@ -16632,7 +19809,130 @@ BEFORE UPDATE OR DELETE ON crm_org_dissolution_audits
 FOR EACH ROW EXECUTE FUNCTION crm_reject_org_dissolution_audit_change();
 `;
 
+// server/adapters/postgres/team-membership-schema.ts
+var UNIFORM_TEAM_MEMBERSHIP_VERSION = "068-uniform-team-membership";
+var UNIFORM_TEAM_MEMBERSHIP_SQL = `
+CREATE OR REPLACE FUNCTION crm_validate_org_assignment() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE unit_kind text;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.user_id::text, 0));
+  SELECT kind INTO unit_kind FROM crm_org_units WHERE unit_id=NEW.unit_id;
+  IF unit_kind IS NULL OR unit_kind='company' THEN RAISE EXCEPTION 'company root does not accept assignments'; END IF;
+  IF NEW.role='member' THEN
+    IF EXISTS(SELECT 1 FROM crm_org_assignments WHERE user_id=NEW.user_id AND role='leader') THEN
+      RAISE EXCEPTION 'leader cannot also be an ordinary member';
+    END IF;
+  ELSIF NEW.role='leader' THEN
+    IF EXISTS(SELECT 1 FROM crm_org_assignments WHERE user_id=NEW.user_id AND role='member') THEN
+      RAISE EXCEPTION 'ordinary member cannot also be a leader';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+`;
+
+// server/adapters/postgres/team-message-schema.ts
+var TEAM_MESSAGE_VERSION = "069-team-direct-messages";
+var TEAM_MESSAGE_SQL = `
+CREATE TABLE IF NOT EXISTS crm_team_messages (
+  message_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id uuid NOT NULL REFERENCES crm_org_units(unit_id),
+  sender_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  recipient_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  body text NOT NULL CHECK(btrim(body)<>'' AND char_length(body)<=2000),
+  operation_key text NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK(sender_user_id<>recipient_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_crm_team_messages_pair
+  ON crm_team_messages(team_id,sender_user_id,recipient_user_id,created_at,message_id);
+`;
+
+// server/adapters/postgres/team-presence-schema.ts
+var TEAM_PRESENCE_VERSION = "071-team-presence-reads";
+var TEAM_PRESENCE_SQL = `
+CREATE TABLE IF NOT EXISTS public.identity_desktop_presence (
+  user_id uuid PRIMARY KEY REFERENCES public.identity_users(user_id),
+  last_seen_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS idx_identity_desktop_presence_seen
+  ON public.identity_desktop_presence(last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS crm_team_message_reads (
+  team_id uuid NOT NULL REFERENCES crm_org_units(unit_id),
+  user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  peer_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  last_read_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY(team_id,user_id,peer_user_id),
+  CHECK(user_id<>peer_user_id)
+);
+`;
+
+// server/adapters/postgres/team-read-cursor-schema.ts
+var TEAM_READ_CURSOR_VERSION = "072-team-message-read-cursor";
+var TEAM_READ_CURSOR_SQL = `
+ALTER TABLE crm_team_message_reads
+  ADD COLUMN IF NOT EXISTS last_read_message_id uuid REFERENCES crm_team_messages(message_id);
+
+UPDATE crm_team_message_reads receipt
+SET last_read_message_id = (
+  SELECT m.message_id
+  FROM crm_team_messages m
+  WHERE m.team_id=receipt.team_id
+    AND ((m.sender_user_id=receipt.user_id AND m.recipient_user_id=receipt.peer_user_id)
+      OR (m.sender_user_id=receipt.peer_user_id AND m.recipient_user_id=receipt.user_id))
+    AND m.created_at<=receipt.last_read_at
+  ORDER BY m.created_at DESC,m.message_id DESC
+  LIMIT 1
+)
+WHERE receipt.last_read_message_id IS NULL;
+`;
+
+// server/adapters/postgres/team-file-schema.ts
+var TEAM_FILE_VERSION = "074-team-files";
+var TEAM_FILE_SQL = `
+CREATE TABLE IF NOT EXISTS crm_team_files (
+  file_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id uuid NOT NULL REFERENCES crm_org_units(unit_id),
+  purpose text NOT NULL CHECK(purpose IN ('team_attachment')),
+  filename text NOT NULL CHECK(btrim(filename)<>'' AND char_length(filename)<=240),
+  mime_type text NOT NULL CHECK(btrim(mime_type)<>'' AND char_length(mime_type)<=160),
+  bytes bigint NOT NULL CHECK(bytes>0 AND bytes<=8388608),
+  sha256 text NOT NULL CHECK(sha256 ~ '^[a-f0-9]{64}$'),
+  storage_key text NOT NULL CHECK(btrim(storage_key)<>''),
+  owner_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  deleted_at timestamptz,
+  UNIQUE(team_id,purpose,sha256)
+);
+CREATE INDEX IF NOT EXISTS idx_crm_team_files_team ON crm_team_files(team_id,created_at DESC) WHERE deleted_at IS NULL;
+ALTER TABLE crm_team_messages
+  ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'text' CHECK(kind IN ('text','attachment')),
+  ADD COLUMN IF NOT EXISTS payload_json jsonb;
+`;
+
+// server/adapters/postgres/team-archive-schema.ts
+var TEAM_ARCHIVE_VERSION = "075-team-archives";
+var TEAM_ARCHIVE_SQL = `
+ALTER TABLE crm_team_files DROP CONSTRAINT IF EXISTS crm_team_files_purpose_check;
+ALTER TABLE crm_team_files ADD CONSTRAINT crm_team_files_purpose_check CHECK(purpose IN ('team_attachment','team_archive'));
+`;
+
+// server/adapters/postgres/team-email-reference-schema.ts
+var TEAM_EMAIL_REFERENCE_VERSION = "076-team-email-reference";
+var TEAM_EMAIL_REFERENCE_SQL = `
+ALTER TABLE crm_team_messages DROP CONSTRAINT IF EXISTS crm_team_messages_kind_check;
+ALTER TABLE crm_team_messages ADD CONSTRAINT crm_team_messages_kind_check CHECK(kind IN ('text','attachment','email_ref'));
+`;
+
 // server/adapters/postgres/team-repository.ts
+var TEAM_FILE_ROOT = process.env.PROSPECTOR_FILE_ROOT ?? (0, import_node_path6.join)(process.cwd(), "data", "team-files");
+var TEAM_FILE_MIME = /* @__PURE__ */ new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "text/plain", "text/csv", "application/zip", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]);
+var BASE64_CHARS = /^[A-Za-z0-9+/]*={0,2}$/;
+var TEAM_ARCHIVE_MESSAGE_LIMIT = 2e4;
 var TEAM_SELECT = `
   SELECT u.unit_id AS "teamId",u.name,u.kind AS "organizationKind",
     CASE u.kind WHEN 'operations_group' THEN 'operations' ELSE 'sales_team' END AS "unitType",
@@ -16732,6 +20032,9 @@ var PostgresTeamRepository = class {
     this.log = log;
     assertCenterDatabasePool(pool);
   }
+  currentUser(tokenHash) {
+    return this.authorized(tokenHash, async (_client, actor) => success(actor.userId));
+  }
   async tx(work) {
     let client;
     try {
@@ -16809,9 +20112,16 @@ var PostgresTeamRepository = class {
         [LEGACY_ORGANIZATION_REPAIR_VERSION, LEGACY_ORGANIZATION_REPAIR_SQL],
         [ORGANIZATION_SCHEMA_VERSION, ORGANIZATION_SCHEMA_SQL],
         [ORGANIZATION_ASSIGNMENT_INTEGRITY_VERSION, ORGANIZATION_ASSIGNMENT_INTEGRITY_SQL],
-        [ORGANIZATION_DISSOLUTION_VERSION, ORGANIZATION_DISSOLUTION_SQL]
+        [ORGANIZATION_DISSOLUTION_VERSION, ORGANIZATION_DISSOLUTION_SQL],
+        [UNIFORM_TEAM_MEMBERSHIP_VERSION, UNIFORM_TEAM_MEMBERSHIP_SQL],
+        [TEAM_MESSAGE_VERSION, TEAM_MESSAGE_SQL],
+        [TEAM_PRESENCE_VERSION, TEAM_PRESENCE_SQL],
+        [TEAM_READ_CURSOR_VERSION, TEAM_READ_CURSOR_SQL],
+        [TEAM_FILE_VERSION, TEAM_FILE_SQL],
+        [TEAM_ARCHIVE_VERSION, TEAM_ARCHIVE_SQL],
+        [TEAM_EMAIL_REFERENCE_VERSION, TEAM_EMAIL_REFERENCE_SQL]
       ]) {
-        const checksum4 = (0, import_node_crypto30.createHash)("sha256").update(sql).digest("hex");
+        const checksum4 = (0, import_node_crypto37.createHash)("sha256").update(sql).digest("hex");
         const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [version4]);
         if (old.rows.length && old.rows[0].checksum !== checksum4)
           return failure("CONFLICT", `\u7EC4\u7EC7\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4: ${version4}`);
@@ -16874,6 +20184,43 @@ var PostgresTeamRepository = class {
   async assignment(client, userId, unitId) {
     return (await client.query('SELECT unit_id AS "unitId",role,is_primary AS "isPrimary" FROM crm_org_assignments WHERE user_id=$1 AND unit_id=$2 AND ended_at IS NULL ORDER BY is_primary DESC,created_at LIMIT 1', [userId, unitId])).rows[0] ?? null;
   }
+  async managerUser(client, userId) {
+    const row2 = (await client.query(`SELECT u.identity_admin AS "identityAdmin",ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role) AS roles FROM public.identity_users u LEFT JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active WHERE u.user_id=$1 AND u.active AND NOT u.must_change_password AND (u.identity_admin OR a.scope IS NOT NULL)`, [userId])).rows[0];
+    return !!row2 && canGovernOrganization({ userId, identityAdmin: row2.identityAdmin, roles: row2.roles });
+  }
+  async threadExists(client, teamId, leftUserId, rightUserId) {
+    return !!(await client.query("SELECT 1 FROM crm_team_messages WHERE team_id=$1 AND ((sender_user_id=$2 AND recipient_user_id=$3) OR (sender_user_id=$3 AND recipient_user_id=$2)) LIMIT 1", [teamId, leftUserId, rightUserId])).rows[0];
+  }
+  // Direct messages are company-wide: any two active CRM accounts may talk,
+  // regardless of whether they share a team.
+  async messageAccess(client, actor, _teamId, memberUserId) {
+    if (memberUserId === actor.userId)
+      return success(void 0);
+    const peer = await client.query(`SELECT 1 FROM public.identity_users u
+      LEFT JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active
+      WHERE u.user_id=$1 AND u.active AND NOT u.must_change_password AND (u.identity_admin OR a.scope IS NOT NULL)`, [memberUserId]);
+    if (!peer.rowCount)
+      return failure("NOT_FOUND", "\u5BF9\u65B9\u8D26\u53F7\u4E0D\u53EF\u7528");
+    return success(void 0);
+  }
+  async threadTeam(client, actorUserId, peerUserId, requested) {
+    const existing = await client.query("SELECT team_id FROM crm_team_messages WHERE (sender_user_id=$1 AND recipient_user_id=$2) OR (sender_user_id=$2 AND recipient_user_id=$1) ORDER BY created_at DESC,message_id DESC LIMIT 1", [actorUserId, peerUserId]);
+    if (existing.rows[0])
+      return String(existing.rows[0].team_id);
+    if (requested && await this.unit(client, requested))
+      return requested;
+    const team = await client.query(`SELECT a.unit_id FROM crm_org_assignments a JOIN crm_org_units u ON u.unit_id=a.unit_id AND u.dissolved_at IS NULL
+      WHERE a.user_id=ANY($1::uuid[]) AND a.ended_at IS NULL ORDER BY a.is_primary DESC,a.created_at LIMIT 1`, [[peerUserId, actorUserId]]);
+    return team.rows[0] ? String(team.rows[0].unit_id) : null;
+  }
+  async readReceipt(client, _teamId, userId, peerUserId) {
+    const row2 = await client.query(`SELECT receipt.last_read_at AS "lastReadAt",
+      (SELECT count(*)::int FROM crm_team_messages m WHERE m.sender_user_id=$2 AND m.recipient_user_id=$1
+        AND (receipt.last_read_at IS NULL OR m.created_at>receipt.last_read_at)) AS "unreadCount"
+      FROM (SELECT max(last_read_at) AS last_read_at FROM crm_team_message_reads WHERE user_id=$1 AND peer_user_id=$2) receipt`, [userId, peerUserId]);
+    const lastReadAt = row2.rows[0]?.lastReadAt;
+    return success({ lastReadAt: lastReadAt ? lastReadAt.toISOString() : null, unreadCount: Number(row2.rows[0]?.unreadCount ?? 0) });
+  }
   async canManageUnit(client, actor, unitId) {
     if (manager(actor))
       return true;
@@ -16892,12 +20239,10 @@ var PostgresTeamRepository = class {
     const row2 = (await client.query(`${TEAM_SELECT} WHERE u.unit_id=$1 AND u.dissolved_at IS NULL`, [unitId])).rows[0];
     if (!row2)
       return null;
-    const own = await this.assignment(client, actor.userId, unitId);
-    const full = !!own || await this.canManageUnit(client, actor, unitId);
-    return { row: row2, team: await this.snapshot(client, row2, full, actor.userId, await this.canDissolveUnit(client, actor, unitId)) };
+    return { row: row2, team: await this.snapshot(client, row2, true, actor.userId, await this.canDissolveUnit(client, actor, unitId)) };
   }
   async teamForUser(client, actor) {
-    const row2 = (await client.query(`${TEAM_SELECT} JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.kind='sales_team' AND u.dissolved_at IS NULL ORDER BY a.is_primary DESC,a.created_at,a.unit_id LIMIT 1`, [actor.userId])).rows[0];
+    const row2 = (await client.query(`${TEAM_SELECT} JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.dissolved_at IS NULL ORDER BY a.is_primary DESC,a.created_at,a.unit_id LIMIT 1`, [actor.userId])).rows[0];
     return row2 ? this.snapshot(client, row2, true, actor.userId, await this.canDissolveUnit(client, actor, row2.teamId)) : null;
   }
   async expireInvitations(client) {
@@ -16912,7 +20257,7 @@ var PostgresTeamRepository = class {
   async invitations(client, actor, teamId, canManageCurrent) {
     await this.expireInvitations(client);
     const incoming = (await client.query(`${INVITATION_SELECT} WHERE i.invitee_user_id=$1 AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [actor.userId])).rows;
-    const outgoing = manager(actor) ? (await client.query(`${INVITATION_SELECT} WHERE ($1::uuid IS NULL OR i.unit_id=$1) AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [teamId])).rows : teamId && canManageCurrent ? (await client.query(`${INVITATION_SELECT} WHERE i.unit_id=$1 AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [teamId])).rows : [];
+    const outgoing = manager(actor) ? (await client.query(`${INVITATION_SELECT} WHERE i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`)).rows : teamId && canManageCurrent ? (await client.query(`${INVITATION_SELECT} WHERE i.unit_id=$1 AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [teamId])).rows : [];
     return {
       incoming: incoming.map((row2) => mapInvitation(row2, actor, manager(actor) || canManageCurrent && row2.teamId === teamId)),
       outgoing: outgoing.map((row2) => mapInvitation(row2, actor, manager(actor) || canManageCurrent && row2.teamId === teamId))
@@ -16921,29 +20266,32 @@ var PostgresTeamRepository = class {
   async adminTeamRows(client, suffix = "", params = []) {
     return (await client.query(`${ADMIN_TEAM_SELECT} WHERE u.kind<>'company' AND u.dissolved_at IS NULL ${suffix}`, params)).rows;
   }
-  async organizationContext(client, actor) {
-    const companyRow = (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE kind='company'`)).rows[0];
+  async organizationContext(client) {
+    const companyRow = (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version,
+      COALESCE((SELECT display_name FROM public.identity_users WHERE identity_admin AND active ORDER BY created_at,user_id LIMIT 1),'admin') AS "leaderName"
+      FROM crm_org_units WHERE kind='company'`)).rows[0];
     if (!companyRow)
       throw new Error("company root missing");
-    const rows = manager(actor) ? (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE kind<>'company' AND dissolved_at IS NULL ORDER BY created_at DESC,unit_id`)).rows : (await client.query('SELECT u.unit_id AS "unitId",u.kind,u.parent_unit_id AS "parentUnitId",u.name,u.version FROM crm_org_units u JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.dissolved_at IS NULL ORDER BY u.created_at DESC,u.unit_id', [actor.userId])).rows;
+    const rows = (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE kind<>'company' AND dissolved_at IS NULL ORDER BY created_at DESC,unit_id`)).rows;
     return { company: companyRow, visibleUnits: rows };
   }
   async contextIn(client, actor) {
     const team = await this.teamForUser(client, actor);
     const teamManageable = team ? await this.canManageInvitation(client, actor, team.teamId) : false;
     const invitations = await this.invitations(client, actor, team?.teamId ?? null, teamManageable);
-    const allAdminTeams = manager(actor) ? treeOrder(await this.adminTeamRows(client)) : [];
+    const allAdminTeams = treeOrder(await this.adminTeamRows(client));
     const managedTeams = manager(actor) ? allAdminTeams : actor.roles.includes("sales") ? treeOrder(await this.adminTeamRows(client, "AND EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.unit_id=u.unit_id AND a.user_id=$1 AND a.role='leader' AND a.ended_at IS NULL)", [actor.userId])) : [];
+    const businessRole = actor.roles.length === 1 ? actor.roles[0] : null;
     return success({
       team,
       managedTeams,
       incomingInvitations: invitations.incoming,
       outgoingInvitations: invitations.outgoing,
-      canCreate: manager(actor) || !team && actor.roles.includes("sales"),
+      canCreate: businessRole === "operations" || businessRole === "sales" && !team,
       canAdmin: manager(actor),
       isSuperAdmin: superAdmin(actor),
       adminTeams: allAdminTeams,
-      organization: await this.organizationContext(client, actor)
+      organization: await this.organizationContext(client)
     });
   }
   context(tokenHash) {
@@ -16951,9 +20299,6 @@ var PostgresTeamRepository = class {
   }
   detail(tokenHash, teamId) {
     return this.authorized(tokenHash, async (client, actor) => {
-      const own = await this.assignment(client, actor.userId, teamId);
-      if (!manager(actor) && !own)
-        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
       const found = await this.teamById(client, teamId, actor);
       if (!found || found.row.organizationKind === "company")
         return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
@@ -16968,7 +20313,7 @@ var PostgresTeamRepository = class {
     return this.authorized(tokenHash, async (client, actor) => {
       const leads = (await client.query("SELECT 1 FROM crm_org_assignments WHERE user_id=$1 AND role='leader' AND ended_at IS NULL LIMIT 1", [actor.userId])).rows.length > 0;
       const role = query2.role ?? "member";
-      const kind = role === "leader" && query2.unitType === "operations" ? "operations_group" : "sales_team";
+      const kind = query2.unitType === "operations" ? "operations_group" : "sales_team";
       if (role === "leader" && !manager(actor))
         return failure("FORBIDDEN", "\u53EA\u6709\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u8C03\u6574\u8D1F\u8D23\u4EBA");
       const creatingSalesTeam = query2.purpose === "create" && role === "member";
@@ -16985,7 +20330,7 @@ var PostgresTeamRepository = class {
       const activeRoles = "(SELECT array_agg(g.role ORDER BY g.role) FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active)";
       const salesOnly = `NOT u.identity_admin AND ${activeRoles}=ARRAY['sales']::text[]`;
       const operationsOnly = `NOT u.identity_admin AND ${activeRoles}=ARRAY['operations']::text[]`;
-      const filter = role === "leader" ? kind === "sales_team" ? `WHERE ${access2} AND ${salesOnly} AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.role='member' AND a.ended_at IS NULL) AND ${searchable}` : `WHERE ${access2} AND ${operationsOnly} AND ${searchable}` : `WHERE ${access2} AND u.user_id<>$2 AND ${salesOnly} AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL) AND ${searchable}`;
+      const filter = role === "leader" ? kind === "sales_team" ? `WHERE ${access2} AND ${salesOnly} AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.role='member' AND a.ended_at IS NULL) AND ${searchable}` : `WHERE ${access2} AND ${operationsOnly} AND ${searchable}` : `WHERE ${access2} AND u.user_id<>$2 AND ${kind === "operations_group" ? operationsOnly : salesOnly} AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL) AND ${searchable}`;
       const count2 = await client.query(`SELECT count(*)::int AS count FROM public.identity_users u LEFT JOIN public.identity_login_emails e USING(user_id) ${filter}`, role === "member" ? [search, actor.userId] : [search]);
       const leaderCount = role === "leader" ? `,(SELECT count(*)::int FROM crm_org_assignments la JOIN crm_org_units lu ON lu.unit_id=la.unit_id WHERE la.user_id=u.user_id AND la.role='leader' AND la.ended_at IS NULL AND lu.kind='${kind}' AND lu.dissolved_at IS NULL) AS "leaderTeamCount"` : "";
       const items = (await client.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",e.email${leaderCount} FROM public.identity_users u LEFT JOIN public.identity_login_emails e USING(user_id) ${filter} ORDER BY CASE WHEN u.user_id=$2 THEN 0 ELSE 1 END,u.display_name,u.user_id LIMIT $3 OFFSET $4`, [search, actor.userId, query2.limit, query2.offset])).rows;
@@ -17014,45 +20359,44 @@ var PostgresTeamRepository = class {
     const roles = row2.roles;
     return kind === "sales_team" ? !row2.identityAdmin && roles.length === 1 && roles[0] === "sales" : !row2.identityAdmin && roles.length === 1 && roles[0] === "operations";
   }
-  async validInvitees(client, userIds2) {
+  async validInvitees(client, userIds2, kind) {
     if (!userIds2.length)
       return true;
-    const row2 = (await client.query(`SELECT count(*)::int AS count FROM public.identity_users u WHERE u.user_id=ANY($1::uuid[]) AND u.active AND NOT u.must_change_password AND NOT u.identity_admin AND EXISTS(SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND a.active) AND (SELECT array_agg(g.role ORDER BY g.role) FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active)=ARRAY['sales']::text[] AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL)`, [userIds2])).rows[0];
+    const expectedRole = kind === "operations_group" ? "operations" : "sales";
+    const row2 = (await client.query(`SELECT count(*)::int AS count FROM public.identity_users u WHERE u.user_id=ANY($1::uuid[]) AND u.active AND NOT u.must_change_password AND NOT u.identity_admin AND EXISTS(SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND a.active) AND (SELECT array_agg(g.role ORDER BY g.role) FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active)=ARRAY[$2]::text[] AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL)`, [userIds2, expectedRole])).rows[0];
     return row2.count === userIds2.length;
   }
-  async cache(client, actorId, operation, key, input) {
-    const digest2 = (0, import_node_crypto30.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
-    const old = (await client.query("SELECT digest,response FROM crm_org_idempotency WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3 FOR UPDATE", [actorId, operation, key])).rows[0];
+  async cache(client, actorId, operation, key2, input) {
+    const digest2 = (0, import_node_crypto37.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const old = (await client.query("SELECT digest,response FROM crm_org_idempotency WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3 FOR UPDATE", [actorId, operation, key2])).rows[0];
     if (!old)
       return { state: "new", digest: digest2 };
     if (old.digest !== digest2)
       return { state: "conflict", digest: digest2 };
     return { state: "replay", digest: digest2, response: old.response };
   }
-  remember(client, actorId, operation, key, digest2, response) {
-    return client.query("INSERT INTO crm_org_idempotency(actor_id,operation,idempotency_key,digest,response) VALUES($1,$2,$3,$4,$5)", [actorId, operation, key, digest2, JSON.stringify(response)]);
+  remember(client, actorId, operation, key2, digest2, response) {
+    return client.query("INSERT INTO crm_org_idempotency(actor_id,operation,idempotency_key,digest,response) VALUES($1,$2,$3,$4,$5)", [actorId, operation, key2, digest2, JSON.stringify(response)]);
   }
   create(tokenHash, input) {
     return this.authorizedTransaction(tokenHash, async (client, actor) => {
-      const cached2 = await this.cache(client, actor.userId, "organization.create", input.idempotencyKey, input);
-      if (cached2.state === "replay" && cached2.response)
-        return success(cached2.response);
-      if (cached2.state === "conflict")
+      const cached3 = await this.cache(client, actor.userId, "organization.create", input.idempotencyKey, input);
+      if (cached3.state === "replay" && cached3.response)
+        return success(cached3.response);
+      if (cached3.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const kind = (input.unitType ?? DEFAULT_TEAM_UNIT_TYPE) === "operations" ? "operations_group" : "sales_team";
-      const admin = superAdmin(actor);
-      const roleAllowsKind = admin || kind === "operations_group" && actor.roles.includes("operations") || kind === "sales_team" && actor.roles.includes("sales");
+      const businessRole = actor.roles.length === 1 ? actor.roles[0] : null;
+      const roleAllowsKind = businessRole === "operations" && kind === "operations_group" || businessRole === "sales" && kind === "sales_team";
       if (!roleAllowsKind)
-        return failure("FORBIDDEN", kind === "operations_group" ? "\u53EA\u6709\u8FD0\u8425\u8D26\u53F7\u53EF\u4EE5\u521B\u5EFA\u8FD0\u8425\u7EC4" : "\u53EA\u6709\u9500\u552E\u8D26\u53F7\u53EF\u4EE5\u521B\u5EFA\u9500\u552E\u56E2\u961F");
+        return failure("FORBIDDEN", kind === "operations_group" ? "\u53EA\u6709\u5355\u4E00\u7BA1\u7406\u5458\u8EAB\u4EFD\u53EF\u4EE5\u521B\u5EFA\u8FD0\u8425\u7EC4" : "\u53EA\u6709\u5355\u4E00\u666E\u901A\u7528\u6237\u8EAB\u4EFD\u53EF\u4EE5\u521B\u5EFA\u9500\u552E\u56E2\u961F");
       if (kind === "sales_team" && input.parentTeamId)
         return failure("INVALID_INPUT", "\u9500\u552E\u56E2\u961F\u4E0D\u80FD\u6302\u5728\u8FD0\u8425\u7EC4\uFF1B\u8BF7\u901A\u8FC7\u5206\u914D\u7EBF\u7D22\u5EFA\u7ACB\u56E2\u961F\u5173\u7CFB");
-      if (!admin && input.leaderUserId && input.leaderUserId !== actor.userId)
+      if (input.leaderUserId && input.leaderUserId !== actor.userId)
         return failure("FORBIDDEN", "\u53EA\u80FD\u628A\u5F53\u524D\u8D26\u53F7\u8BBE\u4E3A\u8D1F\u8D23\u4EBA");
-      if (admin && !input.leaderUserId)
-        return failure("INVALID_INPUT", "\u7BA1\u7406\u89D2\u8272\u521B\u5EFA\u7EC4\u7EC7\u65F6\u5FC5\u987B\u660E\u786E\u6307\u5B9A\u8D1F\u8D23\u4EBA");
-      const leaderUserId = admin ? input.leaderUserId : actor.userId;
-      if (!admin && (await this.assignmentsForUser(client, actor.userId)).some((item) => item.role === "member"))
-        return failure("CONFLICT", "\u5F53\u524D\u8D26\u53F7\u5DF2\u7ECF\u52A0\u5165\u9500\u552E\u56E2\u961F");
+      const leaderUserId = actor.userId;
+      if ((await this.assignmentsForUser(client, actor.userId)).some((item) => item.role === "member"))
+        return failure("CONFLICT", "\u5F53\u524D\u8D26\u53F7\u5DF2\u7ECF\u52A0\u5165\u56E2\u961F\uFF0C\u4E0D\u80FD\u4F5C\u4E3A\u521B\u5EFA\u8005");
       if (input.inviteeUserIds.includes(leaderUserId))
         return failure("INVALID_INPUT", "\u8D1F\u8D23\u4EBA\u4E0D\u80FD\u540C\u65F6\u4F5C\u4E3A\u53D7\u9080\u666E\u901A\u6210\u5458");
       if (!await this.validLeader(client, leaderUserId, kind))
@@ -17066,61 +20410,57 @@ var PostgresTeamRepository = class {
         return failure("NOT_FOUND", "\u4E0A\u7EA7\u7EC4\u7EC7\u4E0D\u5B58\u5728");
       if (!canPlaceOrganizationUnit(parent.kind, kind))
         return failure("INVALID_INPUT", "\u7EC4\u7EC7\u5C42\u7EA7\u4E0D\u7B26\u5408\u516C\u53F8\u3001\u8FD0\u8425\u7EC4\u3001\u9500\u552E\u56E2\u961F\u89C4\u5219");
-      if (kind !== "sales_team" && input.inviteeUserIds.length)
-        return failure("INVALID_INPUT", "\u8FD0\u8425\u7EC4\u4E0D\u63A5\u53D7\u666E\u901A\u6210\u5458\u9080\u8BF7");
       const name = input.name.trim();
       if ((await client.query("SELECT 1 FROM crm_org_units WHERE parent_unit_id=$1 AND lower(btrim(name))=lower(btrim($2)) AND dissolved_at IS NULL", [parentUnitId, name])).rows.length)
         return failure("CONFLICT", "\u540C\u4E00\u5C42\u7EA7\u5DF2\u5B58\u5728\u540C\u540D\u7EC4\u7EC7");
-      if (!await this.validInvitees(client, input.inviteeUserIds))
+      if (!await this.validInvitees(client, input.inviteeUserIds, kind))
         return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
-      const teamId = (0, import_node_crypto30.randomUUID)();
+      const teamId = (0, import_node_crypto37.randomUUID)();
       await client.query("INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,created_by) VALUES($1,$2,$3,$4,$5)", [teamId, kind, parentUnitId, name, actor.userId]);
       const assigned = await this.insertAssignment(client, leaderUserId, teamId, kind, "leader");
       if (!assigned.ok)
         return assigned;
       for (const inviteeUserId of input.inviteeUserIds)
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)", [(0, import_node_crypto30.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)", [(0, import_node_crypto37.randomUUID)(), teamId, actor.userId, inviteeUserId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
       const receipt = { teamId, context: context.data };
-      await this.remember(client, actor.userId, "organization.create", input.idempotencyKey, cached2.digest, receipt);
+      await this.remember(client, actor.userId, "organization.create", input.idempotencyKey, cached3.digest, receipt);
       return success(receipt);
     });
   }
   invite(tokenHash, teamId, input) {
     return this.authorizedTransaction(tokenHash, async (client, actor) => {
       const operation = `organization.invite:${teamId}`;
-      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
-      if (cached2.state === "replay" && cached2.response)
-        return success(cached2.response);
-      if (cached2.state === "conflict")
+      const cached3 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached3.state === "replay" && cached3.response)
+        return success(cached3.response);
+      if (cached3.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const team = (await client.query('SELECT unit_id AS "unitId",kind FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
       if (!team)
         return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
-      if (!teamAcceptsMembers(team.kind === "operations_group" ? "operations" : "sales_team"))
-        return failure("INVALID_INPUT", "\u8FD0\u8425\u7EC4\u4E0D\u63A5\u53D7\u6210\u5458\u9080\u8BF7");
       if (!await this.canManageUnit(client, actor, teamId))
         return failure("FORBIDDEN", "\u53EA\u6709\u56E2\u961F\u8D1F\u8D23\u4EBA\u53EF\u4EE5\u9080\u8BF7\u6210\u5458");
-      if (!await this.validInvitees(client, input.userIds))
+      if (!await this.validInvitees(client, input.userIds, team.kind))
         return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
       for (const inviteeUserId of input.userIds)
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto30.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto37.randomUUID)(), teamId, actor.userId, inviteeUserId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
-      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached3.digest, context.data);
       return success(context.data);
     });
   }
   decide(tokenHash, invitationId, action, input) {
     return this.authorizedTransaction(tokenHash, async (client, actor) => {
       const operation = `organization.invitation.${action}:${invitationId}`;
-      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
-      if (cached2.state === "replay" && cached2.response)
-        return success(cached2.response);
-      if (cached2.state === "conflict")
+      const cached3 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached3.state === "replay" && cached3.response)
+        return success(cached3.response);
+      if (cached3.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const row2 = (await client.query(`SELECT i.invitation_id AS "invitationId",i.unit_id AS "teamId",i.inviter_user_id AS "inviterUserId",i.invitee_user_id AS "inviteeUserId",i.status,i.version,i.expires_at AS "expiresAt",i.expires_at<=clock_timestamp() AS expired,u.kind FROM crm_org_invitations i JOIN crm_org_units u ON u.unit_id=i.unit_id AND u.dissolved_at IS NULL WHERE i.invitation_id=$1 FOR UPDATE OF i,u`, [invitationId])).rows[0];
       if (!row2)
@@ -17134,7 +20474,7 @@ var PostgresTeamRepository = class {
         const expired = await this.contextIn(client, actor);
         if (!expired.ok)
           return expired;
-        await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, expired.data);
+        await this.remember(client, actor.userId, operation, input.idempotencyKey, cached3.digest, expired.data);
         return success(expired.data);
       }
       if (row2.status === desired)
@@ -17144,9 +20484,7 @@ var PostgresTeamRepository = class {
       if (row2.version !== input.expectedVersion)
         return failure("CONFLICT", "\u9080\u8BF7\u7248\u672C\u5DF2\u53D8\u5316");
       if (action === "accept") {
-        if (row2.kind !== "sales_team")
-          return failure("INVALID_INPUT", "\u8FD0\u8425\u7EC4\u4E0D\u63A5\u53D7\u666E\u901A\u6210\u5458");
-        if (!await this.validInvitees(client, [actor.userId]))
+        if (!await this.validInvitees(client, [actor.userId], row2.kind))
           return failure("INVALID_INPUT", "\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u8D26\u53F7\u89D2\u8272\u4E0D\u7B26\u5408\u666E\u901A\u6210\u5458\u8981\u6C42");
         const assigned = await this.insertAssignment(client, actor.userId, row2.teamId, row2.kind, "member");
         if (!assigned.ok)
@@ -17156,17 +20494,17 @@ var PostgresTeamRepository = class {
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
-      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached3.digest, context.data);
       return success(context.data);
     });
   }
   move(tokenHash, teamId, input) {
     return this.authorizedTransaction(tokenHash, async (client, actor) => {
       const operation = `organization.move:${teamId}`;
-      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
-      if (cached2.state === "replay" && cached2.response)
-        return success(cached2.response);
-      if (cached2.state === "conflict")
+      const cached3 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached3.state === "replay" && cached3.response)
+        return success(cached3.response);
+      if (cached3.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const current = (await client.query('SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
       if (!current || current.kind === "company")
@@ -17196,17 +20534,17 @@ var PostgresTeamRepository = class {
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
-      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached3.digest, context.data);
       return success(context.data);
     });
   }
   dissolve(tokenHash, teamId, input) {
     return this.authorizedTransaction(tokenHash, async (client, actor) => {
       const operation = `organization.dissolve:${teamId}`;
-      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
-      if (cached2.state === "replay" && cached2.response)
-        return success(cached2.response);
-      if (cached2.state === "conflict")
+      const cached3 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached3.state === "replay" && cached3.response)
+        return success(cached3.response);
+      if (cached3.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const current = (await client.query('SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version,dissolved_at AS "dissolvedAt" FROM crm_org_units WHERE unit_id=$1 FOR UPDATE', [teamId])).rows[0];
       if (!current || current.kind === "company")
@@ -17238,17 +20576,17 @@ var PostgresTeamRepository = class {
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
-      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached3.digest, context.data);
       return success(context.data);
     });
   }
   assignLeader(tokenHash, teamId, input) {
     return this.authorizedTransaction(tokenHash, async (client, actor) => {
       const operation = `organization.leader:${teamId}`;
-      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
-      if (cached2.state === "replay" && cached2.response)
-        return success(cached2.response);
-      if (cached2.state === "conflict")
+      const cached3 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached3.state === "replay" && cached3.response)
+        return success(cached3.response);
+      if (cached3.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const team = (await client.query('SELECT unit_id AS "unitId",kind,version FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
       if (!team || team.kind === "company")
@@ -17277,21 +20615,21 @@ var PostgresTeamRepository = class {
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
-      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached3.digest, context.data);
       return success(context.data);
     });
   }
   adjustMember(tokenHash, teamId, input) {
     return this.authorizedTransaction(tokenHash, async (client, actor) => {
       const operation = `organization.member.${input.action}:${teamId}:${input.userId}`;
-      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
-      if (cached2.state === "replay" && cached2.response)
-        return success(cached2.response);
-      if (cached2.state === "conflict")
+      const cached3 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached3.state === "replay" && cached3.response)
+        return success(cached3.response);
+      if (cached3.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const team = (await client.query('SELECT unit_id AS "unitId",kind,version FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
-      if (!team || team.kind !== "sales_team")
-        return failure("INVALID_INPUT", "\u53EA\u6709\u9500\u552E\u56E2\u961F\u53EF\u4EE5\u8C03\u6574\u666E\u901A\u6210\u5458");
+      if (!team)
+        return failure("INVALID_INPUT", "\u53EA\u6709\u56E2\u961F\u53EF\u4EE5\u8C03\u6574\u666E\u901A\u6210\u5458");
       if (team.version !== input.expectedVersion)
         return failure("CONFLICT", "\u56E2\u961F\u7248\u672C\u5DF2\u53D8\u5316");
       if (input.action === "leave" && input.userId !== actor.userId)
@@ -17299,9 +20637,9 @@ var PostgresTeamRepository = class {
       if (input.action !== "leave" && !await this.canManageUnit(client, actor, teamId))
         return failure("FORBIDDEN", "\u53EA\u6709\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u8C03\u6574\u6210\u5458");
       if (input.action === "add") {
-        if (!await this.validInvitees(client, [input.userId]))
+        if (!await this.validInvitees(client, [input.userId], team.kind))
           return failure("INVALID_INPUT", "\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto30.randomUUID)(), teamId, actor.userId, input.userId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto37.randomUUID)(), teamId, actor.userId, input.userId]);
       } else {
         const existing = await this.assignment(client, input.userId, teamId);
         if (existing?.role !== "member")
@@ -17313,21 +20651,21 @@ var PostgresTeamRepository = class {
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
-      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached3.digest, context.data);
       return success(context.data);
     });
   }
   saveMemberGroup(tokenHash, teamId, input) {
     return this.authorizedTransaction(tokenHash, async (client, actor) => {
       const operation = `organization.group.save:${teamId}:${input.groupId ?? "new"}`;
-      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
-      if (cached2.state === "replay" && cached2.response)
-        return success(cached2.response);
-      if (cached2.state === "conflict")
+      const cached3 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached3.state === "replay" && cached3.response)
+        return success(cached3.response);
+      if (cached3.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const team = (await client.query('SELECT unit_id AS "unitId",kind FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0];
-      if (!team || team.kind !== "sales_team")
-        return failure("INVALID_INPUT", "\u53EA\u6709\u9500\u552E\u56E2\u961F\u53EF\u4EE5\u7EF4\u62A4\u5C55\u793A\u5206\u7EC4");
+      if (!team)
+        return failure("INVALID_INPUT", "\u53EA\u6709\u56E2\u961F\u53EF\u4EE5\u7EF4\u62A4\u5C55\u793A\u5206\u7EC4");
       if (!await this.canManageUnit(client, actor, teamId))
         return failure("FORBIDDEN", "\u53EA\u6709\u8D1F\u8D23\u4EBA\u6216\u7BA1\u7406\u89D2\u8272\u53EF\u4EE5\u7EF4\u62A4\u5C55\u793A\u5206\u7EC4");
       if (input.groupId) {
@@ -17347,7 +20685,7 @@ var PostgresTeamRepository = class {
         if (occupied.rows.length)
           return failure("CONFLICT", "\u6210\u5458\u5DF2\u7ECF\u5728\u5176\u4ED6\u5C55\u793A\u5206\u7EC4");
       }
-      const groupId = input.groupId ?? (0, import_node_crypto30.randomUUID)();
+      const groupId = input.groupId ?? (0, import_node_crypto37.randomUUID)();
       if (!input.groupId)
         await client.query("INSERT INTO crm_org_member_groups(group_id,unit_id,name) VALUES($1,$2,$3)", [groupId, teamId, input.name.trim()]);
       await client.query("DELETE FROM crm_org_member_group_members WHERE group_id=$1", [groupId]);
@@ -17356,17 +20694,17 @@ var PostgresTeamRepository = class {
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
-      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached3.digest, context.data);
       return success(context.data);
     });
   }
   deleteMemberGroup(tokenHash, teamId, groupId, input) {
     return this.authorizedTransaction(tokenHash, async (client, actor) => {
       const operation = `organization.group.delete:${teamId}:${groupId}`;
-      const cached2 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
-      if (cached2.state === "replay" && cached2.response)
-        return success(cached2.response);
-      if (cached2.state === "conflict")
+      const cached3 = await this.cache(client, actor.userId, operation, input.idempotencyKey, input);
+      if (cached3.state === "replay" && cached3.response)
+        return success(cached3.response);
+      if (cached3.state === "conflict")
         return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u8BF7\u6C42");
       const group = (await client.query("SELECT version FROM crm_org_member_groups WHERE group_id=$1 AND unit_id=$2 FOR UPDATE", [groupId, teamId])).rows[0];
       if (!group)
@@ -17379,28 +20717,334 @@ var PostgresTeamRepository = class {
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
-      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached2.digest, context.data);
+      await this.remember(client, actor.userId, operation, input.idempotencyKey, cached3.digest, context.data);
       return success(context.data);
+    });
+  }
+  directory(tokenHash, query2) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const rows = (await client.query(
+        `SELECT u.user_id AS "userId",u.display_name AS "displayName",e.email,
+                unit.unit_id AS "teamId",unit.name AS "teamName",
+                (u.identity_admin OR EXISTS(
+                  SELECT 1 FROM public.identity_product_grants g
+                  WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role IN ('admin','operations')
+                )) AS manager,
+                CASE WHEN p.last_seen_at > now()-interval '90 seconds' THEN 'online' ELSE 'offline' END AS presence,
+                COALESCE((
+                  SELECT count(*)::int FROM crm_team_messages m
+                  LEFT JOIN LATERAL (SELECT max(last_read_at) AS last_read_at FROM crm_team_message_reads WHERE user_id=$2 AND peer_user_id=m.sender_user_id) r ON true
+                  WHERE m.sender_user_id=u.user_id AND m.recipient_user_id=$2
+                    AND (r.last_read_at IS NULL OR m.created_at>r.last_read_at)
+                ),0) AS "unreadCount"
+         FROM public.identity_users u
+         JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active
+         LEFT JOIN public.identity_desktop_presence p ON p.user_id=u.user_id
+         LEFT JOIN LATERAL (
+           SELECT a.unit_id,o.name FROM crm_org_assignments a JOIN crm_org_units o ON o.unit_id=a.unit_id
+           WHERE a.user_id=u.user_id AND a.ended_at IS NULL AND o.dissolved_at IS NULL
+           ORDER BY a.is_primary DESC,a.created_at DESC LIMIT 1
+         ) unit ON true
+         LEFT JOIN LATERAL (
+           SELECT email FROM public.identity_login_emails WHERE user_id=u.user_id ORDER BY verified_at NULLS LAST,email LIMIT 1
+         ) e ON true
+         WHERE u.active AND NOT u.must_change_password
+         ORDER BY u.display_name,u.user_id LIMIT $1`,
+        [query2.limit, actor.userId]
+      )).rows;
+      return success({ items: rows.map((row2) => ({ ...row2, teamId: row2.teamId ? String(row2.teamId) : null, teamName: row2.teamName ? String(row2.teamName) : null, email: row2.email ? String(row2.email) : null, manager: Boolean(row2.manager), presence: row2.presence === "online" ? "online" : "offline", unreadCount: Number(row2.unreadCount ?? 0) })) });
+    });
+  }
+  conversations(tokenHash, query2) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const rows = (await client.query(`
+        SELECT latest.peer_user_id AS "userId",latest.team_id AS "teamId",u.display_name AS "displayName",e.email,latest.body AS "lastMessage",latest.created_at AS "lastMessageAt",
+          latest.message_id AS "lastMessageId",latest.sender_user_id=$2 AS mine,
+          receipt.last_read_at AS "lastReadAt",
+          CASE WHEN presence.last_seen_at > now()-interval '90 seconds' THEN 'online' ELSE 'offline' END AS presence,
+          COALESCE(unread.unread_count,0)::int AS "unreadCount"
+        FROM (
+          SELECT CASE WHEN m.sender_user_id=$2 THEN m.recipient_user_id ELSE m.sender_user_id END AS peer_user_id,m.body,m.created_at,m.sender_user_id,m.message_id,
+            m.team_id,
+            ROW_NUMBER() OVER (PARTITION BY CASE WHEN m.sender_user_id=$2 THEN m.recipient_user_id ELSE m.sender_user_id END ORDER BY m.created_at DESC,m.message_id DESC) AS message_rank
+          FROM crm_team_messages m
+          WHERE m.sender_user_id=$2 OR m.recipient_user_id=$2
+        ) latest
+        JOIN public.identity_users u ON u.user_id=latest.peer_user_id
+        LEFT JOIN LATERAL (SELECT email FROM public.identity_login_emails WHERE user_id=u.user_id ORDER BY verified_at NULLS LAST,email LIMIT 1) e ON true
+        LEFT JOIN LATERAL (SELECT max(last_read_at) AS last_read_at FROM crm_team_message_reads WHERE user_id=$2 AND peer_user_id=latest.peer_user_id) receipt ON true
+        LEFT JOIN public.identity_desktop_presence presence ON presence.user_id=latest.peer_user_id
+        LEFT JOIN LATERAL (
+          SELECT count(*)::int AS unread_count
+          FROM crm_team_messages unread_message
+          WHERE unread_message.sender_user_id=latest.peer_user_id AND unread_message.recipient_user_id=$2
+            AND (receipt.last_read_at IS NULL OR unread_message.created_at>receipt.last_read_at)
+        ) unread ON true
+        WHERE latest.message_rank=1
+        ORDER BY latest.created_at DESC,latest.peer_user_id
+        LIMIT $1
+      `, [query2.limit, actor.userId])).rows;
+      const items = [];
+      for (const row2 of rows)
+        items.push({ ...row2, manager: await this.managerUser(client, row2.userId), lastMessageAt: row2.lastMessageAt.toISOString(), lastReadAt: row2.lastReadAt ? row2.lastReadAt.toISOString() : null });
+      return success({ items });
+    });
+  }
+  messages(tokenHash, query2) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access2 = await this.messageAccess(client, actor, query2.teamId ?? "", query2.memberUserId);
+      if (!access2.ok)
+        return access2;
+      const before = query2.beforeMessageId ? "AND (m.created_at,m.message_id) < (SELECT anchor.created_at,anchor.message_id FROM crm_team_messages anchor WHERE anchor.message_id=$4)" : "";
+      const params = [actor.userId, query2.memberUserId, query2.limit + 1, ...query2.beforeMessageId ? [query2.beforeMessageId] : []];
+      const rows = await client.query(`SELECT m.message_id AS "messageId",m.team_id AS "teamId",m.sender_user_id AS "senderUserId",su.display_name AS "senderName",m.recipient_user_id AS "recipientUserId",ru.display_name AS "recipientName",m.body,m.kind,m.payload_json AS payload,m.created_at AS "createdAt" FROM crm_team_messages m JOIN public.identity_users su ON su.user_id=m.sender_user_id JOIN public.identity_users ru ON ru.user_id=m.recipient_user_id WHERE ((m.sender_user_id=$1 AND m.recipient_user_id=$2) OR (m.sender_user_id=$2 AND m.recipient_user_id=$1)) ${before} ORDER BY m.created_at DESC,m.message_id DESC LIMIT $3`, params);
+      const hasMore = rows.rows.length > query2.limit;
+      const pageRows = (hasMore ? rows.rows.slice(0, query2.limit) : rows.rows).reverse();
+      return success({
+        items: pageRows.map((row2) => ({ ...row2, createdAt: new Date(row2.createdAt).toISOString(), mine: row2.senderUserId === actor.userId })),
+        hasMore,
+        nextCursor: hasMore ? String(pageRows[0]?.messageId ?? "") || null : null
+      });
+    });
+  }
+  markMessagesRead(tokenHash, input) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access2 = await this.messageAccess(client, actor, input.teamId, input.memberUserId);
+      if (!access2.ok)
+        return access2;
+      const threadTeamId = await this.threadTeam(client, actor.userId, input.memberUserId, input.teamId);
+      if (!threadTeamId)
+        return failure("NOT_FOUND", "\u79C1\u804A\u4E0D\u5B58\u5728");
+      const anchor = input.throughMessageId ? await client.query(`SELECT message_id,created_at FROM crm_team_messages WHERE message_id=$1 AND ((sender_user_id=$2 AND recipient_user_id=$3) OR (sender_user_id=$3 AND recipient_user_id=$2))`, [input.throughMessageId, actor.userId, input.memberUserId]) : await client.query(`SELECT message_id,created_at FROM crm_team_messages WHERE ((sender_user_id=$1 AND recipient_user_id=$2) OR (sender_user_id=$2 AND recipient_user_id=$1)) ORDER BY created_at DESC,message_id DESC LIMIT 1`, [actor.userId, input.memberUserId]);
+      if (input.throughMessageId && !anchor.rows.length)
+        return failure("NOT_FOUND", "\u9605\u8BFB\u5B9A\u4F4D\u6D88\u606F\u4E0D\u5B58\u5728");
+      const through = anchor.rows[0];
+      await client.query(`INSERT INTO crm_team_message_reads(team_id,user_id,peer_user_id,last_read_at,last_read_message_id,updated_at)
+        VALUES($1,$2,$3,COALESCE((SELECT created_at FROM crm_team_messages WHERE message_id=$4::uuid),clock_timestamp()),$4,clock_timestamp())
+        ON CONFLICT(team_id,user_id,peer_user_id) DO UPDATE SET
+          last_read_at=GREATEST(crm_team_message_reads.last_read_at,EXCLUDED.last_read_at),
+          last_read_message_id=CASE WHEN EXCLUDED.last_read_at>=crm_team_message_reads.last_read_at THEN EXCLUDED.last_read_message_id ELSE crm_team_message_reads.last_read_message_id END,
+          updated_at=clock_timestamp()`, [threadTeamId, actor.userId, input.memberUserId, through?.message_id ?? null]);
+      return this.readReceipt(client, threadTeamId, actor.userId, input.memberUserId);
+    });
+  }
+  markMessagesUnread(tokenHash, input) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access2 = await this.messageAccess(client, actor, input.teamId, input.memberUserId);
+      if (!access2.ok)
+        return access2;
+      const threadTeamId = await this.threadTeam(client, actor.userId, input.memberUserId, input.teamId);
+      if (!threadTeamId)
+        return failure("NOT_FOUND", "\u79C1\u804A\u4E0D\u5B58\u5728");
+      const target = (await client.query(`SELECT message_id,created_at FROM crm_team_messages WHERE message_id=$1 AND ((sender_user_id=$2 AND recipient_user_id=$3) OR (sender_user_id=$3 AND recipient_user_id=$2))`, [input.messageId, actor.userId, input.memberUserId])).rows[0];
+      if (!target)
+        return failure("NOT_FOUND", "\u672A\u8BFB\u5B9A\u4F4D\u6D88\u606F\u4E0D\u5B58\u5728");
+      const previous = (await client.query(`SELECT message_id,created_at FROM crm_team_messages WHERE ((sender_user_id=$1 AND recipient_user_id=$2) OR (sender_user_id=$2 AND recipient_user_id=$1)) AND (created_at,message_id)<(SELECT created_at,message_id FROM crm_team_messages WHERE message_id=$3) ORDER BY created_at DESC,message_id DESC LIMIT 1`, [actor.userId, input.memberUserId, target.message_id])).rows[0];
+      await client.query("DELETE FROM crm_team_message_reads WHERE user_id=$1 AND peer_user_id=$2", [actor.userId, input.memberUserId]);
+      await client.query(`INSERT INTO crm_team_message_reads(team_id,user_id,peer_user_id,last_read_at,last_read_message_id,updated_at)
+        VALUES($1,$2,$3,COALESCE((SELECT created_at FROM crm_team_messages WHERE message_id=$4::uuid),'epoch'::timestamptz),$4,clock_timestamp())
+        ON CONFLICT(team_id,user_id,peer_user_id) DO UPDATE SET last_read_at=COALESCE((SELECT created_at FROM crm_team_messages WHERE message_id=$4::uuid),'epoch'::timestamptz),last_read_message_id=$4,updated_at=clock_timestamp()`, [threadTeamId, actor.userId, input.memberUserId, previous?.message_id ?? null]);
+      return this.readReceipt(client, threadTeamId, actor.userId, input.memberUserId);
+    });
+  }
+  presence(tokenHash, query2) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access2 = await this.messageAccess(client, actor, query2.teamId, query2.memberUserId);
+      if (!access2.ok)
+        return access2;
+      await client.query(`INSERT INTO public.identity_desktop_presence(user_id,last_seen_at) VALUES($1,clock_timestamp())
+        ON CONFLICT(user_id) DO UPDATE SET last_seen_at=clock_timestamp()`, [actor.userId]);
+      const peer = await client.query(`SELECT last_seen_at AS "lastSeenAt" FROM public.identity_desktop_presence WHERE user_id=$1`, [query2.memberUserId]);
+      const unread = await client.query(`SELECT EXISTS(
+        SELECT 1 FROM crm_team_messages m
+        WHERE m.sender_user_id=$2 AND m.recipient_user_id=$1
+          AND (receipt.last_read_at IS NULL OR m.created_at>receipt.last_read_at)
+      ) AS unread FROM (SELECT max(last_read_at) AS last_read_at FROM crm_team_message_reads WHERE user_id=$1 AND peer_user_id=$2) receipt`, [actor.userId, query2.memberUserId]);
+      const lastSeen = peer.rows[0]?.lastSeenAt;
+      const online = lastSeen ? Date.now() - lastSeen.getTime() < 9e4 : false;
+      const hasUnread = Boolean(unread.rows[0]?.unread);
+      return success({ state: online ? hasUnread ? "unread" : "online" : "offline", lastSeenAt: lastSeen?.toISOString() ?? null, unread: hasUnread });
+    });
+  }
+  uploadFile(tokenHash, input) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const unit = await this.unit(client, input.teamId);
+      if (!unit)
+        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
+      if (!manager(actor) && !await this.assignment(client, actor.userId, input.teamId))
+        return failure("FORBIDDEN", "\u53EA\u80FD\u5411\u5F53\u524D\u56E2\u961F\u4E0A\u4F20\u6587\u4EF6");
+      if (!input.filename.trim() || input.filename.trim().length > TEAM_LIMITS.filename)
+        return failure("INVALID_INPUT", "\u6587\u4EF6\u540D\u65E0\u6548");
+      if (!TEAM_FILE_MIME.has(input.mimeType))
+        return failure("INVALID_INPUT", "\u4E0D\u652F\u6301\u7684\u6587\u4EF6\u7C7B\u578B");
+      if (!input.base64 || input.base64.length > Math.ceil(TEAM_LIMITS.fileBytes / 3) * 4 + 4 || !BASE64_CHARS.test(input.base64))
+        return failure("INVALID_INPUT", "\u6587\u4EF6\u5927\u5C0F\u6216\u7F16\u7801\u65E0\u6548");
+      const data = Buffer.from(input.base64, "base64");
+      if (!data.length || data.length > TEAM_LIMITS.fileBytes)
+        return failure("INVALID_INPUT", "\u6587\u4EF6\u5927\u5C0F\u65E0\u6548");
+      const sha256 = (0, import_node_crypto37.createHash)("sha256").update(data).digest("hex");
+      const existing = await client.query('SELECT file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt" FROM crm_team_files WHERE team_id=$1 AND purpose=$2 AND sha256=$3 AND deleted_at IS NULL', [input.teamId, "team_attachment", sha256]);
+      if (existing.rows[0])
+        return success({ ...existing.rows[0], bytes: Number(existing.rows[0].bytes), createdAt: new Date(existing.rows[0].createdAt).toISOString() });
+      const fileId = (0, import_node_crypto37.randomUUID)();
+      const storageKey = `${input.teamId}/${sha256}`;
+      const target = (0, import_node_path6.join)(TEAM_FILE_ROOT, storageKey);
+      const temp = `${target}.${(0, import_node_crypto37.randomUUID)()}.tmp`;
+      await (0, import_promises3.mkdir)((0, import_node_path6.dirname)(target), { recursive: true });
+      await (0, import_promises3.writeFile)(temp, data, { mode: 384 });
+      await (0, import_promises3.rename)(temp, target);
+      const inserted = await client.query('INSERT INTO crm_team_files(file_id,team_id,purpose,filename,mime_type,bytes,sha256,storage_key,owner_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(team_id,purpose,sha256) DO UPDATE SET filename=crm_team_files.filename RETURNING file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt"', [fileId, input.teamId, "team_attachment", input.filename.trim(), input.mimeType, data.length, sha256, storageKey, actor.userId]);
+      const row2 = inserted.rows[0];
+      return success({ ...row2, bytes: Number(row2.bytes), createdAt: new Date(row2.createdAt).toISOString() });
+    });
+  }
+  readFile(tokenHash, fileId) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const row2 = (await client.query('SELECT file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,storage_key AS "storageKey",created_at AS "createdAt" FROM crm_team_files WHERE file_id=$1 AND deleted_at IS NULL', [fileId])).rows[0];
+      if (!row2)
+        return failure("NOT_FOUND", "\u6587\u4EF6\u4E0D\u5B58\u5728");
+      const unit = await this.unit(client, String(row2.teamId));
+      if (!unit)
+        return failure("NOT_FOUND", "\u56E2\u961F\u4E0D\u5B58\u5728");
+      if (!manager(actor) && !await this.assignment(client, actor.userId, String(row2.teamId)))
+        return failure("FORBIDDEN", "\u65E0\u6743\u8BFB\u53D6\u8BE5\u6587\u4EF6");
+      let data;
+      try {
+        data = await (0, import_promises3.readFile)((0, import_node_path6.join)(TEAM_FILE_ROOT, String(row2.storageKey)));
+      } catch {
+        return failure("NOT_FOUND", "\u6587\u4EF6\u5185\u5BB9\u4E0D\u5B58\u5728");
+      }
+      return success({ meta: { fileId: String(row2.fileId), teamId: String(row2.teamId), filename: String(row2.filename), mimeType: String(row2.mimeType), bytes: Number(row2.bytes), sha256: String(row2.sha256), createdAt: new Date(row2.createdAt).toISOString() }, data });
+    });
+  }
+  archiveConversation(tokenHash, input) {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access2 = await this.messageAccess(client, actor, input.teamId, input.memberUserId);
+      if (!access2.ok)
+        return access2;
+      const messages = await client.query(`SELECT m.message_id AS "messageId",m.sender_user_id AS "senderUserId",m.recipient_user_id AS "recipientUserId",m.kind,m.body,m.payload_json AS payload,m.created_at AS "createdAt" FROM crm_team_messages m WHERE m.team_id=$1 AND ((m.sender_user_id=$2 AND m.recipient_user_id=$3) OR (m.sender_user_id=$3 AND m.recipient_user_id=$2)) AND ($4::timestamptz IS NULL OR m.created_at>=$4) AND ($5::timestamptz IS NULL OR m.created_at<$5) ORDER BY m.created_at,m.message_id LIMIT $6`, [input.teamId, actor.userId, input.memberUserId, input.from ?? null, input.to ?? null, TEAM_ARCHIVE_MESSAGE_LIMIT]);
+      if (messages.rows.length >= TEAM_ARCHIVE_MESSAGE_LIMIT)
+        return failure("INVALID_INPUT", "\u5F52\u6863\u8303\u56F4\u8FC7\u5927\uFF0C\u8BF7\u7F29\u5C0F\u65F6\u95F4\u8303\u56F4");
+      const lines = messages.rows.map((row3) => JSON.stringify({ ...row3, createdAt: new Date(row3.createdAt).toISOString() })).join("\n");
+      const data = (0, import_node_zlib.gzipSync)(Buffer.from(lines, "utf8"));
+      const sha256 = (0, import_node_crypto37.createHash)("sha256").update(data).digest("hex");
+      const existing = await client.query('SELECT file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt" FROM crm_team_files WHERE team_id=$1 AND purpose=$2 AND sha256=$3 AND deleted_at IS NULL', [input.teamId, "team_archive", sha256]);
+      if (existing.rows[0])
+        return success({ ...existing.rows[0], bytes: Number(existing.rows[0].bytes), createdAt: new Date(existing.rows[0].createdAt).toISOString(), messageCount: messages.rows.length });
+      const fileId = (0, import_node_crypto37.randomUUID)();
+      const filename = `team-archive-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.jsonl.gz`;
+      const storageKey = `${input.teamId}/archives/${sha256}.jsonl.gz`;
+      const target = (0, import_node_path6.join)(TEAM_FILE_ROOT, storageKey);
+      await (0, import_promises3.mkdir)((0, import_node_path6.dirname)(target), { recursive: true });
+      await (0, import_promises3.writeFile)(target, data, { mode: 384 });
+      const inserted = await client.query('INSERT INTO crm_team_files(file_id,team_id,purpose,filename,mime_type,bytes,sha256,storage_key,owner_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(team_id,purpose,sha256) DO UPDATE SET filename=crm_team_files.filename RETURNING file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt"', [fileId, input.teamId, "team_archive", filename, "application/gzip", data.length, sha256, storageKey, actor.userId]);
+      const row2 = inserted.rows[0];
+      return success({ ...row2, bytes: Number(row2.bytes), createdAt: new Date(row2.createdAt).toISOString(), messageCount: messages.rows.length });
+    });
+  }
+  sendMessage(tokenHash, input) {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      if (input.recipientUserId === actor.userId)
+        return failure("INVALID_INPUT", "\u4E0D\u80FD\u7ED9\u81EA\u5DF1\u53D1\u9001\u79C1\u804A");
+      const access2 = await this.messageAccess(client, actor, input.teamId ?? "", input.recipientUserId);
+      if (!access2.ok)
+        return access2;
+      const teamId = await this.threadTeam(client, actor.userId, input.recipientUserId, input.teamId);
+      if (!teamId)
+        return failure("INVALID_INPUT", "\u53CC\u65B9\u90FD\u6CA1\u6709\u56E2\u961F\uFF0C\u6682\u65F6\u65E0\u6CD5\u79C1\u804A");
+      const kind = input.kind ?? "text";
+      let body2 = input.body.trim();
+      let payload = null;
+      if (kind === "attachment") {
+        if (!input.fileId)
+          return failure("INVALID_INPUT", "\u9644\u4EF6\u6D88\u606F\u7F3A\u5C11\u6587\u4EF6");
+        const file = (await client.query('SELECT file_id AS "fileId",filename,mime_type AS "mimeType",bytes,sha256 FROM crm_team_files WHERE file_id=$1 AND team_id=$2 AND deleted_at IS NULL', [input.fileId, teamId])).rows[0];
+        if (!file)
+          return failure("NOT_FOUND", "\u9644\u4EF6\u4E0D\u5B58\u5728\u6216\u4E0D\u5C5E\u4E8E\u5F53\u524D\u56E2\u961F");
+        payload = { fileId: String(file.fileId), filename: String(file.filename), mimeType: String(file.mimeType), bytes: Number(file.bytes), sha256: String(file.sha256) };
+        if (!body2)
+          body2 = String(file.filename);
+      }
+      if (kind === "email_ref") {
+        const reference = input.payload;
+        if (!reference || typeof reference.messageKey !== "string" || typeof reference.subject !== "string" || typeof reference.from !== "string" || !Array.isArray(reference.to) || typeof reference.occurredAt !== "string")
+          return failure("INVALID_INPUT", "\u90AE\u4EF6\u5F15\u7528\u53C2\u6570\u65E0\u6548");
+        const normalized2 = {
+          messageKey: reference.messageKey.slice(0, 256),
+          subject: reference.subject.slice(0, 500),
+          from: reference.from.slice(0, 320),
+          to: reference.to.slice(0, 50).map((value2) => String(value2).slice(0, 320)),
+          occurredAt: reference.occurredAt,
+          ...reference.summary ? { summary: reference.summary.slice(0, 2e3) } : {},
+          ...reference.excerpt ? { excerpt: reference.excerpt.slice(0, 2e3) } : {},
+          ...reference.customerId ? { customerId: reference.customerId.slice(0, 64) } : {},
+          ...typeof reference.contactId === "number" ? { contactId: reference.contactId } : {}
+        };
+        payload = normalized2;
+        if (!body2)
+          body2 = normalized2.subject || "\u90AE\u4EF6\u5F15\u7528";
+      }
+      if (!body2 || body2.length > TEAM_LIMITS.messageBody)
+        return failure("INVALID_INPUT", "\u6D88\u606F\u6B63\u6587\u65E0\u6548");
+      const prior = await client.query(`SELECT m.message_id AS "messageId",m.team_id AS "teamId",m.sender_user_id AS "senderUserId",su.display_name AS "senderName",m.recipient_user_id AS "recipientUserId",ru.display_name AS "recipientName",m.body,m.kind,m.payload_json AS payload,m.created_at AS "createdAt" FROM crm_team_messages m JOIN public.identity_users su ON su.user_id=m.sender_user_id JOIN public.identity_users ru ON ru.user_id=m.recipient_user_id WHERE m.operation_key=$1`, [input.idempotencyKey]);
+      if (prior.rows[0]) {
+        const row3 = prior.rows[0];
+        if (row3.senderUserId !== actor.userId || row3.recipientUserId !== input.recipientUserId || row3.teamId !== teamId || row3.body !== body2 || row3.kind !== kind)
+          return failure("CONFLICT", "\u5E42\u7B49\u952E\u5DF2\u7528\u4E8E\u4E0D\u540C\u79C1\u804A\u8BF7\u6C42");
+        return success({ ...row3, createdAt: new Date(row3.createdAt).toISOString(), mine: true });
+      }
+      const inserted = await client.query(`INSERT INTO crm_team_messages(team_id,sender_user_id,recipient_user_id,body,kind,payload_json,operation_key) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING message_id AS "messageId",team_id AS "teamId",sender_user_id AS "senderUserId",recipient_user_id AS "recipientUserId",body,kind,payload_json AS payload,created_at AS "createdAt"`, [teamId, actor.userId, input.recipientUserId, body2, kind, payload ? JSON.stringify(payload) : null, input.idempotencyKey]);
+      const row2 = inserted.rows[0];
+      const names = await client.query('SELECT user_id AS "userId",display_name AS "displayName" FROM public.identity_users WHERE user_id=ANY($1::uuid[])', [[actor.userId, input.recipientUserId]]);
+      const byId = new Map(names.rows.map((item) => [item.userId, item.displayName]));
+      return success({ ...row2, senderName: byId.get(actor.userId) ?? actor.displayName, recipientName: byId.get(input.recipientUserId) ?? "", createdAt: new Date(row2.createdAt).toISOString(), mine: true });
     });
   }
 };
 
 // server/services/teams.ts
-var UUID13 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-function record11(value2) {
+var UUID14 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function createTeamEventHub() {
+  const listeners = /* @__PURE__ */ new Map();
+  let sequence = 0;
+  return {
+    subscribe(userId, listener) {
+      const set = listeners.get(userId) ?? /* @__PURE__ */ new Set();
+      set.add(listener);
+      listeners.set(userId, set);
+      return () => {
+        set.delete(listener);
+        if (!set.size)
+          listeners.delete(userId);
+      };
+    },
+    publish(type, recipients2, teamId, peerUserId, messageId) {
+      const event2 = { eventId: `${Date.now()}-${++sequence}`, type, teamId, peerUserId, messageId, occurredAt: (/* @__PURE__ */ new Date()).toISOString() };
+      for (const userId of new Set(recipients2))
+        for (const listener of listeners.get(userId) ?? []) {
+          try {
+            listener(event2);
+          } catch {
+          }
+        }
+    }
+  };
+}
+function record12(value2) {
   return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
 }
-function keys7(value2, allowed) {
-  return Object.keys(value2).every((key) => allowed.includes(key));
+function keys7(value2, allowed, optional4 = []) {
+  const known = /* @__PURE__ */ new Set([...allowed, ...optional4]);
+  return Object.keys(value2).every((key2) => known.has(key2));
 }
-function text12(value2, maximum, minimum = 1) {
+function text13(value2, maximum, minimum = 1) {
   return typeof value2 === "string" && value2.trim().length >= minimum && value2.trim().length <= maximum;
 }
 function userIds(value2, maximum = TEAM_LIMITS.inviteBatch) {
-  return Array.isArray(value2) && value2.length <= maximum && new Set(value2).size === value2.length && value2.every((userId) => typeof userId === "string" && UUID13.test(userId));
+  return Array.isArray(value2) && value2.length <= maximum && new Set(value2).size === value2.length && value2.every((userId) => typeof userId === "string" && UUID14.test(userId));
 }
 function idempotency(value2) {
-  return text12(value2, TEAM_LIMITS.key);
+  return text13(value2, TEAM_LIMITS.key);
 }
 function unitType(value2) {
   return value2 === void 0 || value2 === "operations" || value2 === "sales_team";
@@ -17411,7 +21055,7 @@ function requiresExplicitLeader(value2) {
 function candidateQuery(value2) {
   if (value2 === void 0)
     return { search: "", limit: TEAM_LIMITS.page, offset: 0, role: "member", unitType: "sales_team" };
-  if (!record11(value2) || !keys7(value2, ["search", "limit", "offset", "role", "unitType", "purpose"]))
+  if (!record12(value2) || !keys7(value2, ["search", "limit", "offset", "role", "unitType", "purpose"]))
     return void 0;
   const search = value2.search ?? "";
   const limit = value2.limit ?? TEAM_LIMITS.page;
@@ -17425,19 +21069,17 @@ function candidateQuery(value2) {
     return void 0;
   if (!["invite", "create"].includes(String(purpose)))
     return void 0;
-  if (role === "member" && type !== "sales_team")
-    return void 0;
   if (purpose === "create" && role !== "member")
     return void 0;
   return { search: search.trim(), limit: Number(limit), offset: Number(offset), role, unitType: type, purpose };
 }
 function decision(value2) {
-  if (!record11(value2) || !keys7(value2, ["expectedVersion", "idempotencyKey"]) || !Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !idempotency(value2.idempotencyKey))
+  if (!record12(value2) || !keys7(value2, ["expectedVersion", "idempotencyKey"]) || !Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !idempotency(value2.idempotencyKey))
     return void 0;
   return { expectedVersion: Number(value2.expectedVersion), idempotencyKey: value2.idempotencyKey };
 }
 function dissolveInput(value2) {
-  if (!record11(value2) || !keys7(value2, ["expectedVersion", "idempotencyKey"]) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+  if (!record12(value2) || !keys7(value2, ["expectedVersion", "idempotencyKey"]) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
     return void 0;
   return value2;
 }
@@ -17445,81 +21087,162 @@ function version3(value2, allowZero = false) {
   return Number.isSafeInteger(value2) && Number(value2) >= (allowZero ? 0 : 1);
 }
 function moveInput(value2) {
-  if (!record11(value2) || !keys7(value2, ["parentTeamId", "expectedVersion", "idempotencyKey"]) || value2.parentTeamId !== null && (typeof value2.parentTeamId !== "string" || !UUID13.test(value2.parentTeamId)) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+  if (!record12(value2) || !keys7(value2, ["parentTeamId", "expectedVersion", "idempotencyKey"]) || value2.parentTeamId !== null && (typeof value2.parentTeamId !== "string" || !UUID14.test(value2.parentTeamId)) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
     return void 0;
   return value2;
 }
 function leaderInput(value2) {
-  if (!record11(value2) || !keys7(value2, ["leaderUserId", "expectedVersion", "idempotencyKey"]) || typeof value2.leaderUserId !== "string" || !UUID13.test(value2.leaderUserId) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+  if (!record12(value2) || !keys7(value2, ["leaderUserId", "expectedVersion", "idempotencyKey"]) || typeof value2.leaderUserId !== "string" || !UUID14.test(value2.leaderUserId) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
     return void 0;
   return value2;
 }
 function memberInput(value2) {
-  if (!record11(value2) || !keys7(value2, ["userId", "action", "expectedVersion", "idempotencyKey"]) || typeof value2.userId !== "string" || !UUID13.test(value2.userId) || !["add", "remove", "leave"].includes(String(value2.action)) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+  if (!record12(value2) || !keys7(value2, ["userId", "action", "expectedVersion", "idempotencyKey"]) || typeof value2.userId !== "string" || !UUID14.test(value2.userId) || !["add", "remove", "leave"].includes(String(value2.action)) || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
     return void 0;
   return value2;
 }
 function groupInput(value2) {
-  if (!record11(value2) || !keys7(value2, ["groupId", "name", "memberIds", "expectedVersion", "idempotencyKey"]) || value2.groupId !== null && (typeof value2.groupId !== "string" || !UUID13.test(value2.groupId)) || !text12(value2.name, TEAM_LIMITS.groupName, 1) || !userIds(value2.memberIds, TEAM_LIMITS.groupMembers) || !version3(value2.expectedVersion, value2.groupId === null) || !idempotency(value2.idempotencyKey))
+  if (!record12(value2) || !keys7(value2, ["groupId", "name", "memberIds", "expectedVersion", "idempotencyKey"]) || value2.groupId !== null && (typeof value2.groupId !== "string" || !UUID14.test(value2.groupId)) || !text13(value2.name, TEAM_LIMITS.groupName, 1) || !userIds(value2.memberIds, TEAM_LIMITS.groupMembers) || !version3(value2.expectedVersion, value2.groupId === null) || !idempotency(value2.idempotencyKey))
     return void 0;
   return value2;
 }
 function groupDeleteInput(value2, groupId) {
-  if (!UUID13.test(groupId) || !record11(value2) || !keys7(value2, ["groupId", "expectedVersion", "idempotencyKey"]) || value2.groupId !== groupId || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
+  if (!UUID14.test(groupId) || !record12(value2) || !keys7(value2, ["groupId", "expectedVersion", "idempotencyKey"]) || value2.groupId !== groupId || !version3(value2.expectedVersion) || !idempotency(value2.idempotencyKey))
     return void 0;
   return value2;
 }
 function createTeamService(repo, tokens) {
+  const events = createTeamEventHub();
   return {
+    async subscribeEvents(token, listener) {
+      const current = await repo.currentUser(tokens.hash(token));
+      return current.ok ? { ok: true, data: events.subscribe(current.data, listener) } : current;
+    },
     context(token) {
       return repo.context(tokens.hash(token));
     },
     detail(token, teamId) {
-      return UUID13.test(teamId) ? repo.detail(tokens.hash(token), teamId) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u7F16\u53F7\u65E0\u6548"));
+      return UUID14.test(teamId) ? repo.detail(tokens.hash(token), teamId) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u7F16\u53F7\u65E0\u6548"));
     },
     candidates(token, value2) {
       const query2 = candidateQuery(value2);
       return query2 ? repo.candidates(tokens.hash(token), query2) : Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u641C\u7D22\u53C2\u6570\u65E0\u6548"));
     },
     create(token, value2) {
-      if (!record11(value2) || !keys7(value2, ["name", "parentTeamId", "unitType", "leaderUserId", "inviteeUserIds", "idempotencyKey"]) || !text12(value2.name, TEAM_LIMITS.name, 2) || value2.parentTeamId !== null && (typeof value2.parentTeamId !== "string" || !UUID13.test(value2.parentTeamId)) || !unitType(value2.unitType) || value2.leaderUserId !== void 0 && (typeof value2.leaderUserId !== "string" || !UUID13.test(value2.leaderUserId)) || !userIds(value2.inviteeUserIds) || !idempotency(value2.idempotencyKey))
+      if (!record12(value2) || !keys7(value2, ["name", "parentTeamId", "unitType", "leaderUserId", "inviteeUserIds", "idempotencyKey"]) || !text13(value2.name, TEAM_LIMITS.name, 2) || value2.parentTeamId !== null && (typeof value2.parentTeamId !== "string" || !UUID14.test(value2.parentTeamId)) || !unitType(value2.unitType) || value2.leaderUserId !== void 0 && (typeof value2.leaderUserId !== "string" || !UUID14.test(value2.leaderUserId)) || !userIds(value2.inviteeUserIds) || !idempotency(value2.idempotencyKey))
         return Promise.resolve(failure("INVALID_INPUT", "\u521B\u5EFA\u56E2\u961F\u53C2\u6570\u65E0\u6548"));
       if (requiresExplicitLeader(value2) && value2.leaderUserId === void 0)
         return Promise.resolve(failure("INVALID_INPUT", "\u7BA1\u7406\u89D2\u8272\u521B\u5EFA\u7EC4\u7EC7\u65F6\u5FC5\u987B\u660E\u786E\u6307\u5B9A\u8D1F\u8D23\u4EBA"));
       return repo.create(tokens.hash(token), value2);
     },
     invite(token, teamId, value2) {
-      if (!UUID13.test(teamId) || !record11(value2) || !keys7(value2, ["userIds", "idempotencyKey"]) || !userIds(value2.userIds) || !value2.userIds.length || !idempotency(value2.idempotencyKey))
+      if (!UUID14.test(teamId) || !record12(value2) || !keys7(value2, ["userIds", "idempotencyKey"]) || !userIds(value2.userIds) || !value2.userIds.length || !idempotency(value2.idempotencyKey))
         return Promise.resolve(failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u53C2\u6570\u65E0\u6548"));
       return repo.invite(tokens.hash(token), teamId, value2);
     },
     decide(token, invitationId, action, value2) {
       const input = decision(value2);
-      return UUID13.test(invitationId) && input ? repo.decide(tokens.hash(token), invitationId, action, input) : Promise.resolve(failure("INVALID_INPUT", "\u9080\u8BF7\u5904\u7406\u53C2\u6570\u65E0\u6548"));
+      return UUID14.test(invitationId) && input ? repo.decide(tokens.hash(token), invitationId, action, input) : Promise.resolve(failure("INVALID_INPUT", "\u9080\u8BF7\u5904\u7406\u53C2\u6570\u65E0\u6548"));
     },
     move(token, teamId, value2) {
       const input = moveInput(value2);
-      return UUID13.test(teamId) && input ? repo.move(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u79FB\u52A8\u53C2\u6570\u65E0\u6548"));
+      return UUID14.test(teamId) && input ? repo.move(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u79FB\u52A8\u53C2\u6570\u65E0\u6548"));
     },
     dissolve(token, teamId, value2) {
       const input = dissolveInput(value2);
-      return UUID13.test(teamId) && input ? repo.dissolve(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u89E3\u6563\u53C2\u6570\u65E0\u6548"));
+      return UUID14.test(teamId) && input ? repo.dissolve(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u56E2\u961F\u89E3\u6563\u53C2\u6570\u65E0\u6548"));
     },
     assignLeader(token, teamId, value2) {
       const input = leaderInput(value2);
-      return UUID13.test(teamId) && input ? repo.assignLeader(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u8D1F\u8D23\u4EBA\u53C2\u6570\u65E0\u6548"));
+      return UUID14.test(teamId) && input ? repo.assignLeader(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u8D1F\u8D23\u4EBA\u53C2\u6570\u65E0\u6548"));
     },
     adjustMember(token, teamId, value2) {
       const input = memberInput(value2);
-      return UUID13.test(teamId) && input ? repo.adjustMember(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u8C03\u6574\u53C2\u6570\u65E0\u6548"));
+      return UUID14.test(teamId) && input ? repo.adjustMember(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u8C03\u6574\u53C2\u6570\u65E0\u6548"));
     },
     saveMemberGroup(token, teamId, value2) {
       const input = groupInput(value2);
-      return UUID13.test(teamId) && input ? repo.saveMemberGroup(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u5C55\u793A\u5206\u7EC4\u53C2\u6570\u65E0\u6548"));
+      return UUID14.test(teamId) && input ? repo.saveMemberGroup(tokens.hash(token), teamId, input) : Promise.resolve(failure("INVALID_INPUT", "\u5C55\u793A\u5206\u7EC4\u53C2\u6570\u65E0\u6548"));
     },
     deleteMemberGroup(token, teamId, groupId, value2) {
       const input = groupDeleteInput(value2, groupId);
-      return UUID13.test(teamId) && input ? repo.deleteMemberGroup(tokens.hash(token), teamId, groupId, input) : Promise.resolve(failure("INVALID_INPUT", "\u5C55\u793A\u5206\u7EC4\u53C2\u6570\u65E0\u6548"));
+      return UUID14.test(teamId) && input ? repo.deleteMemberGroup(tokens.hash(token), teamId, groupId, input) : Promise.resolve(failure("INVALID_INPUT", "\u5C55\u793A\u5206\u7EC4\u53C2\u6570\u65E0\u6548"));
+    },
+    directory(token, value2) {
+      if (!record12(value2) || !keys7(value2, ["limit"]) || !Number.isSafeInteger(value2.limit) || Number(value2.limit) < 1 || Number(value2.limit) > TEAM_LIMITS.pageMax)
+        return Promise.resolve(failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u76EE\u5F55\u53C2\u6570\u65E0\u6548"));
+      return repo.directory(tokens.hash(token), value2);
+    },
+    conversations(token, value2) {
+      if (!record12(value2) || !keys7(value2, ["limit"], ["teamId"]) || value2.teamId !== void 0 && (typeof value2.teamId !== "string" || !UUID14.test(value2.teamId)) || !Number.isSafeInteger(value2.limit) || Number(value2.limit) < 1 || Number(value2.limit) > TEAM_LIMITS.pageMax)
+        return Promise.resolve(failure("INVALID_INPUT", "\u79C1\u804A\u5217\u8868\u53C2\u6570\u65E0\u6548"));
+      return repo.conversations(tokens.hash(token), value2);
+    },
+    messages(token, value2) {
+      if (!record12(value2) || !keys7(value2, ["memberUserId", "limit"], ["teamId", "beforeMessageId"]) || value2.teamId !== void 0 && (typeof value2.teamId !== "string" || !UUID14.test(value2.teamId)) || typeof value2.memberUserId !== "string" || !UUID14.test(value2.memberUserId) || !Number.isSafeInteger(value2.limit) || Number(value2.limit) < 1 || Number(value2.limit) > TEAM_LIMITS.pageMax || value2.beforeMessageId !== void 0 && (typeof value2.beforeMessageId !== "string" || !UUID14.test(value2.beforeMessageId)))
+        return Promise.resolve(failure("INVALID_INPUT", "\u79C1\u804A\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
+      return repo.messages(tokens.hash(token), value2);
+    },
+    markMessagesRead(token, value2) {
+      if (!record12(value2) || !keys7(value2, ["teamId", "memberUserId", "idempotencyKey"], ["throughMessageId"]) || typeof value2.teamId !== "string" || !UUID14.test(value2.teamId) || typeof value2.memberUserId !== "string" || !UUID14.test(value2.memberUserId) || !idempotency(value2.idempotencyKey) || value2.throughMessageId !== void 0 && (typeof value2.throughMessageId !== "string" || !UUID14.test(value2.throughMessageId)))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5DF2\u8BFB\u53C2\u6570\u65E0\u6548"));
+      const input = value2;
+      return repo.markMessagesRead(tokens.hash(token), input).then(async (result2) => {
+        if (result2.ok) {
+          const current = await repo.currentUser(tokens.hash(token));
+          if (current.ok)
+            events.publish("message.read", [current.data, input.memberUserId], input.teamId, input.memberUserId, input.throughMessageId ?? null);
+        }
+        return result2;
+      });
+    },
+    markMessagesUnread(token, value2) {
+      if (!record12(value2) || !keys7(value2, ["teamId", "memberUserId", "messageId", "idempotencyKey"]) || typeof value2.teamId !== "string" || !UUID14.test(value2.teamId) || typeof value2.memberUserId !== "string" || !UUID14.test(value2.memberUserId) || typeof value2.messageId !== "string" || !UUID14.test(value2.messageId) || !idempotency(value2.idempotencyKey))
+        return Promise.resolve(failure("INVALID_INPUT", "\u672A\u8BFB\u53C2\u6570\u65E0\u6548"));
+      const input = value2;
+      return repo.markMessagesUnread(tokens.hash(token), input).then(async (result2) => {
+        if (result2.ok) {
+          const current = await repo.currentUser(tokens.hash(token));
+          if (current.ok)
+            events.publish("message.unread", [current.data, input.memberUserId], input.teamId, input.memberUserId, input.messageId);
+        }
+        return result2;
+      });
+    },
+    presence(token, value2) {
+      if (!record12(value2) || !keys7(value2, ["teamId", "memberUserId"]) || typeof value2.teamId !== "string" || !UUID14.test(value2.teamId) || typeof value2.memberUserId !== "string" || !UUID14.test(value2.memberUserId))
+        return Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u72B6\u6001\u53C2\u6570\u65E0\u6548"));
+      return repo.presence(tokens.hash(token), value2);
+    },
+    uploadFile(token, value2) {
+      if (!record12(value2) || !keys7(value2, ["teamId", "filename", "mimeType", "base64", "idempotencyKey"]) || typeof value2.teamId !== "string" || !UUID14.test(value2.teamId) || typeof value2.filename !== "string" || typeof value2.mimeType !== "string" || typeof value2.base64 !== "string" || !idempotency(value2.idempotencyKey))
+        return Promise.resolve(failure("INVALID_INPUT", "\u4E0A\u4F20\u6587\u4EF6\u53C2\u6570\u65E0\u6548"));
+      return repo.uploadFile(tokens.hash(token), value2);
+    },
+    archiveConversation(token, value2) {
+      if (!record12(value2) || !keys7(value2, ["teamId", "memberUserId", "idempotencyKey"], ["from", "to"]) || typeof value2.teamId !== "string" || !UUID14.test(value2.teamId) || typeof value2.memberUserId !== "string" || !UUID14.test(value2.memberUserId) || !idempotency(value2.idempotencyKey) || value2.from !== void 0 && (typeof value2.from !== "string" || !Number.isFinite(Date.parse(value2.from))) || value2.to !== void 0 && (typeof value2.to !== "string" || !Number.isFinite(Date.parse(value2.to))))
+        return Promise.resolve(failure("INVALID_INPUT", "\u804A\u5929\u5F52\u6863\u53C2\u6570\u65E0\u6548"));
+      return repo.archiveConversation(tokens.hash(token), value2);
+    },
+    readFile(token, fileId) {
+      return UUID14.test(fileId) ? repo.readFile(tokens.hash(token), fileId) : Promise.resolve(failure("INVALID_INPUT", "\u6587\u4EF6\u7F16\u53F7\u65E0\u6548"));
+    },
+    sendMessage(token, value2) {
+      if (!record12(value2) || !keys7(value2, ["recipientUserId", "body", "idempotencyKey"], ["teamId", "kind", "fileId", "payload"]) || value2.teamId !== void 0 && (typeof value2.teamId !== "string" || !UUID14.test(value2.teamId)) || typeof value2.recipientUserId !== "string" || !UUID14.test(value2.recipientUserId) || typeof value2.body !== "string" || value2.body.trim().length > TEAM_LIMITS.messageBody || value2.kind !== void 0 && value2.kind !== "text" && value2.kind !== "attachment" && value2.kind !== "email_ref" || value2.fileId !== void 0 && (typeof value2.fileId !== "string" || !UUID14.test(value2.fileId)) || !idempotency(value2.idempotencyKey))
+        return Promise.resolve(failure("INVALID_INPUT", "\u79C1\u804A\u6D88\u606F\u53C2\u6570\u65E0\u6548"));
+      if (value2.kind === "email_ref" && (!record12(value2.payload) || typeof value2.payload.messageKey !== "string" || typeof value2.payload.subject !== "string" || typeof value2.payload.from !== "string" || !Array.isArray(value2.payload.to) || !value2.payload.to.every((item) => typeof item === "string") || typeof value2.payload.occurredAt !== "string"))
+        return Promise.resolve(failure("INVALID_INPUT", "\u90AE\u4EF6\u5F15\u7528\u53C2\u6570\u65E0\u6548"));
+      if (value2.kind !== "attachment" && !text13(value2.body, TEAM_LIMITS.messageBody))
+        return Promise.resolve(failure("INVALID_INPUT", "\u79C1\u804A\u6D88\u606F\u6B63\u6587\u65E0\u6548"));
+      const input = value2;
+      return repo.sendMessage(tokens.hash(token), input).then(async (result2) => {
+        if (result2.ok) {
+          const current = await repo.currentUser(tokens.hash(token));
+          if (current.ok)
+            events.publish("message.created", [current.data, input.recipientUserId], result2.data.teamId, input.recipientUserId, result2.data.messageId);
+        }
+        return result2;
+      });
     }
   };
 }
@@ -17535,14 +21258,70 @@ function createTeamHandler(service) {
     }
     if (request2.method === "GET" && url.pathname === TEAM_ROUTES.candidates) {
       const query2 = {};
-      for (const [key, value2] of url.searchParams) {
-        if (key in query2) {
+      for (const [key2, value2] of url.searchParams) {
+        if (key2 in query2) {
           send(response, failure("INVALID_INPUT", "\u67E5\u8BE2\u53C2\u6570\u91CD\u590D"));
           return;
         }
-        query2[key] = ["limit", "offset"].includes(key) ? Number(value2) : value2;
+        query2[key2] = ["limit", "offset"].includes(key2) ? Number(value2) : value2;
       }
       send(response, await service.candidates(token, query2));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === TEAM_ROUTES.events) {
+      const subscription = await service.subscribeEvents(token, (event2) => {
+        if (!response.writableEnded)
+          response.write(`data: ${JSON.stringify(event2)}
+
+`);
+      });
+      if (!subscription.ok) {
+        send(response, subscription);
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" });
+      response.write(": connected\n\n");
+      const heartbeat = setInterval(() => {
+        if (!response.writableEnded)
+          response.write(": ping\n\n");
+      }, 15e3);
+      const close = () => {
+        clearInterval(heartbeat);
+        subscription.data();
+      };
+      request2.on("close", close);
+      response.on("close", close);
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === TEAM_ROUTES.messages) {
+      send(response, await service.messages(token, {
+        ...url.searchParams.get("teamId") ? { teamId: url.searchParams.get("teamId") } : {},
+        memberUserId: url.searchParams.get("memberUserId") ?? "",
+        limit: Number(url.searchParams.get("limit") ?? TEAM_LIMITS.page),
+        ...url.searchParams.get("beforeMessageId") ? { beforeMessageId: url.searchParams.get("beforeMessageId") } : {}
+      }));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === TEAM_ROUTES.directory) {
+      send(response, await service.directory(token, { limit: Number(url.searchParams.get("limit") ?? TEAM_LIMITS.page) }));
+      return;
+    }
+    if (request2.method === "GET" && url.pathname === TEAM_ROUTES.conversations) {
+      send(response, await service.conversations(token, {
+        ...url.searchParams.get("teamId") ? { teamId: url.searchParams.get("teamId") } : {},
+        limit: Number(url.searchParams.get("limit") ?? TEAM_LIMITS.page)
+      }));
+      return;
+    }
+    const file = /^\/api\/crm\/team-files\/([^/]+)$/.exec(url.pathname);
+    if (request2.method === "GET" && file) {
+      const result2 = await service.readFile(token, file[1]);
+      if (!result2.ok) {
+        send(response, result2);
+        return;
+      }
+      response.writeHead(200, { "Content-Type": result2.data.meta.mimeType, "Content-Length": String(result2.data.data.byteLength), "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result2.data.meta.filename)}` });
+      response.end(Buffer.from(result2.data.data));
       return;
     }
     const detail = /^\/api\/crm\/teams\/([^/]+)$/.exec(url.pathname);
@@ -17554,13 +21333,37 @@ function createTeamHandler(service) {
       send(response, failure("NOT_FOUND", "\u56E2\u961F\u63A5\u53E3\u4E0D\u5B58\u5728"));
       return;
     }
-    const input = await body(request2, TEAM_LIMITS.bodyBytes);
+    const input = await body(request2, url.pathname === TEAM_ROUTES.files ? TEAM_LIMITS.fileBodyBytes : TEAM_LIMITS.bodyBytes);
     if (!input.ok) {
       send(response, input);
       return;
     }
     if (url.pathname === TEAM_ROUTES.teams) {
       send(response, await service.create(token, input.data));
+      return;
+    }
+    if (url.pathname === TEAM_ROUTES.messages) {
+      send(response, await service.sendMessage(token, input.data));
+      return;
+    }
+    if (url.pathname === TEAM_ROUTES.messagesRead) {
+      send(response, await service.markMessagesRead(token, input.data));
+      return;
+    }
+    if (url.pathname === TEAM_ROUTES.messagesUnread) {
+      send(response, await service.markMessagesUnread(token, input.data));
+      return;
+    }
+    if (url.pathname === TEAM_ROUTES.presence) {
+      send(response, await service.presence(token, input.data));
+      return;
+    }
+    if (url.pathname === TEAM_ROUTES.files) {
+      send(response, await service.uploadFile(token, input.data));
+      return;
+    }
+    if (url.pathname === TEAM_ROUTES.archive) {
+      send(response, await service.archiveConversation(token, input.data));
       return;
     }
     const invite = /^\/api\/crm\/teams\/([^/]+)\/invitations$/.exec(url.pathname);
@@ -17608,38 +21411,38 @@ function createTeamHandler(service) {
 }
 
 // server/services/contact-mail-analysis.ts
-var UUID14 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID15 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var HASH = /^[a-f0-9]{64}$/i;
-var TOKEN3 = /^[A-Za-z0-9_-]{43}$/;
-function record12(value2) {
+var TOKEN5 = /^[A-Za-z0-9_-]{43}$/;
+function record13(value2) {
   return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
 }
 function keys8(value2, allowed) {
-  return Object.keys(value2).every((key) => allowed.includes(key));
+  return Object.keys(value2).every((key2) => allowed.includes(key2));
 }
-function text13(value2, max, min = 0) {
+function text14(value2, max, min = 0) {
   return typeof value2 === "string" && value2.length <= max && value2.trim().length >= min && !value2.includes("\0");
 }
 function nullableText(value2, max) {
-  return value2 === null || text13(value2, max);
+  return value2 === null || text14(value2, max);
 }
 function confidence(value2) {
   return typeof value2 === "number" && Number.isFinite(value2) && value2 >= 0 && value2 <= 1;
 }
 function base(value2) {
-  return Number.isSafeInteger(value2.contactId) && Number(value2.contactId) > 0 && typeof value2.customerId === "string" && UUID14.test(value2.customerId) && text13(value2.mailboxKey, 128, 1) && text13(value2.messageKey, 256, 1) && typeof value2.contentHash === "string" && HASH.test(value2.contentHash);
+  return Number.isSafeInteger(value2.contactId) && Number(value2.contactId) > 0 && typeof value2.customerId === "string" && UUID15.test(value2.customerId) && text14(value2.mailboxKey, 128, 1) && text14(value2.messageKey, 256, 1) && typeof value2.contentHash === "string" && HASH.test(value2.contentHash);
 }
 function signals(value2) {
-  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.signals && value2.every((signal) => record12(signal) && keys8(signal, ["code", "label", "confidence", "evidence"]) && MAIL_INTENT_CODES.includes(signal.code) && text13(signal.label, CONTACT_MAIL_ANALYSIS_LIMITS.label, 1) && confidence(signal.confidence) && text13(signal.evidence, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
+  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.signals && value2.every((signal) => record13(signal) && keys8(signal, ["code", "label", "confidence", "evidence"]) && MAIL_INTENT_CODES.includes(signal.code) && text14(signal.label, CONTACT_MAIL_ANALYSIS_LIMITS.label, 1) && confidence(signal.confidence) && text14(signal.evidence, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
 }
 function evidence(value2) {
-  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.evidence && value2.every((item) => text13(item, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
+  return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.evidence && value2.every((item) => text14(item, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
 }
 function conclusion(value2) {
-  return MAIL_CLASSIFICATIONS.includes(value2.classification) && MAIL_RELEVANCE_VALUES.includes(value2.relevance) && text13(value2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) && signals(value2.signals) && typeof value2.requiresAction === "boolean" && nullableText(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction) && MAIL_PRIORITIES.includes(value2.priority) && nullableText(value2.dueHint, CONTACT_MAIL_ANALYSIS_LIMITS.dueHint) && confidence(value2.confidence) && evidence(value2.evidence);
+  return MAIL_CLASSIFICATIONS.includes(value2.classification) && MAIL_RELEVANCE_VALUES.includes(value2.relevance) && text14(value2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) && signals(value2.signals) && typeof value2.requiresAction === "boolean" && nullableText(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction) && MAIL_PRIORITIES.includes(value2.priority) && nullableText(value2.dueHint, CONTACT_MAIL_ANALYSIS_LIMITS.dueHint) && confidence(value2.confidence) && evidence(value2.evidence);
 }
 function contactMailAnalysisQuery(value2) {
-  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "includeHistory", "historyLimit"]) || !base(value2))
+  if (!record13(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "includeHistory", "historyLimit"]) || !base(value2))
     return failure("INVALID_INPUT", "\u90AE\u4EF6\u5206\u6790\u67E5\u8BE2\u53C2\u6570\u65E0\u6548");
   const includeHistory = value2.includeHistory === true;
   const historyLimit = value2.historyLimit ?? 20;
@@ -17648,24 +21451,24 @@ function contactMailAnalysisQuery(value2) {
   return success({ ...value2, includeHistory, historyLimit: Number(historyLimit) });
 }
 function contactMailAnalysisSubmission(value2) {
-  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "inputSequence", "idempotencyKey", "result"]) || !base(value2) || !Number.isSafeInteger(value2.inputSequence) || Number(value2.inputSequence) < 0 || !text13(value2.idempotencyKey, 256, 1) || !record12(value2.result))
+  if (!record13(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "inputSequence", "idempotencyKey", "result"]) || !base(value2) || !Number.isSafeInteger(value2.inputSequence) || Number(value2.inputSequence) < 0 || !text14(value2.idempotencyKey, 256, 1) || !record13(value2.result))
     return failure("INVALID_INPUT", "AI \u90AE\u4EF6\u5206\u6790\u53C2\u6570\u65E0\u6548");
   const result2 = value2.result;
-  if (!keys8(result2, ["classification", "relevance", "summary", "signals", "actionability", "confidence", "evidence", "analyzerVersion"]) || !MAIL_CLASSIFICATIONS.includes(result2.classification) || !MAIL_RELEVANCE_VALUES.includes(result2.relevance) || !text13(result2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) || !signals(result2.signals) || !record12(result2.actionability) || !confidence(result2.confidence) || !evidence(result2.evidence) || !text13(result2.analyzerVersion, CONTACT_MAIL_ANALYSIS_LIMITS.version, 1))
+  if (!keys8(result2, ["classification", "relevance", "summary", "signals", "actionability", "confidence", "evidence", "analyzerVersion"]) || !MAIL_CLASSIFICATIONS.includes(result2.classification) || !MAIL_RELEVANCE_VALUES.includes(result2.relevance) || !text14(result2.summary, CONTACT_MAIL_ANALYSIS_LIMITS.summary) || !signals(result2.signals) || !record13(result2.actionability) || !confidence(result2.confidence) || !evidence(result2.evidence) || !text14(result2.analyzerVersion, CONTACT_MAIL_ANALYSIS_LIMITS.version, 1))
     return failure("INVALID_INPUT", "AI \u90AE\u4EF6\u5206\u6790\u7ED3\u8BBA\u65E0\u6548");
   const actionability = result2.actionability;
   if (!keys8(actionability, ["requiresAction", "nextAction", "priority", "dueHint"]) || typeof actionability.requiresAction !== "boolean" || !nullableText(actionability.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction) || !MAIL_PRIORITIES.includes(actionability.priority) || !nullableText(actionability.dueHint, CONTACT_MAIL_ANALYSIS_LIMITS.dueHint))
     return failure("INVALID_INPUT", "AI \u884C\u52A8\u5EFA\u8BAE\u65E0\u6548");
-  if (actionability.requiresAction && !text13(actionability.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
+  if (actionability.requiresAction && !text14(actionability.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
     return failure("INVALID_INPUT", "\u884C\u52A8\u5EFA\u8BAE\u7F3A\u5C11\u4E0B\u4E00\u6B65");
   if (result2.relevance !== "customer_business" && actionability.requiresAction)
     return failure("INVALID_INPUT", "\u975E\u5BA2\u6237\u4E1A\u52A1\u90AE\u4EF6\u4E0D\u80FD\u751F\u6210\u884C\u52A8\u5EFA\u8BAE");
   return success(value2);
 }
 function contactMailAnalysisCorrection(value2) {
-  if (!record12(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "idempotencyKey", "expectedCurrentId", "classification", "relevance", "summary", "signals", "requiresAction", "nextAction", "priority", "dueHint", "confidence", "evidence"]) || !base(value2) || !text13(value2.idempotencyKey, 256, 1) || !text13(value2.expectedCurrentId, 64, 1) || !conclusion(value2))
+  if (!record13(value2) || !keys8(value2, ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "idempotencyKey", "expectedCurrentId", "classification", "relevance", "summary", "signals", "requiresAction", "nextAction", "priority", "dueHint", "confidence", "evidence"]) || !base(value2) || !text14(value2.idempotencyKey, 256, 1) || !text14(value2.expectedCurrentId, 64, 1) || !conclusion(value2))
     return failure("INVALID_INPUT", "\u4EBA\u5DE5\u90AE\u4EF6\u5206\u6790\u53C2\u6570\u65E0\u6548");
-  if (value2.requiresAction === true && !text13(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
+  if (value2.requiresAction === true && !text14(value2.nextAction, CONTACT_MAIL_ANALYSIS_LIMITS.nextAction, 1))
     return failure("INVALID_INPUT", "\u884C\u52A8\u5EFA\u8BAE\u7F3A\u5C11\u4E0B\u4E00\u6B65");
   if (
     /* Human confirmation may make a matched business mail actionable, but never turns unrelated mail into customer business. */
@@ -17676,7 +21479,7 @@ function contactMailAnalysisCorrection(value2) {
 }
 function createContactMailAnalysisService(repo, tokens) {
   const run2 = (token, value2, parse, action) => {
-    if (!TOKEN3.test(token))
+    if (!TOKEN5.test(token))
       return Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
     const parsed = parse(value2);
     return parsed.ok ? action(tokens.hash(token), parsed.data) : Promise.resolve(parsed);
@@ -17689,10 +21492,10 @@ function createContactMailAnalysisService(repo, tokens) {
 }
 
 // server/transport/contact-mail-analysis-http.ts
-var TOKEN4 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+var TOKEN6 = /^Bearer ([A-Za-z0-9_-]{43})$/;
 var QUERY_FIELDS = ["contactId", "customerId", "mailboxKey", "messageKey", "contentHash", "history", "limit"];
 function bearer(value2) {
-  return TOKEN4.exec(value2 ?? "")?.[1] ?? "";
+  return TOKEN6.exec(value2 ?? "")?.[1] ?? "";
 }
 function createContactMailAnalysisHandler(service) {
   return async (request2, response) => {
@@ -17706,7 +21509,7 @@ function createContactMailAnalysisHandler(service) {
         send(response, failure("NOT_FOUND", "\u90AE\u4EF6\u5206\u6790\u63A5\u53E3\u4E0D\u5B58\u5728"));
         return;
       }
-      if ([...url.searchParams.keys()].some((key) => !QUERY_FIELDS.includes(key) || url.searchParams.getAll(key).length !== 1)) {
+      if ([...url.searchParams.keys()].some((key2) => !QUERY_FIELDS.includes(key2) || url.searchParams.getAll(key2).length !== 1)) {
         send(response, failure("INVALID_INPUT", "\u90AE\u4EF6\u5206\u6790\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
         return;
       }
@@ -17739,18 +21542,82 @@ function createContactMailAnalysisHandler(service) {
   };
 }
 
+// server/services/customer-status.ts
+var UUID16 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function record14(value2) {
+  return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
+}
+function text15(value2, max) {
+  return typeof value2 === "string" && value2.trim().length > 0 && value2.length <= max;
+}
+function key(value2) {
+  return text15(value2, CUSTOMER_STATUS_LIMITS.key);
+}
+function createCustomerStatusService(repo, tokens) {
+  const run2 = (token, action) => /^[A-Za-z0-9_-]{43}$/.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+  return {
+    view(token, customerId) {
+      return UUID16.test(customerId) ? run2(token, (hash) => repo.view(hash, customerId)) : Promise.resolve(failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728"));
+    },
+    correct(token, input) {
+      if (!record14(input) || !UUID16.test(String(input.customerId ?? "")) || !Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 0 || !CUSTOMER_STATUSES.includes(input.status) || !text15(input.reason, CUSTOMER_STATUS_LIMITS.reason) || !key(input.idempotencyKey) || input.contactId !== void 0 && (!Number.isSafeInteger(input.contactId) || Number(input.contactId) < 1))
+        return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u72B6\u6001\u7EA0\u6B63\u53C2\u6570\u65E0\u6548"));
+      return run2(token, (hash) => repo.correct(hash, input));
+    },
+    resumeAi(token, input) {
+      if (!record14(input) || !UUID16.test(String(input.customerId ?? "")) || !Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 1 || !key(input.idempotencyKey))
+        return Promise.resolve(failure("INVALID_INPUT", "\u6062\u590D AI \u7EF4\u62A4\u53C2\u6570\u65E0\u6548"));
+      return run2(token, (hash) => repo.resumeAi(hash, input));
+    }
+  };
+}
+
+// server/transport/customer-status-http.ts
+function createCustomerStatusHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", `http://${request2.headers.host ?? "localhost"}`);
+    const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    const prefix = `${CUSTOMER_STATUS_ROUTES.base}/`;
+    if (!url.pathname.startsWith(prefix)) {
+      send(response, failure("NOT_FOUND", "\u5BA2\u6237\u72B6\u6001\u63A5\u53E3\u4E0D\u5B58\u5728"));
+      return;
+    }
+    const parts = url.pathname.slice(prefix.length).split("/");
+    const customerId = parts[0] ?? "";
+    if (request2.method === "GET" && parts.length === 1) {
+      send(response, await service.view(token, customerId));
+      return;
+    }
+    if (request2.method !== "POST" || parts.length !== 2 || !["correct", "resume-ai"].includes(parts[1] ?? "")) {
+      send(response, failure("NOT_FOUND", "\u5BA2\u6237\u72B6\u6001\u63A5\u53E3\u4E0D\u5B58\u5728"));
+      return;
+    }
+    const parsed = await body(request2, LEAD_LIMITS.bodyBytes);
+    if (!parsed.ok) {
+      send(response, parsed);
+      return;
+    }
+    if (!parsed.data || typeof parsed.data !== "object" || Array.isArray(parsed.data) || "customerId" in parsed.data && parsed.data.customerId !== customerId) {
+      send(response, failure("INVALID_INPUT", "\u8DEF\u5F84\u4E0E\u5BA2\u6237\u7F16\u53F7\u4E0D\u4E00\u81F4"));
+      return;
+    }
+    const input = { ...parsed.data, customerId };
+    send(response, parts[1] === "correct" ? await service.correct(token, input) : await service.resumeAi(token, input));
+  };
+}
+
 // server/adapters/postgres/team-attention-repository.ts
-var import_node_crypto31 = require("node:crypto");
+var import_node_crypto38 = require("node:crypto");
 var ITEM_COLUMNS = `i.item_id AS "itemId",i.target_member_user_id AS "targetMemberUserId",target.display_name AS "targetMemberName",i.source_supervisor_user_id AS "sourceSupervisorUserId",source.display_name AS "sourceSupervisorName",i.customer_id AS "customerId",co.name AS "customerName",i.contact_id AS "contactId",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),NULLIF(ct.email,''),'\u8054\u7CFB\u4EBA') AS "contactName",ct.email AS "contactEmail",i.mail_event_id AS "mailEventId",i.analysis_id AS "analysisId",i.reason,i.priority,i.status,i.note,i.result,i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt",i.acknowledged_at AS "acknowledgedAt",i.resolved_at AS "resolvedAt",i.dismissed_at AS "dismissedAt"`;
 var ITEM_JOINS = `FROM crm_team_attention_items i JOIN public.identity_users target ON target.user_id=i.target_member_user_id JOIN public.identity_users source ON source.user_id=i.source_supervisor_user_id JOIN crm_customers c ON c.customer_id=i.customer_id JOIN companies co ON co.id=c.company_id JOIN contacts ct ON ct.id=i.contact_id`;
-function iso2(value2) {
+function iso4(value2) {
   return new Date(value2).toISOString();
 }
 function optionalIso(value2) {
   return value2 ? new Date(value2).toISOString() : null;
 }
 function digest(value2) {
-  return (0, import_node_crypto31.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+  return (0, import_node_crypto38.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
 }
 function oversight(actor) {
   return actor.roles.includes("admin") || actor.roles.includes("operations");
@@ -17780,8 +21647,8 @@ function mapped6(row2, scope) {
   const member2 = scope === "member" && row2.status !== "resolved" && row2.status !== "dismissed";
   return {
     ...row2,
-    createdAt: iso2(row2.createdAt),
-    updatedAt: iso2(row2.updatedAt),
+    createdAt: iso4(row2.createdAt),
+    updatedAt: iso4(row2.updatedAt),
     acknowledgedAt: optionalIso(row2.acknowledgedAt),
     resolvedAt: optionalIso(row2.resolvedAt),
     dismissedAt: optionalIso(row2.dismissedAt),
@@ -17934,25 +21801,25 @@ var PostgresTeamAttentionRepository = class {
 };
 
 // server/services/team-attention.ts
-var UUID15 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-var TOKEN5 = /^[A-Za-z0-9_-]{43}$/;
-function record13(value2) {
+var UUID17 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var TOKEN7 = /^[A-Za-z0-9_-]{43}$/;
+function record15(value2) {
   return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
 }
 function keys9(value2, allowed) {
-  return Object.keys(value2).every((key) => allowed.includes(key));
+  return Object.keys(value2).every((key2) => allowed.includes(key2));
 }
-function text14(value2, maximum, minimum = 1) {
+function text16(value2, maximum, minimum = 1) {
   return typeof value2 === "string" && value2.trim().length >= minimum && value2.trim().length <= maximum && !value2.includes("\0");
 }
 function optionalText(value2, maximum) {
-  return value2 === void 0 || text14(value2, maximum);
+  return value2 === void 0 || text16(value2, maximum);
 }
 function uuid4(value2) {
-  return typeof value2 === "string" && UUID15.test(value2);
+  return typeof value2 === "string" && UUID17.test(value2);
 }
 function query(value2) {
-  if (!record13(value2) || !keys9(value2, ["status", "reason", "targetMemberUserId", "limit", "offset"]))
+  if (!record15(value2) || !keys9(value2, ["status", "reason", "targetMemberUserId", "limit", "offset"]))
     return void 0;
   if (value2.status !== void 0 && !TEAM_ATTENTION_STATUSES.includes(value2.status))
     return void 0;
@@ -17967,7 +21834,7 @@ function query(value2) {
   return value2;
 }
 function createInput(value2) {
-  if (!record13(value2) || !keys9(value2, ["targetMemberUserId", "customerId", "contactId", "mailEventId", "analysisId", "reason", "priority", "note", "idempotencyKey"]))
+  if (!record15(value2) || !keys9(value2, ["targetMemberUserId", "customerId", "contactId", "mailEventId", "analysisId", "reason", "priority", "note", "idempotencyKey"]))
     return void 0;
   if (!uuid4(value2.targetMemberUserId) || !uuid4(value2.customerId) || !Number.isSafeInteger(value2.contactId) || Number(value2.contactId) < 1)
     return void 0;
@@ -17975,23 +21842,23 @@ function createInput(value2) {
     return void 0;
   if (!TEAM_ATTENTION_REASONS.includes(value2.reason) || !MAIL_PRIORITIES.includes(value2.priority))
     return void 0;
-  if (!optionalText(value2.note, TEAM_ATTENTION_LIMITS.note) || !text14(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
+  if (!optionalText(value2.note, TEAM_ATTENTION_LIMITS.note) || !text16(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
     return void 0;
   return value2;
 }
 function transition(value2) {
-  if (!record13(value2) || !keys9(value2, ["action", "expectedVersion", "idempotencyKey", "result"]) || !["acknowledge", "dismiss", "resolve"].includes(String(value2.action)))
+  if (!record15(value2) || !keys9(value2, ["action", "expectedVersion", "idempotencyKey", "result"]) || !["acknowledge", "dismiss", "resolve"].includes(String(value2.action)))
     return void 0;
-  if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !text14(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
+  if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1 || !text16(value2.idempotencyKey, TEAM_ATTENTION_LIMITS.key))
     return void 0;
   if (!optionalText(value2.result, TEAM_ATTENTION_LIMITS.result))
     return void 0;
-  if (value2.action === "resolve" && !text14(value2.result, TEAM_ATTENTION_LIMITS.result))
+  if (value2.action === "resolve" && !text16(value2.result, TEAM_ATTENTION_LIMITS.result))
     return void 0;
   return value2;
 }
 function createTeamAttentionService(repo, tokens) {
-  const run2 = (token, action) => TOKEN5.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+  const run2 = (token, action) => TOKEN7.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
   return {
     list(token, value2) {
       const parsed = query(value2);
@@ -18003,7 +21870,7 @@ function createTeamAttentionService(repo, tokens) {
     },
     transition(token, itemId, action, value2) {
       const parsed = transition(value2);
-      if (!parsed || !UUID15.test(itemId) || parsed.action !== action)
+      if (!parsed || !UUID17.test(itemId) || parsed.action !== action)
         return Promise.resolve(failure("INVALID_INPUT", "\u5173\u6CE8\u9879\u72B6\u6001\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.transition(hash, { ...parsed, itemId }));
     }
@@ -18011,19 +21878,19 @@ function createTeamAttentionService(repo, tokens) {
 }
 
 // server/transport/team-attention-http.ts
-var TOKEN6 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+var TOKEN8 = /^Bearer ([A-Za-z0-9_-]{43})$/;
 var QUERY_FIELDS2 = ["status", "reason", "targetMemberUserId", "limit", "offset"];
 function createTeamAttentionHandler(service) {
   return async (request2, response) => {
     const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
-    const token = TOKEN6.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    const token = TOKEN8.exec(request2.headers.authorization ?? "")?.[1] ?? "";
     if (!token) {
       send(response, failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
       return;
     }
     if (url.pathname === TEAM_ATTENTION_ROUTES.items) {
       if (request2.method === "GET") {
-        if ([...url.searchParams.keys()].some((key) => !QUERY_FIELDS2.includes(key) || url.searchParams.getAll(key).length !== 1)) {
+        if ([...url.searchParams.keys()].some((key2) => !QUERY_FIELDS2.includes(key2) || url.searchParams.getAll(key2).length !== 1)) {
           send(response, failure("INVALID_INPUT", "\u5173\u6CE8\u9879\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
           return;
         }
@@ -18088,8 +21955,64 @@ function teamMonitoringScopeFor(input) {
   return null;
 }
 
+// server/core/sales-performance.ts
+var SALES_PERFORMANCE_ROUTES = {
+  performance: "/api/crm/sales-performance",
+  customerGrades: "/api/crm/sales-performance/customer-grades"
+};
+var SALES_PERFORMANCE_LIMITS = {
+  page: 25,
+  pageMax: 100,
+  defaultWindowDays: 90,
+  maximumWindowDays: 730,
+  text: 200,
+  reason: 1e3,
+  key: 128,
+  bodyBytes: 8192
+};
+var SALES_PERFORMANCE_MIN_SAMPLES = {
+  duration: 5,
+  repeatRate: 5
+};
+var SALES_PERFORMANCE_STRATA = ["lead", "source", "batch", "country"];
+var CUSTOMER_GRADES = ["A", "B", "C"];
+var CUSTOMER_GRADE_THRESHOLDS = {
+  gradeAWonOpportunities: 1,
+  gradeAValidReplies: 3,
+  gradeBValidReplies: 1,
+  gradeBOpenOpportunities: 1
+};
+function customerGradeScopeFor(input) {
+  if (input.identityAdmin || input.roles.includes("admin"))
+    return "superadmin";
+  if (input.roles.includes("operations"))
+    return "operations";
+  if (input.roles.includes("sales"))
+    return input.isLeader ? "leader" : "self";
+  return null;
+}
+function salesPerformanceScopeFor(input) {
+  const scope = customerGradeScopeFor(input);
+  return scope === "superadmin" || scope === "operations" ? scope : null;
+}
+function customerGradeFor(signals2) {
+  if (signals2.wonOpportunityCount >= CUSTOMER_GRADE_THRESHOLDS.gradeAWonOpportunities) {
+    return { grade: "A", reasons: ["won_opportunity"] };
+  }
+  if (signals2.validReplyCount >= CUSTOMER_GRADE_THRESHOLDS.gradeAValidReplies) {
+    return { grade: "A", reasons: ["three_valid_replies"] };
+  }
+  if (signals2.validReplyCount >= CUSTOMER_GRADE_THRESHOLDS.gradeBValidReplies) {
+    return { grade: "B", reasons: ["valid_reply"] };
+  }
+  if (signals2.openOpportunityCount >= CUSTOMER_GRADE_THRESHOLDS.gradeBOpenOpportunities) {
+    return { grade: "B", reasons: ["open_opportunity"] };
+  }
+  return { grade: "C", reasons: ["insufficient_customer_signal"] };
+}
+
 // server/adapters/postgres/team-monitoring-schema.ts
-var import_node_crypto32 = require("node:crypto");
+var import_node_crypto39 = require("node:crypto");
 var TEAM_MONITORING_SCHEMA_VERSION = "061-team-monitoring";
 var TEAM_MONITORING_LOCK = 610061;
 var TEAM_MONITORING_SQL = `
@@ -18145,7 +22068,7 @@ CREATE INDEX idx_crm_team_monitoring_tasks_responsible
   WHERE status='open' AND source_responsible_user_id IS NOT NULL;
 `;
 function checksum2() {
-  return (0, import_node_crypto32.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
+  return (0, import_node_crypto39.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
 }
 async function migrateTeamMonitoringSchema(client) {
   const digest2 = checksum2();
@@ -18205,9 +22128,9 @@ function statsCtes(scope) {
     ${visibleUnitsCte(scope)},
     visible_members AS (
       SELECT a.user_id AS "userId",u.display_name AS "displayName",e.email,
-        unit.unit_id AS "teamId",unit.name AS "teamName",unit.kind AS "organizationKind"
+        a.role,unit.unit_id AS "teamId",unit.name AS "teamName",unit.kind AS "organizationKind"
       FROM visible_units unit
-      JOIN crm_org_assignments a ON a.unit_id=unit.unit_id AND a.role='member' AND a.ended_at IS NULL
+      JOIN crm_org_assignments a ON a.unit_id=unit.unit_id AND a.role IN ('leader','member') AND a.ended_at IS NULL
       JOIN public.identity_users u ON u.user_id=a.user_id
       LEFT JOIN LATERAL (
         SELECT email FROM public.identity_login_emails mail
@@ -18315,7 +22238,7 @@ var MAIL_SUMMARY_SELECT = `
 function number(value2) {
   return Number(value2 ?? 0);
 }
-function iso3(value2) {
+function iso5(value2) {
   return value2 === null || value2 === void 0 ? null : new Date(value2).toISOString();
 }
 function jsonSignals(value2) {
@@ -18347,12 +22270,12 @@ function counts(row2) {
   };
 }
 function rates(value2) {
-  const touched = Math.max(0, value2.contacts - value2.uncontacted);
+  const touched2 = Math.max(0, value2.contacts - value2.uncontacted);
   const ratio = (part, whole) => whole > 0 ? Math.round(part / whole * 1e4) / 1e4 : 0;
   return {
-    contactRate: ratio(touched, value2.contacts),
-    replyRate: ratio(value2.replied, touched),
-    bounceRate: ratio(value2.bounced, touched),
+    contactRate: ratio(touched2, value2.contacts),
+    replyRate: ratio(value2.replied, touched2),
+    bounceRate: ratio(value2.bounced, touched2),
     actionRate: ratio(value2.openActions, value2.contacts)
   };
 }
@@ -18373,14 +22296,15 @@ function member(row2) {
     userId: row2.userId,
     displayName: row2.displayName,
     email: row2.email,
+    role: row2.role,
     teamId: row2.teamId,
     teamName: row2.teamName,
     organizationKind: row2.organizationKind,
     counts: value2,
     rates: rates(value2),
     stages: stages2(row2.stages),
-    lastActivityAt: iso3(row2.lastActivityAt),
-    latestImportantReplyAt: iso3(row2.latestImportantReplyAt)
+    lastActivityAt: iso5(row2.lastActivityAt),
+    latestImportantReplyAt: iso5(row2.latestImportantReplyAt)
   };
 }
 function mail(row2) {
@@ -18544,7 +22468,7 @@ var PostgresTeamMonitoringRepository = class {
       const memberRows = await client.query(
         `${ctes}
         SELECT * FROM member_stats ${filter}
-        ORDER BY COALESCE("lastActivityAt","latestImportantReplyAt") DESC NULLS LAST,"displayName","userId" LIMIT $4 OFFSET $5`,
+        ORDER BY ("role"='leader') DESC,COALESCE("lastActivityAt","latestImportantReplyAt") DESC NULLS LAST,"displayName","userId" LIMIT $4 OFFSET $5`,
         [actor.userId, query2.teamId ?? null, query2.memberUserId ?? null, query2.limit, query2.offset]
       );
       const totalMembers = await client.query(
@@ -18722,6 +22646,77 @@ var PostgresTeamMonitoringRepository = class {
         ) analysis ON true
         WHERE owner."userId"=$2
         ORDER BY event.occurred_at DESC,event.event_id DESC LIMIT $3 OFFSET $4`, [actor.userId, userId, limit, offset]);
+      const followups = await client.query(`${ctes},
+        owned AS (
+          SELECT * FROM contact_facts WHERE "ownerUserId"=$2
+        ),
+        customer_scope AS (
+          SELECT "customerId",min("companyName") AS "customerName",min(stage) AS stage,
+            (array_agg("contactId" ORDER BY ("touchStatus"<>'uncontacted') DESC,"updatedAt" DESC))[1] AS "contactId",
+            (array_agg("contactName" ORDER BY ("touchStatus"<>'uncontacted') DESC,"updatedAt" DESC))[1] AS "contactName"
+          FROM owned GROUP BY "customerId"
+        ),
+        reply_counts AS (
+          SELECT event.customer_id AS customer_id,count(DISTINCT event.event_id)::int AS valid_replies
+          FROM crm_contact_mail_events event
+          JOIN crm_contact_mail_analyses analysis ON analysis.event_id=event.event_id AND analysis.is_current
+          JOIN owned ON owned."contactId"=event.contact_id AND owned."customerId"=event.customer_id
+          WHERE analysis.classification='replied' AND analysis.relevance='customer_business'
+          GROUP BY event.customer_id
+        ),
+        opportunity_counts AS (
+          SELECT customer_id,
+            count(*) FILTER(WHERE stage='closed_won')::int AS won_opportunities,
+            count(*) FILTER(WHERE stage NOT IN ('closed_won','closed_lost'))::int AS open_opportunities
+          FROM crm_opportunities GROUP BY customer_id
+        ),
+        last_activity AS (
+          SELECT owned."customerId" AS customer_id,max(activity.occurred_at) AS occurred_at
+          FROM crm_shared_activities activity
+          JOIN owned ON owned."customerId"=activity.customer_id AND (activity.contact_id IS NULL OR activity.contact_id=owned."contactId")
+          WHERE activity.method NOT IN ('legacy','note') GROUP BY owned."customerId"
+        ),
+        last_outbound AS (
+          SELECT event.customer_id,max(event.occurred_at) AS occurred_at
+          FROM crm_contact_mail_events event JOIN owned ON owned."contactId"=event.contact_id AND owned."customerId"=event.customer_id
+          WHERE event.direction='outbound' GROUP BY event.customer_id
+        ),
+        task_counts AS (
+          SELECT task.customer_id,
+            count(*) FILTER(WHERE task.status='open')::int AS open_tasks,
+            count(*) FILTER(WHERE task.status='open' AND task.due_at<clock_timestamp())::int AS overdue_tasks
+          FROM crm_followup_tasks task
+          WHERE COALESCE(task.source_responsible_user_id,(SELECT owner_user_id FROM crm_customers WHERE customer_id=task.customer_id))=$2
+          GROUP BY task.customer_id
+        ),
+        latest_analysis AS (
+          SELECT DISTINCT ON (event.customer_id) event.customer_id,analysis.summary,analysis.next_action,analysis.priority
+          FROM crm_contact_mail_events event
+          JOIN owned ON owned."contactId"=event.contact_id AND owned."customerId"=event.customer_id
+          JOIN crm_contact_mail_analyses analysis ON analysis.event_id=event.event_id AND analysis.is_current
+          ORDER BY event.customer_id,event.occurred_at DESC,event.event_id DESC
+        )
+        SELECT customer."customerId",customer."customerName",customer."contactId",customer."contactName",customer.stage,
+          EXISTS(SELECT 1 FROM crm_ai_proposals ap JOIN crm_sales_cases sc ON sc.case_id=ap.case_id WHERE sc.customer_id=customer."customerId" AND ap.proposal_type='deal_won' AND ap.status='applied_pending_confirmation') AS "aiDealPending",
+          COALESCE(reply.valid_replies,0)::int AS "validReplyCount",
+          COALESCE(opportunity.won_opportunities,0)::int AS "wonOpportunityCount",
+          COALESCE(opportunity.open_opportunities,0)::int AS "openOpportunityCount",
+          override.grade AS "overrideGrade",
+          GREATEST(activity.occurred_at,outbound.occurred_at) AS "lastFollowupAt",
+          analysis.next_action AS "nextAction",analysis.summary AS "recentSummary",analysis.priority,
+          COALESCE(task.open_tasks,0)::int AS "openTasks",COALESCE(task.overdue_tasks,0)::int AS "overdueTasks"
+        FROM customer_scope customer
+        LEFT JOIN reply_counts reply ON reply.customer_id=customer."customerId"
+        LEFT JOIN opportunity_counts opportunity ON opportunity.customer_id=customer."customerId"
+        LEFT JOIN crm_customer_grade_overrides override ON override.customer_id=customer."customerId"
+        LEFT JOIN last_activity activity ON activity.customer_id=customer."customerId"
+        LEFT JOIN last_outbound outbound ON outbound.customer_id=customer."customerId"
+        LEFT JOIN task_counts task ON task.customer_id=customer."customerId"
+        LEFT JOIN latest_analysis analysis ON analysis.customer_id=customer."customerId"
+        ORDER BY COALESCE(task.overdue_tasks,0) DESC,
+          CASE analysis.priority WHEN 'urgent' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
+          GREATEST(activity.occurred_at,outbound.occurred_at) ASC NULLS FIRST,customer."customerId"
+        LIMIT 4`, [actor.userId, userId]);
       return success({
         scope: actor.scope,
         generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -18734,7 +22729,7 @@ var PostgresTeamMonitoringRepository = class {
           customerName: String(row2.customerName),
           contactId: row2.contactId === null ? null : number(row2.contactId),
           contactName: row2.contactName ? String(row2.contactName) : null,
-          dueAt: iso3(row2.dueAt),
+          dueAt: iso5(row2.dueAt),
           occurredAt: new Date(row2.occurredAt).toISOString(),
           priority: row2.priority
         })),
@@ -18752,7 +22747,26 @@ var PostgresTeamMonitoringRepository = class {
           note: row2.note ? String(row2.note) : null,
           updatedAt: new Date(row2.updatedAt).toISOString()
         })),
-        recentMail: recentMail.rows.map(mail)
+        recentMail: recentMail.rows.map(mail),
+        followups: followups.rows.map((row2) => {
+          const grade = customerGradeFor({ validReplyCount: number(row2.validReplyCount), wonOpportunityCount: number(row2.wonOpportunityCount), repeatPurchaseCount: 0, openOpportunityCount: number(row2.openOpportunityCount) }).grade;
+          const lastFollowup = row2.lastFollowupAt ? new Date(row2.lastFollowupAt) : null;
+          const urgency = number(row2.overdueTasks) > 0 ? "urgent" : row2.priority === "urgent" || row2.priority === "important" ? row2.priority : "normal";
+          return {
+            customerId: String(row2.customerId),
+            customerName: String(row2.customerName),
+            contactId: number(row2.contactId),
+            contactName: row2.contactName ? String(row2.contactName) : null,
+            stage: row2.stage,
+            aiDealPending: Boolean(row2.aiDealPending),
+            grade: row2.overrideGrade ? String(row2.overrideGrade) : grade,
+            urgency,
+            lastFollowupAt: lastFollowup ? lastFollowup.toISOString() : null,
+            daysSinceFollowup: lastFollowup ? Math.max(0, Math.floor((Date.now() - lastFollowup.getTime()) / 864e5)) : null,
+            nextAction: row2.nextAction ? String(row2.nextAction) : null,
+            recentSummary: row2.recentSummary ? String(row2.recentSummary) : null
+          };
+        })
       });
     });
   }
@@ -18765,6 +22779,7 @@ var PostgresTeamMonitoringRepository = class {
         COALESCE(NULLIF(concat_ws(' ',contact.first_name,contact.last_name),''),contact.email,'') AS name,
         contact.email,COALESCE(company.country,contact.country) AS country,contact.title,
         customer.relationship_stage AS stage,contact.crm_touch_status AS "touchStatus",
+        EXISTS(SELECT 1 FROM crm_ai_proposals ap JOIN crm_sales_cases sc ON sc.case_id=ap.case_id WHERE sc.customer_id=customer.customer_id AND ap.proposal_type='deal_won' AND ap.status='applied_pending_confirmation') AS "aiDealPending",
         COALESCE(own.owner_user_id,customer.owner_user_id) AS "ownerUserId",
         owner.display_name AS "ownerName",customer.origin,
         contact.created_at AS "createdAt",contact.updated_at AS "updatedAt"
@@ -18802,6 +22817,7 @@ var PostgresTeamMonitoringRepository = class {
         title: row2.title ? String(row2.title) : null,
         stage: row2.stage,
         touchStatus: row2.touchStatus,
+        aiDealPending: Boolean(row2.aiDealPending),
         ownerUserId: row2.ownerUserId ? String(row2.ownerUserId) : null,
         ownerName: row2.ownerName ? String(row2.ownerName) : null,
         origin: row2.origin,
@@ -18835,16 +22851,16 @@ var PostgresTeamMonitoringRepository = class {
 };
 
 // server/services/team-monitoring.ts
-var TOKEN7 = /^[A-Za-z0-9_-]{43}$/;
-var UUID16 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-function record14(value2) {
+var TOKEN9 = /^[A-Za-z0-9_-]{43}$/;
+var UUID18 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function record16(value2) {
   return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
 }
 function keys10(value2, allowed) {
-  return Object.keys(value2).every((key) => allowed.includes(key));
+  return Object.keys(value2).every((key2) => allowed.includes(key2));
 }
 function page(value2) {
-  if (!record14(value2) || !keys10(value2, ["limit", "offset"]))
+  if (!record16(value2) || !keys10(value2, ["limit", "offset"]))
     return void 0;
   const limit = value2.limit ?? TEAM_MONITORING_LIMITS.mailPage;
   const offset = value2.offset ?? 0;
@@ -18853,11 +22869,11 @@ function page(value2) {
   return { limit: Number(limit), offset: Number(offset) };
 }
 function overviewQuery(value2) {
-  if (!record14(value2) || !keys10(value2, ["teamId", "memberUserId", "limit", "offset", "unitLimit", "unitOffset"]))
+  if (!record16(value2) || !keys10(value2, ["teamId", "memberUserId", "limit", "offset", "unitLimit", "unitOffset"]))
     return void 0;
-  if (value2.teamId !== void 0 && (typeof value2.teamId !== "string" || !UUID16.test(value2.teamId)))
+  if (value2.teamId !== void 0 && (typeof value2.teamId !== "string" || !UUID18.test(value2.teamId)))
     return void 0;
-  if (value2.memberUserId !== void 0 && (typeof value2.memberUserId !== "string" || !UUID16.test(value2.memberUserId)))
+  if (value2.memberUserId !== void 0 && (typeof value2.memberUserId !== "string" || !UUID18.test(value2.memberUserId)))
     return void 0;
   const limit = value2.limit ?? TEAM_MONITORING_LIMITS.page;
   const offset = value2.offset ?? 0;
@@ -18875,20 +22891,20 @@ function overviewQuery(value2) {
   };
 }
 function contactQuery(value2) {
-  if (!record14(value2) || !keys10(value2, ["customerId", "limit", "offset"]) || typeof value2.customerId !== "string" || !UUID16.test(value2.customerId))
+  if (!record16(value2) || !keys10(value2, ["customerId", "limit", "offset"]) || typeof value2.customerId !== "string" || !UUID18.test(value2.customerId))
     return void 0;
   const paging = page({ limit: value2.limit, offset: value2.offset });
   return paging ? { customerId: value2.customerId, ...paging } : void 0;
 }
 function mailQuery(value2) {
-  if (!record14(value2) || !keys10(value2, ["contactId", "customerId"]) || typeof value2.customerId !== "string" || !UUID16.test(value2.customerId))
+  if (!record16(value2) || !keys10(value2, ["contactId", "customerId"]) || typeof value2.customerId !== "string" || !UUID18.test(value2.customerId))
     return void 0;
   if (!Number.isSafeInteger(value2.contactId) || Number(value2.contactId) < 1)
     return void 0;
   return { contactId: Number(value2.contactId), customerId: value2.customerId };
 }
 function createTeamMonitoringService(repo, tokens) {
-  const run2 = (token, action) => TOKEN7.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+  const run2 = (token, action) => TOKEN9.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
   return {
     overview(token, value2) {
       const parsed = overviewQuery(value2);
@@ -18896,7 +22912,7 @@ function createTeamMonitoringService(repo, tokens) {
     },
     member(token, userId, value2) {
       const parsed = page(value2);
-      if (!UUID16.test(userId) || !parsed)
+      if (!UUID18.test(userId) || !parsed)
         return Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.member(hash, userId, parsed.limit, parsed.offset));
     },
@@ -18909,7 +22925,7 @@ function createTeamMonitoringService(repo, tokens) {
     },
     mail(token, eventId, value2) {
       const parsed = mailQuery(value2);
-      if (!UUID16.test(eventId) || !parsed)
+      if (!UUID18.test(eventId) || !parsed)
         return Promise.resolve(failure("INVALID_INPUT", "\u90AE\u4EF6\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.mail(hash, eventId, parsed.contactId, parsed.customerId));
     }
@@ -18917,20 +22933,20 @@ function createTeamMonitoringService(repo, tokens) {
 }
 
 // server/transport/team-monitoring-http.ts
-var TOKEN8 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+var TOKEN10 = /^Bearer ([A-Za-z0-9_-]{43})$/;
 var MEMBER_PATH = /^\/api\/crm\/team-monitoring\/members\/([a-f0-9-]{36})$/i;
 var CONTACT_PATH = /^\/api\/crm\/team-monitoring\/contacts\/(\d+)$/;
 var MAIL_PATH = /^\/api\/crm\/team-monitoring\/mail\/([a-f0-9-]{36})$/i;
 function validQuery(url, allowed) {
-  return [...url.searchParams.keys()].every((key) => allowed.includes(key) && url.searchParams.getAll(key).length === 1);
+  return [...url.searchParams.keys()].every((key2) => allowed.includes(key2) && url.searchParams.getAll(key2).length === 1);
 }
-function optional2(url, key) {
-  return url.searchParams.has(key) ? url.searchParams.get(key) : void 0;
+function optional2(url, key2) {
+  return url.searchParams.has(key2) ? url.searchParams.get(key2) : void 0;
 }
 function createTeamMonitoringHandler(service) {
   return async (request2, response) => {
     const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
-    const token = TOKEN8.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    const token = TOKEN10.exec(request2.headers.authorization ?? "")?.[1] ?? "";
     if (!token) {
       send(response, failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
       return;
@@ -18996,66 +23012,10 @@ function createTeamMonitoringHandler(service) {
 }
 
 // server/adapters/postgres/sales-performance-repository.ts
-var import_node_crypto34 = require("node:crypto");
-
-// server/core/sales-performance.ts
-var SALES_PERFORMANCE_ROUTES = {
-  performance: "/api/crm/sales-performance",
-  customerGrades: "/api/crm/sales-performance/customer-grades"
-};
-var SALES_PERFORMANCE_LIMITS = {
-  page: 25,
-  pageMax: 100,
-  defaultWindowDays: 90,
-  maximumWindowDays: 730,
-  text: 200,
-  reason: 1e3,
-  key: 128,
-  bodyBytes: 8192
-};
-var SALES_PERFORMANCE_MIN_SAMPLES = {
-  duration: 5,
-  repeatRate: 5
-};
-var SALES_PERFORMANCE_STRATA = ["lead", "source", "batch", "country"];
-var CUSTOMER_GRADES = ["A", "B", "C"];
-var CUSTOMER_GRADE_THRESHOLDS = {
-  gradeAWonOpportunities: 1,
-  gradeAValidReplies: 3,
-  gradeBValidReplies: 1,
-  gradeBOpenOpportunities: 1
-};
-function customerGradeScopeFor(input) {
-  if (input.identityAdmin || input.roles.includes("admin"))
-    return "superadmin";
-  if (input.roles.includes("operations"))
-    return "operations";
-  if (input.roles.includes("sales"))
-    return input.isLeader ? "leader" : "self";
-  return null;
-}
-function salesPerformanceScopeFor(input) {
-  const scope = customerGradeScopeFor(input);
-  return scope === "superadmin" || scope === "operations" ? scope : null;
-}
-function customerGradeFor(signals2) {
-  if (signals2.wonOpportunityCount >= CUSTOMER_GRADE_THRESHOLDS.gradeAWonOpportunities) {
-    return { grade: "A", reasons: ["won_opportunity"] };
-  }
-  if (signals2.validReplyCount >= CUSTOMER_GRADE_THRESHOLDS.gradeAValidReplies) {
-    return { grade: "A", reasons: ["three_valid_replies"] };
-  }
-  if (signals2.validReplyCount >= CUSTOMER_GRADE_THRESHOLDS.gradeBValidReplies) {
-    return { grade: "B", reasons: ["valid_reply"] };
-  }
-  if (signals2.openOpportunityCount >= CUSTOMER_GRADE_THRESHOLDS.gradeBOpenOpportunities) {
-    return { grade: "B", reasons: ["open_opportunity"] };
-  }
-  return { grade: "C", reasons: ["insufficient_customer_signal"] };
-}
+var import_node_crypto41 = require("node:crypto");
 
 // server/adapters/postgres/sales-performance-schema.ts
-var import_node_crypto33 = require("node:crypto");
+var import_node_crypto40 = require("node:crypto");
 var SALES_PERFORMANCE_SCHEMA_VERSION = "062-sales-performance-customer-grade";
 var SALES_PERFORMANCE_SCHEMA_LOCK = 620062;
 var SALES_PERFORMANCE_SQL = `
@@ -19144,7 +23104,7 @@ CREATE INDEX idx_crm_sales_perf_customer_origin_source
   ON crm_customers(origin,source,customer_id);
 `;
 function checksum3() {
-  return (0, import_node_crypto33.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
+  return (0, import_node_crypto40.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
 }
 async function migrateSalesPerformanceSchema(client) {
   const digest2 = checksum3();
@@ -19171,7 +23131,7 @@ function count(value2) {
 function metricNumber(value2) {
   return value2 === null ? null : Number(value2);
 }
-function iso4(value2) {
+function iso6(value2) {
   return value2 === null ? null : new Date(value2).toISOString();
 }
 function visibleOrganizationCtes(scope) {
@@ -19687,8 +23647,8 @@ var PostgresSalesPerformanceRepository = class {
             actorId: row2.overrideActorId ?? "",
             actorName: row2.overrideActorName,
             version: count(row2.overrideVersion),
-            createdAt: iso4(row2.overrideCreatedAt) ?? (/* @__PURE__ */ new Date(0)).toISOString(),
-            updatedAt: iso4(row2.overrideUpdatedAt) ?? (/* @__PURE__ */ new Date(0)).toISOString()
+            createdAt: iso6(row2.overrideCreatedAt) ?? (/* @__PURE__ */ new Date(0)).toISOString(),
+            updatedAt: iso6(row2.overrideUpdatedAt) ?? (/* @__PURE__ */ new Date(0)).toISOString()
           } : null;
           return {
             customerId: row2.customerId,
@@ -19751,7 +23711,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto34.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto41.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, OVERRIDE_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -19787,7 +23747,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto34.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto41.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, CLEAR_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -19814,23 +23774,23 @@ var PostgresSalesPerformanceRepository = class {
 };
 
 // server/services/sales-performance.ts
-var TOKEN9 = /^[A-Za-z0-9_-]{43}$/;
-var UUID17 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var TOKEN11 = /^[A-Za-z0-9_-]{43}$/;
+var UUID19 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var MILLISECONDS_PER_DAY = 864e5;
-function record15(value2) {
+function record17(value2) {
   return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
 }
 function keys11(value2, allowed) {
-  return Object.keys(value2).every((key) => allowed.includes(key));
+  return Object.keys(value2).every((key2) => allowed.includes(key2));
 }
-function text15(value2, maximum, minimum = 1) {
+function text17(value2, maximum, minimum = 1) {
   return typeof value2 === "string" && value2.trim().length >= minimum && value2.trim().length <= maximum && !value2.includes("\0");
 }
 function optionalText2(value2, maximum) {
-  return value2 === void 0 || text15(value2, maximum);
+  return value2 === void 0 || text17(value2, maximum);
 }
 function uuid5(value2) {
-  return typeof value2 === "string" && UUID17.test(value2);
+  return typeof value2 === "string" && UUID19.test(value2);
 }
 function page2(value2) {
   const limit = value2.limit ?? SALES_PERFORMANCE_LIMITS.page;
@@ -19858,7 +23818,7 @@ function window(value2, now) {
   return { from, to };
 }
 function performanceQuery(value2, now) {
-  if (!record15(value2) || !keys11(value2, ["from", "to", "groupBy", "teamId", "memberUserId", "source", "batchId", "country", "limit", "offset"]))
+  if (!record17(value2) || !keys11(value2, ["from", "to", "groupBy", "teamId", "memberUserId", "source", "batchId", "country", "limit", "offset"]))
     return void 0;
   const range = window(value2, now), paging = page2(value2);
   const groupBy = value2.groupBy ?? "lead";
@@ -19880,7 +23840,7 @@ function performanceQuery(value2, now) {
   };
 }
 function gradeQuery(value2, now) {
-  if (!record15(value2) || !keys11(value2, ["from", "to", "customerId", "teamId", "memberUserId", "limit", "offset"]))
+  if (!record17(value2) || !keys11(value2, ["from", "to", "customerId", "teamId", "memberUserId", "limit", "offset"]))
     return void 0;
   const range = window(value2, now), paging = page2(value2);
   if (!range || !paging)
@@ -19896,25 +23856,25 @@ function gradeQuery(value2, now) {
   };
 }
 function setBody(value2) {
-  if (!record15(value2) || !keys11(value2, ["expectedVersion", "grade", "reason", "idempotencyKey"]))
+  if (!record17(value2) || !keys11(value2, ["expectedVersion", "grade", "reason", "idempotencyKey"]))
     return void 0;
   if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 0)
     return void 0;
-  if (!CUSTOMER_GRADES.includes(value2.grade) || !text15(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text15(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
+  if (!CUSTOMER_GRADES.includes(value2.grade) || !text17(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text17(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
     return void 0;
   return { expectedVersion: Number(value2.expectedVersion), grade: value2.grade, reason: value2.reason.trim(), idempotencyKey: value2.idempotencyKey };
 }
 function clearBody(value2) {
-  if (!record15(value2) || !keys11(value2, ["expectedVersion", "reason", "idempotencyKey"]))
+  if (!record17(value2) || !keys11(value2, ["expectedVersion", "reason", "idempotencyKey"]))
     return void 0;
   if (!Number.isSafeInteger(value2.expectedVersion) || Number(value2.expectedVersion) < 1)
     return void 0;
-  if (!text15(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text15(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
+  if (!text17(value2.reason, SALES_PERFORMANCE_LIMITS.reason) || !text17(value2.idempotencyKey, SALES_PERFORMANCE_LIMITS.key))
     return void 0;
   return { expectedVersion: Number(value2.expectedVersion), reason: value2.reason.trim(), idempotencyKey: value2.idempotencyKey };
 }
 function createSalesPerformanceService(repo, tokens, clock) {
-  const run2 = (token, action) => TOKEN9.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
+  const run2 = (token, action) => TOKEN11.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
   return {
     performance(token, value2) {
       const parsed = performanceQuery(value2, clock.now());
@@ -19926,13 +23886,13 @@ function createSalesPerformanceService(repo, tokens, clock) {
     },
     setCustomerGradeOverride(token, customerId, value2) {
       const parsed = setBody(value2);
-      if (!UUID17.test(customerId) || !parsed)
+      if (!UUID19.test(customerId) || !parsed)
         return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u7B49\u7EA7\u8986\u76D6\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.setCustomerGradeOverride(hash, { customerId, ...parsed, grade: parsed.grade }));
     },
     clearCustomerGradeOverride(token, customerId, value2) {
       const parsed = clearBody(value2);
-      if (!UUID17.test(customerId) || !parsed)
+      if (!UUID19.test(customerId) || !parsed)
         return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u7B49\u7EA7\u6E05\u9664\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.clearCustomerGradeOverride(hash, { customerId, ...parsed }));
     }
@@ -19940,18 +23900,18 @@ function createSalesPerformanceService(repo, tokens, clock) {
 }
 
 // server/transport/sales-performance-http.ts
-var TOKEN10 = /^Bearer ([A-Za-z0-9_-]{43})$/;
+var TOKEN12 = /^Bearer ([A-Za-z0-9_-]{43})$/;
 var OVERRIDE_PATH = /^\/api\/crm\/sales-performance\/customer-grades\/([a-f0-9-]{36})\/override$/i;
 function validQuery2(url, allowed) {
-  return [...url.searchParams.keys()].every((key) => allowed.includes(key) && url.searchParams.getAll(key).length === 1);
+  return [...url.searchParams.keys()].every((key2) => allowed.includes(key2) && url.searchParams.getAll(key2).length === 1);
 }
-function optional3(url, key) {
-  return url.searchParams.has(key) ? url.searchParams.get(key) : void 0;
+function optional3(url, key2) {
+  return url.searchParams.has(key2) ? url.searchParams.get(key2) : void 0;
 }
 function createSalesPerformanceHandler(service) {
   return async (request2, response) => {
     const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
-    const token = TOKEN10.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    const token = TOKEN12.exec(request2.headers.authorization ?? "")?.[1] ?? "";
     if (!token) {
       send(response, failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
       return;
@@ -20010,9 +23970,9 @@ function createSalesPerformanceHandler(service) {
 }
 
 // server/adapters/online-instance.ts
-var import_node_crypto35 = require("node:crypto");
+var import_node_crypto42 = require("node:crypto");
 var INSTANCE_ID_PATTERN = /^[a-f0-9]{64}$/;
-function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto35.randomBytes)(32).toString("hex")) {
+function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto42.randomBytes)(32).toString("hex")) {
   const configured = env.PROSPECTOR_ONLINE_INSTANCE?.trim();
   if (configured) {
     if (!INSTANCE_ID_PATTERN.test(configured))
@@ -20071,6 +24031,13 @@ async function main() {
     const teamAttentionRepo = new PostgresTeamAttentionRepository(pool, serverLog);
     if (!(await teamAttentionRepo.migrate()).ok)
       throw new Error("\u56E2\u961F\u5173\u6CE8\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const mailLinkClient = await pool.connect();
+    try {
+      if (!(await migrateTaskMailLinkSchema(mailLinkClient)).ok)
+        throw new Error("\u4EFB\u52A1\u90AE\u4EF6\u5173\u8054\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    } finally {
+      mailLinkClient.release();
+    }
     const teamMonitoringRepo = new PostgresTeamMonitoringRepository(pool, serverLog);
     if (!(await teamMonitoringRepo.migrate()).ok)
       throw new Error("\u56E2\u961F\u76D1\u63A7\u8FC1\u79FB\u88AB\u62D2\u7EDD");
@@ -20093,6 +24060,15 @@ async function main() {
     const campaignRepo = new PostgresCampaignRepository(pool, serverLog);
     if (!(await campaignRepo.migrate()).ok)
       throw new Error("\u81EA\u52A8\u5F00\u53D1\u4EFB\u52A1\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const aiRepo = new PostgresAiRepository(pool, serverLog);
+    if (!(await aiRepo.migrate()).ok)
+      throw new Error("AI \u7BA1\u7406\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const ai = createAiService(aiRepo);
+    const salesCaseRepo = new PostgresSalesCaseRepository(pool, serverLog);
+    if (!(await salesCaseRepo.migrate()).ok)
+      throw new Error("AI \u9500\u552E\u5DE5\u4F5C\u6D41\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const salesCases = createSalesCaseHandler(createSalesCaseService(salesCaseRepo, tokenAdapter));
+    const quoteCases = createQuoteHandler(createQuoteService(new PostgresQuoteCaseRepository(pool, serverLog), tokenAdapter));
     const opportunities = createOpportunityHandler(createOpportunityService(opportunityRepo, tokenAdapter));
     const taskService = createTaskService(taskRepo, tokenAdapter);
     const tasks = createTaskHandler(taskService);
@@ -20102,6 +24078,7 @@ async function main() {
     const sendAcceptance2 = createSendAcceptanceHandler(createSendAcceptanceService(leadRepo, tokenAdapter));
     const contactMail = createContactMailHandler(createContactMailService(leadRepo, tokenAdapter));
     const contactMailAnalysis = createContactMailAnalysisHandler(createContactMailAnalysisService(contactMailAnalysisRepo, tokenAdapter));
+    const customerStatus = createCustomerStatusHandler(createCustomerStatusService(new PostgresCustomerStatusRepository(pool, serverLog), tokenAdapter));
     const teamAttention = createTeamAttentionHandler(createTeamAttentionService(teamAttentionRepo, tokenAdapter));
     const teamMonitoring = createTeamMonitoringHandler(createTeamMonitoringService(teamMonitoringRepo, tokenAdapter));
     const salesPerformance = createSalesPerformanceHandler(createSalesPerformanceService(salesPerformanceRepo, tokenAdapter, clock));
@@ -20109,13 +24086,30 @@ async function main() {
     const notifications = createEventsHandler(createNotificationService(notificationRepo, tokenAdapter));
     const contactChanges = createContactChangeHandler(createContactChangeService(contactChangeRepo, tokenAdapter));
     const campaigns = createCampaignHandler(createCampaignService(campaignRepo, tokenAdapter));
+    const aiHttp = createAiHandler(auth, ai);
     const collaboration = async (request2, response) => {
       const route = new URL(request2.url ?? "/", "http://localhost").pathname;
+      if (route === AI_ROUTES.status || route === AI_ROUTES.chat || route === AI_ROUTES.receipts) {
+        await aiHttp(request2, response);
+        return;
+      }
+      if (route === CUSTOMER_STATUS_ROUTES.base || route.startsWith(`${CUSTOMER_STATUS_ROUTES.base}/`)) {
+        await customerStatus(request2, response);
+        return;
+      }
+      if (route === "/api/crm/sales-cases" || route.startsWith("/api/crm/sales-cases/")) {
+        await salesCases(request2, response);
+        return;
+      }
+      if (route === QUOTE_ROUTES.list || route.startsWith(`${QUOTE_ROUTES.list}/`)) {
+        await quoteCases(request2, response);
+        return;
+      }
       if (route === LEAD_INGRESS_ROUTES.decision || route === LEAD_INGRESS_ROUTES.resolve) {
         await leadIngress(request2, response);
         return;
       }
-      if (route === TEAM_ROUTES.context || route === TEAM_ROUTES.candidates || route === TEAM_ROUTES.teams || route.startsWith(`${TEAM_ROUTES.teams}/`) || route.startsWith(`${TEAM_ROUTES.invitations}/`)) {
+      if (isTeamRoute(route)) {
         await teams(request2, response);
         return;
       }
@@ -20171,7 +24165,7 @@ async function main() {
     };
     const offlineIssuer = loadOfflineAccessIssuer(onlineRuntimeDirectory(), config.public_origin ?? `http://${config.host}:${config.port}`);
     const desktop = createDesktopAuthHandler(createDesktopSessionService(repo, passwords, tokenAdapter, clock, config.session_ttl_seconds, offlineIssuer), gate, config);
-    const server = createOnlineServer(auth, gate, config, serverLog, instanceId, createAdminHandler(auth, admin, tokenAdapter, gate, config, createAdminStatic(), createPasswordChangeService(repo, repo, passwords, tokenAdapter, auth), dashboard, dataBrowser), collaboration, desktop);
+    const server = createOnlineServer(auth, gate, config, serverLog, instanceId, createAdminHandler(auth, admin, tokenAdapter, gate, config, createAdminStatic(), createPasswordChangeService(repo, repo, passwords, tokenAdapter, auth), dashboard, dataBrowser, ai), collaboration, desktop);
     await new Promise((resolve3, reject) => {
       server.once("error", reject);
       server.listen(config.port, config.host, resolve3);

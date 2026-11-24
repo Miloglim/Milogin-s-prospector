@@ -6,6 +6,7 @@ export interface InboxRuleInput {
   bodyPreview: string | null;
   classification: string | null;
   senderIsInternal?: boolean;
+  isCcOnly?: boolean;
 }
 
 export interface InboxRuleResult {
@@ -89,6 +90,10 @@ function rule(
 
 /** High-confidence local routing. Ambiguous mail falls through to the AI analyzer. */
 export function classifyInboxByRule(input: InboxRuleInput): InboxRuleResult | null {
+  if (input.isCcOnly) return rule(input, 'other', {
+    summary: input.subject?.trim() || '抄送副本',
+    confidence: 0.99,
+  });
   if (input.classification === 'bounce') return rule(input, 'notification', {
     priority: 'important', requiresAction: true, summary: input.subject || '邮件退信',
     nextAction: '核对并修正联系人邮箱', dueHint: '同日内', confidence: 0.99,

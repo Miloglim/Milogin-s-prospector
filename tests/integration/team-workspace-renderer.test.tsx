@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Identity } from '../../server/core/auth';
-import { ONLINE_CHANNELS, TEAM_ATTENTION_EVENTS, type CenterContact, type FollowupTask, type OnlineNotification, type OrganizationContext, type Result, type SalesPerformanceOverview, type TeamAdminSummary, type TeamAttentionItem, type TeamAttentionPage, type TeamContext, type TeamMonitoringMemberDetail, type TeamMonitoringOverview } from '../../src/shared/online-crm';
+import { attentionDueLabel, ONLINE_CHANNELS, TEAM_ATTENTION_EVENTS, type CenterContact, type FollowupTask, type OnlineNotification, type OrganizationContext, type Result, type SalesPerformanceOverview, type TeamAdminSummary, type TeamAttentionItem, type TeamAttentionPage, type TeamContext, type TeamMonitoringMemberDetail, type TeamMonitoringOverview } from '../../src/shared/online-crm';
 
 const identityState = vi.hoisted(() => ({ identity: null as Record<string, unknown> | null, status: 'authenticated', baseUrl: 'https://center.test' }));
 vi.mock('../../src/renderer/IdentityContext', () => ({
@@ -15,6 +15,9 @@ vi.mock('../../src/renderer/IdentityContext', () => ({
 }));
 
 import { TeamWorkspace } from '../../src/renderer/pages/team/TeamWorkspace';
+import { clearTeamChatMemory } from '../../src/renderer/pages/team/team-data';
+import { TeamInfoView } from '../../src/renderer/pages/team/TeamInfoView';
+import { TeamSetupView } from '../../src/renderer/pages/team/TeamSetupView';
 import { notificationResourceHash } from '../../src/renderer/components/MessageCenterPanel';
 import { NotificationProvider, useOptionalNotifications } from '../../src/renderer/NotificationContext';
 
@@ -71,7 +74,10 @@ function monitoringOverview(scope: TeamMonitoringOverview['scope']): TeamMonitor
   return {
     scope, generatedAt: '2026-10-30T02:00:00Z',
     units: { items: [{ unitId: team.teamId, name: team.name, kind: 'sales_team', parentUnitId: operationsGroupId, memberCount: 2, counts, rates }], total: 1 },
-    members: { items: [{ userId: sales.userId, displayName: sales.displayName, email: sales.email, teamId: team.teamId, teamName: team.name, organizationKind: 'sales_team', counts, rates, stages: { cold: 0, reaching: 1, quoting: 1, trial: 0, cooperating: 0, lost: 0, other: 0 }, lastActivityAt: '2026-10-30T01:00:00Z', latestImportantReplyAt: null }], total: 1 },
+    members: { items: [
+      { userId: sales.userId, displayName: sales.displayName, email: sales.email, role: 'member', teamId: team.teamId, teamName: team.name, organizationKind: 'sales_team', counts, rates, stages: { cold: 0, reaching: 1, quoting: 1, trial: 0, cooperating: 0, lost: 0, other: 0 }, lastActivityAt: '2026-10-30T01:00:00Z', latestImportantReplyAt: null },
+      { userId: leader.userId, displayName: leader.displayName, email: leader.email, role: 'leader', teamId: team.teamId, teamName: team.name, organizationKind: 'sales_team', counts, rates, stages: { cold: 0, reaching: 1, quoting: 1, trial: 0, cooperating: 0, lost: 0, other: 0 }, lastActivityAt: '2026-10-30T00:00:00Z', latestImportantReplyAt: null },
+    ], total: 2 },
     counts, rates, pool: scope === 'leader' ? null : { unassignedOperationsContacts: 4, assignedOperationsContacts: 8, pendingAssignmentRequests: 2, pendingTransferRequests: 1 }, importantReplies: [],
   };
 }
@@ -99,7 +105,17 @@ describe('team workspace renderer', () => {
     }
     throw new Error(`Missing selector: ${selector}\n${host.innerHTML}`);
   };
-  const tabButton = (label: string) => Array.from(host.querySelectorAll<HTMLButtonElement>('.team-section-tabs button')).find(button => button.textContent === label) ?? null;
+  const tabButton = (label: string) => {
+    const sections: Record<string, string> = { '个人': 'workspace', '我的': 'workspace', '我的团队': 'overview', '团队': 'overview', '团队分析': 'monitoring', '团队管理': 'team', '绩效': 'performance', '创建 / 加入': 'setup' };
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      window.history.replaceState(null, '', `#/team?section=${sections[label]}`);
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    return button;
+  };
   const setInput = async (input: HTMLInputElement, value: string) => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
     await act(async () => { setter.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })); });
@@ -118,6 +134,7 @@ describe('team workspace renderer', () => {
   };
 
   beforeEach(() => {
+    clearTeamChatMemory();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     window.history.replaceState(null, '', '#/team');
     identityState.identity = sales as unknown as Record<string, unknown>;
@@ -125,6 +142,8 @@ describe('team workspace renderer', () => {
     invoke = vi.fn(async (channel: string, ...args: unknown[]): Promise<Result<unknown>> => {
       if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ team, canCreate: false }) };
       if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team, outgoingInvitations: [], children: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_MESSAGES) return { ok: true, data: { items: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_CONVERSATIONS) return { ok: true, data: { items: [] } };
       if (channel === ONLINE_CHANNELS.TEAM_CANDIDATES) return { ok: true, data: { items: [{ userId: 'invitee-1', displayName: 'Invitee One', email: 'invitee@example.invalid' }], total: 1 } };
       if (channel === ONLINE_CHANNELS.CONTACT_LIST) return { ok: true, data: { items: [contact], total: 1 } };
       if (channel === ONLINE_CHANNELS.TASK_LIST) return { ok: true, data: { items: [task], total: 1 } };
@@ -133,7 +152,7 @@ describe('team workspace renderer', () => {
       if (channel === ONLINE_CHANNELS.TEAM_INVITATION_ACCEPT) return { ok: true, data: context({ team, canCreate: false }) };
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
-    Object.defineProperty(window, 'api', { configurable: true, value: { invoke } });
+    Object.defineProperty(window, 'api', { configurable: true, value: { invoke, on: vi.fn(() => () => {}) } });
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     host = document.createElement('div');
     document.body.append(host);
@@ -152,14 +171,114 @@ describe('team workspace renderer', () => {
     await waitFor('.personal-action-row');
     expect(host.querySelector('.personal-task-panel')).not.toBeNull();
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TASK_LIST, expect.objectContaining({ status: 'open', mine: true }));
-    const tabs = Array.from(host.querySelectorAll('.team-section-tabs button')).map(button => button.textContent);
-    expect(tabs).toEqual(['个人', '我的团队', '团队管理']);
-    expect(tabs).not.toContain('绩效');
-    expect(tabs).not.toContain('监控');
+    expect(host.querySelector('.team-section-tabs')).toBeNull();
+    expect(host.querySelector('.team-workspace-title')?.textContent).toContain('我的工作台');
     expect(invoke.mock.calls.some(call => call[0] === ONLINE_CHANNELS.TEAM_MONITORING)).toBe(false);
-    expect(host.querySelector('.personal-metrics')?.textContent).toContain('我的线索');
+    expect(host.querySelector('.personal-metrics')?.textContent).toContain('客户回复');
+    expect(invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.CONTACT_LIST).every(call => (call[1] as { attentionOnly?: boolean }).attentionOnly === true)).toBe(true);
     expect(host.querySelector('.personal-workspace-body')).not.toBeNull();
     expect(host.querySelector('.team-attention-panel')).toBeNull();
+  });
+
+  it('renders every active team member in the team roster', async () => {
+    const members = [
+      ...Array.from({ length: 12 }, (_, index) => ({
+        userId: `member-${index + 1}`,
+        displayName: `Mock 画布成员 ${String(index + 1).padStart(2, '0')}`,
+        email: `member.${index + 1}@example.invalid`,
+        role: 'member' as const,
+        joinedAt: '2026-11-16T02:35:50.715Z',
+      })),
+      { userId: leader.userId, displayName: leader.displayName, email: leader.email, role: 'leader' as const, joinedAt: '2026-11-16T02:35:50.715Z' },
+    ];
+    await act(async () => root.render(<TeamInfoView
+      team={{ ...team, members, memberCount: 13 }}
+      outgoingInvitations={[]}
+      managedTeams={[]}
+      selectedTeamId={team.teamId}
+      onSelectTeam={() => undefined}
+      canInvite={false}
+      canLeave={false}
+      online
+      onChanged={() => undefined}
+      onDissolved={() => undefined}
+    />));
+    await flush();
+    expect(host.querySelectorAll('.team-member-row')).toHaveLength(13);
+    expect(host.querySelector('.team-members-panel')?.textContent).toContain('Mock 画布成员 12');
+  });
+
+  it('uses the action-first queue, filter and customer context from the approved sales demo', async () => {
+    const localDue = (dayOffset: number, hour = 12) => { const date = new Date(); date.setHours(hour, 0, 0, 0); date.setDate(date.getDate() + dayOffset); return date.toISOString(); };
+    const overdueReplyDue = localDue(-1), overdueTaskDue = localDue(-2), todayDue = localDue(0, 23), futureDue = localDue(1);
+    const overdueReply = { ...contact, contactId: 71, customerId: '11111111-2222-4333-8444-555555555551', companyName: 'Overdue Reply Co', firstName: 'Overdue Reply', touchStatus: 'replied' as const, attentionReason: 'reply' as const, attentionDueAt: overdueReplyDue };
+    const overdueTask = { ...contact, contactId: 72, customerId: '11111111-2222-4333-8444-555555555552', companyName: 'Overdue Task Co', firstName: 'Overdue Task', touchStatus: 'uncontacted' as const, attentionReason: 'task' as const, attentionDueAt: overdueTaskDue };
+    const plainReply = { ...contact, contactId: 73, customerId: '11111111-2222-4333-8444-555555555553', companyName: 'Plain Reply Co', firstName: 'Plain Reply', touchStatus: 'replied' as const, attentionReason: 'reply' as const, attentionDueAt: null };
+    const todayTask = { ...contact, contactId: 74, customerId: '11111111-2222-4333-8444-555555555554', companyName: 'Today Task Co', firstName: 'Today Task', touchStatus: 'uncontacted' as const, attentionReason: 'task' as const, attentionDueAt: todayDue };
+    const futureTask = { ...contact, contactId: 75, customerId: '11111111-2222-4333-8444-555555555555', companyName: 'Future Task Co', firstName: 'Future Task', touchStatus: 'uncontacted' as const, attentionReason: 'task' as const, attentionDueAt: futureDue };
+    const stageContact = { ...contact, contactId: 76, customerId: '11111111-2222-4333-8444-555555555556', companyName: 'Stage Co', firstName: 'Stage Contact', touchStatus: 'uncontacted' as const, relationshipStage: 'quoting' as const, attentionReason: 'stage' as const, attentionDueAt: null };
+    invoke.mockImplementation(async (channel: string, input?: unknown): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ team, canCreate: false }) };
+      if (channel === ONLINE_CHANNELS.CONTACT_LIST) return { ok: true, data: { items: (input as { scope?: string }).scope === 'assigned' ? [overdueTask, todayTask, futureTask, stageContact] : [overdueReply, plainReply], total: (input as { scope?: string }).scope === 'assigned' ? 4 : 2 } };
+      if (channel === ONLINE_CHANNELS.TASK_LIST) return { ok: true, data: { items: [], total: 0 } };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    await render();
+    await waitFor('.personal-queue-panel');
+    await vi.waitFor(() => expect(host.querySelectorAll('.personal-action-row')).toHaveLength(6));
+    const contactCalls = invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.CONTACT_LIST);
+    expect(contactCalls).toHaveLength(2);
+    expect(contactCalls.every(call => (call[1] as { attentionOnly?: boolean }).attentionOnly === true)).toBe(true);
+    expect(host.querySelector('.personal-queue-panel')?.textContent).toContain('全部关注');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).toContain('客户回复');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).toContain('有任务客户');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).toContain('业务阶段');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).not.toContain('退信');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).not.toContain('已触达');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).not.toContain('我的队列');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).not.toContain('跟进节奏');
+    expect(host.querySelector('.personal-metrics')?.textContent).toContain('客户回复');
+    expect(host.querySelector('.personal-metrics')?.textContent).toContain('开放待办');
+    expect(host.querySelector('.personal-metrics')?.textContent).toContain('业务阶段');
+    expect(host.querySelector('.personal-context-panel')?.textContent).not.toContain('客户上下文');
+    expect(host.querySelector('.personal-context-panel')?.textContent).toContain('Overdue Reply Co');
+    expect(host.querySelector('.personal-context-panel')?.textContent).toContain('逾期 1 天');
+    expect(host.querySelector('.personal-context-panel')?.textContent).toContain('回复客户');
+    expect(host.querySelector('.personal-context-facts')?.textContent).toContain('客户阶段');
+    expect(host.querySelector('.personal-context-facts')?.textContent).toContain('最近往来');
+    expect(Array.from(host.querySelectorAll('.personal-action-main strong')).map(node => node.textContent)).toEqual(['Overdue Reply Lima', 'Overdue Task Lima', 'Plain Reply Lima', 'Today Task Lima', 'Future Task Lima', 'Stage Contact Lima']);
+    expect(host.textContent).toContain('逾期 2 天');
+    expect(host.textContent).toContain('今天到期');
+    expect(host.textContent).toContain(attentionDueLabel(futureDue)!);
+
+    const stageFilter = Array.from(host.querySelectorAll<HTMLButtonElement>('.personal-queue-list button')).find(button => button.textContent?.includes('业务阶段'))!;
+    await act(async () => stageFilter.click());
+    await vi.waitFor(() => expect(host.querySelectorAll('.personal-action-row')).toHaveLength(1));
+    expect(host.querySelector('.personal-action-row')?.textContent).toContain('Stage Co');
+    expect(host.querySelector('.personal-action-row')?.textContent).toContain('推进阶段');
+
+    await act(async () => host.querySelector<HTMLButtonElement>('.personal-action-row')!.click());
+    expect(host.querySelector('.personal-context-panel')?.textContent).toContain('业务阶段');
+    expect(host.querySelector('.personal-context-panel')?.textContent).toContain('推进阶段');
+    expect(host.querySelector<HTMLAnchorElement>('.personal-context-actions a')?.getAttribute('href')).toContain('centerContact=76');
+  });
+
+  it('requests attention-only contacts for both scopes so bulk contacted leads produce no actions', async () => {
+    const contacted = Array.from({ length: 1_000 }, (_, index) => ({ ...contact, contactId: 10_000 + index, customerId: `contacted-${index}`, companyName: `Contacted ${index}`, touchStatus: 'contacted' as const, attentionReason: undefined }));
+    invoke.mockImplementation(async (channel: string, input?: unknown): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ team, canCreate: false }) };
+      if (channel === ONLINE_CHANNELS.CONTACT_LIST) return { ok: true, data: (input as { attentionOnly?: boolean }).attentionOnly ? { items: [], total: 0 } : { items: contacted, total: contacted.length } };
+      if (channel === ONLINE_CHANNELS.TASK_LIST) return { ok: true, data: { items: [], total: 0 } };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    await render();
+    await waitFor('.personal-queue-panel');
+    await vi.waitFor(() => expect(invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.CONTACT_LIST)).toHaveLength(2));
+    const contactCalls = invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.CONTACT_LIST);
+    expect(contactCalls.map(call => (call[1] as { scope: string }).scope).sort()).toEqual(['assigned', 'personal']);
+    expect(contactCalls.every(call => (call[1] as { attentionOnly?: boolean }).attentionOnly === true)).toBe(true);
+    expect(host.querySelectorAll('.personal-action-row')).toHaveLength(0);
+    await vi.waitFor(() => expect(host.querySelector('.personal-action-list')?.textContent).toContain('暂无需要立即处理的线索'));
   });
 
   it('gives a super administrator the same personal workbench structure with mine-only tasks', async () => {
@@ -172,13 +291,18 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     await act(async () => tabButton('个人')!.click());
     await waitFor('.personal-task-panel');
     await vi.waitFor(() => expect(host.querySelector('.personal-task-panel')?.textContent).toContain(task.title));
 
     expect(host.querySelector('.personal-workspace-body')?.classList.contains('has-tasks')).toBe(true);
-    expect(host.querySelector('.personal-metrics')?.textContent).toContain('开放待办');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).not.toContain('跟进节奏');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).toContain('总待办');
+    expect(host.querySelector('.personal-queue-panel')?.textContent).toContain(task.title);
+    expect(host.querySelector('.personal-task-panel')?.textContent).toContain('跟进任务');
+    expect(host.querySelector('.personal-context-progress')?.textContent).toContain('开放待办');
+    expect(host.querySelector('.personal-context-guidance')?.textContent).toContain('推进建议');
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TASK_LIST, expect.objectContaining({ status: 'open', mine: true }));
   });
 
@@ -194,7 +318,7 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     await act(async () => tabButton('个人')!.click());
     await vi.waitFor(() => expect(host.querySelector('.personal-task-panel')?.textContent).toContain(ownTask.title));
 
@@ -202,25 +326,87 @@ describe('team workspace renderer', () => {
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TASK_LIST, expect.objectContaining({ status: 'open', limit: 100, offset: 0 }));
   });
 
-  it('lets an ordinary member open the team roster and collaboration without management controls', async () => {
+  it('lets a supervisor open their own team roster and collaboration without widening management scope', async () => {
+    identityState.identity = leader as unknown as Record<string, unknown>;
+    invoke.mockImplementation(async (channel: string): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ team, canCreate: false, managedTeams: [monitoredTeam] }) };
+      if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team, outgoingInvitations: [], children: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_CONVERSATIONS) return { ok: true, data: { items: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_MESSAGES) return { ok: true, data: { items: [] } };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    window.history.replaceState(null, '', '#/team?section=overview');
     await render();
-    await waitFor('.personal-action-row');
-    await act(async () => tabButton('我的团队')!.click());
     const teamRow = await waitFor('.team-admin-tree-row') as HTMLButtonElement;
-    await act(async () => teamRow.click());
     const memberRow = await waitFor('.team-admin-member-tree-row') as HTMLButtonElement;
     expect(host.querySelector('.team-admin-section-actions')).toBeNull();
     expect(host.textContent).toContain('Team Leader');
     await act(async () => memberRow.click());
     await waitFor('.team-member-collaboration-head');
-    expect(host.querySelector('.team-member-collaboration-head')?.textContent).toContain('Team Leader');
+    expect(host.querySelector('.team-member-collaboration-head')?.textContent).toContain('Sales One');
     expect(host.querySelector('.team-collaboration-composer')).not.toBeNull();
+  });
+
+  it('collapses and reopens the selected team from the tree row', async () => {
+    identityState.identity = leader as unknown as Record<string, unknown>;
+    invoke.mockImplementation(async (channel: string): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ team, canCreate: false, managedTeams: [monitoredTeam] }) };
+      if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team, outgoingInvitations: [], children: [] } };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    window.history.replaceState(null, '', '#/team?section=overview');
+    await render();
+    const teamRow = await waitFor('.team-admin-tree-row') as HTMLButtonElement;
+    await waitFor('.team-admin-member-tree-row');
+    expect(host.querySelector('.team-admin-title-settings')).not.toBeNull();
+    expect(teamRow.getAttribute('aria-expanded')).toBe('true');
+    await act(async () => teamRow.click());
+    expect(teamRow.getAttribute('aria-expanded')).toBe('false');
+    expect(host.querySelector('.team-admin-member-tree-row')).toBeNull();
+    await act(async () => teamRow.click());
+    await waitFor('.team-admin-member-tree-row');
+    expect(teamRow.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('lets an ordinary member reopen an existing manager conversation and reply', async () => {
+    const incoming = { messageId: '20000000-0000-4000-8000-000000000001', teamId: team.teamId, senderUserId: operations.userId, senderName: operations.displayName, recipientUserId: sales.userId, recipientName: sales.displayName, body: '请优先跟进', createdAt: '2026-11-13T01:00:00Z', mine: false };
+    invoke.mockImplementation(async (channel: string): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ team, canCreate: false }) };
+      if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team, outgoingInvitations: [], children: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_CONVERSATIONS) return { ok: true, data: { items: [{ userId: operations.userId, displayName: operations.displayName, email: operations.email, manager: true, lastMessage: '请优先跟进', lastMessageAt: incoming.createdAt, mine: false }] } };
+      if (channel === ONLINE_CHANNELS.TEAM_MESSAGES) return { ok: true, data: { items: [incoming] } };
+      if (channel === ONLINE_CHANNELS.TEAM_MESSAGE_SEND) return { ok: true, data: { ...incoming, messageId: '20000000-0000-4000-8000-000000000002', senderUserId: sales.userId, senderName: sales.displayName, recipientUserId: operations.userId, recipientName: operations.displayName, mine: true, body: '已收到' } };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    window.history.replaceState(null, '', '#/team?section=overview');
+    await render();
+    await waitFor('.team-admin-toolbar.is-compact-member');
+    expect(host.querySelector('.team-workspace-context-bar')).toBeNull();
+    expect(host.querySelector('.team-admin-toolbar-stats')).toBeNull();
+    expect(host.querySelector('.team-admin-rail-search .team-admin-toolbar-search')).not.toBeNull();
+    expect(host.querySelector('.team-admin-toolbar .team-admin-toolbar-search')).toBeNull();
+    expect(host.querySelector('.team-admin-rail-heading')).toBeNull();
+    expect(host.querySelector('.team-admin-company-row')).toBeNull();
+    expect(host.querySelector('.team-admin-breadcrumb')).toBeNull();
+    expect(host.querySelector('.team-admin-overview-main')).toBeNull();
+    expect(host.querySelector('.team-admin-overview-aside.is-activity-only')).not.toBeNull();
+    const teamRow = await waitFor('.team-admin-tree-row') as HTMLButtonElement;
+    await waitFor('.team-admin-member-tree-row');
+    const managerConversation = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-admin-member-tree-row')).find(button => button.textContent?.includes('Operations One'))!;
+    expect(managerConversation.textContent).toContain('Operations One');
+    await act(async () => managerConversation.click());
+    await waitFor('.team-chat-message:not(.is-mine)');
+    expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MESSAGES, { teamId: team.teamId, memberUserId: operations.userId, limit: 100 });
+    const composer = host.querySelector<HTMLTextAreaElement>('.team-collaboration-composer textarea')!;
+    await setTextArea(composer, '已收到');
+    await act(async () => host.querySelector<HTMLButtonElement>('.team-chat-send')!.click());
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MESSAGE_SEND, expect.objectContaining({ teamId: team.teamId, recipientUserId: operations.userId, body: '已收到' })));
   });
 
   it('does not expose the performance page to an ordinary sales account', async () => {
     await render();
     await waitFor('.personal-action-row');
-    expect(Array.from(host.querySelectorAll('.team-section-tabs button')).map(button => button.textContent)).not.toContain('绩效');
+    expect(host.querySelector('.team-section-tabs')).toBeNull();
     expect(host.querySelector('.team-performance-view')).toBeNull();
     expect(invoke.mock.calls.some(item => item[0] === ONLINE_CHANNELS.SALES_PERFORMANCE)).toBe(false);
     expect(invoke.mock.calls.some(item => item[0] === ONLINE_CHANNELS.TEAM_MONITORING)).toBe(false);
@@ -237,13 +423,16 @@ describe('team workspace renderer', () => {
     });
     await render();
     await waitFor('.personal-action-row');
-    expect(Array.from(host.querySelectorAll('.team-section-tabs button')).map(button => button.textContent)).not.toContain('绩效');
-    const monitor = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-section-tabs button')).find(button => button.textContent === '监控')!;
-    expect(monitor).toBeTruthy();
+    const monitor = tabButton('团队分析')!;
     await act(async () => monitor.click());
     await waitFor('.team-monitoring-view');
     expect(host.querySelector('.team-monitoring-heading')?.textContent).toContain('负责团队');
+    expect(host.querySelector('.team-monitoring-member-row')?.textContent).toContain('Team Leader');
+    expect(host.querySelector('.team-monitoring-member-row')?.textContent).toContain('负责人');
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MONITORING, expect.objectContaining({ limit: 10, offset: 0, unitLimit: 20 }));
+    await act(async () => host.querySelector<HTMLButtonElement>('.team-monitoring-management-button')!.click());
+    await waitFor('.team-info-view');
+    expect(host.querySelector('.team-workspace-title')?.textContent).toContain('团队管理');
   });
 
   it('shows the performance page to an operations administrator', async () => {
@@ -254,13 +443,47 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
-    const performanceTab = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-section-tabs button')).find(button => button.textContent === '绩效')!;
-    expect(performanceTab).toBeTruthy();
+    await waitFor('.team-workspace-context-bar');
+    const performanceTab = tabButton('绩效')!;
     await act(async () => performanceTab.click());
     await waitFor('.team-performance-view');
     expect(host.querySelector('.team-performance-view')?.textContent).toContain('运营范围绩效');
+    expect(host.querySelector('.team-performance-guide')?.textContent).toContain('首次动作');
+    expect(host.querySelector('.team-performance-guide')?.textContent).toContain('复购率');
     expect(host.querySelector('.team-workspace-header')).toBeNull();
+  });
+
+  it('switches to a team subpage when the sidebar team-section deep link changes', async () => {
+    identityState.identity = operations as unknown as Record<string, unknown>;
+    invoke.mockImplementation(async (channel: string): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ canAdmin: true, adminTeams: [monitoredTeam], organization }) };
+      if (channel === ONLINE_CHANNELS.TEAM_MONITORING) return { ok: true, data: monitoringOverview('operations') };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    await render();
+    await waitFor('.team-workspace-context-bar');
+    await act(async () => {
+      window.history.replaceState(null, '', '#/team?section=monitoring');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    await waitFor('.team-monitoring-view');
+    expect(window.location.hash).toBe('#/team?section=monitoring');
+  });
+
+  it('keeps the performance frame and metric definitions visible without data', async () => {
+    identityState.identity = operations as unknown as Record<string, unknown>;
+    invoke.mockImplementation(async (channel: string): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ canAdmin: true, adminTeams: [monitoredTeam], organization }) };
+      if (channel === ONLINE_CHANNELS.SALES_PERFORMANCE) return { ok: true, data: { ...performanceOverview('operations'), items: [], total: 0 } };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    await render();
+    await waitFor('.team-workspace-context-bar');
+    await act(async () => tabButton('绩效')!.click());
+    await waitFor('.team-performance-view');
+    expect(host.querySelector('.team-performance-form')).not.toBeNull();
+    expect(host.querySelector('.team-performance-guide')?.textContent).toContain('成交周期');
+    expect(host.querySelector('.team-performance-view')?.textContent).toContain('当前范围暂无绩效数据');
   });
 
   it.each([
@@ -274,9 +497,8 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: input ? `未接入:${channel}` : channel } };
     });
     await render();
-    await waitFor('.team-section-tabs');
-    const monitor = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-section-tabs button')).find(button => button.textContent === '监控')!;
-    expect(monitor).toBeTruthy();
+    await waitFor('.team-workspace-context-bar');
+    const monitor = tabButton('团队分析')!;
     await act(async () => monitor.click());
     await waitFor('.team-monitoring-view');
     expect(host.querySelector('.team-monitoring-heading')?.textContent).toContain(label);
@@ -301,11 +523,24 @@ describe('team workspace renderer', () => {
     await render();
     await waitFor('.team-setup-view');
     expect(host.querySelector('.team-setup-view')?.textContent).toContain('创建团队');
-    expect(host.querySelector('.team-setup-view')?.textContent).toContain('成员邀请');
+    expect(host.querySelector('.team-setup-view')?.textContent).toContain('邀请');
     const accept = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '接受')!;
     await act(async () => accept.click());
     await flush();
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_INVITATION_ACCEPT, invitation.invitationId, expect.objectContaining({ expectedVersion: 1, idempotencyKey: expect.any(String) }));
+  });
+
+  it('does not expose team creation to a super administrator', async () => {
+    identityState.identity = superAdmin as unknown as Record<string, unknown>;
+    await act(async () => root.render(<QueryClientProvider client={queryClient}><TeamSetupView
+      context={context({ canCreate: true, canAdmin: true, isSuperAdmin: true, organization })}
+      online
+      onContext={() => undefined}
+      onCreated={() => undefined}
+    /></QueryClientProvider>));
+    await flush();
+    expect(host.querySelector('.team-create-section')).toBeNull();
+    expect(host.querySelector('.team-page-notice')?.textContent).toContain('单一管理员或普通用户');
   });
 
   it('creates a team with selected center accounts using the new create channel', async () => {
@@ -320,15 +555,20 @@ describe('team workspace renderer', () => {
     await waitFor('.team-setup-view');
     expect(host.querySelector('.team-create-type')).toBeNull();
     expect(host.querySelector('.team-leader-picker')).toBeNull();
+    expect(host.querySelector('.team-create-visual')).toBeNull();
+    expect(host.querySelector('.team-create-fields.is-name-only')).not.toBeNull();
+    expect(host.querySelector('.team-candidate-picker')).toBeNull();
     const input = await waitFor('.team-create-form input') as HTMLInputElement;
     const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
     await act(async () => { setValue.call(input, '新团队'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+    const openMembers = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-invite-disclosure')).find(button => button.textContent?.includes('添加初始成员'))!;
+    await act(async () => openMembers.click());
     const memberSearch = host.querySelector<HTMLInputElement>('.team-candidate-picker .team-field-search input')!;
     await setInput(memberSearch, 'invitee');
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_CANDIDATES, expect.objectContaining({ role: 'member', unitType: 'sales_team', purpose: 'create' }));
     const checkbox = await waitFor('.team-candidate-row input') as HTMLInputElement;
     await act(async () => checkbox.click());
-    const create = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '创建团队')!;
+    const create = host.querySelector<HTMLButtonElement>('.team-create-form .team-action-primary')!;
     await act(async () => create.click());
     await flush();
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_CREATE, expect.objectContaining({ name: '新团队', parentTeamId: null, unitType: 'sales_team', inviteeUserIds: [candidateId], idempotencyKey: expect.any(String) }));
@@ -343,25 +583,54 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const management = tabButton('我的团队')!;
     await act(async () => management.click());
     await waitFor('.team-admin-view > .team-admin-toolbar');
     expect(host.querySelector('.team-workspace-header')).toBeNull();
-    expect(host.querySelector('.team-workspace-primary-action')?.textContent).toContain('新建团队');
+    expect(host.querySelector('.team-workspace-primary-action')?.textContent).toContain('创建/加入团队');
     expect(host.querySelector('.team-admin-directory-root')).not.toBeNull();
-    const create = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '新建团队')!;
+    const create = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '创建/加入团队')!;
     await act(async () => create.click());
     await waitFor('.team-create-form');
     expect(host.querySelector('.team-create-type')).toBeNull();
-    await setInput(host.querySelector<HTMLInputElement>('.team-create-form input[placeholder="运营组名称"]')!, '华北运营组');
+    await setInput(host.querySelector<HTMLInputElement>('.team-create-form input[placeholder="例如：华东运营组"]')!, '华北运营组');
     expect(Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '创建团队')?.disabled).toBe(false);
     const lockedLeader = await waitFor('.team-leader-picker .team-candidate-row.is-locked') as HTMLElement;
     expect(lockedLeader.textContent).toContain('Operations One');
     expect(lockedLeader.textContent).toContain('创建者');
     expect(lockedLeader.querySelector('input')?.disabled).toBe(true);
-    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '创建团队')!.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('.team-create-form .team-action-primary')!.click());
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_CREATE, expect.objectContaining({ name: '华北运营组', unitType: 'operations', parentTeamId: null, leaderUserId: operations.userId, inviteeUserIds: [] }));
+  });
+
+  it('lets an operations manager invite operations members to an operations group', async () => {
+    identityState.identity = operations as unknown as Record<string, unknown>;
+    const groupSummary = { teamId: operationsGroupId, name: operationsGroup.name, unitType: 'operations' as const, organizationKind: 'operations_group' as const, parentTeamId: companyId, parentTeamName: organization.company.name, depth: 0, childCount: 0, leaderName: operations.displayName, memberCount: 1, pendingInvitationCount: 0, createdAt: team.createdAt };
+    const operationsDetail = { ...operationsGroup, leaderUserId: operations.userId, leaderName: operations.displayName, members: [{ userId: operations.userId, displayName: operations.displayName, email: operations.email, role: 'leader' as const, joinedAt: team.createdAt }] };
+    const candidateId = '66666666-6666-4666-8666-666666666666';
+    invoke.mockImplementation(async (channel: string): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ canCreate: true, canAdmin: true, adminTeams: [groupSummary], organization }) };
+      if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team: operationsDetail, outgoingInvitations: [], children: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_CANDIDATES) return { ok: true, data: { items: [{ userId: candidateId, displayName: 'Operations Member', email: 'ops-member@example.invalid' }], total: 1 } };
+      if (channel === ONLINE_CHANNELS.TEAM_INVITE) return { ok: true, data: context({ canAdmin: true, adminTeams: [groupSummary], organization }) };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    await render();
+    await waitFor('.team-workspace-context-bar');
+    await act(async () => tabButton('我的团队')!.click());
+    const groupRow = await waitFor('.team-admin-directory-root .team-admin-directory-main') as HTMLButtonElement;
+    await act(async () => groupRow.click());
+    await act(async () => (await waitFor('.team-admin-demo-manage') as HTMLButtonElement).click());
+    await waitFor('.team-admin-section-actions');
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('.team-admin-section-actions button')).find(button => button.textContent === '邀请')!.click());
+    const memberSearch = host.querySelector<HTMLInputElement>('.team-admin-member-add .team-field-search input')!;
+    await setInput(memberSearch, 'operations');
+    expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_CANDIDATES, expect.objectContaining({ role: 'member', unitType: 'operations' }));
+    const memberOption = await waitFor('.team-admin-member-add .team-candidate-row input') as HTMLInputElement;
+    await act(async () => memberOption.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '发送邀请')!.click());
+    expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_INVITE, operationsGroupId, expect.objectContaining({ userIds: [candidateId] }));
   });
 
   it('renders expired invitations as expired and does not expose accept or decline actions', async () => {
@@ -389,7 +658,7 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const teamTab = tabButton('团队管理')!;
     await act(async () => teamTab.click());
     await waitFor('.team-pending-row.is-expired');
@@ -407,7 +676,7 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const teamTab = tabButton('团队管理')!;
     await act(async () => teamTab.click());
     await waitFor('.team-info-view');
@@ -434,12 +703,12 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const teamTab = tabButton('团队管理')!;
     await act(async () => teamTab.click());
     const switcher = await waitFor('.team-managed-switcher select') as HTMLSelectElement;
-    expect(Array.from(host.querySelectorAll('.team-section-tabs button')).map(button => button.textContent)).toContain('我的团队');
-    expect(Array.from(host.querySelectorAll('.team-section-tabs button')).map(button => button.textContent)).toContain('团队管理');
+    expect(host.querySelector('.team-section-tabs')).toBeNull();
+    expect(host.querySelector('.team-info-view')).not.toBeNull();
     const setValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
     await act(async () => { setValue.call(switcher, secondTeam.teamId); switcher.dispatchEvent(new Event('change', { bubbles: true })); });
     for (let attempt = 0; attempt < 25 && host.querySelector('.team-info-head h2')?.textContent !== '华南销售组'; attempt++) await flush();
@@ -464,7 +733,7 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const teamTab = tabButton('团队管理')!;
     await act(async () => teamTab.click());
     await waitFor('.team-member-group');
@@ -490,7 +759,7 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const teamTab = tabButton('团队管理')!;
     await act(async () => teamTab.click());
     const cancel = await waitFor('.team-pending-row button') as HTMLButtonElement;
@@ -511,7 +780,7 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const overview = tabButton('我的团队')!;
     await act(async () => overview.click());
     await waitFor('.team-admin-view');
@@ -525,7 +794,7 @@ describe('team workspace renderer', () => {
     const teamSummary = { teamId: team.teamId, name: team.name, unitType: 'sales_team' as const, organizationKind: 'sales_team' as const, parentTeamId: operationsGroupId, parentTeamName: operationsGroup.name, assignmentSourceTeamIds: [operationsGroupId], assignedLeadCount: 3, depth: 1, childCount: 0, leaderName: team.leaderName, memberCount: 2, pendingInvitationCount: 0, createdAt: team.createdAt };
     invoke.mockImplementation(async (channel: string, input?: unknown): Promise<Result<unknown>> => {
       if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ canCreate: true, canAdmin: true, isSuperAdmin: true, adminTeams: [groupSummary, teamSummary], organization }) };
-      if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team: input === team.teamId ? team : operationsGroup, outgoingInvitations: [], children: input === team.teamId ? [] : [teamSummary] } };
+      if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team: input === team.teamId ? { ...team, members: [...team.members].reverse() } : operationsGroup, outgoingInvitations: [], children: input === team.teamId ? [] : [teamSummary] } };
       if (channel === ONLINE_CHANNELS.TEAM_CANDIDATES) return { ok: true, data: { items: [], total: 0 } };
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
@@ -544,6 +813,7 @@ describe('team workspace renderer', () => {
     expect(host.querySelector('.team-admin-org-node')).toBeNull();
     expect(host.querySelector('.team-admin-stat-grid')?.textContent).toContain('销售团队');
     await act(async () => groupRow.click());
+    await act(async () => (await waitFor('.team-admin-demo-manage') as HTMLButtonElement).click());
     await waitFor('.team-admin-team-head');
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_DETAIL, operationsGroupId);
     expect(host.querySelector('.team-admin-member-list')).toBeNull();
@@ -555,15 +825,17 @@ describe('team workspace renderer', () => {
     const canvasTab = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-admin-view-tabs button')).find(button => button.textContent === '团队画布')!;
     await act(async () => canvasTab.click());
     const viewport = await waitFor('.team-admin-canvas-viewport');
-    expect(host.querySelectorAll('.team-admin-org-node')).toHaveLength(2);
+    expect(host.querySelectorAll('.team-admin-org-node')).toHaveLength(3);
     expect(host.querySelector('.team-admin-org-node.is-superadmin')).toBeNull();
-    expect(host.querySelector('.team-admin-org-node.is-company')).toBeNull();
-    expect(Array.from(host.querySelectorAll('.team-admin-org-leader')).some(node => node.textContent?.includes('群主'))).toBe(true);
+    expect(host.querySelector('.team-admin-org-node.is-company')?.textContent).toContain('管理员');
+    expect(Array.from(host.querySelectorAll('.team-admin-org-leader')).some(node => node.textContent?.includes('负责人'))).toBe(true);
     const salesNode = Array.from(host.querySelectorAll<HTMLElement>('.team-admin-org-node')).find(node => node.textContent?.includes('华东销售组'))!;
     await act(async () => salesNode.querySelector<HTMLButtonElement>('.team-admin-org-node-main')!.click());
     await vi.waitFor(() => expect(host.querySelector('.team-admin-org-member-row')).not.toBeNull(), { timeout: 2_000 });
     const memberRow = host.querySelector('.team-admin-org-member-row')!;
     expect(memberRow.tagName).toBe('DIV');
+    expect(memberRow.textContent).toContain(leader.displayName);
+    expect(memberRow.textContent).toContain('负责人');
     expect(invoke.mock.calls.some(([channel]) => channel === ONLINE_CHANNELS.TEAM_MONITORING_MEMBER)).toBe(false);
     Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 800 });
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 600 });
@@ -590,8 +862,8 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
-    const canvasTab = await waitFor('.team-admin-view-tabs button:nth-child(2)') as HTMLButtonElement;
+    await waitFor('.team-workspace-context-bar');
+    const canvasTab = await waitFor('.team-admin-view-tabs button:nth-child(3)') as HTMLButtonElement;
     await act(async () => canvasTab.click());
     await waitFor('.team-admin-canvas-viewport');
     const contextCalls = invoke.mock.calls.filter(([channel]) => channel === ONLINE_CHANNELS.TEAM_CONTEXT).length;
@@ -604,35 +876,129 @@ describe('team workspace renderer', () => {
     expect(host.querySelector('.team-admin-view-tabs button[aria-current="page"]')?.textContent).toContain('团队画布');
   });
 
-  it('renders the selected member as a collaboration workspace without exposing unsupported writes', async () => {
+  it('shows team details to a regular member while hiding team progress and opening the company canvas', async () => {
+    identityState.identity = sales as unknown as Record<string, unknown>;
+    const groupSummary = { teamId: operationsGroupId, name: operationsGroup.name, unitType: 'operations' as const, organizationKind: 'operations_group' as const, parentTeamId: companyId, parentTeamName: organization.company.name, depth: 0, childCount: 1, leaderName: leader.displayName, memberCount: 1, pendingInvitationCount: 0, createdAt: team.createdAt };
+    const teamSummary = { teamId: team.teamId, name: team.name, unitType: 'sales_team' as const, organizationKind: 'sales_team' as const, parentTeamId: operationsGroupId, parentTeamName: operationsGroup.name, assignmentSourceTeamIds: [operationsGroupId], assignedLeadCount: 3, depth: 1, childCount: 0, leaderName: team.leaderName, memberCount: 2, pendingInvitationCount: 0, createdAt: team.createdAt };
+    invoke.mockImplementation(async (channel: string, input?: unknown): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ team, canCreate: false, adminTeams: [groupSummary, teamSummary], organization }) };
+      if (channel === ONLINE_CHANNELS.CONTACT_LIST) return { ok: true, data: { items: [contact], total: 1 } };
+      if (channel === ONLINE_CHANNELS.TASK_LIST) return { ok: true, data: { items: [task], total: 1 } };
+      if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team: input === operationsGroupId ? operationsGroup : team, outgoingInvitations: [], children: [] } };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    window.history.replaceState(null, '', '#/team?section=overview');
+    await render();
+    await waitFor('.team-admin-view');
+    await waitFor('.team-admin-tree-row');
+    await waitFor('.team-admin-member-tree-row');
+    await waitFor('.team-admin-org-page');
+    expect(host.querySelector('.team-admin-view-tabs')).not.toBeNull();
+    expect(Array.from(host.querySelectorAll('.team-admin-view-tabs button')).some(button => button.textContent === '工作视角')).toBe(false);
+    expect(host.querySelector('.team-chat-idle')).toBeNull();
+    expect(host.querySelector('.team-admin-workspace.is-chat-idle')).toBeNull();
+    expect(host.querySelector('.team-admin-member-detail-content.is-chat-idle-content')).toBeNull();
+    expect(host.querySelector('.team-admin-demo-member-row')).not.toBeNull();
+    expect(host.querySelector('.team-admin-overview-aside.is-activity-only')).not.toBeNull();
+    expect(invoke.mock.calls.some(([channel]) => channel === ONLINE_CHANNELS.TEAM_MONITORING)).toBe(false);
+    const canvasTab = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-admin-view-tabs button')).find(button => button.textContent === '团队画布')!;
+    await act(async () => canvasTab.click());
+    await waitFor('.team-admin-canvas-viewport');
+    expect(host.querySelectorAll('.team-admin-org-node')).toHaveLength(3);
+    expect(host.textContent).toContain('华东运营组');
+    expect(host.textContent).toContain('华东销售组');
+  });
+
+  it('renders direct chat with incoming messages left, outgoing messages right, and sends without a manual refresh', async () => {
     identityState.identity = superAdmin as unknown as Record<string, unknown>;
     const groupSummary = { teamId: operationsGroupId, name: operationsGroup.name, unitType: 'operations' as const, organizationKind: 'operations_group' as const, parentTeamId: companyId, parentTeamName: organization.company.name, depth: 0, childCount: 1, leaderName: team.leaderName, memberCount: 1, pendingInvitationCount: 0, createdAt: team.createdAt };
     const teamSummary = { teamId: team.teamId, name: team.name, unitType: 'sales_team' as const, organizationKind: 'sales_team' as const, parentTeamId: operationsGroupId, parentTeamName: operationsGroup.name, assignmentSourceTeamIds: [operationsGroupId], assignedLeadCount: 3, depth: 1, childCount: 0, leaderName: team.leaderName, memberCount: 2, pendingInvitationCount: 0, createdAt: team.createdAt };
+    const monitoringCounts = { contacts: 10, uncontacted: 3, contacted: 5, replied: 2, bounced: 0, autoreply: 0, openActions: 4, overdueActions: 2, importantReplies: 1, openAttention: 1, pendingAssignments: 0, pendingTransfers: 0 };
+    const monitoringRates = { contactRate: 0.7, replyRate: 0.4, bounceRate: 0, actionRate: 0.4 };
+    const salesMonitoring = { userId: sales.userId, displayName: sales.displayName, email: sales.email, role: 'member' as const, teamId: team.teamId, teamName: team.name, organizationKind: 'sales_team' as const, counts: monitoringCounts, rates: monitoringRates, stages: { cold: 0, reaching: 0, quoting: 0, trial: 0, cooperating: 0, lost: 0, other: 0 }, lastActivityAt: '2026-11-15T01:00:00Z', latestImportantReplyAt: null };
+    const incoming = { messageId: '10000000-0000-4000-8000-000000000001', teamId: team.teamId, senderUserId: sales.userId, senderName: sales.displayName, recipientUserId: superAdmin.userId, recipientName: superAdmin.displayName, body: '请查看这个客户', createdAt: '2026-10-29T01:00:00Z', mine: false };
+    const outgoing = { messageId: '10000000-0000-4000-8000-000000000002', teamId: team.teamId, senderUserId: superAdmin.userId, senderName: superAdmin.displayName, recipientUserId: sales.userId, recipientName: sales.displayName, body: '收到，我来处理', createdAt: '2026-10-29T01:02:00Z', mine: true };
     invoke.mockImplementation(async (channel: string, input?: unknown): Promise<Result<unknown>> => {
       if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ canCreate: true, canAdmin: true, isSuperAdmin: true, adminTeams: [groupSummary, teamSummary], organization }) };
       if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team: input === team.teamId ? team : operationsGroup, outgoingInvitations: [], children: input === operationsGroupId ? [teamSummary] : [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_MESSAGES) return { ok: true, data: { items: [incoming, outgoing] } };
+      if (channel === ONLINE_CHANNELS.TEAM_CONVERSATIONS) return { ok: true, data: { items: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_MESSAGE_SEND) return { ok: true, data: { ...outgoing, messageId: '10000000-0000-4000-8000-000000000003', body: (input as { body: string }).body } };
+      if (channel === ONLINE_CHANNELS.TEAM_MONITORING) return { ok: true, data: { scope: 'superadmin', generatedAt: '2026-11-15T02:00:00Z', units: { items: [], total: 0 }, members: { items: [salesMonitoring], total: 1 }, counts: monitoringCounts, rates: monitoringRates, pool: null, importantReplies: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_MONITORING_MEMBER) return { ok: true, data: { scope: 'superadmin', generatedAt: '2026-11-15T02:00:00Z', member: salesMonitoring, recentActions: [], attention: [], recentMail: [], followups: [{ customerId: 'customer-1', customerName: '客户 A', contactId: 1, contactName: '张三', stage: 'reaching', grade: 'B', urgency: 'important', lastFollowupAt: '2026-11-13T01:00:00Z', daysSinceFollowup: 3, nextAction: '等待报价确认', recentSummary: null }] } };
+      if (channel === ONLINE_CHANNELS.TEAM_MONITORING_CONTACT) return { ok: true, data: { auditId: 'audit-1', scope: 'superadmin', contactId: 1, customerId: 'customer-1', companyId: 1, companyName: '客户 A', name: '张三', email: 'zhang@example.test', country: 'CN', title: null, stage: 'reaching', touchStatus: 'contacted', ownerUserId: sales.userId, ownerName: sales.displayName, origin: 'personal', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-13T00:00:00Z', mail: { items: [], total: 0 } } };
+      if (channel === ONLINE_CHANNELS.TEAM_PRESENCE) return { ok: true, data: { state: 'unread', lastSeenAt: '2026-11-15T02:00:00Z', unread: true } };
+      if (channel === ONLINE_CHANNELS.TEAM_MESSAGE_READ) return { ok: true, data: { lastReadAt: '2026-11-15T02:00:00Z', unreadCount: 0 } };
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     await act(async () => tabButton('我的团队')!.click());
     const salesRow = await waitFor('.team-admin-tree-row[data-depth="1"]') as HTMLButtonElement;
-    await act(async () => salesRow.click());
     await waitFor('.team-admin-member-tree-row');
     const memberButton = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-admin-member-tree-row')).find(button => button.textContent?.includes('Sales One'))!;
     await act(async () => memberButton.click());
     await waitFor('.team-collaboration-log');
+    expect(host.querySelector('.team-admin-workspace.is-chat-open')).not.toBeNull();
     expect(host.querySelector('.team-member-collaboration-head')?.textContent).toContain('Sales One');
-    expect(host.querySelector('.team-admin-overview-aside > .team-admin-activity-drawer.is-overview')).not.toBeNull();
+    await waitFor('.team-member-presence-dot.is-unread');
+    expect(host.querySelector('.team-member-presence-dot')?.getAttribute('aria-label')).toContain('未读');
+    expect(host.querySelector('.team-member-connection')).toBeNull();
     expect(host.querySelector('.team-admin-rail .team-admin-activity-drawer')).toBeNull();
     expect(host.querySelector('.team-admin-member-main > .team-admin-activity-drawer')).toBeNull();
-    expect(host.querySelector('.team-collaboration-log')?.textContent).toContain('暂无协作动态');
-    expect(invoke.mock.calls.some(([channel]) => channel === ONLINE_CHANNELS.TEAM_MONITORING_MEMBER)).toBe(false);
+    await vi.waitFor(() => expect(host.querySelectorAll('.team-chat-message')).toHaveLength(2));
+    expect(host.querySelector('.team-chat-message:not(.is-mine)')?.textContent).toContain('请查看这个客户');
+    expect(host.querySelector('.team-chat-message.is-mine')?.textContent).toContain('收到，我来处理');
+    expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MESSAGES, { teamId: team.teamId, memberUserId: sales.userId, limit: 100 });
+    expect(host.querySelector('.team-member-context-section')?.textContent).toContain('客户跟进');
+    expect(host.querySelector('.team-member-context-section')?.textContent).not.toContain('最近私聊');
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === ONLINE_CHANNELS.TEAM_MONITORING_MEMBER)).toBe(true));
+    await waitFor('.team-member-followup-row');
+    expect(host.querySelector('.team-member-followup-row')?.textContent).toContain('客户 A');
+    expect(host.querySelector('.team-member-followup-row')?.textContent).toContain('重要');
+    expect(invoke.mock.calls.some(([channel]) => channel === ONLINE_CHANNELS.TEAM_MONITORING_MEMBER)).toBe(true);
+    await act(async () => { host.querySelector<HTMLButtonElement>('.team-member-followup-row')!.click(); });
+    await waitFor('.team-crm-drawer');
+    await vi.waitFor(() => expect(host.querySelector('.team-crm-drawer')?.textContent).toContain('张三'));
+    expect(host.querySelector('.team-crm-drawer')?.textContent).toContain('打开客户详情');
     const overview = host.querySelector('.team-admin-overview-aside')?.textContent ?? '';
-    expect(overview).not.toMatch(/触达率|回复率|最近活动|开放动作|关注项/);
-    expect(Array.from(host.querySelectorAll<HTMLButtonElement>('.team-collaboration-tools button')).every(button => button.disabled)).toBe(true);
-    expect(host.querySelector<HTMLTextAreaElement>('.team-collaboration-composer textarea')?.disabled).toBe(true);
-    expect(host.querySelector('.team-collaboration-composer-box > button:disabled')?.textContent).toContain('发送');
+    expect(overview).toContain('近 30 天回复率');
+    expect(overview).toContain('未触达客户');
+    expect(overview).toContain('逾期动作');
+    expect(overview).toContain('最近活跃');
+    const composerTools = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-chat-composer-tools button'));
+    expect(composerTools.slice(0, 3).every(button => button.disabled)).toBe(true);
+    expect(composerTools[3]?.disabled).toBe(false);
+    expect(host.querySelector<HTMLTextAreaElement>('.team-collaboration-composer textarea')?.disabled).toBe(false);
+    const composer = host.querySelector<HTMLTextAreaElement>('.team-collaboration-composer textarea')!;
+    await setTextArea(composer, '明天上午一起看报价');
+    const send = host.querySelector<HTMLButtonElement>('.team-chat-send')!;
+    expect(send.disabled).toBe(false);
+    await act(async () => send.click());
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MESSAGE_SEND, expect.objectContaining({ teamId: team.teamId, recipientUserId: sales.userId, body: '明天上午一起看报价', idempotencyKey: expect.any(String) })));
+    expect(invoke.mock.calls.filter(([channel]) => channel === ONLINE_CHANNELS.TEAM_MESSAGES).length).toBeGreaterThan(1);
+    expect(composer.value).toBe('');
+  });
+
+  it('restores the last chat after leaving and returning during the same app session', async () => {
+    invoke.mockImplementation(async (channel: string): Promise<Result<unknown>> => {
+      if (channel === ONLINE_CHANNELS.TEAM_CONTEXT) return { ok: true, data: context({ team, canCreate: false }) };
+      if (channel === ONLINE_CHANNELS.TEAM_DETAIL) return { ok: true, data: { team, outgoingInvitations: [], children: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_CONVERSATIONS) return { ok: true, data: { items: [] } };
+      if (channel === ONLINE_CHANNELS.TEAM_MESSAGES) return { ok: true, data: { items: [] } };
+      return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
+    });
+    window.history.replaceState(null, '', '#/team?section=overview');
+    await render();
+    const memberRow = await waitFor('.team-admin-member-tree-row') as HTMLButtonElement;
+    await act(async () => memberRow.click());
+    await waitFor('.team-member-collaboration-head');
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await render();
+    await waitFor('.team-member-collaboration-head');
+    expect(host.querySelector('.team-member-collaboration-head')?.textContent).toContain('Team Leader');
+    expect(host.querySelector('.team-chat-idle')).toBeNull();
   });
 
   it('runs member and display-group mutations from the compact inspector', async () => {
@@ -652,11 +1018,11 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const management = tabButton('我的团队')!;
     await act(async () => management.click());
     const salesRow = await waitFor('.team-admin-tree-row[data-depth="1"]') as HTMLButtonElement;
-    await act(async () => salesRow.click());
+    await act(async () => (await waitFor('.team-admin-demo-manage') as HTMLButtonElement).click());
     await waitFor('.team-admin-section-actions');
     await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('.team-admin-section-actions button')).find(button => button.textContent === '管理')!.click());
     await waitFor('button[aria-label="移出 Sales One"]');
@@ -699,7 +1065,7 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const teamTab = tabButton('团队管理')!;
     await act(async () => teamTab.click());
     await waitFor('.team-info-head');
@@ -722,7 +1088,7 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     await act(async () => tabButton('团队管理')!.click());
     await waitFor('.team-info-view');
     await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('.team-info-view button')).find(button => button.textContent === '退出团队')!.click());
@@ -743,11 +1109,12 @@ describe('team workspace renderer', () => {
       return { ok: false, error: { code: 'NOT_FOUND', message: `未接入:${channel}` } };
     });
     await render();
-    await waitFor('.team-section-tabs');
+    await waitFor('.team-workspace-context-bar');
     const management = tabButton('我的团队')!;
     await act(async () => management.click());
     const groupRow = await waitFor('.team-admin-directory-main') as HTMLButtonElement;
     await act(async () => groupRow.click());
+    await act(async () => (await waitFor('.team-admin-demo-manage') as HTMLButtonElement).click());
     await waitFor('.team-admin-detail-toolbar');
     const trigger = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-admin-detail-toolbar button')).find(button => button.textContent === '解散')!;
     await act(async () => trigger.click());
@@ -894,15 +1261,31 @@ describe('team workspace renderer', () => {
     expect(css).toContain('.team-monitoring-metrics { min-height: 76px;');
     expect(css).toContain('.team-admin-toolbar-actions { grid-column: 1 / -1; min-width: 0; width: 100%; flex-wrap: wrap; }');
     expect(css).toContain('.team-admin-workspace.is-directory .team-admin-rail { width: 190px; min-width: 170px; }');
-    expect(css).toContain('.team-setup-view { display: flex; flex-direction: column; gap: 10px; padding: 12px 18px 14px; overflow: hidden; }');
+    expect(css).toContain('.team-admin-rail { width: 222px; min-width: 198px; min-height: 0; display: flex; flex-direction: column; overflow: hidden;');
+    expect(css).toContain('.team-admin-tree { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;');
+    expect(css).toContain('.team-admin-workspace.is-member-directory .team-admin-main,');
+    expect(css).toContain('.team-admin-workspace.is-member-directory.is-chat-open { grid-template-columns: minmax(220px, 252px) minmax(0, 1fr) minmax(260px, 300px); }');
+    expect(css).toContain('.team-admin-workspace.is-member-directory.is-chat-idle { grid-template-columns: minmax(220px, 252px) minmax(0, 1fr); }');
+    expect(css).toContain('.team-admin-workspace.is-member-directory.is-chat-idle .team-admin-overview-aside { display: none; }');
+    expect(css).toContain('.team-admin-member-detail-content.is-chat-idle-content { display: flex; overflow: hidden; }');
+    expect(css).toContain('.team-setup-view { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 18px 24px; overflow: auto; }');
+    expect(css).toContain('.team-setup-view.is-invite-only { justify-content: center;');
+    expect(css).toContain('.team-setup-empty.is-compact { min-height: 76px;');
     expect(css).toContain('.team-candidate-row.is-locked { color: var(--workspace-muted); background: var(--workspace-surface-soft); cursor: default; opacity: .78; }');
     expect(css).not.toContain('.team-control-picker');
     expect(css).toContain('.team-monitoring-view {');
     expect(personalCss).toContain('.personal-actions-panel, .personal-task-panel { border:');
+    expect(personalCss).toContain('.personal-queue-panel {');
+    expect(personalCss).toContain('.personal-context-panel {');
+    expect(personalCss).toContain('.personal-action-row.is-selected {');
     expect(css).toContain('min-width: 0;');
     expect(css).toContain('.team-monitoring-body { grid-template-columns: minmax(0, 1fr); }');
     expect(css).toContain('.team-collaboration-log {');
-    expect(css).toContain('.team-collaboration-tools button:disabled {');
+    expect(css).toContain('.team-chat-composer-tools button:disabled {');
+    expect(css).toContain('.team-chat-message.is-mine {');
+    expect(css).toContain('.team-chat-message.is-mine .team-chat-avatar {');
+    expect(css).toContain('.team-admin-conversation-tree {');
+    expect(css).toContain('.team-member-context-stats {');
     expect(css).toContain('.team-admin-overview-aside > .team-admin-activity-drawer.is-overview { height: auto; min-height: 160px; max-height: 50%; flex: 0 0 50%; resize: none;');
     expect(css).toContain('.team-monitoring-member-row { grid-template-columns: 28px minmax(90px, 1fr) repeat(3, 38px) 14px; }');
     expect(css).toContain('.team-performance-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }');
@@ -924,6 +1307,8 @@ describe('team workspace renderer', () => {
     await render();
     await waitFor('.team-setup-view');
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_CONTEXT, undefined);
+    expect(host.querySelector('.team-setup-view')?.classList.contains('is-invite-only')).toBe(true);
+    expect(host.querySelector('.team-setup-empty-icon')).not.toBeNull();
     expect(host.querySelector('.team-setup-view')?.textContent).not.toContain('创建团队');
     expect(host.querySelector('.team-page-state')).toBeNull();
   });

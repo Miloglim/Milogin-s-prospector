@@ -12,6 +12,7 @@ import { APP_ROOT, getResourcesRoot, loadConfig, selectAccountRoot } from "./con
 import { DesktopLocalScope, developerProfileRoot, developmentUserDataRoot, accountProfileRoot } from "./adapters/desktop-local-scope.adapter";
 import { registerLockedLocalIPC, registerGuardedLocalIPC } from "./transport/desktop-local.ipc";
 import { EVENTS } from "./events";
+import { setCenterIdentityProvider } from './services/center-identity.service';
 
 if (!app.isPackaged) {
   app.disableHardwareAcceleration();
@@ -45,6 +46,15 @@ let isQuitting = false;
 let trayRestartPending = false;
 let restartConfirmation: ((confirmed: boolean) => void) | null = null;
 let sessionIpcRegistered = false;
+
+function revealMainWindow(focus = true): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.setAlwaysOnTop(false);
+  mainWindow.show();
+  mainWindow.setAlwaysOnTop(false);
+  if (focus) mainWindow.focus();
+}
 
 // ── P0-5 崩溃兜底：主进程不再静默消失 ──────────────────────────
 // 错误一律落日志；对话框节流 60s 防异常风暴刷屏；进程保持存活（群发批次不受牵连）
@@ -107,6 +117,9 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  mainWindow.setAlwaysOnTop(false);
+  mainWindow.on("show", () => mainWindow?.setAlwaysOnTop(false));
+  mainWindow.on("blur", () => mainWindow?.setAlwaysOnTop(false));
 
   // P1-3: 外链一律交系统浏览器；窗口内禁止导航离开应用本体（防渲染进程被诱导跳外网）
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -154,8 +167,7 @@ function createWindow() {
   // 批处理启动、托盘唤醒和单实例复用都可能让窗口已创建但仍处于隐藏态；
   // 等首屏渲染完成后显式显示，避免只剩后台进程而用户看不到窗口。
   mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
-    mainWindow?.focus();
+    revealMainWindow();
   });
 
   if (process.env.NODE_ENV === "development" || process.env.ELECTRON_RENDERER_URL) {
@@ -170,8 +182,7 @@ async function restartApplication(): Promise<void> {
   trayRestartPending = true;
   try {
     if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
-    mainWindow.show();
-    mainWindow.focus();
+    revealMainWindow();
     const confirmed = await new Promise<boolean>((resolve) => {
       const timeout = setTimeout(() => { restartConfirmation = null; resolve(false); }, 30_000);
       restartConfirmation = (value) => { clearTimeout(timeout); restartConfirmation = null; resolve(value); };
@@ -204,7 +215,7 @@ function createTray() {
     { label: "重启应用", click: () => { void restartApplication(); } },
     { label: "退出", click: () => { isQuitting = true; app.quit(); } },
   ]));
-  tray.on("double-click", () => { mainWindow?.show(); mainWindow?.focus(); });
+  tray.on("double-click", () => revealMainWindow());
 }
 
 async function confirmInterruptedBatch(batchId: string): Promise<void> {
@@ -239,12 +250,12 @@ async function registerAllIPC() {
     import("./transport/send.ipc"), import("./transport/inbox.ipc"),
     import("./transport/crm.ipc"), import("./transport/template.ipc"),
     import("./transport/account.ipc"), import("./transport/export.ipc"),
-    import("./transport/dashboard.ipc"), import("./transport/history.ipc"),
+    import("./transport/history.ipc"),
     import("./transport/bounce.ipc"), import("./transport/ai.ipc"),
     import("./transport/agent.ipc"), import("./transport/rates.ipc"),
     import("./transport/rate-update.ipc"), import("./transport/dev-letter.ipc"),
     import("./transport/kb.ipc"), import("./transport/system.ipc"),
-    import("./transport/search.ipc"),
+    import("./transport/search.ipc"), import("./transport/assistant.ipc"),
   ]);
   if (!localScope.allowed() || identityRestarting) return;
   const inboxModule = modules.find(module => 'suspendLocalNetworkWork' in module);
@@ -372,7 +383,7 @@ function updateLocalIdentity(): void {
   });
 }
 
-// 单实例锁 — 防止重复启动多个进程
+// 单实例锁按 userData profile 生效；开发启动器为多开分配独立 profile，正式包保持单实例。
 app.setAppUserModelId("com.miloglim.prospecting-email");
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -380,9 +391,7 @@ if (!gotLock) {
 } else {
   app.on("second-instance", () => {
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
+      revealMainWindow();
     }
   });
 }
@@ -401,8 +410,7 @@ if (gotLock) app.whenReady().then(async () => {
     finish(ok) {
       if (!ok) {
         identityRestarting = false;
-        mainWindow?.show();
-        mainWindow?.focus();
+        revealMainWindow();
         Log.warn("local.scope", "切换账号未完成，已恢复原窗口");
         return;
       }
@@ -411,6 +419,7 @@ if (gotLock) app.whenReady().then(async () => {
     },
   });
   registerSessionIPC();
+  setCenterIdentityProvider(() => getOnlineIdentity()?.userId ?? null);
   onOnlineIdentityChanged(updateLocalIdentity);
   updateLocalIdentity();
   createWindow();

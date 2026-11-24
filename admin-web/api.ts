@@ -3,6 +3,7 @@ import type { Identity } from "../server/core/auth";
 import type { ManagementDashboard, OperationsSummary } from "../server/core/management-dashboard";
 import type { NavigatorDashboard } from "../server/core/navigator";
 import type { AdminDataPage, AdminDataQuery, AdminDataTableInfo } from "../server/core/admin-data-browser";
+import type { AiFeature, AiModelProfile, AiPolicyRow, AiPolicyUpdate, AiUsageReceipt, AiUsageSummary } from "../server/core/ai";
 
 type AuthState = { identity: Identity; csrf: string; expiresAt?: string };
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
@@ -35,6 +36,12 @@ export const api = {
   dataTables: () => request<AdminDataTableInfo[]>(ADMIN_ROUTES.data),
   data: (query: AdminDataQuery) => request<AdminDataPage>(`${ADMIN_ROUTES.data}?${new URLSearchParams({ table: query.table, search: query.search, limit: String(query.limit), offset: String(query.offset), ...(query.sort ? { sort: query.sort } : {}), ...(query.direction ? { direction: query.direction } : {}) })}`),
   navigatorDashboard: () => request<NavigatorDashboard>(ADMIN_ROUTES.navigatorDashboard),
+  aiPolicies: () => request<AiPolicyRow[]>(ADMIN_ROUTES.aiPolicies),
+  aiUsage: (days = 30) => request<AiUsageSummary>(`${ADMIN_ROUTES.aiUsage}?days=${days}`),
+  aiUsageEvents: (input: { userId?: string; feature?: AiFeature; status?: 'ok'|'error'|'blocked'; days?: number; limit?: number; offset?: number } = {}) => request<AiUsageReceipt[]>(`${ADMIN_ROUTES.aiUsageEvents}?${new URLSearchParams({ ...(input.userId?{userId:input.userId}:{}), ...(input.feature?{feature:input.feature}:{}), ...(input.status?{status:input.status}:{}), days:String(input.days??30), limit:String(input.limit??50), offset:String(input.offset??0) })}`),
+  aiModels: () => request<AiModelProfile[]>(ADMIN_ROUTES.aiModels),
+  saveAiModel: (input: AiModelProfile) => request<AiModelProfile>(ADMIN_ROUTES.aiModel, input),
+  updateAiPolicy: (input: AiPolicyUpdate) => request<unknown>(ADMIN_ROUTES.aiPolicy, input),
   sessions: (userId: string) => request<SessionInfo[]>(`${ADMIN_ROUTES.sessions}?${new URLSearchParams({ userId })}`),
   audit: (productId?: string, userId?: string) => request<AuditInfo[]>(`${ADMIN_ROUTES.audit}?${new URLSearchParams({ ...(productId ? { productId } : {}), ...(userId ? { userId } : {}) })}`),
   command: (command: AdminCommand, password?: string) => request<MutationResult>(ADMIN_ROUTES.mutate, { command, ...(password === undefined ? {} : { password }) }, true),

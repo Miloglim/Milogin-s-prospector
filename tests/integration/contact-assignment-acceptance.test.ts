@@ -94,6 +94,9 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact acceptance 
    const accepted=unwrap(await assignments.decideContactAssignment(sales.hash,'accept',decision));expect(accepted.status).toBe('accepted');
    const pendingGroup=unwrap(await assignments.contactAssignmentGroups(sales.hash,{view:'incoming',status:'pending',search:'',limit:50,offset:0})).items.find(row=>row.groupId===request.groupId)!;
    expect(pendingGroup).toMatchObject({total:2,pending:1,accepted:1,canAcceptAll:true});
+   const unifiedGroup=unwrap(await assignments.contactAssignmentGroups(sales.hash,{view:'incoming',status:'all',search:'',limit:50,offset:0})).items.find(row=>row.groupId===request.groupId)!;
+   expect(unifiedGroup).toMatchObject({total:2,pending:1,accepted:1,canAcceptAll:true});
+   expect(unwrap(await assignments.contactAssignments(ops.hash,{view:'outgoing',status:'all',search:'rollback-only',limit:50,offset:0})).items.map(row=>row.status).sort()).toEqual(['accepted','pending']);
    const grouped=unwrap(await assignments.decideContactAssignmentGroup(sales.hash,'reject',{groupId:request.groupId,idempotencyKey:randomUUID()}));expect(grouped.items.map(row=>row.status).sort()).toEqual(['accepted','rejected']);
    const exact=unwrap(await assignments.contactAssignments(sales.hash,{view:'incoming',status:'pending',requestId:request.requestId,search:'',limit:50,offset:0}));
    expect(exact).toMatchObject({total:1,items:[{requestId:request.requestId,status:'accepted'}]});

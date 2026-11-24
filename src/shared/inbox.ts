@@ -1,5 +1,50 @@
-/** 深链邮件可超出列表分类上限；仅附带目标行，不扩大常规列表。 */
-export interface InboxListRequest { includeId?: number; centerMessageKey?: string }
+export const INBOX_LIST_LIMITS = { page: 200, pageMax: 500, search: 200 } as const;
+
+/** Cursor pagination keeps the Foxmail-style continuous list without loading the whole mailbox. */
+export interface InboxListRequest {
+  includeId?: number;
+  centerMessageKey?: string;
+  limit?: number;
+  cursor?: string;
+  search?: string;
+  classification?: string;
+  accountId?: number;
+  startAt?: string;
+  endAt?: string;
+}
+
+export interface InboxListPage<T = unknown> {
+  items: T[];
+  total: number;
+  nextCursor: string | null;
+}
+
+/** Sidebar/calendar aggregates stay independent of the active classification or search. */
+export interface InboxSummaryRequest {
+  accountId?: number;
+  startAt?: string;
+  endAt?: string;
+}
+
+export interface InboxSummaryCount {
+  total: number;
+  unread: number;
+  latestAt?: number;
+  email?: string;
+}
+
+export interface InboxSummary {
+  total: number;
+  allTotal: number;
+  unread: number;
+  byClassification: Record<string, InboxSummaryCount>;
+  byDate: Record<string, InboxSummaryCount>;
+  byAccount: Record<string, InboxSummaryCount>;
+  labels: Record<string, number>;
+  pinned: number;
+  conversations: unknown[];
+  pinnedItems: unknown[];
+}
 
 export function normalizeInboxSubject(value: string | null | undefined): string {
   return (value || '')
@@ -38,6 +83,18 @@ export interface InboxMessageLabelsRequest {
   idempotencyKey: string;
 }
 
+export interface InboxMessagesLabelsBatchRequest {
+  messageIds: number[];
+  labelIds: number[];
+  idempotencyKey: string;
+}
+
+export interface InboxMessagesPinBatchRequest {
+  messageIds: number[];
+  pinned: boolean;
+  idempotencyKey: string;
+}
+
 export interface InboxFolderSuggestionRequest {
   suggestions: Array<{ name: string; messageIds: number[] }>;
   idempotencyKey: string;
@@ -69,10 +126,37 @@ export interface InboxTodoStateRequest {
   idempotencyKey: string;
 }
 
+export interface InboxTodoStateResult {
+  messageId: number;
+  state: InboxTodoState;
+  changed: boolean;
+}
+
 export interface InboxTodoBatchRequest {
   messageIds: number[];
   state: InboxTodoState;
   idempotencyKey: string;
+}
+
+export interface InboxTodoBatchResult {
+  messageIds: number[];
+  updated: number;
+  state: InboxTodoState;
+}
+
+export const INBOX_CONVERSATION_STATES = ['todo', 'needs_reply', 'waiting_other', 'important'] as const;
+export type InboxConversationState = typeof INBOX_CONVERSATION_STATES[number];
+
+export interface InboxConversationStateBatchRequest {
+  messageIds: number[];
+  state: InboxConversationState | null;
+  idempotencyKey: string;
+}
+
+export interface InboxConversationStateBatchResult {
+  messageIds: number[];
+  updated: number;
+  state: InboxConversationState | null;
 }
 
 export const INBOX_FETCH_PHASES = {
@@ -168,11 +252,41 @@ export interface InboxAnalysisView {
   dueHint: string | null;
   confidence: number;
   evidence: string[];
-  source: 'rule' | 'ai' | 'human';
+  source: 'rule' | 'ai' | 'human' | 'mock';
   analyzerVersion: string;
   status: 'pending' | 'ready' | 'failed';
   error: string | null;
   updatedAt: string;
+}
+
+export const INBOX_DIRECT_BUSINESS_ANALYSIS_CATEGORIES = [
+  'price_inquiry', 'quote_request', 'schedule_request', 'order_followup', 'complaint', 'cooperation',
+] as const;
+
+export const INBOX_AI_TODO_CONFIDENCE = 0.75;
+
+export interface InboxAnalysisAdmission {
+  internal: boolean;
+  ccOnly: boolean;
+}
+
+/** Direct customer business with a clear action becomes a todo; internal and cc copies never do. */
+export function inboxAnalysisAdmitsTodo(
+  analysis: Pick<InboxAnalysisView, 'status' | 'category' | 'priority' | 'requiresAction' | 'confidence'> | null | undefined,
+  admission: InboxAnalysisAdmission,
+): boolean {
+  if (!analysis || analysis.status !== 'ready' || admission.ccOnly || admission.internal) return false;
+  if (!(INBOX_DIRECT_BUSINESS_ANALYSIS_CATEGORIES as readonly string[]).includes(analysis.category)) return false;
+  return (analysis.requiresAction && analysis.confidence >= INBOX_AI_TODO_CONFIDENCE) || analysis.priority === 'urgent';
+}
+
+/** Actionable mail that is not a direct-business todo belongs in the attention bucket. */
+export function inboxAnalysisAdmitsAttention(
+  analysis: Pick<InboxAnalysisView, 'status' | 'category' | 'priority' | 'requiresAction' | 'confidence'> | null | undefined,
+  admission: InboxAnalysisAdmission,
+): boolean {
+  if (!analysis || analysis.status !== 'ready' || admission.ccOnly) return false;
+  return analysis.requiresAction && !inboxAnalysisAdmitsTodo(analysis, admission);
 }
 
 export interface InboxAnalysisStatus {
@@ -180,6 +294,59 @@ export interface InboxAnalysisStatus {
   pending: number;
   ready: number;
   failed: number;
+}
+
+export const INBOX_QUOTE_CARD_STATES = ['analyzing','fields_pending','querying','ready','failed','unmatched','stale'] as const;
+export type InboxQuoteCardState = typeof INBOX_QUOTE_CARD_STATES[number];
+
+export interface InboxQuoteCandidate {
+  id: string;
+  carrier: string | null;
+  pol: string | null;
+  pod: string | null;
+  containerType: string | null;
+  price: number | null;
+  currency: string | null;
+  etd: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  sourceUpdatedAt: string | null;
+  evidence: unknown[];
+}
+
+export interface InboxQuoteCard {
+  messageId: number;
+  messageKey: string;
+  caseId: string;
+  quoteCaseId: string;
+  quoteId: string;
+  state: InboxQuoteCardState;
+  fields: Record<string, unknown>;
+  missingFields: string[];
+  selectedCandidate: InboxQuoteCandidate | null;
+  candidates: InboxQuoteCandidate[];
+  summary: string;
+  error: string | null;
+  updatedAt: string;
+}
+
+export interface InboxQuoteSelectRequest { messageId: number; candidateId: string }
+export interface InboxQuoteRequeryRequest { messageId: number; fields: Record<string, string | string[]> }
+export interface InboxQuoteDraftResult { subject: string; body: string }
+
+export interface InboxReplyRequest {
+  accountId: number;
+  to: string[];
+  cc?: string[];
+  subject: string;
+  body: string;
+  attachments?: Array<{ filename: string; contentType?: string; dataBase64: string }>;
+}
+
+export interface InboxReplyResult {
+  messageId: string;
+  sentAt: string;
+  localId: number | null;
 }
 
 export const INBOX_EVENTS = {

@@ -410,7 +410,7 @@ export function ContactDetailDrawer({ contact, open, onClose, onUpdated }: {
               <Button type="text" size="small" icon={<PartitionOutlined />}
                 disabled={contact.status !== "reached"}
                 className="btn-hover-color" style={{ color: contact.status === "reached" ? "#bbb" : "#d9d9d9", padding: 0, minWidth: 20, height: 20 }}
-                onClick={() => { window.location.hash = `#/customers?view=board&detail=${contact.id}`; }}
+                onClick={() => { window.location.hash = `#/customers?view=table&detail=${contact.id}`; }}
               />
             </Tooltip>
             {/* 带着这个联系人问 AI：跳对话页并注入上下文（助手能读到 TA 的资料/邮件/提醒） */}

@@ -1,4 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import type { Pool, PoolClient } from 'pg';
 import type { CrmRole } from '../../core/auth';
 import { effectiveCapabilitiesFor, type DataScope } from '../../core/admin';
@@ -21,6 +24,24 @@ import type {
   TeamCreateInput,
   TeamCreateReceipt,
   TeamDetail,
+  TeamDirectConversation,
+  TeamDirectConversationPage,
+  TeamDirectConversationQuery,
+  TeamDirectoryEntry,
+  TeamDirectoryPage,
+  TeamDirectoryQuery,
+  TeamDirectMessage,
+  TeamDirectMessagePage,
+  TeamDirectMessageQuery,
+  TeamDirectMessageSend,
+  TeamFileMeta,
+  TeamFileUpload,
+  TeamArchiveMeta,
+  TeamConversationArchiveInput,
+  TeamEmailReferencePayload,
+  TeamMessageReadCommand,
+  TeamMessageReadReceipt,
+  TeamMessageUnreadCommand,
   TeamDissolveInput,
   TeamInvitation,
   TeamInvitationDecision,
@@ -34,11 +55,13 @@ import type {
   TeamMemberGroupDeleteInput,
   TeamMemberGroupInput,
   TeamMoveInput,
+  TeamPresenceQuery,
+  TeamPresenceView,
   TeamRepository,
   TeamSnapshot,
   TeamUnitType,
 } from '../../core/teams';
-import { DEFAULT_TEAM_UNIT_TYPE, teamAcceptsMembers } from '../../core/teams';
+import { DEFAULT_TEAM_UNIT_TYPE, TEAM_LIMITS } from '../../core/teams';
 import {
   TEAM_SCHEMA_LOCK,
   TEAM_SCHEMA_SQL,
@@ -64,7 +87,22 @@ import {
   ORGANIZATION_DISSOLUTION_SQL,
   ORGANIZATION_DISSOLUTION_VERSION,
 } from './organization-dissolution-schema';
+import {
+  UNIFORM_TEAM_MEMBERSHIP_SQL,
+  UNIFORM_TEAM_MEMBERSHIP_VERSION,
+} from './team-membership-schema';
 import { assertCenterDatabasePool } from './config';
+import { TEAM_MESSAGE_SQL, TEAM_MESSAGE_VERSION } from './team-message-schema';
+import { TEAM_PRESENCE_SQL, TEAM_PRESENCE_VERSION } from './team-presence-schema';
+import { TEAM_READ_CURSOR_SQL, TEAM_READ_CURSOR_VERSION } from './team-read-cursor-schema';
+import { TEAM_FILE_SQL, TEAM_FILE_VERSION } from './team-file-schema';
+import { TEAM_ARCHIVE_SQL, TEAM_ARCHIVE_VERSION } from './team-archive-schema';
+import { TEAM_EMAIL_REFERENCE_SQL, TEAM_EMAIL_REFERENCE_VERSION } from './team-email-reference-schema';
+
+const TEAM_FILE_ROOT = process.env.PROSPECTOR_FILE_ROOT ?? join(process.cwd(), 'data', 'team-files');
+const TEAM_FILE_MIME = new Set(['image/png','image/jpeg','image/webp','image/gif','application/pdf','text/plain','text/csv','application/zip','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
+const BASE64_CHARS = /^[A-Za-z0-9+/]*={0,2}$/;
+const TEAM_ARCHIVE_MESSAGE_LIMIT = 20000;
 
 interface TeamActor {
   userId: string;
@@ -208,6 +246,9 @@ function treeOrder(rows: AdminTeamRow[]): TeamAdminSummary[] {
 }
 
 export class PostgresTeamRepository implements TeamRepository {
+  currentUser(tokenHash: string): Promise<Result<string>> {
+    return this.authorized(tokenHash, async (_client, actor) => success(actor.userId));
+  }
   constructor(private readonly pool: Pool, private readonly log: LogSink) {
     assertCenterDatabasePool(pool);
   }
@@ -279,6 +320,13 @@ export class PostgresTeamRepository implements TeamRepository {
         [ORGANIZATION_SCHEMA_VERSION, ORGANIZATION_SCHEMA_SQL],
         [ORGANIZATION_ASSIGNMENT_INTEGRITY_VERSION, ORGANIZATION_ASSIGNMENT_INTEGRITY_SQL],
         [ORGANIZATION_DISSOLUTION_VERSION, ORGANIZATION_DISSOLUTION_SQL],
+        [UNIFORM_TEAM_MEMBERSHIP_VERSION, UNIFORM_TEAM_MEMBERSHIP_SQL],
+        [TEAM_MESSAGE_VERSION, TEAM_MESSAGE_SQL],
+        [TEAM_PRESENCE_VERSION, TEAM_PRESENCE_SQL],
+        [TEAM_READ_CURSOR_VERSION, TEAM_READ_CURSOR_SQL],
+        [TEAM_FILE_VERSION, TEAM_FILE_SQL],
+        [TEAM_ARCHIVE_VERSION, TEAM_ARCHIVE_SQL],
+        [TEAM_EMAIL_REFERENCE_VERSION, TEAM_EMAIL_REFERENCE_SQL],
       ] as const) {
         const checksum = createHash('sha256').update(sql).digest('hex');
         const old = await client.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1', [version]);
@@ -346,6 +394,44 @@ export class PostgresTeamRepository implements TeamRepository {
     return ((await client.query('SELECT unit_id AS "unitId",role,is_primary AS "isPrimary" FROM crm_org_assignments WHERE user_id=$1 AND unit_id=$2 AND ended_at IS NULL ORDER BY is_primary DESC,created_at LIMIT 1', [userId, unitId])).rows[0] as AssignmentRow | undefined) ?? null;
   }
 
+  private async managerUser(client: PoolClient, userId: string): Promise<boolean> {
+    const row = (await client.query(`SELECT u.identity_admin AS "identityAdmin",ARRAY(SELECT g.role FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active ORDER BY g.role) AS roles FROM public.identity_users u LEFT JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active WHERE u.user_id=$1 AND u.active AND NOT u.must_change_password AND (u.identity_admin OR a.scope IS NOT NULL)`, [userId])).rows[0] as { identityAdmin: boolean; roles: CrmRole[] } | undefined;
+    return !!row && canGovernOrganization({ userId, identityAdmin: row.identityAdmin, roles: row.roles });
+  }
+
+  private async threadExists(client: PoolClient, teamId: string, leftUserId: string, rightUserId: string): Promise<boolean> {
+    return !!(await client.query('SELECT 1 FROM crm_team_messages WHERE team_id=$1 AND ((sender_user_id=$2 AND recipient_user_id=$3) OR (sender_user_id=$3 AND recipient_user_id=$2)) LIMIT 1', [teamId, leftUserId, rightUserId])).rows[0];
+  }
+
+  // Direct messages are company-wide: any two active CRM accounts may talk,
+  // regardless of whether they share a team.
+  private async messageAccess(client: PoolClient, actor: TeamActor, _teamId: string, memberUserId: string): Promise<Result<void>> {
+    if (memberUserId === actor.userId) return success(undefined);
+    const peer = await client.query(`SELECT 1 FROM public.identity_users u
+      LEFT JOIN public.identity_product_access a ON a.user_id=u.user_id AND a.product_id='crm' AND a.active
+      WHERE u.user_id=$1 AND u.active AND NOT u.must_change_password AND (u.identity_admin OR a.scope IS NOT NULL)`, [memberUserId]);
+    if (!peer.rowCount) return failure('NOT_FOUND', '对方账号不可用');
+    return success(undefined);
+  }
+
+  private async threadTeam(client: PoolClient, actorUserId: string, peerUserId: string, requested?: string): Promise<string | null> {
+    const existing = await client.query('SELECT team_id FROM crm_team_messages WHERE (sender_user_id=$1 AND recipient_user_id=$2) OR (sender_user_id=$2 AND recipient_user_id=$1) ORDER BY created_at DESC,message_id DESC LIMIT 1', [actorUserId, peerUserId]);
+    if (existing.rows[0]) return String(existing.rows[0].team_id);
+    if (requested && await this.unit(client, requested)) return requested;
+    const team = await client.query(`SELECT a.unit_id FROM crm_org_assignments a JOIN crm_org_units u ON u.unit_id=a.unit_id AND u.dissolved_at IS NULL
+      WHERE a.user_id=ANY($1::uuid[]) AND a.ended_at IS NULL ORDER BY a.is_primary DESC,a.created_at LIMIT 1`, [[peerUserId, actorUserId]]);
+    return team.rows[0] ? String(team.rows[0].unit_id) : null;
+  }
+
+  private async readReceipt(client: PoolClient, _teamId: string, userId: string, peerUserId: string): Promise<Result<TeamMessageReadReceipt>> {
+    const row = await client.query(`SELECT receipt.last_read_at AS "lastReadAt",
+      (SELECT count(*)::int FROM crm_team_messages m WHERE m.sender_user_id=$2 AND m.recipient_user_id=$1
+        AND (receipt.last_read_at IS NULL OR m.created_at>receipt.last_read_at)) AS "unreadCount"
+      FROM (SELECT max(last_read_at) AS last_read_at FROM crm_team_message_reads WHERE user_id=$1 AND peer_user_id=$2) receipt`, [userId, peerUserId]);
+    const lastReadAt = row.rows[0]?.lastReadAt as Date | null | undefined;
+    return success({ lastReadAt: lastReadAt ? lastReadAt.toISOString() : null, unreadCount: Number(row.rows[0]?.unreadCount ?? 0) });
+  }
+
   private async canManageUnit(client: PoolClient, actor: TeamActor, unitId: string): Promise<boolean> {
     if (manager(actor)) return true;
     const row = await this.assignment(client, actor.userId, unitId);
@@ -363,13 +449,11 @@ export class PostgresTeamRepository implements TeamRepository {
   private async teamById(client: PoolClient, unitId: string, actor: TeamActor): Promise<{ row: OrganizationRow; team: TeamSnapshot } | null> {
     const row = (await client.query(`${TEAM_SELECT} WHERE u.unit_id=$1 AND u.dissolved_at IS NULL`, [unitId])).rows[0] as OrganizationRow | undefined;
     if (!row) return null;
-    const own = await this.assignment(client, actor.userId, unitId);
-    const full = !!own || await this.canManageUnit(client, actor, unitId);
-    return { row, team: await this.snapshot(client, row, full, actor.userId, await this.canDissolveUnit(client, actor, unitId)) };
+    return { row, team: await this.snapshot(client, row, true, actor.userId, await this.canDissolveUnit(client, actor, unitId)) };
   }
 
   private async teamForUser(client: PoolClient, actor: TeamActor): Promise<TeamSnapshot | null> {
-    const row = (await client.query(`${TEAM_SELECT} JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.kind='sales_team' AND u.dissolved_at IS NULL ORDER BY a.is_primary DESC,a.created_at,a.unit_id LIMIT 1`, [actor.userId])).rows[0] as OrganizationRow | undefined;
+    const row = (await client.query(`${TEAM_SELECT} JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.dissolved_at IS NULL ORDER BY a.is_primary DESC,a.created_at,a.unit_id LIMIT 1`, [actor.userId])).rows[0] as OrganizationRow | undefined;
     return row ? this.snapshot(client, row, true, actor.userId, await this.canDissolveUnit(client, actor, row.teamId)) : null;
   }
 
@@ -387,7 +471,7 @@ export class PostgresTeamRepository implements TeamRepository {
     await this.expireInvitations(client);
     const incoming = (await client.query(`${INVITATION_SELECT} WHERE i.invitee_user_id=$1 AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [actor.userId])).rows as InvitationRow[];
     const outgoing = manager(actor)
-      ? (await client.query(`${INVITATION_SELECT} WHERE ($1::uuid IS NULL OR i.unit_id=$1) AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [teamId])).rows as InvitationRow[]
+      ? (await client.query(`${INVITATION_SELECT} WHERE i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`)).rows as InvitationRow[]
       : teamId && canManageCurrent
         ? (await client.query(`${INVITATION_SELECT} WHERE i.unit_id=$1 AND i.status IN ('pending','expired') ORDER BY i.created_at DESC,i.invitation_id`, [teamId])).rows as InvitationRow[]
         : [];
@@ -401,12 +485,12 @@ export class PostgresTeamRepository implements TeamRepository {
     return (await client.query(`${ADMIN_TEAM_SELECT} WHERE u.kind<>'company' AND u.dissolved_at IS NULL ${suffix}`, params)).rows as AdminTeamRow[];
   }
 
-  private async organizationContext(client: PoolClient, actor: TeamActor): Promise<OrganizationContext> {
-    const companyRow = (await client.query("SELECT unit_id AS \"unitId\",kind,parent_unit_id AS \"parentUnitId\",name,version FROM crm_org_units WHERE kind='company'")).rows[0] as OrganizationUnitSummary | undefined;
+  private async organizationContext(client: PoolClient): Promise<OrganizationContext> {
+    const companyRow = (await client.query(`SELECT unit_id AS "unitId",kind,parent_unit_id AS "parentUnitId",name,version,
+      COALESCE((SELECT display_name FROM public.identity_users WHERE identity_admin AND active ORDER BY created_at,user_id LIMIT 1),'admin') AS "leaderName"
+      FROM crm_org_units WHERE kind='company'`)).rows[0] as OrganizationUnitSummary | undefined;
     if (!companyRow) throw new Error('company root missing');
-    const rows = manager(actor)
-      ? (await client.query("SELECT unit_id AS \"unitId\",kind,parent_unit_id AS \"parentUnitId\",name,version FROM crm_org_units WHERE kind<>'company' AND dissolved_at IS NULL ORDER BY created_at DESC,unit_id")).rows
-      : (await client.query("SELECT u.unit_id AS \"unitId\",u.kind,u.parent_unit_id AS \"parentUnitId\",u.name,u.version FROM crm_org_units u JOIN crm_org_assignments a ON a.unit_id=u.unit_id AND a.ended_at IS NULL WHERE a.user_id=$1 AND u.dissolved_at IS NULL ORDER BY u.created_at DESC,u.unit_id", [actor.userId])).rows;
+    const rows = (await client.query("SELECT unit_id AS \"unitId\",kind,parent_unit_id AS \"parentUnitId\",name,version FROM crm_org_units WHERE kind<>'company' AND dissolved_at IS NULL ORDER BY created_at DESC,unit_id")).rows;
     return { company: companyRow, visibleUnits: rows as OrganizationUnitSummary[] };
   }
 
@@ -414,22 +498,23 @@ export class PostgresTeamRepository implements TeamRepository {
     const team = await this.teamForUser(client, actor);
     const teamManageable = team ? await this.canManageInvitation(client, actor, team.teamId) : false;
     const invitations = await this.invitations(client, actor, team?.teamId ?? null, teamManageable);
-    const allAdminTeams = manager(actor) ? treeOrder(await this.adminTeamRows(client)) : [];
+    const allAdminTeams = treeOrder(await this.adminTeamRows(client));
     const managedTeams = manager(actor)
       ? allAdminTeams
       : actor.roles.includes('sales')
         ? treeOrder(await this.adminTeamRows(client, "AND EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.unit_id=u.unit_id AND a.user_id=$1 AND a.role='leader' AND a.ended_at IS NULL)", [actor.userId]))
         : [];
+    const businessRole = actor.roles.length === 1 ? actor.roles[0] : null;
     return success({
       team,
       managedTeams,
       incomingInvitations: invitations.incoming,
       outgoingInvitations: invitations.outgoing,
-      canCreate: manager(actor) || (!team && actor.roles.includes('sales')),
+      canCreate: businessRole === 'operations' || businessRole === 'sales' && !team,
       canAdmin: manager(actor),
       isSuperAdmin: superAdmin(actor),
       adminTeams: allAdminTeams,
-      organization: await this.organizationContext(client, actor),
+      organization: await this.organizationContext(client),
     });
   }
 
@@ -439,8 +524,6 @@ export class PostgresTeamRepository implements TeamRepository {
 
   detail(tokenHash: string, teamId: string): Promise<Result<TeamDetail>> {
     return this.authorized(tokenHash, async (client, actor) => {
-      const own = await this.assignment(client, actor.userId, teamId);
-      if (!manager(actor) && !own) return failure('NOT_FOUND', '团队不存在');
       const found = await this.teamById(client, teamId, actor);
       if (!found || found.row.organizationKind === 'company') return failure('NOT_FOUND', '团队不存在');
       const canManage = await this.canManageUnit(client, actor, teamId);
@@ -457,7 +540,7 @@ export class PostgresTeamRepository implements TeamRepository {
     return this.authorized(tokenHash, async (client, actor) => {
       const leads = (await client.query("SELECT 1 FROM crm_org_assignments WHERE user_id=$1 AND role='leader' AND ended_at IS NULL LIMIT 1", [actor.userId])).rows.length > 0;
       const role = query.role ?? 'member';
-      const kind: OrganizationUnitKind = role === 'leader' && query.unitType === 'operations' ? 'operations_group' : 'sales_team';
+      const kind: OrganizationUnitKind = query.unitType === 'operations' ? 'operations_group' : 'sales_team';
       if (role === 'leader' && !manager(actor)) return failure('FORBIDDEN', '只有管理角色可以调整负责人');
       const creatingSalesTeam = query.purpose === 'create' && role === 'member';
       if (creatingSalesTeam && !manager(actor)) {
@@ -475,7 +558,7 @@ export class PostgresTeamRepository implements TeamRepository {
         ? kind === 'sales_team'
           ? `WHERE ${access} AND ${salesOnly} AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.role='member' AND a.ended_at IS NULL) AND ${searchable}`
           : `WHERE ${access} AND ${operationsOnly} AND ${searchable}`
-        : `WHERE ${access} AND u.user_id<>$2 AND ${salesOnly} AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL) AND ${searchable}`;
+        : `WHERE ${access} AND u.user_id<>$2 AND ${kind === 'operations_group' ? operationsOnly : salesOnly} AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL) AND ${searchable}`;
       const count = await client.query(`SELECT count(*)::int AS count FROM public.identity_users u LEFT JOIN public.identity_login_emails e USING(user_id) ${filter}`, role === 'member' ? [search, actor.userId] : [search]);
       const leaderCount = role === 'leader' ? `,(SELECT count(*)::int FROM crm_org_assignments la JOIN crm_org_units lu ON lu.unit_id=la.unit_id WHERE la.user_id=u.user_id AND la.role='leader' AND la.ended_at IS NULL AND lu.kind='${kind}' AND lu.dissolved_at IS NULL) AS "leaderTeamCount"` : '';
       const items = (await client.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",e.email${leaderCount} FROM public.identity_users u LEFT JOIN public.identity_login_emails e USING(user_id) ${filter} ORDER BY CASE WHEN u.user_id=$2 THEN 0 ELSE 1 END,u.display_name,u.user_id LIMIT $3 OFFSET $4`, [search, actor.userId, query.limit, query.offset])).rows as TeamMemberCandidatePage['items'];
@@ -509,9 +592,10 @@ export class PostgresTeamRepository implements TeamRepository {
       : !row.identityAdmin && roles.length === 1 && roles[0] === 'operations';
   }
 
-  private async validInvitees(client: PoolClient, userIds: string[]): Promise<boolean> {
+  private async validInvitees(client: PoolClient, userIds: string[], kind: OrganizationUnitKind): Promise<boolean> {
     if (!userIds.length) return true;
-    const row = (await client.query(`SELECT count(*)::int AS count FROM public.identity_users u WHERE u.user_id=ANY($1::uuid[]) AND u.active AND NOT u.must_change_password AND NOT u.identity_admin AND EXISTS(SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND a.active) AND (SELECT array_agg(g.role ORDER BY g.role) FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active)=ARRAY['sales']::text[] AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL)`, [userIds])).rows[0];
+    const expectedRole = kind === 'operations_group' ? 'operations' : 'sales';
+    const row = (await client.query(`SELECT count(*)::int AS count FROM public.identity_users u WHERE u.user_id=ANY($1::uuid[]) AND u.active AND NOT u.must_change_password AND NOT u.identity_admin AND EXISTS(SELECT 1 FROM public.identity_product_access a WHERE a.user_id=u.user_id AND a.product_id='crm' AND a.active) AND (SELECT array_agg(g.role ORDER BY g.role) FROM public.identity_product_grants g WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active)=ARRAY[$2]::text[] AND NOT EXISTS(SELECT 1 FROM crm_org_assignments a WHERE a.user_id=u.user_id AND a.ended_at IS NULL)`, [userIds, expectedRole])).rows[0];
     return row.count === userIds.length;
   }
 
@@ -533,16 +617,14 @@ export class PostgresTeamRepository implements TeamRepository {
       if (cached.state === 'replay' && cached.response) return success(cached.response);
       if (cached.state === 'conflict') return failure('CONFLICT', '幂等键已用于不同请求');
       const kind: OrganizationUnitKind = (input.unitType ?? DEFAULT_TEAM_UNIT_TYPE) === 'operations' ? 'operations_group' : 'sales_team';
-      const admin = superAdmin(actor);
-      const roleAllowsKind = admin
-        || kind === 'operations_group' && actor.roles.includes('operations')
-        || kind === 'sales_team' && actor.roles.includes('sales');
-      if (!roleAllowsKind) return failure('FORBIDDEN', kind === 'operations_group' ? '只有运营账号可以创建运营组' : '只有销售账号可以创建销售团队');
+      const businessRole = actor.roles.length === 1 ? actor.roles[0] : null;
+      const roleAllowsKind = businessRole === 'operations' && kind === 'operations_group'
+        || businessRole === 'sales' && kind === 'sales_team';
+      if (!roleAllowsKind) return failure('FORBIDDEN', kind === 'operations_group' ? '只有单一管理员身份可以创建运营组' : '只有单一普通用户身份可以创建销售团队');
       if (kind === 'sales_team' && input.parentTeamId) return failure('INVALID_INPUT', '销售团队不能挂在运营组；请通过分配线索建立团队关系');
-      if (!admin && input.leaderUserId && input.leaderUserId !== actor.userId) return failure('FORBIDDEN', '只能把当前账号设为负责人');
-      if (admin && !input.leaderUserId) return failure('INVALID_INPUT', '管理角色创建组织时必须明确指定负责人');
-      const leaderUserId = admin ? input.leaderUserId! : actor.userId;
-      if (!admin && (await this.assignmentsForUser(client, actor.userId)).some(item => item.role === 'member')) return failure('CONFLICT', '当前账号已经加入销售团队');
+      if (input.leaderUserId && input.leaderUserId !== actor.userId) return failure('FORBIDDEN', '只能把当前账号设为负责人');
+      const leaderUserId = actor.userId;
+      if ((await this.assignmentsForUser(client, actor.userId)).some(item => item.role === 'member')) return failure('CONFLICT', '当前账号已经加入团队，不能作为创建者');
       if (input.inviteeUserIds.includes(leaderUserId)) return failure('INVALID_INPUT', '负责人不能同时作为受邀普通成员');
       if (!(await this.validLeader(client, leaderUserId, kind))) return failure('INVALID_INPUT', kind === 'sales_team' ? '销售团队负责人必须是可用销售账号' : '运营组负责人必须是管理账号');
       const company = (await client.query("SELECT unit_id AS \"unitId\" FROM crm_org_units WHERE kind='company' AND dissolved_at IS NULL")).rows[0] as { unitId: string } | undefined;
@@ -551,10 +633,9 @@ export class PostgresTeamRepository implements TeamRepository {
       const parent = await this.unit(client, parentUnitId);
       if (!parent) return failure('NOT_FOUND', '上级组织不存在');
       if (!canPlaceOrganizationUnit(parent.kind, kind)) return failure('INVALID_INPUT', '组织层级不符合公司、运营组、销售团队规则');
-      if (kind !== 'sales_team' && input.inviteeUserIds.length) return failure('INVALID_INPUT', '运营组不接受普通成员邀请');
       const name = input.name.trim();
       if ((await client.query('SELECT 1 FROM crm_org_units WHERE parent_unit_id=$1 AND lower(btrim(name))=lower(btrim($2)) AND dissolved_at IS NULL', [parentUnitId, name])).rows.length) return failure('CONFLICT', '同一层级已存在同名组织');
-      if (!(await this.validInvitees(client, input.inviteeUserIds))) return failure('INVALID_INPUT', '邀请成员已有归属或不可用');
+      if (!(await this.validInvitees(client, input.inviteeUserIds, kind))) return failure('INVALID_INPUT', '邀请成员已有归属或不可用');
       const teamId = randomUUID();
       await client.query('INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,created_by) VALUES($1,$2,$3,$4,$5)', [teamId, kind, parentUnitId, name, actor.userId]);
       const assigned = await this.insertAssignment(client, leaderUserId, teamId, kind, 'leader');
@@ -576,9 +657,8 @@ export class PostgresTeamRepository implements TeamRepository {
       if (cached.state === 'conflict') return failure('CONFLICT', '幂等键已用于不同请求');
       const team = (await client.query('SELECT unit_id AS "unitId",kind FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0] as { unitId: string; kind: OrganizationUnitKind } | undefined;
       if (!team) return failure('NOT_FOUND', '团队不存在');
-      if (!teamAcceptsMembers(team.kind === 'operations_group' ? 'operations' : 'sales_team')) return failure('INVALID_INPUT', '运营组不接受成员邀请');
       if (!(await this.canManageUnit(client, actor, teamId))) return failure('FORBIDDEN', '只有团队负责人可以邀请成员');
-      if (!(await this.validInvitees(client, input.userIds))) return failure('INVALID_INPUT', '邀请成员已有归属或不可用');
+      if (!(await this.validInvitees(client, input.userIds, team.kind))) return failure('INVALID_INPUT', '邀请成员已有归属或不可用');
       for (const inviteeUserId of input.userIds) await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [randomUUID(), teamId, actor.userId, inviteeUserId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok) return context;
@@ -609,8 +689,7 @@ export class PostgresTeamRepository implements TeamRepository {
       if (row.status !== 'pending') return failure('CONFLICT', '邀请已处理');
       if (row.version !== input.expectedVersion) return failure('CONFLICT', '邀请版本已变化');
       if (action === 'accept') {
-        if (row.kind !== 'sales_team') return failure('INVALID_INPUT', '运营组不接受普通成员');
-        if (!(await this.validInvitees(client, [actor.userId]))) return failure('INVALID_INPUT', '成员已有归属或账号角色不符合普通成员要求');
+        if (!(await this.validInvitees(client, [actor.userId], row.kind))) return failure('INVALID_INPUT', '成员已有归属或账号角色不符合普通成员要求');
         const assigned = await this.insertAssignment(client, actor.userId, row.teamId, row.kind, 'member');
         if (!assigned.ok) return assigned;
       }
@@ -729,12 +808,12 @@ export class PostgresTeamRepository implements TeamRepository {
       if (cached.state === 'replay' && cached.response) return success(cached.response);
       if (cached.state === 'conflict') return failure('CONFLICT', '幂等键已用于不同请求');
       const team = (await client.query('SELECT unit_id AS "unitId",kind,version FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0] as UnitRow | undefined;
-      if (!team || team.kind !== 'sales_team') return failure('INVALID_INPUT', '只有销售团队可以调整普通成员');
+      if (!team) return failure('INVALID_INPUT', '只有团队可以调整普通成员');
       if (team.version !== input.expectedVersion) return failure('CONFLICT', '团队版本已变化');
       if (input.action === 'leave' && input.userId !== actor.userId) return failure('FORBIDDEN', '只能退出自己的团队');
       if (input.action !== 'leave' && !(await this.canManageUnit(client, actor, teamId))) return failure('FORBIDDEN', '只有负责人或管理角色可以调整成员');
       if (input.action === 'add') {
-        if (!(await this.validInvitees(client, [input.userId]))) return failure('INVALID_INPUT', '成员已有归属或不可用');
+        if (!(await this.validInvitees(client, [input.userId], team.kind))) return failure('INVALID_INPUT', '成员已有归属或不可用');
         await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [randomUUID(), teamId, actor.userId, input.userId]);
       } else {
         const existing = await this.assignment(client, input.userId, teamId);
@@ -757,7 +836,7 @@ export class PostgresTeamRepository implements TeamRepository {
       if (cached.state === 'replay' && cached.response) return success(cached.response);
       if (cached.state === 'conflict') return failure('CONFLICT', '幂等键已用于不同请求');
       const team = (await client.query('SELECT unit_id AS "unitId",kind FROM crm_org_units WHERE unit_id=$1 AND dissolved_at IS NULL FOR UPDATE', [teamId])).rows[0] as UnitRow | undefined;
-      if (!team || team.kind !== 'sales_team') return failure('INVALID_INPUT', '只有销售团队可以维护展示分组');
+      if (!team) return failure('INVALID_INPUT', '只有团队可以维护展示分组');
       if (!(await this.canManageUnit(client, actor, teamId))) return failure('FORBIDDEN', '只有负责人或管理角色可以维护展示分组');
       if (input.groupId) {
         const group = (await client.query('SELECT version FROM crm_org_member_groups WHERE group_id=$1 AND unit_id=$2 FOR UPDATE', [input.groupId, teamId])).rows[0];
@@ -797,6 +876,258 @@ export class PostgresTeamRepository implements TeamRepository {
       if (!context.ok) return context;
       await this.remember(client, actor.userId, operation, input.idempotencyKey, cached.digest, context.data);
       return success(context.data);
+    });
+  }
+
+  directory(tokenHash: string, query: TeamDirectoryQuery): Promise<Result<TeamDirectoryPage>> {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const rows = (await client.query(
+        `SELECT u.user_id AS "userId",u.display_name AS "displayName",e.email,
+                unit.unit_id AS "teamId",unit.name AS "teamName",
+                (u.identity_admin OR EXISTS(
+                  SELECT 1 FROM public.identity_product_grants g
+                  WHERE g.user_id=u.user_id AND g.product_id='crm' AND g.active AND g.role IN ('admin','operations')
+                )) AS manager,
+                CASE WHEN p.last_seen_at > now()-interval '90 seconds' THEN 'online' ELSE 'offline' END AS presence,
+                COALESCE((
+                  SELECT count(*)::int FROM crm_team_messages m
+                  LEFT JOIN LATERAL (SELECT max(last_read_at) AS last_read_at FROM crm_team_message_reads WHERE user_id=$2 AND peer_user_id=m.sender_user_id) r ON true
+                  WHERE m.sender_user_id=u.user_id AND m.recipient_user_id=$2
+                    AND (r.last_read_at IS NULL OR m.created_at>r.last_read_at)
+                ),0) AS "unreadCount"
+         FROM public.identity_users u
+         JOIN public.identity_product_access pa ON pa.user_id=u.user_id AND pa.product_id='crm' AND pa.active
+         LEFT JOIN public.identity_desktop_presence p ON p.user_id=u.user_id
+         LEFT JOIN LATERAL (
+           SELECT a.unit_id,o.name FROM crm_org_assignments a JOIN crm_org_units o ON o.unit_id=a.unit_id
+           WHERE a.user_id=u.user_id AND a.ended_at IS NULL AND o.dissolved_at IS NULL
+           ORDER BY a.is_primary DESC,a.created_at DESC LIMIT 1
+         ) unit ON true
+         LEFT JOIN LATERAL (
+           SELECT email FROM public.identity_login_emails WHERE user_id=u.user_id ORDER BY verified_at NULLS LAST,email LIMIT 1
+         ) e ON true
+         WHERE u.active AND NOT u.must_change_password
+         ORDER BY u.display_name,u.user_id LIMIT $1`,
+        [query.limit, actor.userId],
+      )).rows;
+      return success({ items: rows.map(row => ({ ...row, teamId: row.teamId ? String(row.teamId) : null, teamName: row.teamName ? String(row.teamName) : null, email: row.email ? String(row.email) : null, manager: Boolean(row.manager), presence: row.presence === 'online' ? 'online' as const : 'offline' as const, unreadCount: Number(row.unreadCount ?? 0) })) });
+    });
+  }
+
+  conversations(tokenHash: string, query: TeamDirectConversationQuery): Promise<Result<TeamDirectConversationPage>> {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const rows = (await client.query(`
+        SELECT latest.peer_user_id AS "userId",latest.team_id AS "teamId",u.display_name AS "displayName",e.email,latest.body AS "lastMessage",latest.created_at AS "lastMessageAt",
+          latest.message_id AS "lastMessageId",latest.sender_user_id=$2 AS mine,
+          receipt.last_read_at AS "lastReadAt",
+          CASE WHEN presence.last_seen_at > now()-interval '90 seconds' THEN 'online' ELSE 'offline' END AS presence,
+          COALESCE(unread.unread_count,0)::int AS "unreadCount"
+        FROM (
+          SELECT CASE WHEN m.sender_user_id=$2 THEN m.recipient_user_id ELSE m.sender_user_id END AS peer_user_id,m.body,m.created_at,m.sender_user_id,m.message_id,
+            m.team_id,
+            ROW_NUMBER() OVER (PARTITION BY CASE WHEN m.sender_user_id=$2 THEN m.recipient_user_id ELSE m.sender_user_id END ORDER BY m.created_at DESC,m.message_id DESC) AS message_rank
+          FROM crm_team_messages m
+          WHERE m.sender_user_id=$2 OR m.recipient_user_id=$2
+        ) latest
+        JOIN public.identity_users u ON u.user_id=latest.peer_user_id
+        LEFT JOIN LATERAL (SELECT email FROM public.identity_login_emails WHERE user_id=u.user_id ORDER BY verified_at NULLS LAST,email LIMIT 1) e ON true
+        LEFT JOIN LATERAL (SELECT max(last_read_at) AS last_read_at FROM crm_team_message_reads WHERE user_id=$2 AND peer_user_id=latest.peer_user_id) receipt ON true
+        LEFT JOIN public.identity_desktop_presence presence ON presence.user_id=latest.peer_user_id
+        LEFT JOIN LATERAL (
+          SELECT count(*)::int AS unread_count
+          FROM crm_team_messages unread_message
+          WHERE unread_message.sender_user_id=latest.peer_user_id AND unread_message.recipient_user_id=$2
+            AND (receipt.last_read_at IS NULL OR unread_message.created_at>receipt.last_read_at)
+        ) unread ON true
+        WHERE latest.message_rank=1
+        ORDER BY latest.created_at DESC,latest.peer_user_id
+        LIMIT $1
+      `, [query.limit, actor.userId])).rows as Array<Omit<TeamDirectConversation, 'manager' | 'lastMessageAt' | 'lastReadAt' | 'presence'> & { lastMessageAt: Date; lastReadAt: Date | null; presence: 'online' | 'offline' }>;
+      const items: TeamDirectConversation[] = [];
+      for (const row of rows) items.push({ ...row, manager: await this.managerUser(client, row.userId), lastMessageAt: row.lastMessageAt.toISOString(), lastReadAt: row.lastReadAt ? row.lastReadAt.toISOString() : null });
+      return success({ items });
+    });
+  }
+
+  messages(tokenHash: string, query: TeamDirectMessageQuery): Promise<Result<TeamDirectMessagePage>> {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access = await this.messageAccess(client, actor, query.teamId ?? '', query.memberUserId);
+      if (!access.ok) return access;
+      const before = query.beforeMessageId
+        ? 'AND (m.created_at,m.message_id) < (SELECT anchor.created_at,anchor.message_id FROM crm_team_messages anchor WHERE anchor.message_id=$4)'
+        : '';
+      const params = [actor.userId, query.memberUserId, query.limit + 1, ...(query.beforeMessageId ? [query.beforeMessageId] : [])];
+      const rows = await client.query(`SELECT m.message_id AS "messageId",m.team_id AS "teamId",m.sender_user_id AS "senderUserId",su.display_name AS "senderName",m.recipient_user_id AS "recipientUserId",ru.display_name AS "recipientName",m.body,m.kind,m.payload_json AS payload,m.created_at AS "createdAt" FROM crm_team_messages m JOIN public.identity_users su ON su.user_id=m.sender_user_id JOIN public.identity_users ru ON ru.user_id=m.recipient_user_id WHERE ((m.sender_user_id=$1 AND m.recipient_user_id=$2) OR (m.sender_user_id=$2 AND m.recipient_user_id=$1)) ${before} ORDER BY m.created_at DESC,m.message_id DESC LIMIT $3`, params);
+      const hasMore = rows.rows.length > query.limit;
+      const pageRows = (hasMore ? rows.rows.slice(0, query.limit) : rows.rows).reverse();
+      return success({
+        items: pageRows.map(row => ({ ...row, createdAt: new Date(row.createdAt).toISOString(), mine: row.senderUserId === actor.userId })),
+        hasMore,
+        nextCursor: hasMore ? String(pageRows[0]?.messageId ?? '') || null : null,
+      });
+    });
+  }
+
+  markMessagesRead(tokenHash: string, input: TeamMessageReadCommand): Promise<Result<TeamMessageReadReceipt>> {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access = await this.messageAccess(client, actor, input.teamId, input.memberUserId);
+      if (!access.ok) return access;
+      const threadTeamId = await this.threadTeam(client, actor.userId, input.memberUserId, input.teamId);
+      if (!threadTeamId) return failure('NOT_FOUND', '私聊不存在');
+      const anchor = input.throughMessageId
+        ? await client.query(`SELECT message_id,created_at FROM crm_team_messages WHERE message_id=$1 AND ((sender_user_id=$2 AND recipient_user_id=$3) OR (sender_user_id=$3 AND recipient_user_id=$2))`, [input.throughMessageId, actor.userId, input.memberUserId])
+        : await client.query(`SELECT message_id,created_at FROM crm_team_messages WHERE ((sender_user_id=$1 AND recipient_user_id=$2) OR (sender_user_id=$2 AND recipient_user_id=$1)) ORDER BY created_at DESC,message_id DESC LIMIT 1`, [actor.userId, input.memberUserId]);
+      if (input.throughMessageId && !anchor.rows.length) return failure('NOT_FOUND', '阅读定位消息不存在');
+      const through = anchor.rows[0] as { message_id: string; created_at: Date } | undefined;
+      await client.query(`INSERT INTO crm_team_message_reads(team_id,user_id,peer_user_id,last_read_at,last_read_message_id,updated_at)
+        VALUES($1,$2,$3,COALESCE((SELECT created_at FROM crm_team_messages WHERE message_id=$4::uuid),clock_timestamp()),$4,clock_timestamp())
+        ON CONFLICT(team_id,user_id,peer_user_id) DO UPDATE SET
+          last_read_at=GREATEST(crm_team_message_reads.last_read_at,EXCLUDED.last_read_at),
+          last_read_message_id=CASE WHEN EXCLUDED.last_read_at>=crm_team_message_reads.last_read_at THEN EXCLUDED.last_read_message_id ELSE crm_team_message_reads.last_read_message_id END,
+          updated_at=clock_timestamp()`, [threadTeamId, actor.userId, input.memberUserId, through?.message_id ?? null]);
+      return this.readReceipt(client, threadTeamId, actor.userId, input.memberUserId);
+    });
+  }
+
+  markMessagesUnread(tokenHash: string, input: TeamMessageUnreadCommand): Promise<Result<TeamMessageReadReceipt>> {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access = await this.messageAccess(client, actor, input.teamId, input.memberUserId);
+      if (!access.ok) return access;
+      const threadTeamId = await this.threadTeam(client, actor.userId, input.memberUserId, input.teamId);
+      if (!threadTeamId) return failure('NOT_FOUND', '私聊不存在');
+      const target = (await client.query(`SELECT message_id,created_at FROM crm_team_messages WHERE message_id=$1 AND ((sender_user_id=$2 AND recipient_user_id=$3) OR (sender_user_id=$3 AND recipient_user_id=$2))`, [input.messageId, actor.userId, input.memberUserId])).rows[0] as { message_id: string; created_at: Date } | undefined;
+      if (!target) return failure('NOT_FOUND', '未读定位消息不存在');
+      const previous = (await client.query(`SELECT message_id,created_at FROM crm_team_messages WHERE ((sender_user_id=$1 AND recipient_user_id=$2) OR (sender_user_id=$2 AND recipient_user_id=$1)) AND (created_at,message_id)<(SELECT created_at,message_id FROM crm_team_messages WHERE message_id=$3) ORDER BY created_at DESC,message_id DESC LIMIT 1`, [actor.userId, input.memberUserId, target.message_id])).rows[0] as { message_id: string; created_at: Date } | undefined;
+      await client.query('DELETE FROM crm_team_message_reads WHERE user_id=$1 AND peer_user_id=$2', [actor.userId, input.memberUserId]);
+      await client.query(`INSERT INTO crm_team_message_reads(team_id,user_id,peer_user_id,last_read_at,last_read_message_id,updated_at)
+        VALUES($1,$2,$3,COALESCE((SELECT created_at FROM crm_team_messages WHERE message_id=$4::uuid),'epoch'::timestamptz),$4,clock_timestamp())
+        ON CONFLICT(team_id,user_id,peer_user_id) DO UPDATE SET last_read_at=COALESCE((SELECT created_at FROM crm_team_messages WHERE message_id=$4::uuid),'epoch'::timestamptz),last_read_message_id=$4,updated_at=clock_timestamp()`, [threadTeamId, actor.userId, input.memberUserId, previous?.message_id ?? null]);
+      return this.readReceipt(client, threadTeamId, actor.userId, input.memberUserId);
+    });
+  }
+
+  presence(tokenHash: string, query: TeamPresenceQuery): Promise<Result<TeamPresenceView>> {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access = await this.messageAccess(client, actor, query.teamId, query.memberUserId);
+      if (!access.ok) return access;
+      await client.query(`INSERT INTO public.identity_desktop_presence(user_id,last_seen_at) VALUES($1,clock_timestamp())
+        ON CONFLICT(user_id) DO UPDATE SET last_seen_at=clock_timestamp()`, [actor.userId]);
+      const peer = await client.query(`SELECT last_seen_at AS "lastSeenAt" FROM public.identity_desktop_presence WHERE user_id=$1`, [query.memberUserId]);
+      const unread = await client.query(`SELECT EXISTS(
+        SELECT 1 FROM crm_team_messages m
+        WHERE m.sender_user_id=$2 AND m.recipient_user_id=$1
+          AND (receipt.last_read_at IS NULL OR m.created_at>receipt.last_read_at)
+      ) AS unread FROM (SELECT max(last_read_at) AS last_read_at FROM crm_team_message_reads WHERE user_id=$1 AND peer_user_id=$2) receipt`, [actor.userId, query.memberUserId]);
+      const lastSeen = peer.rows[0]?.lastSeenAt as Date | undefined;
+      const online = lastSeen ? Date.now() - lastSeen.getTime() < 90_000 : false;
+      const hasUnread = Boolean(unread.rows[0]?.unread);
+      return success({ state: online ? (hasUnread ? 'unread' : 'online') : 'offline', lastSeenAt: lastSeen?.toISOString() ?? null, unread: hasUnread });
+    });
+  }
+
+  uploadFile(tokenHash: string, input: TeamFileUpload): Promise<Result<TeamFileMeta>> {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const unit = await this.unit(client, input.teamId);
+      if (!unit) return failure('NOT_FOUND', '团队不存在');
+      if (!manager(actor) && !(await this.assignment(client, actor.userId, input.teamId))) return failure('FORBIDDEN', '只能向当前团队上传文件');
+      if (!input.filename.trim() || input.filename.trim().length > TEAM_LIMITS.filename) return failure('INVALID_INPUT', '文件名无效');
+      if (!TEAM_FILE_MIME.has(input.mimeType)) return failure('INVALID_INPUT', '不支持的文件类型');
+      if (!input.base64 || input.base64.length > Math.ceil(TEAM_LIMITS.fileBytes / 3) * 4 + 4 || !BASE64_CHARS.test(input.base64)) return failure('INVALID_INPUT', '文件大小或编码无效');
+      const data = Buffer.from(input.base64, 'base64');
+      if (!data.length || data.length > TEAM_LIMITS.fileBytes) return failure('INVALID_INPUT', '文件大小无效');
+      const sha256 = createHash('sha256').update(data).digest('hex');
+      const existing = await client.query('SELECT file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt" FROM crm_team_files WHERE team_id=$1 AND purpose=$2 AND sha256=$3 AND deleted_at IS NULL', [input.teamId, 'team_attachment', sha256]);
+      if (existing.rows[0]) return success({ ...existing.rows[0], bytes: Number(existing.rows[0].bytes), createdAt: new Date(existing.rows[0].createdAt).toISOString() });
+      const fileId = randomUUID();
+      const storageKey = `${input.teamId}/${sha256}`;
+      const target = join(TEAM_FILE_ROOT, storageKey);
+      const temp = `${target}.${randomUUID()}.tmp`;
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(temp, data, { mode: 0o600 });
+      await rename(temp, target);
+      const inserted = await client.query('INSERT INTO crm_team_files(file_id,team_id,purpose,filename,mime_type,bytes,sha256,storage_key,owner_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(team_id,purpose,sha256) DO UPDATE SET filename=crm_team_files.filename RETURNING file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt"', [fileId, input.teamId, 'team_attachment', input.filename.trim(), input.mimeType, data.length, sha256, storageKey, actor.userId]);
+      const row = inserted.rows[0];
+      return success({ ...row, bytes: Number(row.bytes), createdAt: new Date(row.createdAt).toISOString() });
+    });
+  }
+
+  readFile(tokenHash: string, fileId: string): Promise<Result<{ meta: TeamFileMeta; data: Uint8Array }>> {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const row = (await client.query('SELECT file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,storage_key AS "storageKey",created_at AS "createdAt" FROM crm_team_files WHERE file_id=$1 AND deleted_at IS NULL', [fileId])).rows[0];
+      if (!row) return failure('NOT_FOUND', '文件不存在');
+      const unit = await this.unit(client, String(row.teamId));
+      if (!unit) return failure('NOT_FOUND', '团队不存在');
+      if (!manager(actor) && !(await this.assignment(client, actor.userId, String(row.teamId)))) return failure('FORBIDDEN', '无权读取该文件');
+      let data: Uint8Array;
+      try { data = await readFile(join(TEAM_FILE_ROOT, String(row.storageKey))); }
+      catch { return failure('NOT_FOUND', '文件内容不存在'); }
+      return success({ meta: { fileId: String(row.fileId), teamId: String(row.teamId), filename: String(row.filename), mimeType: String(row.mimeType), bytes: Number(row.bytes), sha256: String(row.sha256), createdAt: new Date(row.createdAt).toISOString() }, data });
+    });
+  }
+
+  archiveConversation(tokenHash: string, input: TeamConversationArchiveInput): Promise<Result<TeamArchiveMeta>> {
+    return this.authorized(tokenHash, async (client, actor) => {
+      const access = await this.messageAccess(client, actor, input.teamId, input.memberUserId);
+      if (!access.ok) return access;
+      const messages = await client.query(`SELECT m.message_id AS "messageId",m.sender_user_id AS "senderUserId",m.recipient_user_id AS "recipientUserId",m.kind,m.body,m.payload_json AS payload,m.created_at AS "createdAt" FROM crm_team_messages m WHERE m.team_id=$1 AND ((m.sender_user_id=$2 AND m.recipient_user_id=$3) OR (m.sender_user_id=$3 AND m.recipient_user_id=$2)) AND ($4::timestamptz IS NULL OR m.created_at>=$4) AND ($5::timestamptz IS NULL OR m.created_at<$5) ORDER BY m.created_at,m.message_id LIMIT $6`, [input.teamId, actor.userId, input.memberUserId, input.from ?? null, input.to ?? null, TEAM_ARCHIVE_MESSAGE_LIMIT]);
+      if (messages.rows.length >= TEAM_ARCHIVE_MESSAGE_LIMIT) return failure('INVALID_INPUT', '归档范围过大，请缩小时间范围');
+      const lines = messages.rows.map(row => JSON.stringify({ ...row, createdAt: new Date(row.createdAt).toISOString() })).join('\n');
+      const data = gzipSync(Buffer.from(lines, 'utf8'));
+      const sha256 = createHash('sha256').update(data).digest('hex');
+      const existing = await client.query('SELECT file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt" FROM crm_team_files WHERE team_id=$1 AND purpose=$2 AND sha256=$3 AND deleted_at IS NULL', [input.teamId, 'team_archive', sha256]);
+      if (existing.rows[0]) return success({ ...existing.rows[0], bytes: Number(existing.rows[0].bytes), createdAt: new Date(existing.rows[0].createdAt).toISOString(), messageCount: messages.rows.length });
+      const fileId = randomUUID();
+      const filename = `team-archive-${new Date().toISOString().slice(0, 10)}.jsonl.gz`;
+      const storageKey = `${input.teamId}/archives/${sha256}.jsonl.gz`;
+      const target = join(TEAM_FILE_ROOT, storageKey);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, data, { mode: 0o600 });
+      const inserted = await client.query('INSERT INTO crm_team_files(file_id,team_id,purpose,filename,mime_type,bytes,sha256,storage_key,owner_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(team_id,purpose,sha256) DO UPDATE SET filename=crm_team_files.filename RETURNING file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt"', [fileId, input.teamId, 'team_archive', filename, 'application/gzip', data.length, sha256, storageKey, actor.userId]);
+      const row = inserted.rows[0];
+      return success({ ...row, bytes: Number(row.bytes), createdAt: new Date(row.createdAt).toISOString(), messageCount: messages.rows.length });
+    });
+  }
+
+  sendMessage(tokenHash: string, input: TeamDirectMessageSend): Promise<Result<TeamDirectMessage>> {
+    return this.authorizedTransaction(tokenHash, async (client, actor) => {
+      if (input.recipientUserId === actor.userId) return failure('INVALID_INPUT', '不能给自己发送私聊');
+      const access = await this.messageAccess(client, actor, input.teamId ?? '', input.recipientUserId);
+      if (!access.ok) return access;
+      const teamId = await this.threadTeam(client, actor.userId, input.recipientUserId, input.teamId);
+      if (!teamId) return failure('INVALID_INPUT', '双方都没有团队，暂时无法私聊');
+      const kind = input.kind ?? 'text';
+      let body = input.body.trim();
+      let payload: Record<string, unknown> | null = null;
+      if (kind === 'attachment') {
+        if (!input.fileId) return failure('INVALID_INPUT', '附件消息缺少文件');
+        const file = (await client.query('SELECT file_id AS "fileId",filename,mime_type AS "mimeType",bytes,sha256 FROM crm_team_files WHERE file_id=$1 AND team_id=$2 AND deleted_at IS NULL', [input.fileId, teamId])).rows[0];
+        if (!file) return failure('NOT_FOUND', '附件不存在或不属于当前团队');
+        payload = { fileId: String(file.fileId), filename: String(file.filename), mimeType: String(file.mimeType), bytes: Number(file.bytes), sha256: String(file.sha256) };
+        if (!body) body = String(file.filename);
+      }
+      if (kind === 'email_ref') {
+        const reference = input.payload;
+        if (!reference || typeof reference.messageKey !== 'string' || typeof reference.subject !== 'string' || typeof reference.from !== 'string' || !Array.isArray(reference.to) || typeof reference.occurredAt !== 'string') return failure('INVALID_INPUT', '邮件引用参数无效');
+        const normalized: TeamEmailReferencePayload = {
+          messageKey: reference.messageKey.slice(0, 256), subject: reference.subject.slice(0, 500), from: reference.from.slice(0, 320), to: reference.to.slice(0, 50).map(value => String(value).slice(0, 320)), occurredAt: reference.occurredAt,
+          ...(reference.summary ? { summary: reference.summary.slice(0, 2000) } : {}), ...(reference.excerpt ? { excerpt: reference.excerpt.slice(0, 2000) } : {}),
+          ...(reference.customerId ? { customerId: reference.customerId.slice(0, 64) } : {}), ...(typeof reference.contactId === 'number' ? { contactId: reference.contactId } : {}),
+        };
+        payload = normalized as unknown as Record<string, unknown>;
+        if (!body) body = normalized.subject || '邮件引用';
+      }
+      if (!body || body.length > TEAM_LIMITS.messageBody) return failure('INVALID_INPUT', '消息正文无效');
+      const prior = await client.query(`SELECT m.message_id AS "messageId",m.team_id AS "teamId",m.sender_user_id AS "senderUserId",su.display_name AS "senderName",m.recipient_user_id AS "recipientUserId",ru.display_name AS "recipientName",m.body,m.kind,m.payload_json AS payload,m.created_at AS "createdAt" FROM crm_team_messages m JOIN public.identity_users su ON su.user_id=m.sender_user_id JOIN public.identity_users ru ON ru.user_id=m.recipient_user_id WHERE m.operation_key=$1`, [input.idempotencyKey]);
+      if (prior.rows[0]) {
+        const row = prior.rows[0];
+        if (row.senderUserId !== actor.userId || row.recipientUserId !== input.recipientUserId || row.teamId !== teamId || row.body !== body || row.kind !== kind) return failure('CONFLICT', '幂等键已用于不同私聊请求');
+        return success({ ...row, createdAt: new Date(row.createdAt).toISOString(), mine: true });
+      }
+      const inserted = await client.query(`INSERT INTO crm_team_messages(team_id,sender_user_id,recipient_user_id,body,kind,payload_json,operation_key) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING message_id AS "messageId",team_id AS "teamId",sender_user_id AS "senderUserId",recipient_user_id AS "recipientUserId",body,kind,payload_json AS payload,created_at AS "createdAt"`, [teamId, actor.userId, input.recipientUserId, body, kind, payload ? JSON.stringify(payload) : null, input.idempotencyKey]);
+      const row = inserted.rows[0];
+      const names = await client.query('SELECT user_id AS "userId",display_name AS "displayName" FROM public.identity_users WHERE user_id=ANY($1::uuid[])', [[actor.userId, input.recipientUserId]]);
+      const byId = new Map(names.rows.map(item => [item.userId, item.displayName]));
+      return success({ ...row, senderName: byId.get(actor.userId) ?? actor.displayName, recipientName: byId.get(input.recipientUserId) ?? '', createdAt: new Date(row.createdAt).toISOString(), mine: true } as TeamDirectMessage);
     });
   }
 }

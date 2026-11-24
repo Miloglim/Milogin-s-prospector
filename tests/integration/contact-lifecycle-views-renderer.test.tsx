@@ -29,7 +29,8 @@ describe('existing contact and company views after remote lifecycle changes', ()
     await act(flush);
     const header = host.querySelector('[data-testid="customer-tabs-row"]')!;
     expect(header.querySelector('input[placeholder="搜索邮箱、姓名、公司..."]')).not.toBeNull();
-    expect(header.textContent).not.toContain('共 1 人');
+    expect(header.textContent).toContain('共 1 人');
+    expect(header.querySelector('button[aria-label="筛选联系人"]')).not.toBeNull();
     expect(header.querySelector('button[aria-label="更多操作"]')?.textContent).toContain('更多');
     expect(header.querySelector('button[aria-label="更多操作"]')?.classList.contains('ant-btn-text')).toBe(true);
     expect(host.querySelector('.customer-contacts-page button[aria-label="更多操作"]')).toBeNull();
@@ -49,6 +50,18 @@ describe('existing contact and company views after remote lifecycle changes', ()
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ search: '', page: 1 }));
     expect(list.mock.calls[0]?.[0]).not.toHaveProperty('touchStatus');
   });
+  it('opens the compact contact filter panel from the existing toolbar', async () => {
+    const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }) } as unknown as ContactDataPort;
+    await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} /></QueryClientProvider>));
+    await act(flush);
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="筛选联系人"]')!.click(); await flush(); });
+    const panel = document.querySelector('.ant-popover')!;
+    expect(panel.textContent).toContain('联系状态');
+    expect(panel.textContent).toContain('客户阶段');
+    expect(panel.textContent).toContain('客户类型');
+    expect(panel.textContent).toContain('国家');
+    expect(panel.textContent).toContain('清除筛选');
+  });
   it('loads the next contact batch only when the table approaches its bottom', async () => {
     const nextContact = { ...contact, id: 43, contactId: 43, customerId: 'customer-43', email: 'next@example.invalid', firstName: 'Next' };
     const list = vi.fn(async ({ page }: { page?: number }) => page === 2
@@ -59,14 +72,34 @@ describe('existing contact and company views after remote lifecycle changes', ()
     await act(flush);
     expect(list).toHaveBeenCalledTimes(1);
     expect(host.querySelector('.ant-pagination')).toBeNull();
-    const scroller = host.querySelector<HTMLElement>('.customer-contacts-table .ant-table-content')!;
-    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 200 });
-    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 520 });
-    Object.defineProperty(scroller, 'scrollTop', { configurable: true, writable: true, value: 280 });
-    await act(async () => { scroller.dispatchEvent(new Event('scroll')); await flush(); });
+    const scrollers = [
+      host.querySelector<HTMLElement>('.customer-contacts-table .ant-table-tbody-virtual-holder'),
+      host.querySelector<HTMLElement>('.customer-contacts-table .ant-table-body'),
+      host.querySelector<HTMLElement>('.customer-contacts-table .ant-table-content'),
+    ].filter((element): element is HTMLElement => Boolean(element));
+    expect(scrollers.length).toBeGreaterThan(0);
+    for (const scroller of scrollers) {
+      Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 200 });
+      Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 520 });
+      Object.defineProperty(scroller, 'scrollTop', { configurable: true, writable: true, value: 280 });
+    }
+    await act(async () => { for (const scroller of scrollers) scroller.dispatchEvent(new Event('scroll')); await flush(); });
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ page: 2, search: '' }));
     expect(host.textContent).toContain(contact.email);
     expect(host.textContent).toContain(nextContact.email);
+    expect(host.textContent).toContain('共 2 人');
+  });
+  it('renders only a window of rows for a large contact page', async () => {
+    const many = Array.from({ length: 500 }, (_, index) => ({
+      ...contact, id: 1000 + index, contactId: 1000 + index, customerId: `customer-${index}`,
+      email: `bulk-${index}@example.invalid`, firstName: `Bulk ${index}`,
+    }));
+    const port = { key: 'fixture', list: async () => ({ success: true, data: { items: many, total: 500 } }), listIds: async () => ({ success: true, data: { ids: [] } }) } as unknown as ContactDataPort;
+    await act(async () => root.render(<QueryClientProvider client={client}><ContactList dataPort={port} /></QueryClientProvider>));
+    await act(flush);
+    const rows = host.querySelectorAll('.customer-contacts-table .ant-table-row');
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.length).toBeLessThan(100);
   });
   it('shows one compact selection toolbar without duplicate action counts', async () => {
     const port = { key: 'fixture', list: async () => ({ success: true, data: { items: [contact], total: 1 } }), listIds: async () => ({ success: true, data: { ids: [42] } }), canDelete: () => true } as unknown as ContactDataPort;

@@ -40,6 +40,11 @@ export const EVENTS = {
   AGENT_TASK: "agent:task",
   /** 新对话「行动建议」流变化（数据事件驱动重算，空态就地刷新；规范 docs/suggestion-feed-spec.md） */
   SUGGESTIONS_CHANGED: "suggestions:changed",
+  /** 团队私聊事件（SSE 转 renderer） */
+  TEAM_EVENT: "team:event",
+  TEAM_EVENT_STATE: "team:eventState",
+  /** 助理定期巡检结果更新（主进程推全量快照） */
+  ASSISTANT_UPDATED: "assistant:updated",
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];

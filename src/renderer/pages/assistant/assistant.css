@@ -1,0 +1,88 @@
+.assistant-composer {
+  overflow: hidden;
+  border: 1px solid #dce5e2;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 23, 42, 0.06);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.assistant-composer:focus-within {
+  border-color: #14a394;
+  box-shadow: 0 0 0 3px rgba(20, 163, 148, 0.1), 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.assistant-composer .assistant-composer-content {
+  min-height: 58px;
+  padding: 11px 11px 7px;
+  align-items: flex-end;
+}
+
+.assistant-composer .assistant-composer-input {
+  min-height: 30px;
+  max-height: 168px;
+  padding: 3px 6px;
+  background: transparent !important;
+  color: #27313b;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.assistant-composer .assistant-composer-input::placeholder {
+  color: #9aa4ad;
+}
+
+.assistant-composer .assistant-composer-actions {
+  align-self: flex-end;
+  padding: 0 0 1px;
+}
+
+.assistant-composer .assistant-composer-actions .ant-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+}
+
+.assistant-composer .assistant-composer-actions .ant-btn-primary {
+  background: #0f766e;
+  box-shadow: 0 4px 10px rgba(15, 118, 110, 0.2);
+}
+
+.assistant-composer .assistant-composer-actions .ant-btn-primary:hover {
+  background: #115e59;
+}
+
+.assistant-composer .assistant-composer-footer {
+  min-height: 29px;
+  padding: 0 13px 8px;
+}
+
+.assistant-composer-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.assistant-composer-model {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 250px;
+  height: 20px;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid #e3e8e8;
+  border-radius: 999px;
+  background: #f8faf9;
+  color: #7b8790;
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.assistant-composer-usage {
+  margin-left: auto;
+  flex: none;
+  color: #a3acb4;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}

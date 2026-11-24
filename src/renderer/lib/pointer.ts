@@ -26,14 +26,15 @@ export function parallaxFor(dxp: number, dyp: number, size: number, reach = REAC
 }
 
 type PointerCb = (x: number, y: number) => void;
-const subs = new Set<PointerCb>();
+interface Subscriber { cb: PointerCb; invalidate?: () => void }
+const subs = new Set<Subscriber>();
 let raf = 0;
 let last: { x: number; y: number } | null = null;
 
 function flush(): void {
   raf = 0;
   if (!last) return;
-  for (const cb of subs) cb(last.x, last.y);
+  for (const sub of subs) sub.cb(last.x, last.y);
 }
 
 function onMove(e: PointerEvent): void {
@@ -44,28 +45,38 @@ function onMove(e: PointerEvent): void {
 function onLeave(): void {
   // 指针离开窗口：以"无穷远"通知订阅者回弹（由调用方按 near=false 走慢回弹）
   last = null;
-  for (const cb of subs) cb(Number.NaN, Number.NaN);
+  for (const sub of subs) sub.cb(Number.NaN, Number.NaN);
 }
 
 function onOut(e: PointerEvent): void {
   if (!e.relatedTarget) onLeave();
 }
 
+/** Layout moved (resize or any scroll container): subscribers drop cached boxes. */
+function onLayoutChange(): void {
+  for (const sub of subs) sub.invalidate?.();
+}
+
 /** 订阅全局指针；返回退订函数。首个订阅者才挂 window 监听。 */
-export function subscribePointer(cb: PointerCb): () => void {
+export function subscribePointer(cb: PointerCb, invalidate?: () => void): () => void {
   const first = subs.size === 0;
-  subs.add(cb);
+  const entry: Subscriber = { cb, invalidate };
+  subs.add(entry);
   if (first && typeof window !== "undefined") {
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerout", onOut, { passive: true });
     window.addEventListener("blur", onLeave);
+    window.addEventListener("resize", onLayoutChange);
+    window.addEventListener("scroll", onLayoutChange, { capture: true, passive: true });
   }
   return () => {
-    subs.delete(cb);
+    subs.delete(entry);
     if (subs.size === 0 && typeof window !== "undefined") {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerout", onOut);
       window.removeEventListener("blur", onLeave);
+      window.removeEventListener("resize", onLayoutChange);
+      window.removeEventListener("scroll", onLayoutChange, { capture: true });
       if (raf) { cancelAnimationFrame(raf); raf = 0; }
     }
   };

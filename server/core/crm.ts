@@ -10,7 +10,8 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export type JsonObject = { [key: string]: JsonValue };
 export type ErrorCode = "INVALID_INPUT" | "NOT_FOUND" | "CONFLICT" | "DATABASE_ERROR"
   | "UNAUTHORIZED" | "FORBIDDEN" | "RATE_LIMITED" | "UNAVAILABLE" | "PAYLOAD_TOO_LARGE" | "PASSWORD_CHANGE_REQUIRED"
-  | "DEVICE_REPLACEMENT_REQUIRED" | "DEVICE_REPLACED";
+  | "DEVICE_REPLACEMENT_REQUIRED" | "DEVICE_REPLACED"
+  | "ACCOUNT_NOT_FOUND" | "ACCOUNT_NOT_CONFIGURED" | "ACCOUNT_DISABLED" | "INVALID_CREDENTIALS";
 export type Result<T> = { ok: true; data: T } | { ok: false; error: { code: ErrorCode; message: string } };
 export const success = <T>(data: T): Result<T> => ({ ok: true, data });
 export const failure = (code: ErrorCode, message: string): Result<never> => ({ ok: false, error: { code, message } });

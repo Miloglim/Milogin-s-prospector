@@ -1,5 +1,5 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { ONLINE_CHANNELS, ONLINE_LIMITS, CENTER_CONTACT_LIMITS, CENTER_CONTACT_FILTERS, centerContactQuery, type Result, type CenterContact, type CenterContactPage, type CenterContactQuery } from '../../shared/online-crm';
+import { ONLINE_CHANNELS, CENTER_CONTACT_LIMITS, CENTER_CONTACT_FILTERS, centerContactQuery, type Result, type CenterContact, type CenterContactPage, type CenterContactQuery } from '../../shared/online-crm';
 import { useIdentity } from '../IdentityContext';
 
 export interface CenterContactRow extends Omit<CenterContact, 'email' | 'tags' | 'extra'> {
@@ -15,6 +15,7 @@ export interface CenterContactRow extends Omit<CenterContact, 'email' | 'tags' |
 }
 export interface CenterContactListData { items: CenterContactRow[]; total: number; }
 export type CenterContactInvoke = (channel: string, input: CenterContactQuery) => Promise<Result<CenterContactPage>>;
+const CENTER_CONTACT_REFRESH_MS = 30_000;
 
 function row(value: CenterContact): CenterContactRow | undefined {
   if (!value || !Number.isSafeInteger(value.contactId) || value.contactId < 1 || typeof value.customerId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value.customerId) || !Number.isSafeInteger(value.customerVersion) || value.customerVersion < 1 || typeof value.companyName !== 'string' || typeof value.updatedAt !== 'string' || !Array.isArray(value.tags) || value.tags.some(tag => typeof tag !== 'string') || !value.extra || typeof value.extra !== 'object' || Array.isArray(value.extra)) return undefined;
@@ -52,5 +53,5 @@ export function useCenterContacts(input: { search?: string; page?: number; pageS
   const { identity, baseUrl, status } = useIdentity();
   const permissionScope = JSON.stringify([identity?.crmRoles?.slice().sort(), identity?.crmCapabilities?.slice().sort(), identity?.identityAdmin, identity?.mustChangePassword]);
   const normalized = { search: input.search ?? '', page: input.page ?? 1, pageSize: input.pageSize ?? CENTER_CONTACT_LIMITS.page, ...Object.fromEntries(CENTER_CONTACT_FILTERS.filter(key => input[key] !== undefined).map(key => [key, input[key]])) };
-  return useQuery({ queryKey: ['center-contacts', baseUrl, identity?.userId, normalized, permissionScope], queryFn: () => readCenterContacts(normalized, invoke), enabled: !!identity && ['authenticated', 'offline'].includes(status), refetchInterval: ONLINE_LIMITS.pollMs, placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === baseUrl && previousQuery.queryKey[2] === identity?.userId && previousQuery.queryKey[4] === permissionScope ? keepPreviousData(previous) : undefined });
+  return useQuery({ queryKey: ['center-contacts', baseUrl, identity?.userId, normalized, permissionScope], queryFn: () => readCenterContacts(normalized, invoke), enabled: !!identity && ['authenticated', 'offline'].includes(status), refetchInterval: normalized.search ? false : CENTER_CONTACT_REFRESH_MS, placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === baseUrl && previousQuery.queryKey[2] === identity?.userId && previousQuery.queryKey[4] === permissionScope ? keepPreviousData(previous) : undefined });
 }

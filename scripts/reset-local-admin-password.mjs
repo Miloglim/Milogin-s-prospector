@@ -36,8 +36,10 @@ try {
     WHERE e.email=$1 AND u.active AND u.identity_admin AND u.deleted_at IS NULL FOR UPDATE`, [EMAIL]);
   if (identity.rowCount !== 1) throw new Error('Active formal center superadmin not found');
   const userId = identity.rows[0].user_id;
-  await client.query(`UPDATE public.identity_credentials SET password_hash=$2,hash_scheme='scrypt-v1',changed_at=now()
-    WHERE user_id=$1`, [userId, passwordHash]);
+  await client.query(`INSERT INTO public.identity_credentials(user_id,password_hash,hash_scheme,changed_at)
+    VALUES($1,$2,'scrypt-v1',now())
+    ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash,hash_scheme='scrypt-v1',changed_at=now()`,
+  [userId, passwordHash]);
   await client.query(`UPDATE public.identity_users SET must_change_password=true,
     security_revision=security_revision+1,management_revision=management_revision+1
     WHERE user_id=$1`, [userId]);

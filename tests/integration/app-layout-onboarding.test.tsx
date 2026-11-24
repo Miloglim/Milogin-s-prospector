@@ -32,7 +32,7 @@ describe('AppLayout onboarding trigger', () => {
     invoke = vi.fn(async (channel: string) => {
       if (channel === 'accounts:list') return { success: true, data: [] };
       if (channel === 'system:getConfig') return { success: true, data: structuredClone(config) };
-      if (channel === 'dashboard:stats') return { success: true, data: { totalContacts: 0, totalSent: 0, totalReplied: 0, bounceCount: 0, pipelineSummary: {}, recentActivity: [] } };
+      if (channel === 'contacts:count') return { success: true, data: 0 };
       if (channel === 'system:updateConfig') { config = structuredClone(dialogResult); return { success: true }; }
       return { success: true, data: undefined };
     });
@@ -43,7 +43,7 @@ describe('AppLayout onboarding trigger', () => {
 
   async function mount() {
     await act(async () => { root.render(<AppLayout />); });
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('dashboard:stats'));
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('contacts:count'));
   }
 
   it('shows the setup prompt for an empty center-account workspace', async () => {
@@ -62,7 +62,7 @@ describe('AppLayout onboarding trigger', () => {
     invoke.mockImplementation(async (channel: string, input?: unknown) => {
       if (channel === 'accounts:list') return { success: true, data: [] };
       if (channel === 'system:getConfig') return { success: true, data: structuredClone(config) };
-      if (channel === 'dashboard:stats') return { success: true, data: { totalContacts: 0, totalSent: 0, totalReplied: 0, bounceCount: 0, pipelineSummary: {}, recentActivity: [] } };
+      if (channel === 'contacts:count') return { success: true, data: 0 };
       if (channel === 'system:updateConfig') { dialogResult = input as Record<string, unknown>; config = structuredClone(dialogResult); return { success: true }; }
       return { success: true, data: undefined };
     });

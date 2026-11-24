@@ -214,7 +214,7 @@ export function collectCandidates(inp: FeedInputs): Candidate[] {
         score: 30 + Math.min(10, Math.round(((drop.oldUsd - drop.newUsd) / drop.oldUsd) * 40)) + (rel ? 4 : 0),
         prefix: "同步运价", contactId: rel?.id,
         // 深链到跟进看板的运价更新面板（同一个方案引擎，不打字也能一键看到方案）
-        href: "#/customers?view=board&ratepush=1",
+        href: "#/customers?view=table&ratepush=1",
       });
     }
     const add = d.addedPods[0];

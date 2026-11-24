@@ -14,6 +14,7 @@ const PASSWORD_MIN_LENGTH = AUTH_LIMITS.passwordMin;
 const MASCOT_SIZE = 52;
 const HANDOFF_POLL_MS = 2000;
 const HANDOFF_REQUEST_KEY_PREFIX = 'prospector.handoff.request.';
+const PASSWORD_RECOVERY_ERROR = /离线授权|请重新输入密码/;
 type PendingReplacement = { login: OnlineLogin; requestKey: string };
 
 function handoffRequestStorageKey(baseUrl: string, email: string) {
@@ -61,7 +62,8 @@ export function ProductLogin() {
   const accountField = useRef<HTMLDivElement>(null);
   const accounts = (session.accounts ?? []).filter(account => !!account.email);
   const selected = accounts.find(account => account.accountId === accountId && account.email === email);
-  const savedCredential = Boolean(!creating && selected?.remembered && remember && !password);
+  const passwordRecovery = PASSWORD_RECOVERY_ERROR.test(session.error);
+  const savedCredential = Boolean(!creating && !passwordRecovery && selected?.remembered && remember && !password);
   const blockers = handoff?.state.summary?.blockers ?? [];
   const blockedMessage = blockers.length > 1 ? `${blockers[0]}（共 ${blockers.length} 项）` : blockers[0];
   const loginMessage = handoff ? handoff.state.status === 'ready'
@@ -79,11 +81,22 @@ export function ProductLogin() {
     initialAccountChosen.current = true;setEmail(account.email);setPassword('');setAccountId(account.accountId);
     setRemember(account.remembered);setAutoLogin(account.autoLogin);setAccountsOpen(false);setNotice('');setPendingReplacement(undefined);
   }
+  function retryPasswordRecovery() {
+    if (selected) void session.loginAccount({ accountId: selected.accountId, autoLogin });
+    else void session.reconnect();
+  }
   useEffect(() => {
     if(initialAccountChosen.current || !accounts.length)return;
     const initial = accounts.find(account => account.accountId === session.selectedAccountId) ?? accounts[0];
     if(initial)chooseAccount(initial);
   }, [session.accounts, session.selectedAccountId]);
+  // The chosen preset disappeared (removed, or the center no longer has it): clear the
+  // prefill so the next attempt does not keep submitting a dead account.
+  useEffect(() => {
+    if(!accountId)return;
+    if(accounts.some(account => account.accountId === accountId))return;
+    setAccountId(undefined);setEmail('');setPassword('');setRemember(false);setAutoLogin(false);
+  }, [accountId, accounts]);
   useEffect(() => {
     if(!accountsOpen)return;
     const close = (event:PointerEvent) => {if(!accountField.current?.contains(event.target as Node))setAccountsOpen(false);};
@@ -158,7 +171,14 @@ export function ProductLogin() {
       const newPassword = String(form.get('newPassword') ?? '');
       if (newPassword !== form.get('confirmation')) { setNotice('两次密码不一致'); return; }
       setNotice('');
-      void session.changePassword({ currentPassword: String(form.get('currentPassword') ?? ''), newPassword });
+      const changed = await session.changePassword({ currentPassword: String(form.get('currentPassword') ?? ''), newPassword });
+      if (changed) {
+        setPassword('');
+        setRemember(false);
+        setAutoLogin(false);
+        setPendingReplacement(undefined);
+        setHandoff(undefined);
+      }
     } else if (creating) {
       const password = String(form.get('password') ?? '');
       if (password !== form.get('confirmation')) { setNotice('两次密码不一致'); return; }
@@ -194,7 +214,7 @@ export function ProductLogin() {
       <section className={`ob-card product-login-card${!restricted && !creating ? ' product-login-card-signin' : ''}`} aria-labelledby="product-login-title">
         <div key={restricted ? 'password' : creating ? 'register' : 'login'} className="ob-step">
           <div className="product-login-mascot" aria-hidden="true"><DiamondLogo size={MASCOT_SIZE} state={session.busy ? 'running' : 'idle'} /></div>
-          <div className="product-login-brand"><span className="product-login-brand-owner">Milogin’s</span><span className="product-login-brand-name">Prospector<span className="product-login-brand-dot">.</span></span></div>
+          <div className="product-login-brand"><span className="product-login-brand-owner">Milogin's</span><span className="product-login-brand-name">Prospector<span className="product-login-brand-dot">.</span></span></div>
           <h2 id="product-login-title" className={restricted || creating ? 'ob-h2' : 'sr-only'}>{restricted ? '设置您的新密码' : creating ? '创建账号' : '登录'}</h2>
           <form key={`${restricted}:${creating}`} onSubmit={event => void submit(event)} aria-busy={session.busy}>
             <fieldset className="product-login-fields" disabled={session.busy || Boolean(handoff)}>
@@ -222,7 +242,7 @@ export function ProductLogin() {
                   {creating && <LoginField name="confirmation" label="确认密码" type="password" autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} />}
                 </>}
               </div>
-              {loginMessage && <div className="ob-error product-login-error" role="alert"><span>{loginMessage}</span>{pendingReplacement&&(!handoff||canTakeOver)&&<button className="product-login-replace" type="button" disabled={session.busy} onClick={()=>void replaceActiveDevice()}>{session.busy?'正在切换…':handoff?'旧电脑不可用，继续接管':'检查原电脑后换机'}</button>}</div>}
+              {loginMessage && <div className="ob-error product-login-error" role="alert"><span>{loginMessage}</span>{passwordRecovery && <button className="product-login-replace" type="button" disabled={session.busy} onClick={retryPasswordRecovery}>{session.busy?'正在连接…':'重新检查中心'}</button>}{pendingReplacement&&(!handoff||canTakeOver)&&<button className="product-login-replace" type="button" disabled={session.busy} onClick={()=>void replaceActiveDevice()}>{session.busy?'正在切换…':handoff?'旧电脑不可用，继续接管':'检查原电脑后换机'}</button>}</div>}
               <div className="ob-actions"><button className="ob-btn" type="submit" disabled={session.busy || Boolean(handoff)} aria-busy={session.busy}>{session.busy ? busyLabel : handoff ? '正在换机…' : restricted ? '修改密码并重新登录' : creating ? '创建账号' : '登录'}</button></div>
               {restricted ? <button className="ob-skip" type="button" onClick={() => void session.logout()}>返回登录</button> : <>
                 <div className="product-login-links">

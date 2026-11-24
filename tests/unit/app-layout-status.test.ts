@@ -18,5 +18,6 @@ describe('global app status notices', () => {
   it('does not show the unavailable feature notice for locally available routes', () => {
     expect(globalStatusNotices({ offline: false, centerUnavailable: false, localAvailable: false, pathname: '/messages' })).toEqual([]);
     expect(globalStatusNotices({ offline: false, centerUnavailable: false, localAvailable: false, pathname: '/team' })).toEqual([]);
+    expect(globalStatusNotices({ offline: false, centerUnavailable: false, localAvailable: false, pathname: '/assistant' })).toEqual([]);
   });
 });

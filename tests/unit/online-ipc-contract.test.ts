@@ -11,7 +11,7 @@ describe('one shared online IPC contract',()=>{
     expect(registered.size).toBe(Object.values(ONLINE_CHANNELS).length);
     expect(IPC.ONLINE).toBe(ONLINE_CHANNELS);
     const state=await registered.get(ONLINE_CHANNELS.STATUS)!(undefined) as any;
-    expect(state).toEqual({ok:true,data:{identity:null,remembered:false,baseUrl:'http://127.0.0.1:55844',localAvailable:false,connection:'online'}});
+    expect(state).toEqual({ok:true,data:{identity:null,remembered:false,baseUrl:'http://127.0.0.1:55847',localAvailable:false,connection:'online'}});
     expect(JSON.stringify(state)).not.toMatch(/refreshToken|password|bearer/);
   });
 });

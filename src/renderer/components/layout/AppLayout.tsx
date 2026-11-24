@@ -6,10 +6,10 @@ import { KEEPALIVE_ROUTE_COMPONENTS } from "../../router";
 import { useOptionalIdentity } from '../../IdentityContext';
 import { OnboardingWizard } from "../OnboardingWizard";
 import { globalStatusNotices, GLOBAL_STATUS_TOAST_DURATION_SECONDS, type GlobalStatusNotice } from './app-layout-status';
-import { onboardingModeFor, type OnboardingActivity, type OnboardingMode } from './onboarding-gate';
+import { onboardingModeFor, type OnboardingMode } from './onboarding-gate';
 
 const { Content } = Layout;
-const EDGE_TO_EDGE_PATHS = new Set(['/inbox', '/team']);
+const EDGE_TO_EDGE_PATHS = new Set(['/inbox', '/team', '/customers', '/assistant']);
 
 /** 路由级 keep-alive：登记过的页面切走只隐藏不卸载，切回来零重挂、零 loading 闪变。
  *  · 缓存键 = pathname；从别的页面带着新 query 深链进来时换新实例（页面挂载时读 query 的语义不变）；
@@ -176,14 +176,14 @@ export function AppLayout() {
     void Promise.all([
       window.api.invoke('accounts:list') as Promise<{ success: boolean; data?: unknown[] }>,
       window.api.invoke('system:getConfig') as Promise<{ success: boolean; data?: { general?: { onboarding?: 'skipped' | 'done' } } }>,
-      window.api.invoke('dashboard:stats') as Promise<{ success: boolean; data?: OnboardingActivity }>,
-    ]).then(([accounts, config, stats]) => {
+      window.api.invoke('contacts:count') as Promise<{ success: boolean; data?: number }>,
+    ]).then(([accounts, config, count]) => {
       if (!active) return;
       const signals = {
         configKnown: config?.success === true,
         handled: config?.success ? config.data?.general?.onboarding : undefined,
         mailboxCount: accounts?.success && Array.isArray(accounts.data) ? accounts.data.length : null,
-        activity: stats?.success && stats.data ? stats.data : null,
+        contactCount: count?.success && typeof count.data === 'number' ? count.data : null,
       };
       const mode = onboardingModeFor(signals);
       if (!mode) return;
@@ -237,7 +237,7 @@ export function AppLayout() {
         <Layout className="app-workspace">
           <Content className="app-content" style={{ minHeight: 0, overflow: "hidden" }}>
             <ScrollArea pathname={pathname} fullScreen={EDGE_TO_EDGE_PATHS.has(pathname)}>
-              <div className="app-route-host" hidden={centerUnavailable}>{!localAvailable && pathname === '/settings' ? <Spin /> : !localAvailable && !['/customers', '/customers-online', '/account', '/messages', '/team'].includes(pathname) ? null : <KeepAliveOutlet />}</div>
+              <div className="app-route-host" hidden={centerUnavailable}>{!localAvailable && pathname === '/settings' ? <Spin /> : !localAvailable && !['/customers', '/customers-online', '/account', '/messages', '/team', '/assistant'].includes(pathname) ? null : <KeepAliveOutlet />}</div>
             </ScrollArea>
           </Content>
         </Layout>

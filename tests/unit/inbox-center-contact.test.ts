@@ -51,6 +51,21 @@ describe('independent center mailbox associations', () => {
     expect(input.event).not.toHaveProperty('matchedContactId');
     expect(input.event).not.toHaveProperty('rawSource');
   });
+  it('does not match same-domain colleagues from cc headers as customer contacts', async () => {
+    const rows = [contact(7, 'buyer@buyer.example'), contact(8, 'member@our.example'), contact(9, 'manager@our.example')];
+    const { p, storeMail } = port(rows);
+    const result = await matchCenterMailboxMessage(p, source({
+      accountEmail: 'manager@our.example',
+      fromEmail: 'buyer@buyer.example',
+      to: 'member@our.example',
+      cc: 'manager@our.example',
+      myRole: 'cc',
+    }));
+    expect(result).toMatchObject({ success: true, data: { matched: 1 } });
+    expect(storeMail.mock.calls.map(call => [call[1].role, call[1].event.contactId, call[1].event.kind])).toEqual([
+      ['primary', 7, 'cc'],
+    ]);
+  });
   it('appends distinct classification facts without changing mail occurrence time and replays the same kind idempotently', async () => {
     const {p,storeMail}=port([contact(7,'buyer@buyer.example')]);
     const message=source({bodyPreview:'Final-Recipient: rfc822; buyer@buyer.example'});

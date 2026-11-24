@@ -8,7 +8,6 @@ const PREFIX = {
   TEMPLATES: "templates",
   ACCOUNTS:  "accounts",
   EXPORT:    "export",
-  DASHBOARD: "dashboard",
   HISTORY:   "history",
   BOUNCE:    "bounce",
   AI:        "ai",
@@ -20,6 +19,7 @@ const PREFIX = {
   SYSTEM:    "system",
   UPDATE:    "update",
   SEARCH:    "search",
+  ASSISTANT: "assistant",
 } as const;
 
 function chan(domain: string, action: string): string {
@@ -29,6 +29,13 @@ function chan(domain: string, action: string): string {
 export const IPC = {
   ONLINE: ONLINE_CHANNELS,
   SEARCH: { GLOBAL: chan(PREFIX.SEARCH, "global") },
+  ASSISTANT: {
+    SNAPSHOT: chan(PREFIX.ASSISTANT, "snapshot"),
+    QUEUE: chan(PREFIX.ASSISTANT, "queue"),
+    RUN: chan(PREFIX.ASSISTANT, "run"),
+    DISMISS: chan(PREFIX.ASSISTANT, "dismiss"),
+    SETTINGS_UPDATE: chan(PREFIX.ASSISTANT, "settingsUpdate"),
+  },
   CONTACTS: {
     LIST:      chan(PREFIX.CONTACTS, "list"),
     GET_BY_ID: chan(PREFIX.CONTACTS, "getById"),
@@ -84,6 +91,7 @@ export const IPC = {
   },
   INBOX: {
     LIST:          chan(PREFIX.INBOX, "list"),
+    SUMMARY:       chan(PREFIX.INBOX, "summary"),
     FETCH:         chan(PREFIX.INBOX, "fetch"),
     SYNC_STATE:    chan(PREFIX.INBOX, "syncState"),
     SYNC_HISTORY:  chan(PREFIX.INBOX, "syncHistory"),
@@ -97,17 +105,25 @@ export const IPC = {
     /** 单封退信的被退联系人列表（详情栏同源展示） */
     BOUNCE_MATCHES: chan(PREFIX.INBOX, "bounceMatches"),
     GET_BODY:      chan(PREFIX.INBOX, "getBody"),
+    REPLY:         chan(PREFIX.INBOX, "reply"),
     LABELS:        chan(PREFIX.INBOX, "labels"),
     LABEL_SAVE:    chan(PREFIX.INBOX, "labelSave"),
     LABEL_DELETE:  chan(PREFIX.INBOX, "labelDelete"),
     MESSAGE_LABELS: chan(PREFIX.INBOX, "messageLabels"),
+    MESSAGE_LABELS_BATCH: chan(PREFIX.INBOX, "messageLabelsBatch"),
     FOLDER_SUGGEST: chan(PREFIX.INBOX, "folderSuggest"),
     FOLDER_CONFIRM: chan(PREFIX.INBOX, "folderConfirm"),
     PIN_MESSAGE:    chan(PREFIX.INBOX, "pinMessage"),
+    PIN_MESSAGE_BATCH: chan(PREFIX.INBOX, "pinMessageBatch"),
     TODO_STATE:     chan(PREFIX.INBOX, "todoState"),
     TODO_STATE_BATCH: chan(PREFIX.INBOX, "todoStateBatch"),
+    CONVERSATION_STATE_BATCH: chan(PREFIX.INBOX, "conversationStateBatch"),
     ANALYSIS_STATUS: chan(PREFIX.INBOX, "analysisStatus"),
     ANALYSIS_RUN: chan(PREFIX.INBOX, "analysisRun"),
+    QUOTE_ANALYZE: chan(PREFIX.INBOX, "quoteAnalyze"),
+    QUOTE_SELECT: chan(PREFIX.INBOX, "quoteSelect"),
+    QUOTE_REQUERY: chan(PREFIX.INBOX, "quoteRequery"),
+    QUOTE_DRAFT: chan(PREFIX.INBOX, "quoteDraft"),
     /** 首页「今日邮箱概览」卡：北京时间今日收信/未读/分类/待回复（只读快照，无模型） */
     TODAY_BRIEF:   chan(PREFIX.INBOX, "todayBrief"),
   },
@@ -139,9 +155,6 @@ export const IPC = {
   EXPORT: {
     CONTACTS_TO_EXCEL: chan(PREFIX.EXPORT, "contactsToExcel"),
     NOTES_TO_CSV:      chan(PREFIX.EXPORT, "notesToCsv"),
-  },
-  DASHBOARD: {
-    STATS: chan(PREFIX.DASHBOARD, "stats"),
   },
   HISTORY: {
     LIST:      chan(PREFIX.HISTORY, "list"),
@@ -218,6 +231,10 @@ export const IPC = {
     NAVIGATOR_STATUS: chan(PREFIX.RATES, "navigatorStatus"),
     NAVIGATOR_LOGIN: chan(PREFIX.RATES, "navigatorLogin"),
     NAVIGATOR_LOGOUT: chan(PREFIX.RATES, "navigatorLogout"),
+    PARTNER_STATUS: chan(PREFIX.RATES, "partnerStatus"),
+    PARTNER_ENSURE: chan(PREFIX.RATES, "partnerEnsure"),
+    PARTNER_SAVE: chan(PREFIX.RATES, "partnerSave"),
+    PARTNER_CLEAR: chan(PREFIX.RATES, "partnerClear"),
     IMAGE: chan(PREFIX.RATES, "image"),
     OPTIONS: chan(PREFIX.RATES, "options"),
     /** 退役兼容通道：明确失败，不启动镜像同步 */

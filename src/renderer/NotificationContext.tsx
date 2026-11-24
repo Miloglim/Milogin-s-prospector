@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ONLINE_CHANNELS as CHANNEL, ONLINE_LIMITS, TASK_DUE_EVENT, OPPORTUNITY_EVENTS } from '../shared/online-crm';
 import type { LeadBootstrap, LeadDetail, CenterContactDetail, ContactMonitorDetail, OnlineFeed, OnlineNotification, NotificationReadAllReceipt, Result } from '../shared/online-crm';
 import { useIdentity } from './IdentityContext';
@@ -7,6 +7,7 @@ import { useVisiblePolling } from './hooks/useVisiblePolling';
 const MAX_ITEMS = 100;
 const MAX_FEED_PAGES = Math.ceil(MAX_ITEMS / ONLINE_LIMITS.feedPage);
 const READ_ALL_FALLBACK_CONCURRENCY = 8;
+const EMPTY_ITEMS: OnlineNotification[] = [];
 export interface Notifications {
   items: OnlineNotification[]; unread: number; error: string; loading: boolean;
   refresh: (reset?: boolean) => Promise<void>; read: (id: string) => Promise<boolean>; readAll: () => Promise<boolean>;
@@ -18,7 +19,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<Result<T>
   try { return await window.api.invoke(channel, ...args) as Result<T>; }
   catch { /* A transport rejection is an explicit failure, never a read receipt. */ return { ok: false, error: { code: 'UNAVAILABLE', message: '消息中心连接中断，请重试' } }; }
 }
-const isActionableNotification = (item: OnlineNotification) => item.eventType.startsWith('crm.contact.') || item.eventType.startsWith('crm.team.attention.') || item.eventType === TASK_DUE_EVENT || item.eventType === 'crm.lead.followup' || Object.values(OPPORTUNITY_EVENTS).includes(item.eventType as typeof OPPORTUNITY_EVENTS.created);
+const isActionableNotification = (item: OnlineNotification) => item.eventType.startsWith('crm.contact.') || item.eventType.startsWith('crm.team.attention.') || item.eventType === TASK_DUE_EVENT || item.eventType === 'crm.lead.followup' || item.eventType === 'crm.ai.deal_won' || Object.values(OPPORTUNITY_EVENTS).includes(item.eventType as typeof OPPORTUNITY_EVENTS.created);
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const session = useIdentity();
   const scope = JSON.stringify([session.identity?.userId, session.identity?.crmRoles, session.identity?.crmCapabilities, session.identity?.mustChangePassword]);
@@ -31,7 +32,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const epoch = useRef(0); const pending = useRef<number | null>(null);
   const [state, setState] = useState<{ scope: string; items: OnlineNotification[] }>({ scope, items: [] });
   const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
-  const items = state.scope === scope ? state.items : [];
+  const items = state.scope === scope ? state.items : EMPTY_ITEMS;
+  const itemsRef = useRef(items); itemsRef.current = items;
+  const loadedOnce = useRef(false);
   const reject = useCallback((result: Extract<Result<unknown>, { ok: false }>) => {
     setError(result.error.message);
     if (['UNAUTHORIZED', 'FORBIDDEN', 'PASSWORD_CHANGE_REQUIRED'].includes(result.error.code)) {
@@ -41,7 +44,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const refresh = useCallback(async (reset = false) => {
     if (!enabled || pending.current === epoch.current) return;
     let generation = epoch.current; const startedScope = scope;
-    pending.current = generation; setLoading(true);
+    // Background polls keep the previous list; only the first load after a scope change shows loading.
+    pending.current = generation;
+    if (!loadedOnce.current) setLoading(true);
     const access = await invoke<LeadBootstrap>(CHANNEL.BOOTSTRAP);
     if (generation !== epoch.current || startedScope !== currentScope.current) return;
     if (!access.ok) { pending.current = null; setLoading(false); reject(access); return; }
@@ -61,7 +66,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (result.ok) { pages.push(...result.data.items); if (result.data.nextCursor === previousCursor) break; }
     }
     if (generation !== epoch.current || startedScope !== currentScope.current) return;
-    pending.current = null; setLoading(false);
+    pending.current = null; loadedOnce.current = true; setLoading(false);
     if (!result.ok) { reject(result); return; }
     replay.current = false; setError('');
     const freshActionable = pages.some(item => isActionableNotification(item) && !observedActionable.current.has(item.id));
@@ -75,7 +80,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       const existing = new Map((previous.scope === startedScope ? previous.items : []).map(item => [item.id, item]));
       const merged = replace ? new Map<string, OnlineNotification>() : new Map(existing);
       for (const item of currentPage) merged.set(item.id, { ...item, read: item.read || existing.get(item.id)?.read === true || merged.get(item.id)?.read === true });
-      return { scope: startedScope, items: Array.from(merged.values()).slice(-MAX_ITEMS) };
+      const nextItems = Array.from(merged.values()).slice(-MAX_ITEMS);
+      const unchanged = previous.scope === startedScope
+        && previous.items.length === nextItems.length
+        && previous.items.every((item, index) => {
+          const next = nextItems[index]!;
+          return item.id === next.id && item.version === next.version && item.read === next.read;
+        });
+      return unchanged ? previous : { scope: startedScope, items: nextItems };
     });
   }, [enabled, scope, reject]);
   useEffect(() => {
@@ -90,6 +102,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useVisiblePolling(() => refresh(), ONLINE_LIMITS.pollMs, enabled);
   useEffect(() => {
     epoch.current++; pending.current = null; replay.current = true; replayScan.current = null; observedActionable.current.clear(); wasHidden.current = document.visibilityState === 'hidden'; accessScope.current = ''; setState({ scope, items: [] }); setError(''); setLoading(false);
+    loadedOnce.current = false;
     if (!enabled) return;
     void refresh();
     return () => { epoch.current++; };
@@ -143,7 +156,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       const result = await invoke<ContactMonitorDetail>(CHANNEL.CONTACT_MONITOR_DETAIL, { contactId: item.contactId, customerId: item.customerId });
       if (generation !== epoch.current || startedScope !== currentScope.current) return null;
       if (!result.ok) { reject(result); return null; }
-      if (result.data.contact.contactId !== item.contactId || result.data.contact.customerId !== item.customerId) { setError('监督详情不匹配，请刷新消息'); return null; }
+      if (result.data.contact.contactId !== item.contactId || result.data.contact.customerId !== item.customerId) { setError('联系人详情不匹配，请刷新消息'); return null; }
       if (!await read(item.id)) return null;
       return generation === epoch.current && startedScope === currentScope.current ? item.customerId : null;
     }
@@ -166,5 +179,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!await read(item.id)) return null;
     return generation === epoch.current && startedScope === currentScope.current ? item.customerId : null;
   }, [enabled, scope, read, reject]);
-  return <Context.Provider value={{ items, unread: items.filter(item => !item.read).length, error, loading, refresh, read, readAll, open }}>{children}</Context.Provider>;
+  const unread = useMemo(() => items.reduce((count, item) => count + (item.read ? 0 : 1), 0), [items]);
+  const value = useMemo<Notifications>(() => ({ items, unread, error, loading, refresh, read, readAll, open }), [items, unread, error, loading, refresh, read, readAll, open]);
+  return <Context.Provider value={value}>{children}</Context.Provider>;
 }

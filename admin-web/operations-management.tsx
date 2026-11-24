@@ -50,12 +50,12 @@ export function OperationsManagement({ identity }: { identity: Identity }) {
   return <section className="product-dashboard operations-dashboard" style={style} aria-label="系统运行">
     <div className="dashboard-heading">
       <div><Typography.Title level={2}>系统运行</Typography.Title><Typography.Text type="secondary">服务、数据库与服务器容量</Typography.Text></div>
-      <div className="dashboard-heading-actions">{snapshot && <Typography.Text type="secondary">检查于 {formatTime(snapshot.generatedAt)}</Typography.Text>}<Button loading={loading} onClick={() => void load()}>刷新</Button></div>
+      <div className="dashboard-heading-actions">{snapshot && <Typography.Text type="secondary">检查于 {formatTime(snapshot.generatedAt)}</Typography.Text>}</div>
     </div>
     {loading && !snapshot ? <div className="dashboard-loading"><Spin /><Typography.Text>正在读取系统状态</Typography.Text></div>
       : error && !snapshot ? <Alert type="error" showIcon message={error} action={<Button onClick={() => void load()}>重试</Button>} />
       : !snapshot ? <Empty description="暂无系统运行数据" /> : <>
-        {error && <Alert type="warning" showIcon message={`刷新失败，当前显示上次数据：${error}`} />}
+        {error && <Alert type="warning" showIcon message={`读取失败，当前显示上次数据：${error}`} />}
         <Row gutter={[12, 12]} className="dashboard-stats operations-check-grid">
           {snapshot.checks.map(check => <Col xs={24} md={12} xl={8} key={check.id}>
             <Card className="operations-check-card">

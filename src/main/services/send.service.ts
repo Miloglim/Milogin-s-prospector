@@ -21,6 +21,7 @@ import { isCircuitOpen, CIRCUIT_TTL_MS } from "./sender-block.service";
 import { loadConfig, DEFAULT_SCHEDULE } from "../config";
 import { writeBodyForLastInsert } from "./inbox.service";
 import { assembleEmail, type Lang, type ClientType, type Stage } from "./sentence-library";
+import { reserveSendRateSlots } from "../core/send-rate-storage";
 
 function notifyCampaign(action: 'sent' | 'failed', contactId: number, centerReference?: CenterContactRef, campaignId?: string): void {
   void import('./campaign.service').then(cm => {
@@ -62,6 +63,7 @@ export interface SendItem {
   seq?: number;  // 原始队列顺序（跨账号排序用）
   cc?: string;   // 抄送地址，逗号分隔。收件人仍走 BCC 互不可见，抄送方在 CC 里对客户可见
   sendMode?: "individual" | "bcc";  // individual=单独一封（收件人走 To，像人工手发）；缺省 bcc（互不可见）
+  attachments?: Array<{ filename: string; contentType?: string; content: Buffer }>;
 }
 
 export interface InterruptedBatchStatus {
@@ -93,7 +95,7 @@ export interface SendStatus {
    *  必须用绝对时间戳才能算出真实剩余；无等待时为 null。 */
   delayUntil: string | null;
   /** 等待原因：group=组间暂停（正常倒计时）；window=未到发送时段（前端应显示"未到发送时段"而非倒计时） */
-  delayReason: "group" | "window" | null;
+  delayReason: "group" | "window" | "rate" | null;
   /** 暂停原因：user=用户手动暂停；sender_block=服务商反垃圾/限流拦截退信触发（队列页据此出横幅而非"等待恢复"） */
   pausedReason?: "user" | "sender_block" | null;
   accountStats: Array<{
@@ -1567,6 +1569,19 @@ async function runBatchLoop(): Promise<void> {
         if (s) s.sent++;
         Log.info("send.dryRun", `${item.companyName}: 测试模式，跳过真实发送`);
       } else if (sendBccFn) {
+        const reservation=reserveSendRateSlots({
+          itemKey:`item:${item.id}`,accountId,recipientEmails:item.recipients.map(recipient=>recipient.email),campaignId:item.campaignId,
+        });
+        const waitMs=Math.max(0,reservation.notBeforeMs-Date.now());
+        if(waitMs>0){
+          state.delaySeconds=Math.ceil(waitMs/1000);
+          state.delayUntil=new Date(reservation.notBeforeMs).toISOString();
+          state.delayReason='rate';
+          push(EVENTS.SEND_PROGRESS,state);
+          const allowed=await sleep(waitMs);
+          if(loopGen!==myGen||!allowed)return;
+          state.delaySeconds=0;state.delayUntil=null;state.delayReason=null;
+        }
         // 发送前按模板现场组装正文（随机词每组重新随机）
         const body = renderTemplate(item.tplBody, item.contactVars);
         const sendItem = { ...item, body };

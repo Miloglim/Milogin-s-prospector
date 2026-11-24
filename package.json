@@ -1,6 +1,6 @@
 {
   "name": "prospecting-email",
-  "version": "0.72.0-alpha.10",
+  "version": "0.74.0-alpha.7",
   "description": "Milogin's Outreacher — 货代行业客户开发工具",
   "main": "./dist/main/index.js",
   "scripts": {
@@ -35,6 +35,7 @@
     "package:contact-autodev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-contact-autodev.ps1",
     "deploy:company": "powershell -ExecutionPolicy Bypass -File scripts/deploy-company-server.ps1",
     "mock:dev:setup": "node scripts/mock-dev-hierarchy.mjs setup",
+    "mock:dev:attach-milogin": "node scripts/mock-dev-hierarchy.mjs attach-milogin",
     "mock:dev:status": "node scripts/mock-dev-hierarchy.mjs status",
     "mock:dev:cleanup": "node scripts/mock-dev-hierarchy.mjs cleanup"
   },

@@ -10,6 +10,9 @@ import type {PasswordChangeService} from '../services/password-change';
 import type { createManagementDashboardService } from '../services/management-dashboard';
 import { ADMIN_DATA_BROWSER_LIMITS,type AdminDataDirection } from '../core/admin-data-browser';
 import type { createAdminDataBrowserService } from '../services/admin-data-browser';
+import type { AiService } from '../services/ai';
+import type { AiFeature, AiPolicyUpdate } from '../core/ai';
+import { AI_FEATURES, AI_WIRE_APIS } from '../core/ai';
 import { body,send,type BrowserHandler } from './http';
 
 const COOKIE='milogin_admin';
@@ -49,7 +52,7 @@ async function navigatorHealth(config: OnlineConfig):Promise<OperationsCheck> {
   return {id:'navigator',label:'Navigator',state:'offline',value:'离线',valueLabel:'服务状态',detail:'暂无法连接 Navigator 服务'};
  }
 }
-export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:TokenPort,gate:LoginGate,config:OnlineConfig,staticHandler:BrowserHandler,passwordChange?:PasswordChangeService,dashboard?:ReturnType<typeof createManagementDashboardService>,dataBrowser?:ReturnType<typeof createAdminDataBrowserService>):BrowserHandler {
+export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:TokenPort,gate:LoginGate,config:OnlineConfig,staticHandler:BrowserHandler,passwordChange?:PasswordChangeService,dashboard?:ReturnType<typeof createManagementDashboardService>,dataBrowser?:ReturnType<typeof createAdminDataBrowserService>,ai?:AiService):BrowserHandler {
   const cookieFlags=`HttpOnly; SameSite=Strict; Path=/`+(config.test_mode||config.local_http||config.insecure_http?'':'; Secure');
  return async(request,response)=>{
   response.setHeader('Referrer-Policy','no-referrer');
@@ -97,6 +100,51 @@ export function createAdminHandler(auth:AuthService,admin:AdminService,tokens:To
   }
   if(method==='GET'&&path===ADMIN_ROUTES.products){send(response,await admin.products(token));return;}
   if(method==='GET'&&path===ADMIN_ROUTES.dashboard){send(response,dashboard?await dashboard.dashboard(token):failure('UNAVAILABLE','数据看板暂不可用'));return;}
+  if(method==='GET'&&path===ADMIN_ROUTES.aiPolicies){
+   if(!ai){send(response,failure('UNAVAILABLE','AI 管理服务不可用'));return;}
+   const identity=await auth.me(token,'browser');if(!identity.ok){send(response,identity);return;}
+   const result=await ai.policies(identity.data);send(response,result.ok?success(result.data):failure('FORBIDDEN','当前账号没有 AI 管理权限'));return;
+  }
+  if(method==='GET'&&path===ADMIN_ROUTES.aiUsage){
+   if(!ai){send(response,failure('UNAVAILABLE','AI 管理服务不可用'));return;}
+   const identity=await auth.me(token,'browser');if(!identity.ok){send(response,identity);return;}
+   const days=Number(url.searchParams.get('days')??30);if(!Number.isSafeInteger(days)||days<1||days>365){send(response,failure('INVALID_INPUT','用量周期无效'));return;}
+   const result=await ai.usage(identity.data,days);send(response,result.ok?success(result.data):failure('FORBIDDEN','当前账号没有 AI 管理权限'));return;
+  }
+  if(method==='GET'&&path===ADMIN_ROUTES.aiModels){
+   if(!ai){send(response,failure('UNAVAILABLE','AI 管理服务不可用'));return;}
+   const identity=await auth.me(token,'browser');if(!identity.ok){send(response,identity);return;}
+   const result=await ai.models(identity.data);send(response,result.ok?success(result.data):failure('FORBIDDEN','当前账号没有 AI 管理权限'));return;
+  }
+  if(method==='GET'&&path===ADMIN_ROUTES.aiUsageEvents){
+   if(!ai){send(response,failure('UNAVAILABLE','AI 管理服务不可用'));return;}
+   const identity=await auth.me(token,'browser');if(!identity.ok){send(response,identity);return;}
+   const days=Number(url.searchParams.get('days')??30),limit=Number(url.searchParams.get('limit')??50),offset=Number(url.searchParams.get('offset')??0);
+   const status=url.searchParams.get('status')||undefined,feature=url.searchParams.get('feature')||undefined,userId=url.searchParams.get('userId')||undefined;
+   if(!Number.isSafeInteger(days)||days<1||days>365||!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(offset)||offset<0||status&&!['ok','error','blocked'].includes(status)||feature&&!AI_FEATURES.includes(feature as AiFeature)){send(response,failure('INVALID_INPUT','AI 用量筛选无效'));return;}
+   const result=await ai.usageEvents(identity.data,{...(userId?{userId}:{}),...(feature?{feature:feature as AiFeature}:{}),...(status?{status:status as 'ok'|'error'|'blocked'}:{}),days,limit,offset});send(response,result.ok?success(result.data):failure('FORBIDDEN','当前账号没有 AI 管理权限'));return;
+  }
+  if(method==='POST'&&path===ADMIN_ROUTES.aiPolicy){
+   if(!ai){send(response,failure('UNAVAILABLE','AI 管理服务不可用'));return;}
+   if(!gate.allow(`ai-policy:${tokens.hash(token)}`,address)){send(response,failure('RATE_LIMITED','AI 策略操作过多'));return;}
+   const input=await body(request,config.request_body_bytes);if(!input.ok){send(response,input);return;}
+   if(!record(input.data)||typeof input.data.userId!=='string'||typeof input.data.enabled!=='boolean'
+     ||!Number.isSafeInteger(input.data.dailyTokenLimit)||(input.data.dailyTokenLimit as number)<0
+     ||!Number.isSafeInteger(input.data.monthlyTokenLimit)||(input.data.monthlyTokenLimit as number)<0
+     ||!Number.isSafeInteger(input.data.maxOutputTokens)||(input.data.maxOutputTokens as number)<128||(input.data.maxOutputTokens as number)>32768
+     ||!Array.isArray(input.data.allowedFeatures)||input.data.allowedFeatures.some(feature=>!AI_FEATURES.includes(feature as AiFeature))
+     ||typeof input.data.reason!=='string'||!input.data.reason.trim()||input.data.reason.length>ADMIN_LIMITS.reasonMax){send(response,failure('INVALID_INPUT','AI 策略参数无效'));return;}
+   const actor=await auth.me(token,'browser');if(!actor.ok){send(response,actor);return;}
+   const result=await ai.updatePolicy(actor.data,input.data as unknown as AiPolicyUpdate);send(response,result.ok?success(result.data):failure('FORBIDDEN','当前账号没有 AI 管理权限'));return;
+  }
+  if(method==='POST'&&path===ADMIN_ROUTES.aiModel){
+   if(!ai){send(response,failure('UNAVAILABLE','AI 管理服务不可用'));return;}
+   const input=await body(request,config.request_body_bytes);if(!input.ok){send(response,input);return;}
+   const v=input.data;
+   if(!record(v)||typeof v.modelId!=='string'||!v.modelId.trim()||typeof v.label!=='string'||!v.label.trim()||typeof v.baseUrl!=='string'||!/^https?:\/\//.test(v.baseUrl)||typeof v.modelName!=='string'||!v.modelName.trim()||typeof v.keyEnv!=='string'||!/^[A-Z_][A-Z0-9_]*$/.test(v.keyEnv)||!AI_WIRE_APIS.includes(v.wireApi as never)||!Array.isArray(v.allowedFeatures)||v.allowedFeatures.some(feature=>!AI_FEATURES.includes(feature as AiFeature))||typeof v.enabled!=='boolean'||typeof v.isDefault!=='boolean'||!Number.isSafeInteger(v.maxOutputTokens)||(v.maxOutputTokens as number)<128||(v.maxOutputTokens as number)>32768){send(response,failure('INVALID_INPUT','AI 模型配置无效'));return;}
+   const actor=await auth.me(token,'browser');if(!actor.ok){send(response,actor);return;}
+   const result=await ai.saveModel(actor.data,v as any);send(response,result.ok?success(result.data):failure('FORBIDDEN','当前账号没有 AI 管理权限'));return;
+  }
   if(method==='GET'&&path===ADMIN_ROUTES.operations){
    if(!dashboard){send(response,failure('UNAVAILABLE','系统运行服务暂不可用'));return;}
    const result=await dashboard.operations(token);

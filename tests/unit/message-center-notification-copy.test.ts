@@ -70,6 +70,20 @@ describe('message center notification copy', () => {
     expect(fields.detail).toBe('电话：13800000000 → 13900000000');
   });
 
+  it('shows an applied AI deal-won notice with a cancel action', () => {
+    const copy = notificationChangeCopy({
+      ...base,
+      eventType: 'crm.ai.deal_won',
+      salesCaseId: 'case-1',
+      proposalId: 'proposal-1',
+      change: { kind: 'deal_won', title: 'AI 已记录成交，请核对', note: '客户已签署合同并确认订舱号' },
+    });
+    expect(copy).toEqual({ label: 'AI 已记录成交', detail: 'AI 已记录成交，请核对 · 客户已签署合同并确认订舱号' });
+    expect(panelSource).toContain("item.eventType === 'crm.ai.deal_won'");
+    expect(panelSource).toContain('取消成交');
+    expect(panelSource).toContain('SALES_CASE_PROPOSAL_ACT');
+  });
+
   it('opens the exact contact table target with a highlight marker', () => {
     expect(notificationResourceHash(base, 'customer-1')).toBe('#/customers?view=table&centerContact=7&centerCustomer=customer-1&highlight=delivery-1');
     expect(notificationResourceHash(base, 'customer-1', undefined, 'delivery-1:2')).toContain('highlight=delivery-1%3A2');

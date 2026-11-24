@@ -132,7 +132,7 @@ export function HistoryPage() {
               <Card size="small" className="history-table-card">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs text-gray-400">共 {histRows.length} 条记录</span>
-                  <Popconfirm title="清空所有发送历史？此操作不可恢复，仪表盘「已发送」计数也会清零" okText="清空" okType="danger" cancelText="取消" onConfirm={() => clearMut.mutate()}>
+                  <Popconfirm title="清空所有发送历史？此操作不可恢复" okText="清空" okType="danger" cancelText="取消" onConfirm={() => clearMut.mutate()}>
                     <Button size="small" danger icon={<DeleteOutlined />} loading={clearMut.isPending}>清空发送历史</Button>
                   </Popconfirm>
                 </div>

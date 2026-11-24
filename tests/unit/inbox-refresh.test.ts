@@ -79,8 +79,8 @@ describe('收件箱待办批量状态', () => {
     }
     const input = { messageIds: [810001, 810002, 810001], state: 'done' as const, idempotencyKey: 'batch-request-1' };
 
-    expect(Inbox.setInboxTodoStateBatch(input)).toEqual({ success: true, data: { updated: 2, state: 'done' } });
-    expect(Inbox.setInboxTodoStateBatch(input)).toEqual({ success: true, data: { updated: 2, state: 'done' } });
+    expect(Inbox.setInboxTodoStateBatch(input)).toMatchObject({ success: true, data: { updated: 2, state: 'done' } });
+    expect(Inbox.setInboxTodoStateBatch(input)).toMatchObject({ success: true, data: { updated: 0, state: 'done' } });
 
     const rows: Array<{ messageId: number; state: string }> = [];
     const statement = h.raw.prepare('SELECT message_id AS messageId,state FROM inbox_todo_states ORDER BY message_id');
@@ -90,6 +90,95 @@ describe('收件箱待办批量状态', () => {
       { messageId: 810001, state: 'done' },
       { messageId: 810002, state: 'done' },
     ]);
+  });
+});
+
+describe('收件箱拖拽批量写入', () => {
+  it('stores conversation state on the latest message of one thread', () => {
+    for (const [id, subject] of [[820001, 'Re: Quote'], [820002, 'Quote']] as const) {
+      h.db.insert(schema.inboxMessages).values({ id, accountId: 1, messageId: `conversation-${id}`, fromEmail: 'buyer@example.test', subject, classification: 'replied', receivedAt: id === 820002 ? '2026-10-15T00:00:00Z' : '2026-10-14T00:00:00Z' }).run();
+    }
+    const result = Inbox.setInboxConversationStateBatch({ messageIds: [820001], state: 'important', idempotencyKey: 'conversation-request-1' });
+    expect(result.success).toBe(true);
+    const listed = Inbox.listInbox();
+    expect(listed.success).toBe(true);
+    const rows = listed.data as Array<{ id: number; _conversationState?: string | null }>;
+    expect(rows.find(row => row.id === 820002)?._conversationState).toBe('important');
+    expect(rows.find(row => row.id === 820001)?._conversationState).toBeNull();
+  });
+  it('batch pins and moves mail without per-message channels', () => {
+    h.db.insert(schema.inboxMessages).values({ id: 830001, accountId: 1, messageId: 'drop-pin', fromEmail: 'buyer@example.test', subject: 'Drop', classification: 'replied', receivedAt: '2026-10-16T00:00:00Z' }).run();
+    h.raw.run("INSERT INTO inbox_labels (id,name,color,source,status) VALUES (9,'重点客户','#2563eb','user','active')");
+    expect(Inbox.setInboxMessagesPinnedBatch({ messageIds: [830001], pinned: true, idempotencyKey: 'pin-batch-1' }).success).toBe(true);
+    expect(Inbox.setInboxMessagesLabelsBatch({ messageIds: [830001], labelIds: [9], idempotencyKey: 'label-batch-1' }).success).toBe(true);
+    const row = Inbox.listInbox().data?.find(item => item.id === 830001) as Record<string, unknown>;
+    expect(row._pinned).toBe(true);
+    expect(row._labelIds).toEqual([9]);
+  });
+});
+
+describe('收件箱服务端分页', () => {
+  it('returns a continuous cursor stream without loading sent mail in one response', () => {
+    for (let index = 0; index < 7; index++) {
+      h.db.insert(schema.inboxMessages).values({
+        id: 840001 + index,
+        accountId: 1,
+        messageId: `page-${index}`,
+        fromEmail: index === 6 ? 'archive@example.test' : 'buyer@example.test',
+        fromName: index === 6 ? 'Archive Buyer' : 'Buyer',
+        subject: index === 5 ? 'Needle subject' : `Page ${index}`,
+        classification: index % 2 ? 'sent' : 'replied',
+        receivedAt: `2026-10-${String(10 + index).padStart(2, '0')}T00:00:00Z`,
+      }).run();
+    }
+    const first = Inbox.listInboxPage({ limit: 3 });
+    expect(first.success).toBe(true);
+    if (!first.success) return;
+    expect(first.data.total).toBe(7);
+    expect(first.data.items.map(row => row.id)).toEqual([840007, 840006, 840005]);
+    expect(first.data.nextCursor).toBeTruthy();
+
+    const second = Inbox.listInboxPage({ limit: 3, cursor: first.data.nextCursor! });
+    expect(second.success).toBe(true);
+    if (!second.success) return;
+    expect(second.data.items.map(row => row.id)).toEqual([840004, 840003, 840002]);
+    const third = Inbox.listInboxPage({ limit: 3, cursor: second.data.nextCursor! });
+    expect(third.success && third.data.items.map(row => row.id)).toEqual([840001]);
+    expect(third.success && third.data.nextCursor).toBeNull();
+
+    const searched = Inbox.listInboxPage({ limit: 3, search: 'needle' });
+    expect(searched.success && searched.data.items.map(row => row.id)).toEqual([840006]);
+    const sent = Inbox.listInboxPage({ limit: 10, classification: 'sent' });
+    expect(sent.success && sent.data.total).toBe(3);
+    expect(Inbox.listInboxPage({ limit: 3, cursor: 'not-a-cursor' }).success).toBe(false);
+  });
+  it('summarizes the whole mailbox independently from the active classification', () => {
+    const rows = [
+      { id: 850001, fromEmail: 'buyer@example.test', subject: 'Inbound', classification: 'replied', isRead: 0, receivedAt: '2026-10-14T00:00:00Z' },
+      { id: 850002, fromEmail: 'sales@example.test', subject: 'Outbound', classification: 'sent', isRead: 1, receivedAt: '2026-10-15T00:00:00Z' },
+      { id: 850003, fromEmail: 'mailer-daemon@example.test', subject: 'Bounce', classification: 'bounce', isRead: 0, receivedAt: '2026-10-16T00:00:00Z' },
+    ];
+    for (const row of rows) h.db.insert(schema.inboxMessages).values({ ...row, accountId: 1, messageId: `summary-${row.id}` }).run();
+    h.raw.run("INSERT INTO inbox_labels (id,name,color,source,status) VALUES (19,'Summary','#2563eb','user','active')");
+    h.raw.run('INSERT INTO inbox_message_labels (message_id,label_id) VALUES (850001,19)');
+    h.raw.run('INSERT INTO inbox_pinned_messages (message_id) VALUES (850002)');
+
+    const summary = Inbox.inboxSummary();
+    expect(summary.success).toBe(true);
+    if (!summary.success) return;
+    expect(summary.data.total).toBe(3);
+    expect(summary.data.allTotal).toBe(3);
+    expect(summary.data.unread).toBe(2);
+    expect(summary.data.byClassification).toMatchObject({
+      replied: { total: 1, unread: 1 },
+      sent: { total: 1, unread: 0 },
+      bounce: { total: 1, unread: 1 },
+    });
+    expect(summary.data.labels).toMatchObject({ '19': 1 });
+    expect(summary.data.pinned).toBe(1);
+    expect(summary.data.byAccount['1']).toMatchObject({ email: 'sales@example.com', total: 3, unread: 2 });
+    expect(Inbox.listInboxPage({ limit: 10, classification: 'sent' })).toMatchObject({ success: true, data: { total: 1 } });
+    expect(summary.data.total).toBe(3);
   });
 });
 

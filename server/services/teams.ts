@@ -11,18 +11,48 @@ import {
   type TeamMemberGroupDeleteInput,
   type TeamMemberGroupInput,
   type TeamMemberCandidateQuery,
+  type TeamDirectConversationQuery,
+  type TeamDirectoryQuery,
+  type TeamDirectMessageQuery,
+  type TeamMessageReadCommand,
+  type TeamMessageUnreadCommand,
+  type TeamPresenceQuery,
+  type TeamDirectMessageSend,
+  type TeamFileUpload,
+  type TeamConversationArchiveInput,
+  type TeamEvent,
   type TeamMoveInput,
   type TeamRepository,
 } from '../core/teams';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
+type TeamEventListener = (event: TeamEvent) => void;
+
+function createTeamEventHub() {
+  const listeners = new Map<string, Set<TeamEventListener>>();
+  let sequence = 0;
+  return {
+    subscribe(userId: string, listener: TeamEventListener): () => void {
+      const set = listeners.get(userId) ?? new Set<TeamEventListener>();
+      set.add(listener);
+      listeners.set(userId, set);
+      return () => { set.delete(listener); if (!set.size) listeners.delete(userId); };
+    },
+    publish(type: TeamEvent['type'], recipients: string[], teamId: string, peerUserId: string, messageId: string | null): void {
+      const event: TeamEvent = { eventId: `${Date.now()}-${++sequence}`, type, teamId, peerUserId, messageId, occurredAt: new Date().toISOString() };
+      for (const userId of new Set(recipients)) for (const listener of listeners.get(userId) ?? []) { try { listener(event); } catch { /* subscriber is already closing */ } }
+    },
+  };
+}
+
 function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function keys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
-  return Object.keys(value).every(key => allowed.includes(key));
+function keys(value: Record<string, unknown>, allowed: readonly string[], optional: readonly string[] = []): boolean {
+  const known = new Set([...allowed, ...optional]);
+  return Object.keys(value).every(key => known.has(key));
 }
 
 function text(value: unknown, maximum: number, minimum = 1): value is string {
@@ -57,7 +87,6 @@ function candidateQuery(value: unknown): TeamMemberCandidateQuery | undefined {
   if (typeof search !== 'string' || search.length > TEAM_LIMITS.text || !Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > TEAM_LIMITS.pageMax || !Number.isSafeInteger(offset) || Number(offset) < 0) return undefined;
   if (!['member', 'leader'].includes(String(role)) || !['operations', 'sales_team'].includes(String(type))) return undefined;
   if (!['invite', 'create'].includes(String(purpose))) return undefined;
-  if (role === 'member' && type !== 'sales_team') return undefined;
   if (purpose === 'create' && role !== 'member') return undefined;
   return { search: search.trim(), limit: Number(limit), offset: Number(offset), role: role as TeamMemberCandidateQuery['role'], unitType: type as TeamMemberCandidateQuery['unitType'], purpose: purpose as TeamMemberCandidateQuery['purpose'] };
 }
@@ -102,7 +131,12 @@ function groupDeleteInput(value: unknown, groupId: string): TeamMemberGroupDelet
 }
 
 export function createTeamService(repo: TeamRepository, tokens: TokenPort) {
+  const events = createTeamEventHub();
   return {
+    async subscribeEvents(token: string, listener: TeamEventListener) {
+      const current = await repo.currentUser(tokens.hash(token));
+      return current.ok ? { ok: true as const, data: events.subscribe(current.data, listener) } : current;
+    },
     context(token: string) {
       return repo.context(tokens.hash(token));
     },
@@ -149,6 +183,59 @@ export function createTeamService(repo: TeamRepository, tokens: TokenPort) {
     deleteMemberGroup(token: string, teamId: string, groupId: string, value: unknown) {
       const input = groupDeleteInput(value, groupId);
       return UUID.test(teamId) && input ? repo.deleteMemberGroup(tokens.hash(token), teamId, groupId, input) : Promise.resolve(failure('INVALID_INPUT', '展示分组参数无效'));
+    },
+    directory(token: string, value: unknown) {
+      if (!record(value) || !keys(value, ['limit']) || !Number.isSafeInteger(value.limit) || Number(value.limit) < 1 || Number(value.limit) > TEAM_LIMITS.pageMax) return Promise.resolve(failure('INVALID_INPUT', '联系人目录参数无效'));
+      return repo.directory(tokens.hash(token), value as unknown as TeamDirectoryQuery);
+    },
+    conversations(token: string, value: unknown) {
+      if (!record(value) || !keys(value, ['limit'], ['teamId']) || value.teamId !== undefined && (typeof value.teamId !== 'string' || !UUID.test(value.teamId)) || !Number.isSafeInteger(value.limit) || Number(value.limit) < 1 || Number(value.limit) > TEAM_LIMITS.pageMax) return Promise.resolve(failure('INVALID_INPUT', '私聊列表参数无效'));
+      return repo.conversations(tokens.hash(token), value as unknown as TeamDirectConversationQuery);
+    },
+    messages(token: string, value: unknown) {
+      if (!record(value) || !keys(value, ['memberUserId', 'limit'], ['teamId', 'beforeMessageId']) || value.teamId !== undefined && (typeof value.teamId !== 'string' || !UUID.test(value.teamId)) || typeof value.memberUserId !== 'string' || !UUID.test(value.memberUserId) || !Number.isSafeInteger(value.limit) || Number(value.limit) < 1 || Number(value.limit) > TEAM_LIMITS.pageMax || value.beforeMessageId !== undefined && (typeof value.beforeMessageId !== 'string' || !UUID.test(value.beforeMessageId))) return Promise.resolve(failure('INVALID_INPUT', '私聊查询参数无效'));
+      return repo.messages(tokens.hash(token), value as unknown as TeamDirectMessageQuery);
+    },
+    markMessagesRead(token: string, value: unknown) {
+      if (!record(value) || !keys(value, ['teamId', 'memberUserId', 'idempotencyKey'], ['throughMessageId']) || typeof value.teamId !== 'string' || !UUID.test(value.teamId) || typeof value.memberUserId !== 'string' || !UUID.test(value.memberUserId) || !idempotency(value.idempotencyKey) || value.throughMessageId !== undefined && (typeof value.throughMessageId !== 'string' || !UUID.test(value.throughMessageId))) return Promise.resolve(failure('INVALID_INPUT', '已读参数无效'));
+      const input = value as unknown as TeamMessageReadCommand;
+      return repo.markMessagesRead(tokens.hash(token), input).then(async result => {
+        if (result.ok) { const current = await repo.currentUser(tokens.hash(token)); if (current.ok) events.publish('message.read', [current.data, input.memberUserId], input.teamId, input.memberUserId, input.throughMessageId ?? null); }
+        return result;
+      });
+    },
+    markMessagesUnread(token: string, value: unknown) {
+      if (!record(value) || !keys(value, ['teamId', 'memberUserId', 'messageId', 'idempotencyKey']) || typeof value.teamId !== 'string' || !UUID.test(value.teamId) || typeof value.memberUserId !== 'string' || !UUID.test(value.memberUserId) || typeof value.messageId !== 'string' || !UUID.test(value.messageId) || !idempotency(value.idempotencyKey)) return Promise.resolve(failure('INVALID_INPUT', '未读参数无效'));
+      const input = value as unknown as TeamMessageUnreadCommand;
+      return repo.markMessagesUnread(tokens.hash(token), input).then(async result => {
+        if (result.ok) { const current = await repo.currentUser(tokens.hash(token)); if (current.ok) events.publish('message.unread', [current.data, input.memberUserId], input.teamId, input.memberUserId, input.messageId); }
+        return result;
+      });
+    },
+    presence(token: string, value: unknown) {
+      if (!record(value) || !keys(value, ['teamId', 'memberUserId']) || typeof value.teamId !== 'string' || !UUID.test(value.teamId) || typeof value.memberUserId !== 'string' || !UUID.test(value.memberUserId)) return Promise.resolve(failure('INVALID_INPUT', '成员状态参数无效'));
+      return repo.presence(tokens.hash(token), value as unknown as TeamPresenceQuery);
+    },
+    uploadFile(token: string, value: unknown) {
+      if (!record(value) || !keys(value, ['teamId', 'filename', 'mimeType', 'base64', 'idempotencyKey']) || typeof value.teamId !== 'string' || !UUID.test(value.teamId) || typeof value.filename !== 'string' || typeof value.mimeType !== 'string' || typeof value.base64 !== 'string' || !idempotency(value.idempotencyKey)) return Promise.resolve(failure('INVALID_INPUT', '上传文件参数无效'));
+      return repo.uploadFile(tokens.hash(token), value as unknown as TeamFileUpload);
+    },
+    archiveConversation(token: string, value: unknown) {
+      if (!record(value) || !keys(value, ['teamId', 'memberUserId', 'idempotencyKey'], ['from', 'to']) || typeof value.teamId !== 'string' || !UUID.test(value.teamId) || typeof value.memberUserId !== 'string' || !UUID.test(value.memberUserId) || !idempotency(value.idempotencyKey) || value.from !== undefined && (typeof value.from !== 'string' || !Number.isFinite(Date.parse(value.from))) || value.to !== undefined && (typeof value.to !== 'string' || !Number.isFinite(Date.parse(value.to)))) return Promise.resolve(failure('INVALID_INPUT', '聊天归档参数无效'));
+      return repo.archiveConversation(tokens.hash(token), value as unknown as TeamConversationArchiveInput);
+    },
+    readFile(token: string, fileId: string) {
+      return UUID.test(fileId) ? repo.readFile(tokens.hash(token), fileId) : Promise.resolve(failure('INVALID_INPUT', '文件编号无效'));
+    },
+    sendMessage(token: string, value: unknown) {
+      if (!record(value) || !keys(value, ['recipientUserId', 'body', 'idempotencyKey'], ['teamId', 'kind', 'fileId', 'payload']) || value.teamId !== undefined && (typeof value.teamId !== 'string' || !UUID.test(value.teamId)) || typeof value.recipientUserId !== 'string' || !UUID.test(value.recipientUserId) || typeof value.body !== 'string' || value.body.trim().length > TEAM_LIMITS.messageBody || value.kind !== undefined && value.kind !== 'text' && value.kind !== 'attachment' && value.kind !== 'email_ref' || value.fileId !== undefined && (typeof value.fileId !== 'string' || !UUID.test(value.fileId)) || !idempotency(value.idempotencyKey)) return Promise.resolve(failure('INVALID_INPUT', '私聊消息参数无效'));
+      if (value.kind === 'email_ref' && (!record(value.payload) || typeof value.payload.messageKey !== 'string' || typeof value.payload.subject !== 'string' || typeof value.payload.from !== 'string' || !Array.isArray(value.payload.to) || !value.payload.to.every(item => typeof item === 'string') || typeof value.payload.occurredAt !== 'string')) return Promise.resolve(failure('INVALID_INPUT', '邮件引用参数无效'));
+      if (value.kind !== 'attachment' && !text(value.body, TEAM_LIMITS.messageBody)) return Promise.resolve(failure('INVALID_INPUT', '私聊消息正文无效'));
+      const input = value as unknown as TeamDirectMessageSend;
+      return repo.sendMessage(tokens.hash(token), input).then(async result => {
+        if (result.ok) { const current = await repo.currentUser(tokens.hash(token)); if (current.ok) events.publish('message.created', [current.data, input.recipientUserId], result.data.teamId, input.recipientUserId, result.data.messageId); }
+        return result;
+      });
     },
   };
 }

@@ -60,12 +60,72 @@ export function customerBoardStage(customer: Pick<LeadPreview,'stage'|'hasContac
 export const FOLLOWUP_METHOD_LABELS: Record<FollowupMethod | 'legacy',string> = {email:'邮件',phone:'电话',visit:'拜访',other:'其他联系',note:'备注',legacy:'历史记录'};
 export const CONTACT_TOUCH_LABELS: Record<ContactTouchStatus,string> = {uncontacted:'未触达',contacted:'已触达',replied:'已收到',bounced:'退信',autoreply:'自动回复'};
 export type CustomerStage = CrmStage | 'cold';
+export const BOARD_ACTIVE_RELATIONSHIP_STAGES = ['quoting','trial','cooperating'] as const;
+export type BoardActiveRelationshipStage = typeof BOARD_ACTIVE_RELATIONSHIP_STAGES[number];
+export type CustomerBoardAttentionReason = 'reply'|'task'|'stage';
+export type CustomerAttentionUrgency = 'overdue'|'due_today'|'upcoming_task'|'reply'|'stage';
+export const CUSTOMER_ATTENTION_URGENCY_PRIORITY: Record<CustomerAttentionUrgency,number> = {
+  overdue: 0,
+  reply: 1,
+  due_today: 2,
+  upcoming_task: 3,
+  stage: 4,
+};
+const MILLISECONDS_PER_DAY = 86_400_000;
+export interface CustomerAttentionUrgencyInput {
+  attentionReason?: CustomerBoardAttentionReason;
+  attentionDueAt?: string | null;
+}
+export interface CustomerBoardAttentionInput {
+  touchStatus?: ContactTouchStatus;
+  /** True only when an open task names this row's contact, or the row is the customer's primary contact for a task without a source contact. */
+  openTaskMatchesContact?: boolean;
+  relationshipStage?: CustomerStage;
+  /** Lowest non-deleted contact id for this customer. */
+  isPrimaryContact?: boolean;
+  /** A center-projected reason is already contact-level and wins over local fallback derivation. */
+  attentionReason?: CustomerBoardAttentionReason;
+}
+export function isBoardActiveRelationshipStage(stage?: CustomerStage): stage is BoardActiveRelationshipStage {
+  return stage !== undefined && BOARD_ACTIVE_RELATIONSHIP_STAGES.includes(stage as BoardActiveRelationshipStage);
+}
+/** One contact-level rule shared by the center board projection and the offline mirror. */
+export function customerBoardAttentionReason(input: CustomerBoardAttentionInput): CustomerBoardAttentionReason | undefined {
+  if (input.attentionReason) return input.attentionReason;
+  if (input.touchStatus === 'replied') return 'reply';
+  if (input.openTaskMatchesContact) return 'task';
+  if (input.isPrimaryContact && isBoardActiveRelationshipStage(input.relationshipStage)) return 'stage';
+  return undefined;
+}
+export function customerNeedsAttention(input: CustomerBoardAttentionInput): boolean {
+  return customerBoardAttentionReason(input) !== undefined;
+}
+function localCalendarDayNumber(date: Date): number {
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / MILLISECONDS_PER_DAY;
+}
+/** Calendar-day difference in the runtime's local timezone; positive means due later. */
+export function attentionDueDayOffset(value: string | null | undefined, now: Date = new Date()): number | null {
+  if (!value) return null;
+  const due = new Date(value);
+  if (!Number.isFinite(due.getTime()) || !Number.isFinite(now.getTime())) return null;
+  return localCalendarDayNumber(due) - localCalendarDayNumber(now);
+}
+/** Shared precedence: overdue task, reply, due today, future task, stage. */
+export function customerAttentionUrgency(input: CustomerAttentionUrgencyInput, now: Date = new Date()): CustomerAttentionUrgency | undefined {
+  const dayOffset = attentionDueDayOffset(input.attentionDueAt, now);
+  if (dayOffset !== null && dayOffset < 0) return 'overdue';
+  if (input.attentionReason === 'reply') return 'reply';
+  if (dayOffset === 0) return 'due_today';
+  if (input.attentionReason === 'task' || (dayOffset !== null && dayOffset > 0)) return 'upcoming_task';
+  if (input.attentionReason === 'stage') return 'stage';
+  return undefined;
+}
 export const FOLLOWUP_TIME_LIMITS = {future_skew_seconds:60} as const;
 export interface FollowupRequest extends LeadCommand {opportunityId?:string;note:string;stage?:CustomerStage;method?:FollowupMethod;occurredAt?:string;contactId?:number;contactStatus?:ContactTouchStatus;}
 export interface ImportConflictSummary {decisionId:string;level:LeadConflictLevel;candidates:LeadIngressCandidateDTO[];}
-export interface ImportReceiptRow {rowId:string;index:number;status:'created'|'duplicate'|'invalid'|'restricted_conflict';customerId?:string;message?:string;conflict?:ImportConflictSummary;overlapCount?:number;}
-export interface ImportReceipt {batchId:string;version:number;rows:ImportReceiptRow[];}
-export interface LeadPreview {customerId:string;companyName:string;country:string|null;state:LeadState;version:number;contactCount:number;origin?:'personal'|'operations';stage?:CrmStage|'cold';ownerUserId?:string|null;source?:string;primaryContactName?:string|null;primaryContactEmail?:string|null;ownerName?:string|null;recentActivityAt?:string|null;hasContacted?:boolean;}
+export interface ImportReceiptRow {rowId:string;index:number;status:'created'|'duplicate'|'invalid'|'restricted_conflict';customerId?:string;contactId?:number;caseId?:string;companyName?:string;contactName?:string;email?:string;country?:string;message?:string;conflict?:ImportConflictSummary;overlapCount?:number;}
+export interface ImportReceipt {batchId:string;version:number;rows:ImportReceiptRow[];nextStep?:{kind:'campaign_draft';campaignId:string;name:string;eligible:number;};}
+export interface LeadPreview {customerId:string;companyName:string;country:string|null;state:LeadState;version:number;contactCount:number;origin?:'personal'|'operations';stage?:CrmStage|'cold';ownerUserId?:string|null;source?:string;primaryContactName?:string|null;primaryContactEmail?:string|null;ownerName?:string|null;recentActivityAt?:string|null;hasContacted?:boolean;aiDealPending?:boolean;}
 export interface LeadContact {contactId:number;email:string;name:string|null;country:string|null;phone?:string|null;whatsapp?:string|null;title?:string|null;touchStatus?:ContactTouchStatus;}
 export interface LeadActivity {mailEventId?:string|null;mailSuperseded?:boolean;opportunityId?:string|null;opportunityTitle?:string|null;id:string;actorId:string;note:string;stage:CustomerStage|null;createdAt:string;actorName?:string|null;method?:FollowupMethod|'legacy';occurredAt?:string;recordedAt?:string;contactId?:number|null;contactName?:string|null;contactStatus?:ContactTouchStatus|null;}
 export interface LeadDetail extends LeadPreview,CustomerProfile {source:string;sourceDetail:string;customerKey:string;ownerUserId:string|null;contacts:LeadContact[];activities:LeadActivity[];canEdit?:boolean;canFollowup?:boolean;canAssign?:boolean;stageNeedsReview?:boolean;}

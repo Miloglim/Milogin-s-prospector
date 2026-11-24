@@ -12,6 +12,7 @@ import { Opportunities } from './Opportunities';
 import type { Opportunity } from '../../../shared/online-crm';
 import { CustomerLegacyShell } from './CustomerLegacyShell';
 import { ContactDetailLayout, CONTACT_DETAIL_WIDTH, SectionTitle, FieldRow } from '../../components/ContactDetail';
+import { CustomerStateChain } from './CustomerStateChain';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { COMPANY_BACKCHECK_UI_ENABLED } from '../../components/CompanyBackcheck';
 import { autoMapping, importFingerprint, mappedImportRows, prepareImportRequests } from './customerImport';
@@ -407,6 +408,7 @@ export function CustomersPage() {
           <Button type="text" size="small" icon={<PartitionOutlined />} title="在跟进看板中查看" disabled={!hasContactedCustomer(detail.contacts) || scope === 'pool'} onClick={() => setView('board')} />
           {editable && <Button type="text" size="small" icon={<EditOutlined />} title="编辑资料" disabled={opportunityLocked} onClick={startEdit} />}
         </Space>}</div>{view === 'table' && <div className="customer-contact-email">{detail.contacts[0]?.email || '—'}</div>}</div><Space wrap>{view !== 'table' && editable && <Button size="small" disabled={opportunityLocked} onClick={startEdit}>编辑资料</Button>}{canFollowup && <Button size="small" type="text" disabled={busy} onClick={() => { setDetailTab('followup'); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[aria-label="跟进记录"]')?.focus()); }}>记录跟进</Button>}</Space></div>
+        {!poolPreview && <CustomerStateChain compact={view === 'table'} customerId={detail.customerId} contactId={detail.contacts[0]?.contactId} facts={{ relationshipStage: detail.stage, touchStatuses: detail.contacts.map(contact => contact.touchStatus), aiDealPending: detail.aiDealPending }} />}
         {!poolPreview && <Tabs className={view === 'table' ? 'contact-detail-tabs' : undefined} size="small" activeKey={detailTab} onChange={setDetailTab} items={[{key:'info',label:'基本信息'},...(view === 'table' && COMPANY_BACKCHECK_UI_ENABLED ? [{key:'company',label:'公司背调',disabled:true}] : view !== 'table' ? [{key:'prefs',label:'偏好设置',disabled:true},{key:'emails',label:'邮件往来',disabled:true}] : []),{key:'followup',label:view === 'table' ? '往来记录' : '跟进记录'},{key:'tasks',label:'下一步'},{key:'opportunities',label:'商机'}]} />}
         <div className={!poolPreview ? `customer-tab-content customer-tab-${detailTab}` : undefined}>
         {!poolPreview && <div className="customer-contact-profile">

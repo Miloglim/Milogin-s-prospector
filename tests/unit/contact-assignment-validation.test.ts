@@ -33,6 +33,8 @@ describe('contact assignment validation',()=>{
   expect(validators.contactAssignmentQuery({view:'incoming',status:'pending',requestId:id,groupId:id})).toMatchObject({ok:false});
   expect(validators.contactAssignmentQuery({view:'incoming',requestId:'invalid'})).toMatchObject({ok:false,error:{code:'INVALID_INPUT'}});
   expect(validators.contactAssignmentGroupQuery({view:'incoming',status:'pending',search:'',limit:50,offset:0})).toMatchObject({ok:true});
+  expect(validators.contactAssignmentGroupQuery({view:'incoming',status:'all',search:'',limit:50,offset:0})).toMatchObject({ok:true,data:{status:'all'}});
+  expect(validators.contactAssignmentQuery({view:'outgoing',status:'all'})).toMatchObject({ok:true,data:{status:'all'}});
   expect(validators.contactAssignmentGroupDecision({groupId:id,idempotencyKey:'group-key'})).toMatchObject({ok:true,data:{groupId:id}});
   expect(validators.contactAssignmentQuery({view:'incoming',status:'pending_transfer'})).toMatchObject({ok:true,data:{status:'pending_transfer'}});
   expect(validators.contactAssignmentQuery({view:'outgoing',status:'expired'})).toMatchObject({ok:true,data:{status:'expired'}});

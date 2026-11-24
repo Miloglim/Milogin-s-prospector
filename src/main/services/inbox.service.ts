@@ -1,5 +1,5 @@
 import { htmlToText } from "../core/html-text";
-import { INBOX_FETCH_PHASES, INBOX_SYNC_PHASES, type InboxFetchPhase, type InboxFolderConfirmRequest, type InboxFolderSuggestionRequest, type InboxHistoryRequest, type InboxLabel, type InboxLabelDeleteRequest, type InboxLabelSaveRequest, type InboxListRequest, type InboxMessageLabelsRequest, type InboxPinMessageRequest, type InboxReadStateRequest, type InboxSyncAccountState, type InboxSyncSnapshot, type InboxTodoBatchRequest, type InboxTodoState, type InboxTodoStateRequest } from "../../shared/inbox";
+import { INBOX_FETCH_PHASES, INBOX_LIST_LIMITS, INBOX_SYNC_PHASES, normalizeInboxSubject, type InboxConversationState, type InboxConversationStateBatchRequest, type InboxConversationStateBatchResult, type InboxFetchPhase, type InboxFolderConfirmRequest, type InboxFolderSuggestionRequest, type InboxHistoryRequest, type InboxLabel, type InboxLabelDeleteRequest, type InboxLabelSaveRequest, type InboxListPage, type InboxListRequest, type InboxMessageLabelsRequest, type InboxMessagesLabelsBatchRequest, type InboxMessagesPinBatchRequest, type InboxPinMessageRequest, type InboxReadStateRequest, type InboxSummary, type InboxSummaryCount, type InboxSummaryRequest, type InboxSyncAccountState, type InboxSyncSnapshot, type InboxTodoBatchRequest, type InboxTodoBatchResult, type InboxTodoState, type InboxTodoStateRequest, type InboxTodoStateResult } from "../../shared/inbox";
 import { INBOX_FOLDER, INBOX_HISTORY_MONTHS_DEFAULT, INBOX_HISTORY_MONTHS_MAX, INBOX_HISTORY_MONTHS_MIN, INBOX_INITIAL_HISTORY_DAYS } from "../core/inbox-fetch";
 import { getDb } from "../db";
 import { inboxMessages, inboxBounceMatches, inboxLabels, inboxMessageLabels, type InboxMessageRow, type InsertInboxMessageRow } from "../db/schema/inbox";
@@ -8,13 +8,14 @@ import { contacts, type ContactRow } from "../db/schema/contacts";
 import { companies } from "../db/schema/companies";
 import { interactions } from "../db/schema/interactions";
 import { crmStages, crmRelations } from "../db/schema/crm";
-import { and, eq, inArray, or, desc, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, or, desc, sql, type SQL } from "drizzle-orm";
 import { okResult, failResult, type Result } from "../errors";
 import { Log } from "../logger";
 import { EVENTS } from "../events";
 import { saveDatabase, getRawDb } from "../db";
 import { updateContactStatus, markAsBounced, deleteContactCascade, removeCompanyIfOrphan } from "./contact.service";
 import { nudge as nudgeSuggestions } from "./suggestion-bus";
+import { wakeAssistant } from "./assistant-bus";
 import { enrichMatchedMail } from "./enrichment.service";
 import { indexEmailBody } from "./search.service";
 // 发信受阻熔断（规范 docs/sender-block-circuit-spec.md）：本模块只做「改道」，窗口计数与熔断落在服务里
@@ -28,10 +29,12 @@ import { matchCenterMailboxMessage, type InboxCenterContactPort, type CenterMail
 import { centerContactDisplayStatus } from '../../shared/online-crm';
 import { latestInboxClassificationChange, recordInboxClassificationChange, replayInboxClassificationChanges } from './inbox-classification.service';
 import { listInboxAnalysisViews } from './inbox-analysis.service';
+import { listInboxQuoteCards } from '../core/inquiry-quote-storage';
 
 const PENDING_SEEN_BATCH = 300;
 const INBOX_READ_STATE_BATCH_MAX = 5000;
 const INBOX_FOLDER_COLORS = ['#2563eb', '#0f766e', '#9a6700', '#c2413b', '#7c3aed', '#475569'] as const;
+const EMAIL_ADDRESS_PATTERN = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 
 let inboxCenterContactPort: InboxCenterContactPort | null = null;
 /** Center references use their own port and never enter the legacy SQLite contact FK columns. */
@@ -293,11 +296,16 @@ export function matchContact(email: string): ContactRow | null {
   return row || null;
 }
 
+export function matchExternalContact(email: string): ContactRow | null {
+  const domain = (email || '').trim().toLowerCase().split('@')[1] || '';
+  return domain && internalDomains().includes(domain) ? null : matchContact(email);
+}
+
 /** 匹配一组邮箱到联系人，返回逗号分隔的联系人 id（去重）。用于 to/cc 关联多个联系人。 */
-export function matchContactIds(emails: string[]): string {
+export function matchContactIds(emails: string[], externalOnly = false): string {
   const ids = new Set<number>();
   for (const e of emails) {
-    const c = matchContact(e);
+    const c = externalOnly ? matchExternalContact(e) : matchContact(e);
     if (c) ids.add(c.id);
   }
   return [...ids].join(",");
@@ -777,8 +785,8 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
         // 服务商反垃圾/限流拦截通知（如阿里云 ESO_LOCAL_SPAM）：这笔账记在发信账号头上，
         // 不是收件人邮箱坏了 —— 跳过标联系人、写退信事件、任务止损（规范 docs/sender-block-circuit-spec.md）
         if (m.classification === "bounce" && routeSenderBlockNotice(m.accountId, m.messageId, m.receivedAt, m.bodyPreview)) continue;
-        if (m.classification === "bounce" || m.classification === "replied" || m.classification === "autoreply") {
-          const cid = m.matchedContactId ?? (matchContact(m.fromEmail)?.id || null);
+        if (m.myRole !== "cc" && (m.classification === "bounce" || m.classification === "replied" || m.classification === "autoreply")) {
+          const cid = m.matchedContactId ?? (matchExternalContact(m.fromEmail)?.id || null);
           if (cid) {
             const typeMap: Record<string, string> = { bounce: "bounced", replied: "replied", autoreply: "autoreply" };
             const type = typeMap[m.classification] || m.classification;
@@ -855,6 +863,7 @@ export async function fetchInbox(accountId?: number, excludeIds?: number[]): Pro
       }
       pushFn("inbox:newMail", { count: allNew.length, byClass });
     } catch { /* 静默 */ }
+    wakeAssistant('inbox-new-mail');
   }
 
   // 每次抓取后自动清理超限旧邮件
@@ -900,7 +909,8 @@ export async function refreshInbox(accountId?: number): Promise<Result<InboxMess
   void prefetchRecentBodies(20);
   schedulePostFetch(accountId);
 
-  return listInbox();
+  const page = listInboxPage({ limit: INBOX_LIST_LIMITS.page });
+  return page.success ? okResult(page.data.items) : page;
 }
 
 /** 退信深补与 Sent 扫描只影响后续事实，不能拖住用户等待的邮件拉取。 */
@@ -947,6 +957,7 @@ async function backfillAfterFetch(accountId: number | undefined, adapters: PostF
     if (matched > 0) {
       pushFn?.("inbox:newMail", { count: 0 });
       nudgeSuggestions();
+      wakeAssistant('inbox-bounce');
     }
   } catch (error) {
     Log.error("inbox.backfill", "退信补匹配失败", error instanceof Error ? error.stack : undefined);
@@ -976,6 +987,7 @@ async function detectSentAfterFetch(adapters: PostFetchAdapters): Promise<void> 
     cleanupInbox();
     pushFn?.("inbox:newMail", { count: totalNew });
     nudgeSuggestions();
+    wakeAssistant('inbox-sent');
   } catch (error) {
     Log.error("inbox.sent", "Sent 文件夹更新通知失败", error instanceof Error ? error.stack : undefined);
   }
@@ -1090,40 +1102,55 @@ function listInboxTodoStates(messageIds: number[]): Map<number, InboxTodoState> 
   return result;
 }
 
-export function listInbox(request?: InboxListRequest): Result<InboxMessageRow[]> {
-  if (request != null && (typeof request !== "object" || Array.isArray(request))) return failResult("无效的邮件列表请求");
-  const includeId = request?.includeId;
-  if (includeId !== undefined && (!Number.isSafeInteger(includeId) || includeId <= 0)) return failResult("无效的邮件 ID");
-  const centerMessageKey = request?.centerMessageKey;
-  if (centerMessageKey !== undefined && (typeof centerMessageKey !== 'string' || !centerMessageKey.trim() || centerMessageKey.length > 512)) return failResult('无效的中心邮件编号');
-  const centerContext = inboxCenterContactPort?.context();
-  const includedCenterId = centerMessageKey && centerContext ? inboxCenterContactPort?.localMessageIdForMessageKey?.(centerContext, centerMessageKey) ?? null : null;
-  const db = getDb();
-  // 按分类分别限定数量，合并返回
-  const all: InboxMessageRow[] = [];
-  for (const [cls, limit] of Object.entries(CLEANUP_LIMITS)) {
-    const rows = db.select().from(inboxMessages)
-      .where(eq(inboxMessages.classification, cls))
-      .orderBy(desc(inboxMessages.receivedAt))
-      .limit(limit)
-      .all();
-    all.push(...rows);
-  }
-  // sent 完全解除限制：全量返回，不截断
-  const sentRows = db.select().from(inboxMessages)
-    .where(eq(inboxMessages.classification, "sent"))
-    .orderBy(desc(inboxMessages.receivedAt))
-    .all();
-  all.push(...sentRows);
-  for (const requestedId of [includeId, includedCenterId]) {
-    if (!requestedId || all.some(r => r.id === requestedId)) continue;
-    const target = db.select().from(inboxMessages).where(eq(inboxMessages.id, requestedId)).get();
-    if (target) all.push(target);
-  }
-  // 按时间统一排序
-  all.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
+function conversationContactEmail(row: Pick<InboxMessageRow, 'classification' | 'fromEmail' | 'to' | 'cc'>, accountEmail: string | null): string {
+  if (row.classification !== 'sent') return row.fromEmail.trim().toLocaleLowerCase();
+  const ownAddress = accountEmail?.trim().toLocaleLowerCase() || '';
+  const recipients = [row.to, row.cc]
+    .flatMap(value => value?.match(EMAIL_ADDRESS_PATTERN) || [])
+    .map(value => value.trim().toLocaleLowerCase())
+    .filter(value => value && value !== ownAddress);
+  return recipients[0] || row.fromEmail.trim().toLocaleLowerCase();
+}
 
-  // ponytail: 批量查关联数据（发件账号 + 联系人状态），避免前端 N 次请求
+function inboxConversationKeyForRow(row: Pick<InboxMessageRow, 'id' | 'classification' | 'fromEmail' | 'to' | 'cc' | 'subject'>, accountEmail: string | null): string {
+  const subject = normalizeInboxSubject(row.subject);
+  return `${conversationContactEmail(row, accountEmail)}::${subject || `message:${row.id}`}`;
+}
+
+function listInboxConversationStates(conversationKeys: string[]): Map<string, InboxConversationState> {
+  const result = new Map<string, InboxConversationState>();
+  const keys = [...new Set(conversationKeys.filter(Boolean))];
+  if (!keys.length) return result;
+  try {
+    const raw = getRawDb();
+    for (let start = 0; start < keys.length; start += 400) {
+      const chunk = keys.slice(start, start + 400);
+      const placeholders = chunk.map(() => '?').join(',');
+      const rows = raw.prepare(`SELECT conversation_key AS conversationKey,state FROM inbox_conversation_states WHERE conversation_key IN (${placeholders})`).all(...chunk) as Array<{ conversationKey: string; state: InboxConversationState }>;
+      for (const row of rows) result.set(row.conversationKey, row.state);
+    }
+  } catch (error) {
+    Log.warn('inbox.conversationState', `本地会话状态读取失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return result;
+}
+
+const INBOX_CURSOR_MAX = 512;
+function encodeInboxCursor(row: Pick<InboxMessageRow, 'receivedAt' | 'id'>): string {
+  return Buffer.from(JSON.stringify([row.receivedAt, row.id]), 'utf8').toString('base64url');
+}
+function decodeInboxCursor(value: string | undefined): Pick<InboxMessageRow, 'receivedAt' | 'id'> | null | undefined {
+  if (!value) return null;
+  if (value.length > INBOX_CURSOR_MAX) return undefined;
+  try {
+    const decoded = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown;
+    if (!Array.isArray(decoded) || decoded.length !== 2 || typeof decoded[0] !== 'string' || !Number.isSafeInteger(decoded[1]) || Number(decoded[1]) <= 0) return undefined;
+    return { receivedAt: decoded[0], id: Number(decoded[1]) };
+  } catch { /* Invalid opaque cursors are a client input error, never a reset to page one. */ return undefined; }
+}
+function enrichInboxRows(all: InboxMessageRow[]): InboxMessageRow[] {
+  const db = getDb();
+  const centerContext = inboxCenterContactPort?.context();
   const accountIds = [...new Set(all.map(r => r.accountId).filter(Boolean))];
   const contactIds = [...new Set(all.map(r => r.matchedContactId).filter(Boolean))];
   const accountMap = new Map<number, string>();
@@ -1134,13 +1161,21 @@ export function listInbox(request?: InboxListRequest): Result<InboxMessageRow[]>
   }
   for (const cid of contactIds) {
     if (cid == null) continue;
-    const c = db.select({ status: contacts.status, tags: contacts.tags })
-      .from(contacts).where(eq(contacts.id, cid)).get();
-    if (c) contactMap.set(cid, { status: c.status || "", tags: c.tags || "[]" });
+    const c = db.select({ status: contacts.status, tags: contacts.tags }).from(contacts).where(eq(contacts.id, cid)).get();
+    if (c) contactMap.set(cid, { status: c.status || '', tags: c.tags || '[]' });
   }
   const labelIdsByMessage = new Map<number, number[]>();
   const analysisByMessage = listInboxAnalysisViews(all.map(row => row.id));
+  const quoteCardByMessage = listInboxQuoteCards(all.map(row => row.id));
   const todoStateByMessage = listInboxTodoStates(all.map(row => row.id));
+  const conversationKeyByMessage = new Map<number, string>();
+  const latestMessageIdByConversation = new Map<string, number>();
+  for (const row of all) {
+    const conversationKey = inboxConversationKeyForRow(row, accountMap.get(row.accountId) || null);
+    conversationKeyByMessage.set(row.id, conversationKey);
+    if (!latestMessageIdByConversation.has(conversationKey)) latestMessageIdByConversation.set(conversationKey, row.id);
+  }
+  const conversationStateByKey = listInboxConversationStates([...latestMessageIdByConversation.keys()]);
   if (all.length > 0) {
     const links = db.select({ messageId: inboxMessageLabels.messageId, labelId: inboxMessageLabels.labelId })
       .from(inboxMessageLabels)
@@ -1159,7 +1194,13 @@ export function listInbox(request?: InboxListRequest): Result<InboxMessageRow[]>
     _labelIds: labelIdsByMessage.get(r.id) || [],
     _pinned: pinnedIds.has(r.id),
     _analysis: analysisByMessage.get(r.id) || null,
+    _quoteCard: quoteCardByMessage.get(r.id) || null,
     _todoState: todoStateByMessage.get(r.id) || null,
+    _conversationState: (() => {
+      const conversationKey = conversationKeyByMessage.get(r.id);
+      if (!conversationKey || latestMessageIdByConversation.get(conversationKey) !== r.id) return null;
+      return conversationStateByKey.get(conversationKey) || null;
+    })(),
   }));
   if (centerContext && inboxCenterContactPort?.getLinks) for (const row of enriched) {
     const links = inboxCenterContactPort.getLinks(centerContext, row.id);
@@ -1169,10 +1210,153 @@ export function listInbox(request?: InboxListRequest): Result<InboxMessageRow[]>
       ...(links.length ? { _contactStatus: links[0]?.status ?? null, _contactTags: links[0]?.tags ? JSON.stringify(links[0].tags) : null } : {}),
     });
   }
-  return okResult(enriched as unknown as InboxMessageRow[]);
+  return enriched as unknown as InboxMessageRow[];
+}
+export function listInbox(request?: InboxListRequest): Result<InboxMessageRow[]> {
+  if (request != null && (typeof request !== "object" || Array.isArray(request))) return failResult("无效的邮件列表请求");
+  const includeId = request?.includeId;
+  if (includeId !== undefined && (!Number.isSafeInteger(includeId) || includeId <= 0)) return failResult("无效的邮件 ID");
+  const centerMessageKey = request?.centerMessageKey;
+  if (centerMessageKey !== undefined && (typeof centerMessageKey !== 'string' || !centerMessageKey.trim() || centerMessageKey.length > 512)) return failResult('无效的中心邮件编号');
+  const db = getDb();
+  // Legacy callers keep the old full response until every internal consumer moves to listInboxPage.
+  const all: InboxMessageRow[] = [];
+  for (const [cls, limit] of Object.entries(CLEANUP_LIMITS)) {
+    all.push(...db.select().from(inboxMessages).where(eq(inboxMessages.classification, cls)).orderBy(desc(inboxMessages.receivedAt)).limit(limit).all());
+  }
+  all.push(...db.select().from(inboxMessages).where(eq(inboxMessages.classification, "sent")).orderBy(desc(inboxMessages.receivedAt)).all());
+  const centerContext = inboxCenterContactPort?.context();
+  const includedCenterId = centerMessageKey && centerContext ? inboxCenterContactPort?.localMessageIdForMessageKey?.(centerContext, centerMessageKey) ?? null : null;
+  for (const requestedId of [includeId, includedCenterId]) {
+    if (!requestedId || all.some(r => r.id === requestedId)) continue;
+    const target = db.select().from(inboxMessages).where(eq(inboxMessages.id, requestedId)).get();
+    if (target) all.push(target);
+  }
+  all.sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt) || b.id - a.id);
+  return okResult(enrichInboxRows(all));
+}
+export function listInboxPage(request: InboxListRequest): Result<InboxListPage<InboxMessageRow>> {
+  if (!request || typeof request !== 'object' || Array.isArray(request)) return failResult('无效的邮件分页请求');
+  const allowed = ['includeId', 'centerMessageKey', 'limit', 'cursor', 'search', 'classification', 'accountId', 'startAt', 'endAt'];
+  if (Object.keys(request).some(key => !allowed.includes(key))) return failResult('邮件分页包含未知参数');
+  if (request.includeId !== undefined && (!Number.isSafeInteger(request.includeId) || request.includeId <= 0)) return failResult('无效的邮件 ID');
+  if (request.limit !== undefined && (!Number.isSafeInteger(request.limit) || request.limit <= 0 || request.limit > INBOX_LIST_LIMITS.pageMax)) return failResult('邮件分页数量无效');
+  if (request.search !== undefined && (typeof request.search !== 'string' || request.search.length > INBOX_LIST_LIMITS.search)) return failResult('邮件搜索条件无效');
+  if (request.classification !== undefined && (typeof request.classification !== 'string' || !request.classification.trim() || request.classification.length > 100)) return failResult('邮件分类无效');
+  if (request.accountId !== undefined && (!Number.isSafeInteger(request.accountId) || request.accountId <= 0)) return failResult('邮件账号无效');
+  for (const value of [request.startAt, request.endAt]) if (value !== undefined && (typeof value !== 'string' || !Number.isFinite(Date.parse(value)))) return failResult('邮件日期范围无效');
+  const cursor = decodeInboxCursor(request.cursor);
+  if (cursor === undefined) return failResult('邮件游标无效');
+  const centerContext = inboxCenterContactPort?.context();
+  if (request.centerMessageKey !== undefined && (typeof request.centerMessageKey !== 'string' || !request.centerMessageKey.trim() || request.centerMessageKey.length > 512)) return failResult('无效的中心邮件编号');
+  const centerInclude = request.centerMessageKey && centerContext ? inboxCenterContactPort?.localMessageIdForMessageKey?.(centerContext, request.centerMessageKey) ?? null : null;
+  const conditions: SQL[] = [];
+  if (request.classification) conditions.push(eq(inboxMessages.classification, request.classification.trim()));
+  if (request.accountId) conditions.push(eq(inboxMessages.accountId, request.accountId));
+  if (request.startAt) conditions.push(sql`${inboxMessages.receivedAt} >= ${request.startAt}`);
+  if (request.endAt) conditions.push(sql`${inboxMessages.receivedAt} < ${request.endAt}`);
+  const search = request.search?.trim().toLocaleLowerCase('zh-CN');
+  if (search) conditions.push(sql`(instr(lower(COALESCE(${inboxMessages.subject}, '')), ${search}) > 0 OR instr(lower(${inboxMessages.fromEmail}), ${search}) > 0 OR instr(lower(COALESCE(${inboxMessages.fromName}, '')), ${search}) > 0)`);
+  const baseWhere = conditions.length ? and(...conditions) : undefined;
+  const db = getDb();
+  const total = Number(db.select({ count: sql<number>`count(*)` }).from(inboxMessages).where(baseWhere).get()?.count ?? 0);
+  const pagedWhere = cursor ? and(...conditions, or(lt(inboxMessages.receivedAt, cursor.receivedAt), and(eq(inboxMessages.receivedAt, cursor.receivedAt), lt(inboxMessages.id, cursor.id)))) : baseWhere;
+  const limit = request.limit ?? INBOX_LIST_LIMITS.page;
+  const fetched = db.select().from(inboxMessages).where(pagedWhere).orderBy(desc(inboxMessages.receivedAt), desc(inboxMessages.id)).limit(limit + 1).all();
+  const hasMore = fetched.length > limit;
+  const page = fetched.slice(0, limit);
+  const nextCursor = hasMore && page.length ? encodeInboxCursor(page[page.length - 1]!) : null;
+  for (const requestedId of [request.includeId, centerInclude]) {
+    if (!requestedId || page.some(row => row.id === requestedId)) continue;
+    const target = db.select().from(inboxMessages).where(eq(inboxMessages.id, requestedId)).get();
+    if (target) page.unshift(target);
+  }
+  return okResult({ items: enrichInboxRows(page), total, nextCursor });
 }
 
-export function setInboxTodoState(input: InboxTodoStateRequest): Result<{ messageId: number; state: InboxTodoState }> {
+type InboxSummaryRow = Pick<InboxMessageRow, 'id' | 'accountId' | 'matchedContactId' | 'fromEmail' | 'fromName' | 'to' | 'cc' | 'subject' | 'classification' | 'isRead' | 'receivedAt' | 'myRole'>;
+
+function inboxSummaryDateKey(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function addInboxSummaryCount(map: Record<string, InboxSummaryCount>, key: string, unread: boolean, latestAt: number, email?: string): void {
+  if (!key) return;
+  const current = map[key] ?? { total: 0, unread: 0, latestAt: 0 };
+  current.total += 1;
+  if (unread) current.unread += 1;
+  current.latestAt = Math.max(current.latestAt ?? 0, latestAt);
+  if (email) current.email = email;
+  map[key] = current;
+}
+
+/** Counts the whole scoped mailbox once, so the active classification/search cannot shrink the sidebar. */
+export function inboxSummary(request?: InboxSummaryRequest): Result<InboxSummary> {
+  if (request != null && (typeof request !== 'object' || Array.isArray(request))) return failResult('无效的邮件汇总请求');
+  const allowed = ['accountId', 'startAt', 'endAt'];
+  if (request && Object.keys(request).some(key => !allowed.includes(key))) return failResult('邮件汇总包含未知参数');
+  if (request?.accountId !== undefined && (!Number.isSafeInteger(request.accountId) || request.accountId <= 0)) return failResult('邮件账号无效');
+  for (const value of [request?.startAt, request?.endAt]) if (value !== undefined && (typeof value !== 'string' || !Number.isFinite(Date.parse(value)))) return failResult('邮件日期范围无效');
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (request?.accountId) { conditions.push('m.account_id = ?'); params.push(request.accountId); }
+  if (request?.startAt) { conditions.push('m.received_at >= ?'); params.push(request.startAt); }
+  if (request?.endAt) { conditions.push('m.received_at < ?'); params.push(request.endAt); }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const raw = getRawDb();
+  const columns = 'm.id, m.account_id AS accountId, m.matched_contact_id AS matchedContactId, m.from_email AS fromEmail, m.from_name AS fromName, m."to" AS "to", m."cc" AS "cc", m.subject, m.classification, m.is_read AS isRead, m.received_at AS receivedAt, m.my_role AS myRole';
+  const rows = raw.prepare(`SELECT ${columns} FROM inbox_messages m ORDER BY m.received_at DESC, m.id DESC`).all() as InboxSummaryRow[];
+  const accountEmails = new Map<number, string>();
+  for (const account of raw.prepare('SELECT id, email FROM email_accounts').all() as Array<{ id: number; email: string }>) accountEmails.set(Number(account.id), account.email);
+
+  const byClassification: Record<string, InboxSummaryCount> = {};
+  const byDate: Record<string, InboxSummaryCount> = {};
+  const byAccount: Record<string, InboxSummaryCount> = {};
+  const latestByConversation = new Map<string, InboxSummaryRow>();
+  const scopeStart = request?.startAt ? Date.parse(request.startAt) : null;
+  const scopeEnd = request?.endAt ? Date.parse(request.endAt) : null;
+  let unread = 0;
+  for (const row of rows) {
+    const isUnread = !row.isRead;
+    const latestAt = Date.parse(row.receivedAt) || 0;
+    const accountKey = row.accountId ? String(row.accountId) : row.fromEmail;
+    const accountEmail = accountEmails.get(Number(row.accountId));
+    addInboxSummaryCount(byAccount, accountKey, isUnread, latestAt, accountEmail);
+    const inScope = (!request?.accountId || Number(row.accountId) === request.accountId)
+      && (scopeStart === null || latestAt >= scopeStart)
+      && (scopeEnd === null || latestAt < scopeEnd);
+    if (!inScope) continue;
+    if (isUnread) unread += 1;
+    addInboxSummaryCount(byClassification, row.classification || 'other', isUnread, latestAt);
+    addInboxSummaryCount(byDate, inboxSummaryDateKey(row.receivedAt), isUnread, latestAt);
+    const conversationKey = inboxConversationKeyForRow(row, accountEmail ?? null);
+    if (!latestByConversation.has(conversationKey)) latestByConversation.set(conversationKey, row);
+  }
+
+  const labelCounts: Record<string, number> = {};
+  for (const label of raw.prepare(`SELECT ml.label_id AS labelId, COUNT(*) AS count FROM inbox_message_labels ml JOIN inbox_messages m ON m.id = ml.message_id ${where} GROUP BY ml.label_id`).all(...params) as Array<{ labelId: number; count: number }>) {
+    labelCounts[String(label.labelId)] = Number(label.count) || 0;
+  }
+  const pinnedRows = raw.prepare(`SELECT ${columns} FROM inbox_messages m JOIN inbox_pinned_messages p ON p.message_id = m.id ${where} ORDER BY m.received_at DESC, m.id DESC`).all(...params) as InboxSummaryRow[];
+
+  return okResult({
+    total: Object.values(byClassification).reduce((sum, count) => sum + count.total, 0),
+    allTotal: Object.values(byAccount).reduce((sum, count) => sum + count.total, 0),
+    unread,
+    byClassification,
+    byDate,
+    byAccount,
+    labels: labelCounts,
+    pinned: pinnedRows.length,
+    conversations: enrichInboxRows([...latestByConversation.values()] as unknown as InboxMessageRow[]),
+    pinnedItems: enrichInboxRows(pinnedRows as unknown as InboxMessageRow[]),
+  });
+}
+
+export function setInboxTodoState(input: InboxTodoStateRequest): Result<InboxTodoStateResult> {
   if (!input || !Number.isSafeInteger(input.messageId) || input.messageId <= 0) return failResult('邮件 ID 无效');
   if (input.state !== 'open' && input.state !== 'done') return failResult('待办状态无效');
   if (!validWriteKey(input.idempotencyKey)) return failResult('请求编号无效');
@@ -1184,13 +1368,17 @@ export function setInboxTodoState(input: InboxTodoStateRequest): Result<{ messag
       .get(input.idempotencyKey) as { messageId: number; state: InboxTodoState } | undefined;
     if (prior) {
       if (Number(prior.messageId) !== input.messageId) return failResult('请求编号已用于其他邮件');
-      return okResult({ messageId: input.messageId, state: prior.state });
+      if (prior.state !== input.state) return failResult('请求编号与已有待办操作不一致');
+      return okResult({ messageId: input.messageId, state: prior.state, changed: false });
     }
+    const current = raw.prepare('SELECT state FROM inbox_todo_states WHERE message_id=?').get(input.messageId) as { state: InboxTodoState } | undefined;
+    const changed = current?.state !== input.state;
     raw.prepare(`INSERT INTO inbox_todo_states(message_id,state,operation_key,updated_at)
       VALUES(?,?,?,CURRENT_TIMESTAMP)
       ON CONFLICT(message_id) DO UPDATE SET state=excluded.state,operation_key=excluded.operation_key,updated_at=CURRENT_TIMESTAMP`)
       .run(input.messageId, input.state, input.idempotencyKey);
-    return okResult({ messageId: input.messageId, state: input.state });
+    if (changed) wakeAssistant('inbox-todo');
+    return okResult({ messageId: input.messageId, state: input.state, changed });
   } catch (error) {
     Log.warn('inbox.todo', `本地待办状态保存失败: ${error instanceof Error ? error.message : String(error)}`);
     return failResult('待办状态保存失败');
@@ -1198,8 +1386,9 @@ export function setInboxTodoState(input: InboxTodoStateRequest): Result<{ messag
 }
 
 const INBOX_TODO_BATCH_LIMIT = 5000;
+const INBOX_DROP_BATCH_LIMIT = 5000;
 
-export function setInboxTodoStateBatch(input: InboxTodoBatchRequest): Result<{ updated: number; state: InboxTodoState }> {
+export function setInboxTodoStateBatch(input: InboxTodoBatchRequest): Result<InboxTodoBatchResult> {
   if (!input || !Array.isArray(input.messageIds)) return failResult('邮件 ID 列表无效');
   if (input.state !== 'open' && input.state !== 'done') return failResult('待办状态无效');
   if (!validWriteKey(input.idempotencyKey)) return failResult('请求编号无效');
@@ -1210,12 +1399,14 @@ export function setInboxTodoStateBatch(input: InboxTodoBatchRequest): Result<{ u
 
   const raw = getRawDb();
   try {
-    raw.transaction(() => {
+    const updated = raw.transaction(() => {
       const exists = raw.prepare('SELECT 1 FROM inbox_messages WHERE id=?');
       const prior = raw.prepare('SELECT message_id AS messageId,state FROM inbox_todo_states WHERE operation_key=?');
+      const current = raw.prepare('SELECT state FROM inbox_todo_states WHERE message_id=?');
       const write = raw.prepare(`INSERT INTO inbox_todo_states(message_id,state,operation_key,updated_at)
         VALUES(?,?,?,CURRENT_TIMESTAMP)
         ON CONFLICT(message_id) DO UPDATE SET state=excluded.state,operation_key=excluded.operation_key,updated_at=CURRENT_TIMESTAMP`);
+      let changedCount = 0;
       for (const messageId of messageIds) {
         if (!exists.get(messageId)) throw new Error(`邮件不存在: ${messageId}`);
         const operationKey = `${input.idempotencyKey}:${messageId}`;
@@ -1226,13 +1417,127 @@ export function setInboxTodoStateBatch(input: InboxTodoBatchRequest): Result<{ u
           }
           continue;
         }
+        const previousState = current.get(messageId) as { state: InboxTodoState } | undefined;
+        if (previousState?.state !== input.state) changedCount += 1;
         write.run(messageId, input.state, operationKey);
       }
+      if (input.state === 'done') {
+        const clearConversationTodo = raw.prepare("DELETE FROM inbox_conversation_states WHERE source_message_id=? AND state='todo'");
+        for (const messageId of messageIds) clearConversationTodo.run(messageId);
+      }
+      return changedCount;
     })();
-    return okResult({ updated: messageIds.length, state: input.state });
+    if (updated > 0) wakeAssistant('inbox-todo-batch');
+    return okResult({ messageIds, updated, state: input.state });
   } catch (error) {
     Log.warn('inbox.todo', `批量待办状态保存失败: ${error instanceof Error ? error.message : String(error)}`);
     return failResult(error instanceof Error ? error.message : '批量待办状态保存失败');
+  }
+}
+
+export function setInboxMessagesLabelsBatch(input: InboxMessagesLabelsBatchRequest): Result<{ messageIds: number[]; updated: number; labelIds: number[] }> {
+  if (!input || !Array.isArray(input.messageIds) || !Array.isArray(input.labelIds) || !validWriteKey(input.idempotencyKey)) {
+    return failResult('批量文件夹请求无效');
+  }
+  const messageIds = [...new Set(input.messageIds)];
+  if (!messageIds.length || messageIds.length > INBOX_DROP_BATCH_LIMIT || messageIds.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+    return failResult('邮件 ID 列表无效');
+  }
+  if (input.labelIds.some(id => !Number.isSafeInteger(id) || id <= 0)) return failResult('文件夹 ID 无效');
+  const labelIds = [...new Set(input.labelIds)].sort((left, right) => left - right);
+  const raw = getRawDb();
+  try {
+    const updated = raw.transaction(() => {
+      if (labelIds.length > 0) {
+        const placeholders = labelIds.map(() => '?').join(',');
+        const found = raw.prepare(`SELECT COUNT(*) AS count FROM inbox_labels WHERE status = 'active' AND id IN (${placeholders})`).get(...labelIds) as { count: number };
+        if (Number(found.count) !== labelIds.length) throw new Error('文件夹不存在');
+      }
+      const exists = raw.prepare('SELECT 1 FROM inbox_messages WHERE id=?');
+      const prior = raw.prepare('SELECT result_json AS resultJson FROM inbox_label_operations WHERE operation_key=?');
+      const remove = raw.prepare('DELETE FROM inbox_message_labels WHERE message_id=?');
+      const insert = raw.prepare('INSERT OR IGNORE INTO inbox_message_labels (message_id,label_id) VALUES (?,?)');
+      let changed = 0;
+      for (const messageId of messageIds) {
+        if (!exists.get(messageId)) throw new Error('邮件不存在');
+        const operationKey = `${input.idempotencyKey}:${messageId}`;
+        if (prior.get(operationKey)) continue;
+        remove.run(messageId);
+        for (const labelId of labelIds) insert.run(messageId, labelId);
+        storeLabelOperation(raw, operationKey, { labelIds, messageId });
+        changed += 1;
+      }
+      return changed;
+    })();
+    return okResult({ messageIds, updated, labelIds });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '批量文件夹保存失败';
+    return failResult(message === '邮件不存在' || message === '文件夹不存在' ? message : '批量文件夹保存失败');
+  }
+}
+
+export function setInboxMessagesPinnedBatch(input: InboxMessagesPinBatchRequest): Result<{ messageIds: number[]; updated: number; pinned: boolean }> {
+  if (!input || !Array.isArray(input.messageIds) || typeof input.pinned !== 'boolean' || !validWriteKey(input.idempotencyKey)) {
+    return failResult('批量置顶请求无效');
+  }
+  const messageIds = [...new Set(input.messageIds)];
+  if (!messageIds.length || messageIds.length > INBOX_DROP_BATCH_LIMIT || messageIds.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+    return failResult('邮件 ID 列表无效');
+  }
+  const raw = getRawDb();
+  try {
+    const updated = raw.transaction(() => {
+      const exists = raw.prepare('SELECT 1 FROM inbox_messages WHERE id=?');
+      const insert = raw.prepare('INSERT OR IGNORE INTO inbox_pinned_messages (message_id) VALUES (?)');
+      const remove = raw.prepare('DELETE FROM inbox_pinned_messages WHERE message_id=?');
+      let changed = 0;
+      for (const messageId of messageIds) {
+        if (!exists.get(messageId)) throw new Error('邮件不存在');
+        const changes = input.pinned ? insert.run(messageId).changes : remove.run(messageId).changes;
+        changed += Number(changes) || 0;
+      }
+      return changed;
+    })();
+    return okResult({ messageIds, updated, pinned: input.pinned });
+  } catch (error) {
+    return failResult(error instanceof Error && error.message === '邮件不存在' ? error.message : '批量置顶保存失败');
+  }
+}
+
+export function setInboxConversationStateBatch(input: InboxConversationStateBatchRequest): Result<InboxConversationStateBatchResult> {
+  if (!input || !Array.isArray(input.messageIds) || !validWriteKey(input.idempotencyKey)) return failResult('会话分类请求无效');
+  if (input.state !== null && !['todo', 'needs_reply', 'waiting_other', 'important'].includes(input.state)) return failResult('会话分类无效');
+  const messageIds = [...new Set(input.messageIds)];
+  if (!messageIds.length || messageIds.length > INBOX_DROP_BATCH_LIMIT || messageIds.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+    return failResult('邮件 ID 列表无效');
+  }
+  const raw = getRawDb();
+  try {
+    const updated = raw.transaction(() => {
+      const rows = raw.prepare(`SELECT m.id,m.classification,m.from_email AS fromEmail,m."to",m.cc,m.subject,a.email AS accountEmail
+        FROM inbox_messages m LEFT JOIN email_accounts a ON a.id=m.account_id
+        WHERE m.id IN (${messageIds.map(() => '?').join(',')})`).all(...messageIds) as Array<Pick<InboxMessageRow, 'id' | 'classification' | 'fromEmail' | 'to' | 'cc' | 'subject'> & { accountEmail: string | null }>;
+      if (rows.length !== messageIds.length) throw new Error('邮件不存在');
+      const byKey = new Map<string, { sourceMessageId: number }>();
+      for (const row of rows) {
+        const key = inboxConversationKeyForRow(row, row.accountEmail);
+        if (!byKey.has(key)) byKey.set(key, { sourceMessageId: row.id });
+      }
+      const upsert = raw.prepare(`INSERT INTO inbox_conversation_states(conversation_key,state,source_message_id,operation_key,updated_at)
+        VALUES(?,?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(conversation_key) DO UPDATE SET state=excluded.state,source_message_id=excluded.source_message_id,operation_key=excluded.operation_key,updated_at=CURRENT_TIMESTAMP`);
+      const clear = raw.prepare('DELETE FROM inbox_conversation_states WHERE conversation_key=?');
+      for (const [key, value] of byKey) {
+        if (input.state === null) clear.run(key);
+        else upsert.run(key, input.state, value.sourceMessageId, `${input.idempotencyKey}:${key}`);
+      }
+      return byKey.size;
+    })();
+    wakeAssistant('inbox-conversation-state');
+    return okResult({ messageIds, updated, state: input.state });
+  } catch (error) {
+    Log.warn('inbox.conversationState', `会话分类保存失败: ${error instanceof Error ? error.message : String(error)}`);
+    return failResult(error instanceof Error && error.message === '邮件不存在' ? error.message : '会话分类保存失败');
   }
 }
 
@@ -1534,6 +1839,60 @@ export async function writeBodyForLastInsert(html: string): Promise<void> {
   const row = getRawDb().prepare("SELECT last_insert_rowid() AS id").get() as { id: number } | undefined;
   const id = row?.id;
   if (typeof id === "number" && id > 0) await writeBodyFile(id, html);
+}
+
+export interface SentReplyRecordInput {
+  accountId: number;
+  to: string[];
+  cc?: string[];
+  subject: string;
+  body: string;
+  messageId: string;
+  occurredAt: string;
+  attachmentNames?: string[];
+}
+
+/** Persist an in-app reply as a real Sent item so the thread, task and center sync all see it. */
+export async function recordSentReply(input: SentReplyRecordInput): Promise<Result<{ id: number; receivedAt: string }>> {
+  const account = getDb().select().from(emailAccounts).where(eq(emailAccounts.id, input.accountId)).get();
+  if (!account) return failResult('发信账号不存在');
+  const recipients = input.to.map(email => email.trim().toLowerCase()).filter(Boolean);
+  if (!recipients.length) return failResult('收件人为空');
+  const related = new Set<number>();
+  for (const email of recipients) {
+    const contact = matchExternalContact(email);
+    if (contact) related.add(contact.id);
+  }
+  const contactIds = [...related];
+  const primary = contactIds[0] ?? null;
+  const attachmentNames = (input.attachmentNames ?? []).filter(Boolean);
+  const bodyHtml = input.body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+    + (attachmentNames.length ? `<br><br><small>附件：${attachmentNames.join('、')}</small>` : '');
+  const preview = input.body.slice(0, 450) + (attachmentNames.length ? ` [附件] ${attachmentNames.join('、')}` : '');
+  try {
+    const inserted = getDb().insert(inboxMessages).values({
+      accountId: input.accountId, messageId: input.messageId,
+      fromEmail: account.email, fromName: account.displayName || null,
+      subject: input.subject, bodyPreview: preview.slice(0, 500),
+      classification: 'sent',
+      to: recipients.join(', '), cc: (input.cc ?? []).join(', '),
+      matchedContactId: primary, relatedContactIds: contactIds.join(','),
+      isRead: 1, receivedAt: input.occurredAt,
+    }).run();
+    const id = Number(inserted.lastInsertRowid);
+    await writeBodyForLastInsert(bodyHtml);
+    for (const contactId of contactIds) {
+      getDb().insert(interactions).values({
+        contactId, type: 'sent', direction: 'outbound', subject: input.subject,
+        bodyPreview: `已发送至 ${recipients.join(', ')}`, messageId: input.messageId, accountId: input.accountId,
+      }).run();
+    }
+    saveDatabase();
+    return okResult({ id, receivedAt: input.occurredAt });
+  } catch (error) {
+    Log.warn('inbox.reply', `保存已发送回复失败: ${error instanceof Error ? error.message : String(error)}`);
+    return failResult('已发送，但本地记录保存失败');
+  }
 }
 
 // ── 获取邮件正文 ──

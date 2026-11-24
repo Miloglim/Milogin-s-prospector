@@ -74,6 +74,19 @@ export const inboxFolderSuggestionDismissals = sqliteTable('inbox_folder_suggest
   dismissedAt: text('dismissed_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+/** Functional folders persist query definitions only; they never store message membership. */
+export const inboxFunctionalFolders = sqliteTable('inbox_functional_folders', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  color: text('color').notNull(),
+  matchMode: text('match_mode').notNull().default('all'),
+  groupBy: text('group_by').notNull().default('none'),
+  conditionsJson: text('conditions_json').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 /**
  * 退信 ↔ 被退联系人（多对多，规范：docs/bounce-multi-match-spec.md）。
  * 一封群发退信可通知多个失败收件人，inbox_messages.matched_contact_id 单列只装得下第一个（留作兼容旧读取），

@@ -4,7 +4,7 @@ import { act } from 'react';
 import { message } from 'antd';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { InboxList } from '../../src/renderer/pages/inbox/InboxList';
+import { InboxList, isoWeekNumber } from '../../src/renderer/pages/inbox/InboxList';
 import { CenterContactDetail } from '../../src/renderer/pages/customers/CenterContactDetail';
 import { ONLINE_CHANNELS } from '../../src/shared/online-crm';
 vi.mock('../../src/renderer/IdentityContext', () => ({ useOptionalIdentity: () => ({ identity: { userId: 'fixture' }, baseUrl: 'http://fixture.invalid', status: 'authenticated' }), useIdentity: () => ({ identity: { userId: 'fixture' }, baseUrl: 'http://fixture.invalid', status: 'authenticated' }) }));
@@ -48,6 +48,96 @@ describe('center contact mailbox renderer boundary', () => {
   });
   afterEach(async () => { await act(async () => root.unmount()); qc.clear(); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
   async function mount(node: React.ReactNode) { await act(async () => root.render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>)); await act(flush); }
+  async function openContextSidebar() {
+    const button = host.querySelector<HTMLButtonElement>('[aria-label="展开邮件上下文"]');
+    if (!button) return;
+    await act(async () => { button.click(); await flush(); });
+  }
+  const fireDrag = (type: string, element: Element) => {
+    const dataTransfer = { effectAllowed: 'none', dropEffect: 'none', setData: vi.fn(), setDragImage: vi.fn() };
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
+    element.dispatchEvent(event);
+    return dataTransfer;
+  };
+
+  it('shows the inbox date with ISO week and opens a calendar', async () => {
+    expect(isoWeekNumber(new Date(2026, 10, 16))).toBe(47);
+    await mount(<InboxList />);
+    const trigger = host.querySelector<HTMLButtonElement>('.inbox-calendar-trigger');
+    expect(trigger).not.toBeNull();
+    expect(trigger?.textContent).toMatch(/WK \d+/);
+    await act(async () => { trigger!.click(); await flush(); });
+    expect(document.body.querySelector('.inbox-calendar-panel')).not.toBeNull();
+    expect(document.body.querySelector('.inbox-calendar-panel')?.textContent).toContain('ISO 周');
+  });
+
+  it('filters mail by the selected calendar date and can return to all dates', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    const now = new Date();
+    const todayAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10).toISOString();
+    const yesterdayAt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 10).toISOString();
+    const mail = (id: number, subject: string, receivedAt: string) => ({ id, fromEmail: contact.email, fromName: 'Buyer', subject, bodyPreview: 'Fixture', classification: 'replied', matchedContactId: null, isRead: 1, receivedAt, _centerContact: reference });
+    invoke.mockImplementation(async (channel, input) => channel === 'inbox:list'
+      ? { success: true, data: [mail(201, 'Today mail', todayAt), mail(202, 'Yesterday mail', yesterdayAt)] }
+      : delegate(channel, input));
+    await mount(<InboxList />);
+    expect(host.textContent).toContain('Today mail');
+    expect(host.textContent).toContain('Yesterday mail');
+    await act(async () => { host.querySelector<HTMLButtonElement>('.inbox-calendar-trigger')!.click(); await flush(); });
+    const todayCell = document.body.querySelector<HTMLElement>('.inbox-calendar-day.is-today');
+    expect(todayCell).not.toBeNull();
+    await act(async () => { todayCell!.click(); await flush(); });
+    expect(host.textContent).toContain('Today mail');
+    expect(host.textContent).not.toContain('Yesterday mail');
+    expect(host.querySelector('.inbox-calendar-trigger')?.classList.contains('is-filtering')).toBe(true);
+    await act(async () => { host.querySelector<HTMLButtonElement>('.inbox-calendar-trigger')!.click(); await flush(); });
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('.inbox-calendar-legend button')!.click(); await flush(); });
+    expect(host.textContent).toContain('Today mail');
+    expect(host.textContent).toContain('Yesterday mail');
+  });
+
+  it('opens a campaign result filter without showing unrelated mail', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'send:campaignDetail') return { success: true, data: { campaign: { id: 'campaign-1', name: 'Brazil outreach', status: 'running' }, targets: [{ contactId: 7, email: contact.email, status: 'replied', centerReference: reference }] } };
+      if (channel === 'inbox:list') return { success: true, data: [
+        { id: 301, fromEmail: contact.email, fromName: 'Buyer', subject: 'Campaign reply', bodyPreview: 'Fixture', classification: 'replied', matchedContactId: 7, isRead: 1, receivedAt: '2026-11-17T02:00:00Z', _centerContact: reference },
+        { id: 302, fromEmail: contact.email, fromName: 'Mailer', subject: 'Campaign bounce', bodyPreview: 'Fixture', classification: 'bounce', matchedContactId: 7, isRead: 1, receivedAt: '2026-11-17T01:00:00Z', _centerContact: reference },
+        { id: 303, fromEmail: 'other@example.test', fromName: 'Other', subject: 'Other reply', bodyPreview: 'Fixture', classification: 'replied', matchedContactId: 99, isRead: 1, receivedAt: '2026-11-17T00:00:00Z' },
+      ] };
+      return delegate(channel, input);
+    });
+    window.location.hash = '#/inbox?campaign=campaign-1&campaignStatus=replied';
+    await mount(<InboxList />);
+    expect(host.querySelector('.inbox-campaign-filter')?.textContent).toContain('Brazil outreach');
+    expect(host.querySelector('.inbox-campaign-filter')?.textContent).toContain('已收到');
+    expect(host.textContent).toContain('Campaign reply');
+    expect(host.textContent).not.toContain('Campaign bounce');
+    expect(host.textContent).not.toContain('Other reply');
+  });
+  it('loads the next server page without page controls', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    const mail = (id: number, subject: string, receivedAt: string) => ({ id, fromEmail: contact.email, fromName: 'Buyer', subject, bodyPreview: 'Fixture', classification: 'replied', matchedContactId: null, isRead: 1, receivedAt, _centerContact: reference });
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel !== 'inbox:list') return delegate(channel, input);
+      const request = input as { cursor?: string };
+      return request.cursor === 'page-2'
+        ? { success: true, data: { items: [mail(402, 'Second page mail', '2026-11-16T00:00:00Z')], total: 2, nextCursor: null } }
+        : { success: true, data: { items: [mail(401, 'First page mail', '2026-11-17T00:00:00Z')], total: 2, nextCursor: 'page-2' } };
+    });
+    await mount(<InboxList />);
+    await vi.waitFor(() => expect(host.textContent).toContain('First page mail'), { timeout: 2000 });
+    await act(async () => {
+      const scroller = Array.from(host.querySelectorAll<HTMLElement>('div')).find(node => node.style.overflow === 'auto')!;
+      scroller.scrollTop = 1;
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+      await flush();
+    });
+    await vi.waitFor(() => expect(invoke.mock.calls.some(call => call[0] === 'inbox:list' && (call[1] as { cursor?: string }).cursor === 'page-2')).toBe(true), { timeout: 3000 });
+    expect(host.textContent).toContain('First page mail');
+    expect(host.textContent).toContain('Second page mail');
+  });
   it('hides company backcheck while keeping offline contact history guidance', async () => {
     invoke.mockResolvedValue({ ok: true, data: { ...detail, supplementAvailable: false, activities: [], mailEvents: [] } });
     await mount(<CenterContactDetail reference={reference} onClose={() => {}} />);
@@ -106,6 +196,7 @@ describe('center contact mailbox renderer boundary', () => {
     expect(host.querySelector('.inbox-management-pane')).not.toBeNull();
     expect(host.querySelectorAll('.inbox-management-item').length).toBeGreaterThan(6);
     expect(host.querySelector('button[title="重点客户"]')).not.toBeNull();
+    expect(host.querySelector('button[title="重点客户"] .anticon')?.getAttribute('style')).toContain('color');
 
     await act(async () => { (host.querySelector('button[title="未读"]') as HTMLButtonElement).click(); await flush(); });
     expect(host.textContent).toContain('Unread bounce');
@@ -115,6 +206,47 @@ describe('center contact mailbox renderer boundary', () => {
     expect(host.textContent).toContain('Labeled reply');
     expect(host.textContent).toContain('Sent followup');
     expect(host.textContent).not.toContain('Unread bounce');
+  });
+  it('keeps sidebar counts independent from the active classification', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    const messages = [
+      { id: 1, fromEmail: contact.email, fromName: 'Buyer', subject: 'Inbound reply', bodyPreview: 'Fixture', classification: 'replied', matchedContactId: null, isRead: 1, receivedAt: '2026-10-14T00:00:00Z' },
+      { id: 2, fromEmail: 'sales@example.test', fromName: 'Sales', subject: 'Sent followup', bodyPreview: 'Fixture', classification: 'sent', matchedContactId: null, isRead: 1, receivedAt: '2026-10-15T00:00:00Z' },
+      { id: 3, fromEmail: 'bounce@example.test', fromName: 'Mailer', subject: 'Unread bounce', bodyPreview: 'Fixture', classification: 'bounce', matchedContactId: null, isRead: 0, receivedAt: '2026-10-16T00:00:00Z' },
+    ];
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'inbox:list') {
+        const classification = (input as { classification?: string } | undefined)?.classification;
+        return { success: true, data: classification ? messages.filter(message => message.classification === classification) : messages };
+      }
+      if (channel === 'inbox:summary') return { success: true, data: {
+        total: 3, allTotal: 3,
+        unread: 1,
+        byClassification: {
+          replied: { total: 1, unread: 0 }, sent: { total: 1, unread: 0 }, bounce: { total: 1, unread: 1 },
+          autoreply: { total: 0, unread: 0 }, other: { total: 0, unread: 0 },
+        },
+        byDate: {}, labels: {}, pinned: 0, conversations: [], pinnedItems: [],
+        byAccount: { '1': { total: 3, unread: 1, email: 'sales@example.test', latestAt: Date.parse('2026-10-16T00:00:00Z') } },
+      } };
+      return delegate(channel, input);
+    });
+    await mount(<InboxList />);
+    const count = (title: string) => host.querySelector(`button[title="${title}"] em`)?.textContent;
+    expect(count('全部邮件')).toBe('3');
+    expect(count('未读')).toBe('1');
+    await act(async () => { (host.querySelector('button[title="已发送"]') as HTMLButtonElement).click(); await flush(); });
+    expect(host.textContent).toContain('Sent followup');
+    expect(count('全部邮件')).toBe('3');
+    expect(count('未读')).toBe('1');
+    expect(count('已发送')).toBe('1');
+    expect(count('退信')).toBe('1');
+  });
+  it('opens new-folder configuration beside the folder action', async () => {
+    await mount(<InboxList />);
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="新建文件夹"]')!.click(); await flush(); });
+    expect(document.body.querySelector('.inbox-label-editor.is-card')).not.toBeNull();
+    expect(document.body.querySelector('.inbox-label-color-swatches')).not.toBeNull();
   });
   it('shows AI folder suggestions without a pinned-mail navigation category', async () => {
     const delegate = invoke.getMockImplementation()!;
@@ -137,12 +269,109 @@ describe('center contact mailbox renderer boundary', () => {
     expect(host.textContent).toContain('Acme Logistics');
     expect(host.querySelector('button[aria-label="确认文件夹 Acme Logistics"]')).not.toBeNull();
     expect(host.querySelector('button[aria-label="删除文件夹建议 Acme Logistics"]')).not.toBeNull();
+    expect(host.querySelector('.inbox-ai-folder-suggestions')?.textContent).toContain('Acme Logistics');
+    const baseFolderRows = Array.from(host.querySelectorAll('.inbox-folder-children > .inbox-folder-row')).map(row => row.textContent || '').join(' ');
+    expect(baseFolderRows).toContain('重点客户');
+    expect(baseFolderRows).not.toContain('Acme Logistics');
 
     await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="确认文件夹 Acme Logistics"]')!.click(); await flush(); });
     expect(invoke).toHaveBeenCalledWith('inbox:folderConfirm', expect.objectContaining({ labelId: 12 }));
 
     expect(host.textContent).toContain('Pinned quote');
     expect(host.textContent).toContain('Unpinned update');
+  });
+  it('keeps derived workflow categories in the todo area without a second folder tree', async () => {
+    await mount(<InboxList />);
+    expect(host.querySelector('.inbox-functional-folder-block')).toBeNull();
+    expect(host.querySelector('button[title="功能文件夹"]')).toBeNull();
+    expect(host.querySelector('button[title="待我回复"]')).not.toBeNull();
+    expect(host.querySelector('button[title="待跟进"]')).not.toBeNull();
+    expect(host.querySelector('button[title="需关注"]')).not.toBeNull();
+  });
+  it('shows sent conversations waiting at least three days in follow-up', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    const now = Date.now();
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'inbox:list') return { success: true, data: [
+        { id: 121, fromEmail: 'me@example.test', to: 'old-buyer@example.test', subject: 'Old quote follow-up', bodyPreview: 'Fixture', classification: 'sent', matchedContactId: null, isRead: 1, receivedAt: new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString(), _accountEmail: 'me@example.test' },
+        { id: 122, fromEmail: 'me@example.test', to: 'new-buyer@example.test', subject: 'Recent quote', bodyPreview: 'Fixture', classification: 'sent', matchedContactId: null, isRead: 1, receivedAt: new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString(), _accountEmail: 'me@example.test' },
+      ] };
+      return delegate(channel, input);
+    });
+    await mount(<InboxList />);
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[title="待跟进"]')!.click(); await flush(); });
+    expect(host.textContent).toContain('Old quote follow-up');
+    expect(host.textContent).not.toContain('Recent quote');
+  });
+  it('links an open mail follow-up task into the follow-up category', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    const sourceMessageKey = 'message-key-follow-up';
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'inbox:list') return { success: true, data: [{
+        id: 123, fromEmail: 'me@example.test', to: 'buyer@example.test', subject: 'Tracked follow-up', bodyPreview: 'Fixture', classification: 'sent', matchedContactId: null, isRead: 1, receivedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), _accountEmail: 'me@example.test', _centerMessageKeys: [sourceMessageKey],
+      }] };
+      if (channel === ONLINE_CHANNELS.TASK_LIST) return { ok: true, data: { total: 1, items: [{
+        taskId: 'task-linked-follow-up', customerId: contact.customerId, title: '跟进已发送报价', dueAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), status: 'open', version: 1,
+        responsibleUserId: 'fixture', responsibleName: 'Fixture', createdBy: 'fixture', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), completedAt: null, completedBy: null, feedback: null, canManage: true,
+        sourceKind: 'mail_manual', sourceMessageKey,
+      }] } };
+      return delegate(channel, input);
+    });
+    await mount(<InboxList />);
+    const followUp = await vi.waitFor(() => {
+      const button = host.querySelector<HTMLButtonElement>('button[title="待跟进"]');
+      expect(button?.querySelector('em')?.textContent).toBe('1');
+      return button!;
+    });
+    await act(async () => { followUp.click(); await flush(); });
+    expect(host.textContent).toContain('Tracked follow-up');
+  });
+  it('writes todo completion back so the mail leaves the needs-reply folder', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    let todoState: 'open' | 'done' | null = null;
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'inbox:list') return { success: true, data: [{
+        id: 111, fromEmail: contact.email, fromName: 'Buyer', subject: 'Needs reply quote', bodyPreview: 'Fixture', classification: 'replied', matchedContactId: null, isRead: 0, receivedAt: '2026-10-16T00:00:00Z',
+        _todoState: todoState, _analysis: { messageId: 111, category: 'quote_request', priority: 'important', requiresAction: true, summary: '需要回复报价', nextAction: '回复客户', dueHint: '今天', confidence: 0.92, evidence: [], source: 'rule', analyzerVersion: 'fixture', status: 'ready', error: null, updatedAt: '2026-10-16T00:00:00Z' },
+      }] };
+      if (channel === 'inbox:todoState') {
+        todoState = 'done';
+        return { success: true, data: { messageId: 111, state: 'done', changed: true } };
+      }
+      return delegate(channel, input);
+    });
+    await mount(<InboxList />);
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[title="待我回复"]')!.click(); await flush(); });
+    expect(host.textContent).toContain('Needs reply quote');
+    await act(async () => { host.querySelector<HTMLElement>('.inbox-clean-row')!.click(); await flush(); });
+    const done = Array.from(host.querySelectorAll<HTMLButtonElement>('.inbox-detail-subject-actions .inbox-detail-todo')).find(button => button.textContent?.includes('已处理'));
+    expect(done).not.toBeUndefined();
+    expect(host.querySelector('.inbox-detail-todo-action-row')).toBeNull();
+    await act(async () => { done!.click(); await flush(); await flush(); });
+    expect(invoke).toHaveBeenCalledWith('inbox:todoState', expect.objectContaining({ messageId: 111, state: 'done' }));
+    expect(host.textContent).not.toContain('Needs reply quote');
+  });
+  it('lets a user manually add a mail without AI analysis to todo', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    let todoState: 'open' | 'done' | null = null;
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'inbox:list') return { success: true, data: [{
+        id: 112, fromEmail: 'manual@example.test', fromName: 'Manual', subject: 'Manual todo mail', bodyPreview: 'Fixture', classification: 'other', matchedContactId: null, isRead: 1, receivedAt: '2026-10-16T00:00:00Z', _todoState: todoState,
+      }] };
+      if (channel === 'inbox:todoState') {
+        todoState = (input as { state: 'open' | 'done' }).state;
+        return { success: true, data: { messageId: 112, state: todoState, changed: true } };
+      }
+      return delegate(channel, input);
+    });
+    await mount(<InboxList />);
+    await act(async () => { host.querySelector<HTMLElement>('.inbox-clean-row')!.click(); await flush(); });
+    const add = host.querySelector<HTMLButtonElement>('.inbox-detail-todo');
+    expect(add?.textContent).toContain('加入待办');
+    await act(async () => { add!.click(); await flush(); await flush(); });
+    expect(invoke).toHaveBeenCalledWith('inbox:todoState', expect.objectContaining({ messageId: 112, state: 'open' }));
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[title="待办"]')!.click(); await flush(); });
+    expect(host.textContent).toContain('Manual todo mail');
   });
   it('exposes basic mail actions in the right-click menu', async () => {
     const delegate = invoke.getMockImplementation()!;
@@ -192,6 +421,7 @@ describe('center contact mailbox renderer boundary', () => {
     await mount(<InboxList />);
 
     expect(host.textContent).toContain('仅详情显示的判断摘要');
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="展开邮件上下文"]')!.click(); await flush(); });
     expect(host.querySelector('.inbox-thread-list')).not.toBeNull();
     expect(host.querySelector('.inbox-match-body')).not.toBeNull();
 
@@ -203,6 +433,18 @@ describe('center contact mailbox renderer boundary', () => {
 
     await act(async () => { host.querySelector<HTMLButtonElement>('.inbox-match-heading')!.click(); await flush(); });
     expect(host.querySelector('.inbox-match-body')).toBeNull();
+  });
+  it('starts with the right context sidebar collapsed and remembers toggles while the inbox stays mounted', async () => {
+    await mount(<InboxList />);
+    const sidebar = host.querySelector<HTMLElement>('.inbox-detail-context-sidebar')!;
+    expect(sidebar.classList.contains('is-collapsed')).toBe(true);
+    expect(host.querySelector('.inbox-match-body')).toBeNull();
+    expect(host.querySelector('[aria-label="展开邮件上下文"]')?.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="展开邮件上下文"]')!.click(); await flush(); });
+    expect(sidebar.classList.contains('is-collapsed')).toBe(false);
+    expect(host.querySelector('.inbox-match-body')).not.toBeNull();
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="收起邮件上下文"]')!.click(); await flush(); });
+    expect(sidebar.classList.contains('is-collapsed')).toBe(true);
   });
   it('filters the inbox through local AI analysis groups', async () => {
     const delegate = invoke.getMockImplementation()!;
@@ -314,6 +556,7 @@ describe('center contact mailbox renderer boundary', () => {
     await act(async () => { action.click(); await flush(); await flush(); });
 
     expect(invoke).toHaveBeenCalledWith('inbox:todoState', expect.objectContaining({ messageId: 1, state: 'done', idempotencyKey: expect.any(String) }));
+    expect(host.textContent).not.toContain('map is not a function');
     expect(host.querySelectorAll('.inbox-todo-row')).toHaveLength(0);
   });
   it('marks the visible todo queue handled in one batch request', async () => {
@@ -448,7 +691,7 @@ describe('center contact mailbox renderer boundary', () => {
       return delegate(channel, input);
     });
     await mount(<InboxList />);
-    expect(invoke).toHaveBeenCalledWith('inbox:list', { centerMessageKey: 'message:exact-old' });
+    expect(invoke).toHaveBeenCalledWith('inbox:list', expect.objectContaining({ centerMessageKey: 'message:exact-old', limit: 200 }));
     await vi.waitFor(() => expect(invoke.mock.calls.some(call => call[0] === 'inbox:getBody' && call[1] === 61)).toBe(true));
     expect(host.querySelector('.inbox-clean-row.is-active')?.textContent).toContain('Quote request');
   });
@@ -519,6 +762,7 @@ describe('center contact mailbox renderer boundary', () => {
       return delegate(channel, input);
     });
     await mount(<InboxList />);
+    await openContextSidebar();
 
     const threadRows = await vi.waitFor(() => {
       const rows = Array.from(host.querySelectorAll<HTMLButtonElement>('.inbox-thread-row'));
@@ -542,6 +786,7 @@ describe('center contact mailbox renderer boundary', () => {
         classification: 'sent', matchedContactId: null, isRead: 1, receivedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(), _accountEmail: 'sales@example.test',
       }] };
       if (channel === ONLINE_CHANNELS.TASK_CREATE) return { ok: true, data: task };
+      if (channel === ONLINE_CHANNELS.TASK_CANCEL) return { ok: true, data: { ...task, status: 'cancelled', version: 2, feedback: '用户取消 3 天跟进任务' } };
       return delegate(channel, input);
     });
     await mount(<InboxList />);
@@ -558,7 +803,10 @@ describe('center contact mailbox renderer boundary', () => {
       title: expect.stringContaining('跟进'),
       idempotencyKey: expect.any(String),
     }));
-    await vi.waitFor(() => expect(host.querySelector('.inbox-detail-followup')?.textContent).toContain('已建跟进'));
+    await vi.waitFor(() => expect(host.querySelector('.inbox-detail-followup')?.textContent).toContain('取消跟进'));
+    await act(async () => { host.querySelector<HTMLButtonElement>('.inbox-detail-followup')!.click(); await flush(); });
+    expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TASK_CANCEL, expect.objectContaining({ taskId: 'task-followup', expectedVersion: 1, reason: expect.any(String), idempotencyKey: expect.any(String) }));
+    await vi.waitFor(() => expect(host.querySelector('.inbox-detail-followup')?.textContent).toContain('等待'));
   });
   it('renders all mail as a clean high-density list without AI analysis rows', async () => {
     const delegate = invoke.getMockImplementation()!;
@@ -607,13 +855,12 @@ describe('center contact mailbox renderer boundary', () => {
     await act(async () => { (host.querySelector('button[title="未读"]') as HTMLButtonElement).click(); await flush(); });
     expect(host.querySelector('.inbox-clean-row')?.classList.contains('is-unread')).toBe(true);
     await act(async () => {
-      Array.from(host.querySelectorAll('span')).find(el => el.textContent === 'Unread mail')!
-        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      (host.querySelector('.inbox-clean-row') as HTMLElement).click();
       await flush();
       await flush();
     });
 
-    expect(invoke).toHaveBeenCalledWith('inbox:markRead', 9);
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('inbox:markRead', 9), { timeout: 2000 });
     expect(host.querySelectorAll('.inbox-clean-row')).toHaveLength(1);
     expect(host.querySelector('.inbox-clean-row')?.classList.contains('is-unread')).toBe(false);
   });
@@ -666,6 +913,7 @@ describe('center contact mailbox renderer boundary', () => {
       ? { success: true, data: [] }
       : delegate(channel, input));
     await mount(<InboxList />);
+    await openContextSidebar();
     await act(async () => { Array.from(host.querySelectorAll('span')).find(el => el.textContent === 'Fixture mail')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     const add = Array.from(host.querySelectorAll('.inbox-match-bar span')).find(el => el.textContent?.includes('buyer@buyer.example'));
     expect(add?.textContent).toContain('buyer@buyer.example');
@@ -680,6 +928,7 @@ describe('center contact mailbox renderer boundary', () => {
         ? { success: true, data: '<p>Please copy partner@example.invalid</p>' }
         : delegate(channel, input));
     await mount(<InboxList />);
+    await openContextSidebar();
     await act(async () => { Array.from(host.querySelectorAll('span')).find(el => el.textContent === 'Fixture mail')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     const add = Array.from(host.querySelectorAll('.inbox-match-bar span')).find(el => el.textContent?.includes('partner@example.invalid'));
     await act(async () => { add!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
@@ -695,6 +944,7 @@ describe('center contact mailbox renderer boundary', () => {
       return delegate(channel, input);
     });
     await mount(<InboxList />);
+    await openContextSidebar();
     await act(async () => { Array.from(host.querySelectorAll('span')).find(el => el.textContent === 'Fixture mail')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     expect(host.textContent).toContain('邮件中的其他联系人 1 人');
     expect(host.textContent).toContain('colleague@buyer.example');
@@ -706,6 +956,7 @@ describe('center contact mailbox renderer boundary', () => {
       ? { success: false, error: '中心联系人暂时不可用' }
       : delegate(channel, input));
     await mount(<InboxList />);
+    await openContextSidebar();
     await act(async () => { Array.from(host.querySelectorAll('span')).find(el => el.textContent === 'Fixture mail')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     expect(host.querySelector('.inbox-match-bar')?.textContent).toContain('联系人读取失败：中心联系人暂时不可用');
     expect(host.querySelector('.inbox-match-bar')?.textContent).not.toContain('未提取');
@@ -984,8 +1235,114 @@ describe('center contact mailbox renderer boundary', () => {
       return delegate(channel, input);
     });
     await mount(<InboxList />);
+    await openContextSidebar();
     await act(async () => { Array.from(host.querySelectorAll('span')).find(el => el.textContent === 'Delivery failed')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
     expect(host.querySelector('.inbox-match-bar')?.textContent).toContain('被退 1 人');
     expect(host.querySelector('.inbox-match-bar')?.textContent).toContain('bounced@buyer.example');
+  });
+  it('drags a multi-selected mail set into a conversation status', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'inbox:list') return { success: true, data: [
+        { id: 1, fromEmail: 'a@example.test', fromName: 'A', subject: 'First drag', bodyPreview: 'Fixture', classification: 'replied', matchedContactId: null, isRead: 1, receivedAt: '2026-10-16T00:00:00Z' },
+        { id: 2, fromEmail: 'b@example.test', fromName: 'B', subject: 'Second drag', bodyPreview: 'Fixture', classification: 'replied', matchedContactId: null, isRead: 1, receivedAt: '2026-10-15T00:00:00Z' },
+      ] };
+      if (channel === 'inbox:conversationStateBatch') return { success: true, data: { messageIds: input.messageIds, state: 'important', updated: 2 } };
+      return delegate(channel, input);
+    });
+    await mount(<InboxList />);
+    const rows = host.querySelectorAll<HTMLElement>('.inbox-clean-row');
+    await act(async () => { rows[0]!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(); });
+    await act(async () => { rows[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })); await flush(); });
+    await act(async () => {
+      fireDrag('dragstart', host.querySelectorAll('.inbox-clean-row')[0]!);
+      fireDrag('dragover', host.querySelector('button[title="需关注"]')!);
+      fireDrag('drop', host.querySelector('button[title="需关注"]')!);
+      await flush(); await flush();
+    });
+    expect(invoke).toHaveBeenCalledWith('inbox:conversationStateBatch', expect.objectContaining({ messageIds: [1, 2], state: 'important' }));
+  });
+  it('drags mail into pin and normal folders while leaving AI suggestions inert', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'inbox:list') return { success: true, data: [
+        { id: 21, fromEmail: 'pin@example.test', fromName: 'Pin', subject: 'Pin target', bodyPreview: 'Fixture', classification: 'replied', matchedContactId: null, isRead: 1, receivedAt: '2026-10-16T00:00:00Z', _labelIds: [] },
+      ] };
+      if (channel === 'inbox:labels') return { success: true, data: [
+        { labelId: 5, name: '重点客户', color: '#2563eb', count: 0, status: 'active', source: 'user', createdAt: '2026-10-14T00:00:00Z', updatedAt: '2026-10-14T00:00:00Z' },
+        { labelId: 6, name: 'Acme Logistics', color: '#0f766e', count: 0, candidateCount: 1, status: 'suggested', source: 'ai', createdAt: '2026-10-14T00:00:00Z', updatedAt: '2026-10-14T00:00:00Z' },
+      ] };
+      if (channel === 'inbox:messagesPinBatch') return { success: true, data: { messageIds: input.messageIds, pinned: true, updated: 1 } };
+      if (channel === 'inbox:messageLabelsBatch') return { success: true, data: { messageIds: input.messageIds, labelIds: [5], updated: 1 } };
+      return delegate(channel, input);
+    });
+    await mount(<InboxList />);
+    const dragTo = async (target: Element) => {
+      await act(async () => {
+        fireDrag('dragstart', host.querySelector('.inbox-clean-row')!);
+        fireDrag('dragover', target);
+        fireDrag('drop', target);
+        await flush(); await flush();
+      });
+    };
+    const pinSection = host.querySelectorAll('.inbox-folder-section')[0]!;
+    await act(async () => {
+      fireDrag('dragstart', host.querySelector('.inbox-clean-row')!);
+      fireDrag('dragover', pinSection);
+      await flush();
+    });
+    expect(pinSection.classList.contains('is-drop-active')).toBe(true);
+    await act(async () => {
+      fireDrag('drop', pinSection);
+      await flush(); await flush();
+    });
+    expect(invoke).toHaveBeenCalledWith('inbox:messagesPinBatch', expect.objectContaining({ messageIds: [21], pinned: true }));
+    await dragTo(host.querySelector('button[title="重点客户"]')!);
+    expect(invoke).toHaveBeenCalledWith('inbox:messageLabelsBatch', expect.objectContaining({ messageIds: [21], labelIds: [5] }));
+    expect(host.querySelector('button[title="Acme Logistics"]')?.closest('.inbox-folder-row')?.classList.contains('inbox-drop-target')).toBe(false);
+    const callsBefore = invoke.mock.calls.filter(call => call[0] === 'inbox:messageLabelsBatch').length;
+    await dragTo(host.querySelector('button[title="Acme Logistics"]')!);
+    expect(invoke.mock.calls.filter(call => call[0] === 'inbox:messageLabelsBatch').length).toBe(callsBefore);
+  });
+  it('creates and fills a folder when mail is dropped on blank folder space', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'inbox:list') return { success: true, data: [{
+        id: 31, fromEmail: 'blank@acme.test', fromName: 'Acme Buyer', subject: 'Blank folder', bodyPreview: 'Fixture', classification: 'replied', matchedContactId: null, isRead: 1, receivedAt: '2026-10-16T00:00:00Z', _labelIds: [],
+      }] };
+      if (channel === 'inbox:labels') return { success: true, data: [] };
+      if (channel === 'inbox:labelSave') return { success: true, data: { labelId: 88, name: 'Acme Buyer', color: '#0f766e', count: 0, source: 'user', status: 'active', createdAt: '2026-10-16T00:00:00Z', updatedAt: '2026-10-16T00:00:00Z' } };
+      if (channel === 'inbox:messageLabelsBatch') return { success: true, data: { messageIds: input.messageIds, labelIds: [88], updated: 1 } };
+      return delegate(channel, input);
+    });
+    await mount(<InboxList />);
+    const blank = host.querySelector('.inbox-folder-blank-drop')!;
+    await act(async () => {
+      fireDrag('dragstart', host.querySelector('.inbox-clean-row')!);
+      fireDrag('dragover', blank);
+      await flush();
+    });
+    expect(blank.closest('.inbox-folder-section')?.classList.contains('is-blank-drop-active')).toBe(true);
+    await act(async () => {
+      fireDrag('drop', blank);
+      await flush(); await flush();
+    });
+    expect(invoke).toHaveBeenCalledWith('inbox:labelSave', expect.objectContaining({ name: 'Acme Buyer' }));
+    expect(invoke).toHaveBeenCalledWith('inbox:messageLabelsBatch', expect.objectContaining({ messageIds: [31], labelIds: [88] }));
+  });
+  it('lets a manual conversation state override the AI todo derivation', async () => {
+    const delegate = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (channel, input) => {
+      if (channel === 'inbox:list') return { success: true, data: [{
+        id: 41, fromEmail: 'buyer@override.test', fromName: 'Buyer', subject: 'Override thread', bodyPreview: 'Fixture', classification: 'replied', matchedContactId: null, isRead: 1, receivedAt: '2026-10-16T00:00:00Z', _conversationState: 'waiting_other',
+        _analysis: { messageId: 41, category: 'quote_request', priority: 'urgent', requiresAction: true, summary: '需要报价', nextAction: '回复报价', dueHint: null, confidence: 0.95, evidence: [], source: 'rule', analyzerVersion: 'fixture', status: 'ready', error: null, updatedAt: '2026-10-16T00:00:00Z' },
+      }] };
+      return delegate(channel, input);
+    });
+    await mount(<InboxList />);
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[title="待办"]')!.click(); await flush(); });
+    expect(host.textContent).not.toContain('Override thread');
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[title="等待对方"]')!.click(); await flush(); });
+    expect(host.textContent).toContain('Override thread');
   });
 });

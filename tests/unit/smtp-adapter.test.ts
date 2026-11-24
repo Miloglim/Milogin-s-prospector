@@ -119,4 +119,13 @@ describe("SMTP 适配器", () => {
     expect(options.html).not.toContain("file:///C:/secret.png");
     expect(options.attachments).toEqual([]);
   });
+
+  it("passes user reply attachments to SMTP", async () => {
+    const accountId = seedAccount();
+    const result = await sendBcc(item(accountId, { body: '<p>Hi</p>', attachments: [{ filename: 'report.pdf', contentType: 'application/pdf', content: Buffer.from('pdf') }] }));
+    expect(result.success).toBe(true);
+    const options = h.sendMail.mock.calls[0]?.[0] as { attachments: Array<{ filename: string; content: Buffer }> };
+    expect(options.attachments[0]?.filename).toBe('report.pdf');
+    expect(options.attachments[0]?.content.toString()).toBe('pdf');
+  });
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Alert, Button, Empty, Input, Select, Space, Spin, Table, Tag, Typography, theme, type TableColumnsType, type TableProps } from "antd";
+import { Alert, Empty, Input, Select, Space, Spin, Table, Tag, Typography, theme, type TableColumnsType, type TableProps } from "antd";
 import { ADMIN_DATA_BROWSER_LIMITS, type AdminDataPage, type AdminDataTableInfo, type AdminDataValueKind } from "../server/core/admin-data-browser";
 import type { Identity } from "../server/core/auth";
 import { api, ApiError } from "./api";
@@ -37,7 +37,6 @@ export function DataBrowser({ identity }: { identity: Identity }) {
   const [pageSize, setPageSize] = useState<number>(ADMIN_DATA_BROWSER_LIMITS.page);
   const [sort, setSort] = useState<string | undefined>();
   const [direction, setDirection] = useState<"asc" | "desc" | undefined>();
-  const [refreshVersion, setRefreshVersion] = useState(0);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState("");
@@ -80,7 +79,7 @@ export function DataBrowser({ identity }: { identity: Identity }) {
     if (!tableId) return;
     void loadPage();
     return () => { dataVersion.current++; };
-  }, [loadPage, refreshVersion]);
+  }, [loadPage]);
 
   const selectTable = (id: string) => {
     setTableId(id); setSearch(""); setSearchDraft(""); setPage(1); setSort(undefined); setDirection(undefined); setData(null);
@@ -111,7 +110,7 @@ export function DataBrowser({ identity }: { identity: Identity }) {
   return <section className="product-dashboard data-browser" style={style} aria-label="数据浏览">
     <div className="dashboard-heading data-browser-heading">
       <div><Typography.Title level={2}>数据浏览</Typography.Title><Typography.Text type="secondary">中心 PostgreSQL · 只读</Typography.Text></div>
-      <Space><Tag>只读</Tag><Button loading={loadingData} disabled={!tableId} onClick={() => setRefreshVersion(value => value + 1)}>刷新</Button></Space>
+      <Space><Tag>只读</Tag></Space>
     </div>
     {loadingCatalog ? <div className="dashboard-loading"><Spin /><Typography.Text>正在读取数据目录</Typography.Text></div>
       : error && !tables.length ? <Alert type="error" showIcon message={error} />

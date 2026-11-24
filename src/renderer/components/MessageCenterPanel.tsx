@@ -7,7 +7,7 @@ import {
 import { useNavigate } from '@tanstack/react-router';
 import { useOptionalIdentity } from '../IdentityContext';
 import { useOptionalNotifications } from '../NotificationContext';
-import { CONTACT_TOUCH_LABELS, FOLLOWUP_METHOD_LABELS, type ContactAssignmentLifecycleStatus, type OnlineNotification } from '../../shared/online-crm';
+import { CONTACT_TOUCH_LABELS, FOLLOWUP_METHOD_LABELS, ONLINE_CHANNELS, type ContactAssignmentLifecycleStatus, type OnlineNotification } from '../../shared/online-crm';
 import { normalizeInboxSubject } from '../../shared/inbox';
 import { CRM_STAGES } from './ContactDetail';
 import '../pages/messages/MessagesPage.css';
@@ -34,6 +34,7 @@ const LABELS: Record<string, string> = {
   'crm.task.due': '跟进到期',
   'crm.opportunity.created': '新商机',
   'crm.opportunity.stage_changed': '商机进度更新',
+  'crm.ai.deal_won': 'AI 已记录成交',
   'crm.deal.overlap_detected': '成交重叠提醒',
   'crm.contact.assignment.requested': '线索待接受',
   'crm.contact.assignment.accepted': '线索已接受',
@@ -94,6 +95,7 @@ export function notificationChangeCopy(item: OnlineNotification): { label: strin
   }
   if (change.kind === 'task') return { label: '任务到期提醒', detail: change.title || item.summary?.note || '' };
   if (change.kind === 'opportunity') return { label: fallbackLabel, detail: change.title || item.summary?.note || '' };
+  if (change.kind === 'deal_won') return { label: fallbackLabel, detail: [change.title, change.note || item.summary?.note].filter(Boolean).join(' · ') };
   return { label: fallbackLabel, detail: item.summary?.note || '' };
 }
 
@@ -124,7 +126,7 @@ function destinationLabel(item: OnlineNotification): string {
   if (item.attentionItemId) return '查看关注';
   if (item.eventType.startsWith('crm.team.attention.')) return '查看关注项';
   if (item.eventType.startsWith('crm.contact.share.')) return '查看共享';
-  if (item.contactOpenMode === 'monitor') return '监督查看';
+  if (item.contactOpenMode === 'monitor') return '团队查看';
   if (item.requestId || item.eventType.startsWith('crm.contact.assignment.')) return '处理分配';
   if (item.opportunityId || item.eventType.includes('opportunity')) return '查看商机';
   if (item.taskId || item.eventType === 'crm.task.due') return '查看任务';
@@ -213,6 +215,7 @@ export function MessageCenterPanel({ compact = false }: { compact?: boolean } = 
   const [filter, setFilter] = useState<MessageFilter>('全部');
   const [panelSize, setPanelSize] = useState<PanelSize | null>(null);
   const [markingAllRead, setMarkingAllRead] = useState(false);
+  const [cancellingDeal, setCancellingDeal] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const dedupedItems: OnlineNotification[] = [];
@@ -261,6 +264,23 @@ export function MessageCenterPanel({ compact = false }: { compact?: boolean } = 
       if (await notifications.readAll()) message.success('已全部标为已读');
     } finally {
       setMarkingAllRead(false);
+    }
+  };
+
+  const cancelDealWon = async (item: OnlineNotification) => {
+    if (!item.salesCaseId || !item.proposalId || cancellingDeal !== null) return;
+    setCancellingDeal(item.proposalId);
+    try {
+      const result = await window.api.invoke(ONLINE_CHANNELS.SALES_CASE_PROPOSAL_ACT, {
+        caseId: item.salesCaseId,
+        proposalId: item.proposalId,
+        action: 'cancel',
+      }) as { ok: boolean; error?: { message?: string } };
+      if (!result?.ok) { message.error(result?.error?.message || '取消失败'); return; }
+      message.success('已取消 AI 成交记录');
+      await notifications?.refresh(true);
+    } finally {
+      setCancellingDeal(null);
     }
   };
 
@@ -367,6 +387,7 @@ export function MessageCenterPanel({ compact = false }: { compact?: boolean } = 
             </>;
             return <div key={item.id} className={`message-row${item.read ? '' : ' is-unread'}`}>
               {canOpen ? <button type="button" className="message-main" onClick={() => void open(item)}>{content}</button> : <div className="message-main">{content}</div>}
+              {item.eventType === 'crm.ai.deal_won' && item.salesCaseId && item.proposalId && <Button className="message-deal-action" danger type="text" size="small" loading={cancellingDeal === item.proposalId} onClick={() => void cancelDealWon(item)}>取消成交</Button>}
               <span className="message-status">
                 {!item.read && <span className="message-unread-dot" aria-label="未读" />}
               </span>

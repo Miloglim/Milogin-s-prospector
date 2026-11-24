@@ -6,6 +6,7 @@ import type { LeadIngressInput } from '../../core/lead-ingress';
 import type { LeadActor } from './lead-repository';
 import { evaluateLeadIngressIn, materializeLeadIngressIn } from './lead-match-repository';
 import { recordImportOverlapsIn } from './lead-overlap-repository';
+import { ensureSalesCaseIn } from './sales-case-repository';
 
 const optional = (value: string | undefined): string | null => value?.trim() || null;
 const attemptKey = (key: string, index: number): string => `${key.slice(0, 120)}:${index}`;
@@ -40,6 +41,8 @@ export async function importFlatLeadsIn(c: PoolClient, actor: LeadActor, input: 
     let status: ImportReceiptRow['status'] = 'created';
     let message = importRowIssue(row);
     let customerId: string | undefined;
+    let contactId: number | undefined;
+    let caseId: string | undefined;
     let conflict: ImportReceiptRow['conflict'];
     let overlapCount = 0;
     if (message) status = 'invalid';
@@ -81,6 +84,15 @@ export async function importFlatLeadsIn(c: PoolClient, actor: LeadActor, input: 
           status = 'restricted_conflict'; message = applied.error.message;
         } else {
           customerId = applied.data.customerId;
+          contactId = applied.data.createdContactIds?.[0] ?? applied.data.contactIds[0];
+          if (contactId) {
+            const ensured = await ensureSalesCaseIn(c, {
+              customerId, contactId, ownerUserId: actor.userId,
+              source: input.kind === 'personal' ? 'personal_import' : 'operations_import',
+              summary: row.companyName || null,
+            });
+            caseId = ensured.caseId;
+          }
           overlapCount = await recordImportOverlapsIn(c, applied.data.customerId, applied.data.contactIds ?? []);
           status = applied.data.createdContactIds?.length === 0 && applied.data.restoredContactIds.length === 0 ? 'duplicate' : 'created';
         }
@@ -88,7 +100,7 @@ export async function importFlatLeadsIn(c: PoolClient, actor: LeadActor, input: 
     }
     await c.query('INSERT INTO crm_import_rows(row_id,batch_id,row_index,customer_key,raw_row,customer_id,status) VALUES($1,$2,$3,$4,$5,$6,$7)', [rowId, batchId, index, row.customerKey, JSON.stringify({ input: row, rawRow: row.rawRow ?? original }), customerId ?? null, status]);
     if (overlapCount && !message) message = `已导入，发现 ${overlapCount} 条范围重叠`;
-    rows.push({ rowId, index, status, ...(customerId ? { customerId } : {}), ...(message ? { message } : {}), ...(conflict ? { conflict } : {}), ...(overlapCount ? { overlapCount } : {}) });
+    rows.push({ rowId, index, status, companyName: row.companyName, contactName: row.name || [row.firstName, row.lastName].filter(Boolean).join(' '), email: row.email || undefined, country: row.country || undefined, ...(customerId ? { customerId } : {}), ...(contactId ? { contactId } : {}), ...(caseId ? { caseId } : {}), ...(message ? { message } : {}), ...(conflict ? { conflict } : {}), ...(overlapCount ? { overlapCount } : {}) });
   }
   return { batchId, version: 1, rows };
 }

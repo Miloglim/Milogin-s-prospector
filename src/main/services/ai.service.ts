@@ -1,16 +1,19 @@
 import * as path from "path";
-import { APP_ROOT } from "../config";
+import * as config from "../config";
 import { Log } from "../logger";
 import { okResult, failResult, type Result } from "../errors";
 import { upsertEnv } from "../env-store";
-import { readActiveEndpoint, readLightEndpoint, endpointFamily, thinkingExtras, thinkingExtrasOn, isOpenAiLuna, isHtmlEndpointResponse, HTML_ENDPOINT_ERROR, extractResponsesText, modelApiUrl, type WireApi } from "./endpoint.service";
 import { readIdentity } from "./agent/identity";
 import { netFetch } from "../net-proxy";
+import { getCenterAiSession } from "./center-ai-session.service";
+import { HTML_ENDPOINT_ERROR, endpointFamily, extractResponsesText, isHtmlEndpointResponse, isOpenAiLuna, modelApiUrl, readLightEndpoint, thinkingExtras, thinkingExtrasOn, type WireApi } from "./endpoint.service";
 
 // ── .env 加载（dotenv：Node 不内置 .env 解析）──────────
 // 密钥不落代码、不进对话，只从 .env 读。
 import * as dotenv from "dotenv";
-dotenv.config({ path: path.join(APP_ROOT, ".env") });
+let appRoot = process.cwd();
+try { appRoot = config.APP_ROOT || appRoot; } catch { /* test mocks may expose only task-specific config keys */ }
+dotenv.config({ path: path.join(appRoot, ".env") });
 
 /** 读取密钥；未配置时返回 null（不崩溃，由调用方提示） */
 export function getApiKey(name: "DEEPSEEK_API_KEY" | "EXA_API_KEY" | "TAVILY_API_KEY"): string | null {
@@ -48,39 +51,30 @@ export function setApiKey(name: ApiKeyName, value: string): Result<void> {
   }
 }
 
-// ── LLM 调用（端点归一：与 agent 会话共用 AGENT_API_*，未配置时回落 DeepSeek）──
-// 归一理由：能力调用（背调/开发信/总结）与 agent 会话此前各自维护端点，密钥配置两套、
-// 行为不一致。现在统一从 AGENT_API_BASE_URL/KEY/MODEL 读取；仅当未配置时才回落旧
-// DeepSeek 专用密钥，保证老用户零改动可用。
+// ── LLM 调用：模型服务和密钥统一由中心提供，桌面端不再读取本地端点配置。──
 
-const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
-const DEEPSEEK_MODEL = "deepseek-chat";
+interface ResolvedLlmEndpoint { url: string; model: string; key: string; label: "center" | "local"; wireApi: WireApi }
 
-interface ChatMessage {
-  role: "system" | "user";
-  content: string;
-}
-
-/** 能力调用的端点解析：与 agent 会话同源（读同一份生效端点），未配置时回落 DeepSeek */
-function resolveLlmEndpoint(): { url: string; model: string; key: string; label: string; wireApi: WireApi } | null {
-  const e = readActiveEndpoint();
-  // 模型名必须显式配置：猜一个默认名只会在异族网关上换来一句看不懂的 400/404
-  if (e.baseUrl && e.apiKey && e.model) {
-    return { url: modelApiUrl(e.baseUrl, e.wireApi), model: e.model, key: e.apiKey, label: "agent", wireApi: e.wireApi };
+/** Center-managed access wins; a configured local endpoint remains a development/legacy fallback. */
+function resolveLlmEndpoint(): ResolvedLlmEndpoint | null {
+  if (process.env.PROSPECTOR_LOCAL_AI === '1') {
+    const local = readLightEndpoint();
+    if (local.baseUrl && local.apiKey && local.model) return { url: modelApiUrl(local.baseUrl, local.wireApi), model: local.model, key: local.apiKey, label: 'local', wireApi: local.wireApi };
+    return null;
   }
-  const deepKey = process.env.DEEPSEEK_API_KEY?.trim();
-  if (deepKey) return { url: DEEPSEEK_ENDPOINT, model: DEEPSEEK_MODEL, key: deepKey, label: "deepseek", wireApi: "chat_completions" };
+  const center = getCenterAiSession();
+  if (center) return { url: `${center.baseUrl.replace(/\/$/, '')}/api/ai/chat/completions`, model: "center-managed", key: center.accessToken, label: "center", wireApi: "chat_completions" };
+  const local = readLightEndpoint();
+  if (local.baseUrl && local.apiKey && local.model) return { url: modelApiUrl(local.baseUrl, local.wireApi), model: local.model, key: local.apiKey, label: "local", wireApi: local.wireApi };
   return null;
 }
 
 /** 轻任务 LLM 调用（会话压缩摘要等单发小任务；也被 agent.service 复用）。opts.thinking 供起草/背调等高价值合成开思考。 */
-export async function chat(system: string, user: string, opts?: { thinking?: boolean; signal?: AbortSignal }): Promise<Result<string>> {
-  // 大小模型路由：能力调用（总结/背调/开发信/压缩摘要）优先走轻任务档 LIGHT_*，未配置回落主端点
-  const light = readLightEndpoint();
-  const ep = light.source === "light"
-    ? { url: modelApiUrl(light.baseUrl, light.wireApi), model: light.model, key: light.apiKey, label: "light", wireApi: light.wireApi }
-    : resolveLlmEndpoint();
-  if (!ep) return failResult("模型端点未配置：请到「设置 → 模型与端点」填好 Base URL / 密钥 / 模型名并启用（或在 .env 配 DEEPSEEK_API_KEY 作回落）");
+export async function chat(system: string, user: string, opts?: { thinking?: boolean; signal?: AbortSignal; feature?: 'agent'|'draft'|'backcheck'|'mail_analysis'|'summary' }): Promise<Result<string>> {
+  const ep = resolveLlmEndpoint();
+  if (!ep) return failResult(process.env.PROSPECTOR_LOCAL_AI === "1"
+    ? "本地模型未配置：请在开发端 .env 填写 AGENT_API_BASE_URL、AGENT_MODEL 和密钥指针后再试"
+    : "中心 AI 暂不可用：请登录中心账号并确认中心已启用 AI");
 
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort();
@@ -94,19 +88,12 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
     // 默认关思考（总结/压缩这类一次性出全文，推理只会拖慢）；起草/背调等高价值合成
     // 由调用方传 {thinking:true} 走开思考方言 —— 单发无 assistant 历史，RC 回传约束不存在。
     // 注入必须走方言（给 Gemini 塞 chat_template_kwargs 有 400 风险）
-    const payload = ep.wireApi === "responses"
-      ? { model: ep.model, instructions: system, input: user,
-        reasoning: { effort: opts?.thinking ? "low" : "none" }, store: false }
-      : { model: ep.model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        ...(isOpenAiLuna(ep.url, ep.model)
-          ? { reasoning_effort: opts?.thinking ? "low" : "none" }
-          : { temperature: 0.7, ...(opts?.thinking
-            ? thinkingExtrasOn(endpointFamily(ep.url))
-            : thinkingExtras(endpointFamily(ep.url))) }) };
+    const family = endpointFamily(ep.url);
+    const local = ep.label === "local";
+    const reasoning = local ? (isOpenAiLuna(ep.url, ep.model) ? { reasoning_effort: opts?.thinking ? "low" : "none" } : (opts?.thinking ? thinkingExtrasOn(family) : thinkingExtras(family))) : {};
+    const payload: Record<string, unknown> = ep.wireApi === "responses"
+      ? { model: ep.model, instructions: system, input: user, store: false, ...reasoning, ...(local && opts?.feature === "draft" ? { max_output_tokens: 400 } : {}) }
+      : { model: ep.model, feature: opts?.feature ?? "summary", messages: [{ role: "system", content: system }, { role: "user", content: user }], ...(local ? {} : { temperature: 0.7 }), ...reasoning, ...(local && opts?.feature === "draft" ? { max_completion_tokens: 400 } : {}) };
     const res = await netFetch(ep.url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${ep.key}` },
@@ -120,11 +107,8 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
       return failResult(`模型调用失败 (${res.status})`);
     }
 
-    if (isHtmlEndpointResponse(res)) {
-      Log.error("ai.chat", HTML_ENDPOINT_ERROR);
-      return failResult(HTML_ENDPOINT_ERROR);
-    }
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    if (isHtmlEndpointResponse(res)) return failResult(HTML_ENDPOINT_ERROR);
+    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }>; output?: unknown };
     const content = ep.wireApi === "responses" ? extractResponsesText(json) : json.choices?.[0]?.message?.content?.trim();
     if (!content) return failResult("模型返回为空");
     return okResult(content);
@@ -139,7 +123,7 @@ export async function chat(system: string, user: string, opts?: { thinking?: boo
 }
 
 /** 调 LLM 并要求返回 JSON，解析失败时给 fail */
-export async function chatJson<T>(system: string, user: string, opts?: { thinking?: boolean; signal?: AbortSignal }): Promise<Result<T>> {
+export async function chatJson<T>(system: string, user: string, opts?: { thinking?: boolean; signal?: AbortSignal; feature?: 'agent'|'draft'|'backcheck'|'mail_analysis'|'summary' }): Promise<Result<T>> {
   const r = await chat(system, user, opts);
   if (!r.success) return r;
   const cleaned = r.data.replace(/```json|```/g, "").trim();

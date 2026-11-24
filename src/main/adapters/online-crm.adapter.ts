@@ -12,13 +12,15 @@ import { loginAccountId, type OnlineSessionStore, type SavedOnlineSession } from
 import { TEAM_MONITORING_ROUTES, type LoginAccountQuery, type SavedAccountLogin, type OnlineLogout, type TeamMonitoringContactSummary, type TeamMonitoringMailDetail, type TeamMonitoringMemberDetail, type TeamMonitoringOverview, type TeamMonitoringQuery } from '../../shared/online-crm';
 import { SALES_PERFORMANCE_ROUTES, type CustomerGradeOverrideClear, type CustomerGradeOverrideReceipt, type CustomerGradeOverrideSet, type CustomerGradePage, type CustomerGradeQuery, type SalesPerformanceOverview, type SalesPerformanceQuery } from '../../shared/online-crm';
 import { isCenterUnavailable, OFFLINE_ACCESS_LIMITS } from '../../../server/core/offline-access';
+import { isTeamRoute } from '../../../server/core/teams';
+import { SAMPLE_MAIL_ROUTES, type SampleMailUpload } from '../../../server/core/sample-mail';
 import type { OfflineAccessGrant } from '../../../server/core/offline-access';
 import { verifyOfflineAccess } from './offline-access-verifier.adapter';
-import { LEAD_INGRESS_ROUTES, TEAM_ROUTES, type AccountProfile, type Result, type Identity, type OnlineLogin, type OnlinePasswordChange, type OnlineSessionSnapshot, type ImportPreview, type OnlineFeed, type OnlineFeedRequest, type OnlineRegistration, type RegisteredAccount, type TeamContext, type TeamDissolveInput, type TeamLeaderInput, type TeamMemberAdjustmentInput, type TeamMemberGroupDeleteInput, type TeamMemberGroupInput, type TeamMoveInput, type LeadIngressDecisionDTO, type LeadIngressDecisionQuery, type LeadIngressResolutionCommand, type LeadIngressResolutionReceipt, type OnlineHandoffBegin, type OnlineHandoffBeginResult, type OnlineHandoffComplete, type OnlineHandoffState, type OnlineHandoffTakeover, type OnlineHandoffToken, type DeviceHandoffSummary } from '../../shared/online-crm';
+import { LEAD_INGRESS_ROUTES, TEAM_ROUTES, TEAM_LIMITS, type AccountProfile, type Result, type Identity, type OnlineLogin, type OnlinePasswordChange, type OnlineSessionSnapshot, type ImportPreview, type OnlineFeed, type OnlineFeedRequest, type OnlineRegistration, type RegisteredAccount, type TeamContext, type TeamConversationArchiveInput, type TeamDirectoryPage, type TeamDirectoryQuery, type TeamDirectConversationPage, type TeamDirectConversationQuery, type TeamDirectMessage, type TeamDirectMessagePage, type TeamDirectMessageQuery, type TeamDirectMessageSend, type TeamArchiveMeta, type TeamEvent, type TeamFileMeta, type TeamFileOpenResult, type TeamFileUpload, type TeamMessageReadCommand, type TeamMessageReadReceipt, type TeamMessageUnreadCommand, type TeamDissolveInput, type TeamLeaderInput, type TeamMemberAdjustmentInput, type TeamMemberGroupDeleteInput, type TeamMemberGroupInput, type TeamMoveInput, type TeamPresenceQuery, type TeamPresenceView, type LeadIngressDecisionDTO, type LeadIngressDecisionQuery, type LeadIngressResolutionCommand, type LeadIngressResolutionReceipt, type OnlineHandoffBegin, type OnlineHandoffBeginResult, type OnlineHandoffComplete, type OnlineHandoffState, type OnlineHandoffTakeover, type OnlineHandoffToken, type DeviceHandoffSummary } from '../../shared/online-crm';
 import { ONLINE_LIMITS } from '../../shared/online-crm';
 import type { OnlineCrmPort } from '../services/online-crm.service';
 import { Log } from '../logger';
-import { TASK_ROUTES, type FollowupTask, type TaskQuery, type TaskPage, type TaskCreate, type TaskReschedule, type TaskComplete } from '../../../server/core/tasks';
+import { TASK_ROUTES, type FollowupTask, type TaskQuery, type TaskPage, type TaskCreate, type TaskReschedule, type TaskComplete, type TaskCancel } from '../../../server/core/tasks';
 import { TEAM_ATTENTION_ROUTES, type TeamAttentionCreate, type TeamAttentionItem, type TeamAttentionPage, type TeamAttentionQuery, type TeamAttentionTransition, type TeamAttentionTransitionAction } from '../../../server/core/team-attention';
 import type { OfflineCrmService } from '../services/offline-crm.service';
 import type { OfflineCrmContext } from '../core/offline-crm';
@@ -44,6 +46,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     resolve(input: CrmSyncResolve): Promise<Result<void>>;
   };
   setContactSync(sync: typeof this.contactSync): void { this.contactSync = sync; }
+  refreshContactMirror(): Promise<Result<void>> { return this.contactSync?.sync() ?? Promise.resolve(failure('UNAVAILABLE', '联系人同步尚未就绪')); }
   setContactWriter(writer: typeof this.contactWriter): void { this.contactWriter = writer; }
   private handoffInspector?: () => DeviceHandoffSummary;
   private handoffPause?: () => void;
@@ -181,6 +184,11 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   }
   private reportIdentityState(state:string):void { if(state!==this.lastIdentityState){this.lastIdentityState=state;Log.info?.('online.identity',`身份状态 ${state}`);} }
   isOnline():boolean { return this.connection==='online' && !!this.currentIdentity(); }
+  aiSession(): { baseUrl: string; accessToken: string } | null {
+    return this.connection === 'online' && this.identity && this.token
+      ? { baseUrl: this.baseUrl, accessToken: this.token }
+      : null;
+  }
   private snapshot():OnlineSessionSnapshot { return {identity:this.connection==='offline'&&!this.currentIdentity()?null:this.identity,remembered:this.remembered,baseUrl:this.baseUrl,connection:this.connection,...(this.connection==='offline'&&this.localExpiresAt?{offlineExpiresAt:new Date(this.localExpiresAt).toISOString()}: {})}; }
   private savedSession(userId:string,refreshToken=this.refreshToken,email=this.identity?.email):SavedOnlineSession { return {baseUrl:this.baseUrl,userId,refreshToken,email,autoLogin:this.autoLogin,...(this.offlineAccess?{offlineAccess:this.offlineAccess,trustedPublicKey:this.trustedPublicKey,lastSeenAt:this.lastSeenAt}:{})}; }
   private async offline():Promise<boolean> {
@@ -202,11 +210,68 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     if(notify)this.changed();
   }
   teamMove(teamId:string,input:TeamMoveInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/move`,input); }
+  sampleMailUpload<T>(input:SampleMailUpload):Promise<Result<T>> { return this.request<T>('POST',SAMPLE_MAIL_ROUTES.upload,input); }
   teamDissolve(teamId:string,input:TeamDissolveInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/dissolve`,input); }
   teamAssignLeader(teamId:string,input:TeamLeaderInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/leader`,input); }
   teamAdjustMember(teamId:string,input:TeamMemberAdjustmentInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/members`,input); }
   teamSaveMemberGroup(teamId:string,input:TeamMemberGroupInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/groups`,input); }
   teamDeleteMemberGroup(teamId:string,groupId:string,input:TeamMemberGroupDeleteInput):Promise<Result<TeamContext>> { return this.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/groups/${encodeURIComponent(groupId)}/delete`,input); }
+  teamMessages(query:TeamDirectMessageQuery):Promise<Result<TeamDirectMessagePage>> { const params=new URLSearchParams({memberUserId:query.memberUserId,limit:String(query.limit)}); if(query.teamId)params.set('teamId',query.teamId); if(query.beforeMessageId)params.set('beforeMessageId',query.beforeMessageId); return this.request<TeamDirectMessagePage>('GET',`${TEAM_ROUTES.messages}?${params}`); }
+  teamMessageRead(input:TeamMessageReadCommand):Promise<Result<TeamMessageReadReceipt>> { return this.request<TeamMessageReadReceipt>('POST',TEAM_ROUTES.messagesRead,input); }
+  teamMessageUnread(input:TeamMessageUnreadCommand):Promise<Result<TeamMessageReadReceipt>> { return this.request<TeamMessageReadReceipt>('POST',TEAM_ROUTES.messagesUnread,input); }
+  teamFileUpload(input:TeamFileUpload):Promise<Result<TeamFileMeta>> { return this.requestLive<TeamFileMeta>('POST',TEAM_ROUTES.files,input); }
+  teamArchive(input:TeamConversationArchiveInput):Promise<Result<TeamArchiveMeta>> { return this.requestLive<TeamArchiveMeta>('POST',TEAM_ROUTES.archive,input); }
+  async teamFileOpen(fileId:string):Promise<Result<TeamFileOpenResult>> {
+    if(!this.token) return failure('UNAUTHORIZED','请登录中心账号');
+    try {
+      const response=await this.fetcher(`${this.baseUrl}${TEAM_ROUTES.files}/${encodeURIComponent(fileId)}`,{method:'GET',redirect:'error',headers:{Authorization:`Bearer ${this.token}`},signal:AbortSignal.timeout(ONLINE_LIMITS.timeoutMs)});
+      if(!response.ok) { const text=await this.boundedText(response); try { return JSON.parse(text) as Result<TeamFileOpenResult>; } catch { return failure('UNAVAILABLE','文件下载失败'); } }
+      const size=Number(response.headers.get('content-length')??0);
+      if(size>TEAM_LIMITS.fileBytes) return failure('INVALID_INPUT','文件过大');
+      const data=new Uint8Array(await response.arrayBuffer());
+      if(data.byteLength>TEAM_LIMITS.fileBytes) return failure('INVALID_INPUT','文件过大');
+      const filename=decodeURIComponent((response.headers.get('content-disposition')??'').replace(/^.*filename\*=UTF-8''/,'' )||'team-file');
+      return success({ filename, mimeType:response.headers.get('content-type')??'application/octet-stream', bytes:data.byteLength, dataBase64:Buffer.from(data).toString('base64') });
+    } catch(error) {
+      Log.error('team.file','打开团队文件失败',error instanceof Error?error.stack:undefined);
+      return failure('UNAVAILABLE','文件下载失败');
+    }
+  }
+  async startTeamEvents(onEvent: (event: TeamEvent) => void, onClose?: () => void): Promise<Result<() => void>> {
+    if (!this.token) return failure('UNAUTHORIZED','请登录中心账号');
+    const controller = new AbortController();
+    try {
+      const response = await this.fetcher(`${this.baseUrl}${TEAM_ROUTES.events}`, { method:'GET', redirect:'error', headers:{ Authorization:`Bearer ${this.token}` }, signal:controller.signal });
+      if (!response.ok || !response.body) return failure('UNAVAILABLE','团队事件流不可用');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      void (async () => {
+        try {
+          for (;;) {
+            const part = await reader.read();
+            if (part.done) break;
+            buffer += decoder.decode(part.value, { stream:true });
+            let split = buffer.indexOf('\n\n');
+            while (split >= 0) {
+              const block = buffer.slice(0, split);
+              buffer = buffer.slice(split + 2);
+              for (const line of block.split('\n')) if (line.startsWith('data: ')) { try { onEvent(JSON.parse(line.slice(6)) as TeamEvent); } catch { /* ignore malformed event */ } }
+              split = buffer.indexOf('\n\n');
+            }
+          }
+        } catch { /* stream closed; renderer falls back to polling */ }
+        finally { onClose?.(); }
+      })();
+      return success(() => controller.abort());
+    } catch {
+      return failure('UNAVAILABLE','团队事件流不可用');
+    }
+  }
+  teamPresence(query:TeamPresenceQuery):Promise<Result<TeamPresenceView>> { return this.request<TeamPresenceView>('POST',TEAM_ROUTES.presence,query); }
+  teamSendMessage(input:TeamDirectMessageSend):Promise<Result<TeamDirectMessage>> { return this.request<TeamDirectMessage>('POST',TEAM_ROUTES.messages,input,true); }
+  teamConversations(query:TeamDirectConversationQuery):Promise<Result<TeamDirectConversationPage>> { const params=new URLSearchParams({limit:String(query.limit)});if(query.teamId)params.set('teamId',query.teamId);return this.request<TeamDirectConversationPage>('GET',`${TEAM_ROUTES.conversations}?${params}`); }
+  teamDirectory(query:TeamDirectoryQuery):Promise<Result<TeamDirectoryPage>> { return this.request<TeamDirectoryPage>('GET',`${TEAM_ROUTES.directory}?${new URLSearchParams({limit:String(query.limit)})}`); }
   teamMonitoring(query:TeamMonitoringQuery):Promise<Result<TeamMonitoringOverview>> {
     const params=new URLSearchParams({limit:String(query.limit),offset:String(query.offset),unitLimit:String(query.unitLimit),unitOffset:String(query.unitOffset)});
     if(query.teamId)params.set('teamId',query.teamId);if(query.memberUserId)params.set('memberUserId',query.memberUserId);
@@ -385,7 +450,10 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
     if(!result.ok && result.error.code==='UNAUTHORIZED' && this.refreshToken){const fresh=await this.renew();if(!fresh.ok)return fresh;if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换');result=await this.raw<T>(method,path,body,this.token);}
     if(generation!==this.generation)return failure('UNAUTHORIZED','账号已切换，旧响应已丢弃');
     if(!result.ok && ['UNAUTHORIZED','DEVICE_REPLACED'].includes(result.error.code)){Log.warn?.('online.request',`${method} ${path} 鉴权失败，清理当前登录状态`);await this.forget();}
-    else if(!result.ok && isCenterUnavailable(result.error.code)){Log.warn?.('online.request',`${method} ${path} 中心不可用，切换离线状态`);await this.offline();}
+    // Team data has no offline projection. Flipping the whole client offline on a
+    // team-only failure turns a real 503 into "not cached, go online", which sends
+    // the user in circles; keep the session online and surface the actual error.
+    else if(!result.ok && isCenterUnavailable(result.error.code) && !isTeamRoute(path)){Log.warn?.('online.request',`${method} ${path} 中心不可用，切换离线状态`);await this.offline();}
     return result;
   }
   private async boundedText(response:Response):Promise<string> {
@@ -531,7 +599,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
           this.identity=offline.identity;this.offlineAccess=saved.offlineAccess;this.trustedPublicKey=saved.trustedPublicKey!;this.lastSeenAt=saved.lastSeenAt!;this.persistedClockFloor=this.lastSeenAt;this.localExpiresAt=Date.parse(offline.expiresAt);
           if(await this.offline())return success(this.snapshot());
         }
-        if(generation===this.generation&&isCenterUnavailable(result.error.code)&&saved.offlineAccess)return failure('UNAUTHORIZED','离线授权已到期，请连接中心完成一次验证后继续使用本地工作区');
+        if(generation===this.generation&&isCenterUnavailable(result.error.code)&&saved.offlineAccess)return failure('UNAUTHORIZED','中心暂时不可用，本机离线授权也已失效。请检查网络或中心服务后重试，或输入账号密码重新登录。');
         return result;
       }
       if(this.snapshot().identity?.userId!==saved.userId){await this.forget();return failure('UNAUTHORIZED','已保存的身份不一致');}
@@ -575,6 +643,7 @@ export class OnlineCrmAdapter implements OnlineCrmPort {
   createTask(input:TaskCreate):Promise<Result<FollowupTask>> { return this.request('POST',TASK_ROUTES.tasks,input); }
   rescheduleTask(input:TaskReschedule):Promise<Result<FollowupTask>> { return input && typeof input.taskId==='string' ? this.request('POST',`${TASK_ROUTES.tasks}/${encodeURIComponent(input.taskId)}/${TASK_ROUTES.rescheduleAction}`,input) : Promise.resolve(failure('INVALID_INPUT','任务参数无效')); }
   completeTask(input:TaskComplete):Promise<Result<FollowupTask>> { return input && typeof input.taskId==='string' ? this.request('POST',`${TASK_ROUTES.tasks}/${encodeURIComponent(input.taskId)}/${TASK_ROUTES.completeAction}`,input) : Promise.resolve(failure('INVALID_INPUT','任务参数无效')); }
+  cancelTask(input:TaskCancel):Promise<Result<FollowupTask>> { return input && typeof input.taskId==='string' ? this.request('POST',`${TASK_ROUTES.tasks}/${encodeURIComponent(input.taskId)}/${TASK_ROUTES.cancelAction}`,input) : Promise.resolve(failure('INVALID_INPUT','任务参数无效')); }
   teamAttention(query:TeamAttentionQuery):Promise<Result<TeamAttentionPage>> { return this.request('GET',`${TEAM_ATTENTION_ROUTES.items}?${new URLSearchParams({limit:String(query.limit),offset:String(query.offset),...(query.status?{status:query.status}:{}),...(query.reason?{reason:query.reason}:{}),...(query.targetMemberUserId?{targetMemberUserId:query.targetMemberUserId}:{})})}`); }
   createTeamAttention(input:TeamAttentionCreate):Promise<Result<TeamAttentionItem>> { return this.request('POST',TEAM_ATTENTION_ROUTES.items,input,true); }
   transitionTeamAttention(itemId:string,action:TeamAttentionTransitionAction,input:Omit<TeamAttentionTransition,'itemId'|'action'>):Promise<Result<TeamAttentionItem>> { return this.request('POST',`${TEAM_ATTENTION_ROUTES.items}/${encodeURIComponent(itemId)}/${action}`,input,true); }

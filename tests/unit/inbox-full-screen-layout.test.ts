@@ -9,7 +9,7 @@ const css = readFileSync(resolve(root, 'src/renderer/global.css'), 'utf8');
 
 describe('inbox full-screen layout', () => {
   it('keeps the inbox edge-to-edge while giving its panes internal scrolling', () => {
-    expect(appLayout).toContain("const EDGE_TO_EDGE_PATHS = new Set(['/inbox', '/team'])") ;
+    for (const path of ["/inbox", "/team", "/customers"]) expect(appLayout).toContain(`'${path}'`);
     expect(appLayout).toContain('app-scroll-area--edge-to-edge');
     expect(appLayout).toContain('app-route-content--edge-to-edge');
     expect(appLayout).toContain("padding: fullScreen ? 0 : '16px 20px'");
@@ -20,10 +20,9 @@ describe('inbox full-screen layout', () => {
 
   it('keeps the mail list readable while giving the reading pane the remaining width', () => {
     expect(inbox).toContain('const ROW_H = 66');
-    expect(inbox).toContain('width: "38%"');
-    expect(inbox).toContain('minWidth: 400');
-    expect(inbox).toContain('maxWidth: 680');
-    expect(inbox).not.toContain('width: "34%"');
+    expect(inbox).toContain('width: "34%"');
+    expect(inbox).toContain('minWidth: 380');
+    expect(inbox).toContain('maxWidth: 620');
   });
 
   it('uses account scopes and renders a dedicated todo queue', () => {
@@ -75,7 +74,7 @@ describe('inbox full-screen layout', () => {
   });
 
   it('uses the full available height while keeping each pane internally scrollable', () => {
-    expect(inbox).toContain('className="inbox-workspace prospector-inbox-page flex h-full"');
+    expect(inbox).toContain('inbox-workspace prospector-inbox-page flex h-full');
     expect(inbox).not.toContain('calc(100vh - 130px)');
     expect(css).toMatch(/\.inbox-workspace\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*min-height:\s*0;/s);
   });
@@ -85,6 +84,8 @@ describe('inbox full-screen layout', () => {
     expect(inbox).toContain('className="inbox-detail-header selectable"');
     expect(inbox).toContain('className="inbox-detail-meta-grid"');
     expect(css).toMatch(/\.inbox-detail-header\s*\{[^}]*background:\s*var\(--workspace-surface\);/s);
+    expect(css).toMatch(/\.inbox-detail-subject-row\s*\{[^}]*flex-direction:\s*column;/s);
+    expect(css).toMatch(/\.inbox-detail-subject-actions\s*\{[^}]*justify-content:\s*flex-start;/s);
     expect(css).toMatch(/\.inbox-detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/s);
   });
 
@@ -95,8 +96,23 @@ describe('inbox full-screen layout', () => {
     expect(css).toMatch(/\.inbox-detail-value\s*\{[^}]*line-height:\s*17px;/s);
   });
 
+  it('places conversation switching and contact matching in a two-level right sidebar', () => {
+    expect(inbox).toContain('className="inbox-reader-main');
+    expect(inbox).toContain('className={`inbox-detail-context-sidebar${');
+    expect(inbox).toContain('<strong>切换会话</strong>');
+    expect(css).toMatch(/\.inbox-detail-context-sidebar\s*\{[^}]*width:\s*clamp\(280px, 20%, 340px\);[^}]*flex:\s*0 0 clamp\(280px, 20%, 340px\);/s);
+    expect(css).toMatch(/\.inbox-detail-context-sidebar\.is-collapsed\s*\{[^}]*width:\s*34px;[^}]*flex:\s*0 0 34px;/s);
+    expect(inbox).toContain('aria-label={contextSidebarOpen ? \'收起邮件上下文\' : \'展开邮件上下文\'}');
+    expect(inbox).toContain("' has-thread-stack'");
+    expect(css).toMatch(/\.inbox-detail-context-sidebar\.has-thread-stack \.inbox-thread-stack\s*\{[^}]*max-height:\s*45%;/s);
+    expect(css).toMatch(/\.inbox-analysis-dock\s*\{[^}]*overflow:\s*auto;/s);
+    expect(inbox).toContain('className="inbox-analysis-dock"');
+    expect(inbox).toMatch(/inbox-analysis-dock[\s\S]{0,240}<MailAnalysisPanel/);
+  });
+
   it('uses compact controls and a themed mail/contact view switch in the inbox toolbar', () => {
     expect(inbox).toContain('className="inbox-action-bar"');
+    expect(inbox).toContain('style={{ width: "34%", minWidth: 380, maxWidth: 620');
     expect(inbox).toContain('<Input');
     expect(inbox).toContain('size="small"');
     expect(inbox).toContain('className="inbox-view-switch"');
@@ -110,7 +126,16 @@ describe('inbox full-screen layout', () => {
     expect(inbox).toContain('className="inbox-folder-mail-row"');
     expect(inbox).not.toContain('inbox-folder-toggle');
     expect(inbox).toContain('aria-expanded={foldersOpen}');
-    expect(inbox).toContain('<FolderOutlined /><span>{label.name}</span>');
+    expect(inbox).toContain('className="inbox-ai-folder-suggestions"');
+    expect(inbox).not.toContain('className="inbox-functional-folder-block"');
+    expect(inbox).not.toContain('inbox:functionalFolderSave');
+    expect(inbox).toContain('title="待我回复"');
+    expect(inbox).toContain('title="需关注"');
+    expect(inbox).toContain('className="is-confirm"');
+    expect(inbox).toContain('className="is-delete"');
+    expect(css).toMatch(/\.inbox-folder-actions button\.is-confirm\s*\{[^}]*color:\s*#15803d;/s);
+    expect(css).toMatch(/\.inbox-folder-actions button\.is-delete\s*\{[^}]*color:\s*#dc2626;/s);
+    expect(inbox).toContain('<FolderOutlined style={{ color: label.color }} /><span>{label.name}</span>');
     expect(inbox).toContain('inbox:messageLabels');
     expect(inbox).not.toContain('{"dot" in f');
     expect(inbox).toContain('onClick={syncRunning ? () => setFetchProgressOpen(true) : doFetch}');
@@ -127,6 +152,6 @@ describe('inbox full-screen layout', () => {
   it('collapses the management rail before it squeezes the mail list and reader', () => {
     expect(css).toContain('@media (max-width: 940px)');
     expect(css).toMatch(/\.inbox-management-pane\s*\{[^}]*width:\s*52px;[^}]*flex-basis:\s*52px;/s);
-    expect(css).toMatch(/\.inbox-list-pane\s*\{[^}]*width:\s*44% !important;[^}]*min-width:\s*330px !important;/s);
+    expect(css).toMatch(/\.inbox-list-pane\s*\{[^}]*width:\s*44% !important;[^}]*min-width:\s*300px !important;/s);
   });
 });

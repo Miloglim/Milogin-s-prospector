@@ -253,14 +253,14 @@ async function doPop3Fetch(accountId: number): Promise<Result<InboxService.Inbox
       const myRole = msg.to.some(a => a.toLowerCase() === myEmail) ? "to"
         : msg.cc.some(a => a.toLowerCase() === myEmail) ? "cc" : null;
 
-      const contact = InboxService.matchContact(msg.fromEmail);
+      const contact = InboxService.matchExternalContact(msg.fromEmail);
       const classification = InboxService.classify(msg.subject, msg.fromEmail, msg.bodyText, !!contact, myRole === "cc");
       if (classification === "bounce") {
         const bkey = `${msg.subject}|${msg.fromEmail}|${msg.date}`;
         if (bounceSeen.has(bkey)) continue;
         bounceSeen.add(bkey);
       }
-      const relatedContactIds = InboxService.matchContactIds([...msg.to, ...msg.cc]);
+      const relatedContactIds = InboxService.matchContactIds([...msg.to, ...msg.cc], true);
 
       const ins = getDb().insert(inboxMessages).values({
         accountId,
@@ -448,7 +448,7 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
       const toList = toArr.map(a => a.address || "").filter(Boolean).join(", ");
 
       // 元数据阶段：正文留空，正文懒加载时再补（避免每封拉 source 卡顿）
-      const contact = InboxService.matchContact(fromEmail);
+      const contact = InboxService.matchExternalContact(fromEmail);
       const classification = InboxService.classify(subject, fromEmail, "", !!contact, myRole === "cc");
       if (classification === "bounce") {
         const bkey = `${subject}|${fromEmail}|${date}`;
@@ -458,7 +458,7 @@ async function doImapFetch(accountId: number): Promise<Result<InboxService.Inbox
         if (msg.uid) bounceUids.push(msg.uid);
       }
       const relatedContactIds = InboxService.matchContactIds(
-        [...toArr, ...ccArr].map(a => a.address || "").filter(Boolean),
+        [...toArr, ...ccArr].map(a => a.address || "").filter(Boolean), true,
       );
 
       const popIns = getDb().insert(inboxMessages).values({
@@ -722,7 +722,7 @@ export async function detectSent(accountId: number): Promise<number> {
       // 匹配所有联系人（去重），主联系人取第一个
       const matchedIds = new Set<number>();
       for (const email of allRecipients) {
-        const c = InboxService.matchContact(email);
+        const c = InboxService.matchExternalContact(email);
         if (c) matchedIds.add(c.id);
       }
       const contactIds = [...matchedIds];
@@ -886,7 +886,7 @@ export async function fetchBody(accountId: number, messageId: string, classifica
       const target = getDb().select({
         id: inboxMessages.id, subject: inboxMessages.subject,
         fromEmail: inboxMessages.fromEmail, classification: inboxMessages.classification,
-        matchedContactId: inboxMessages.matchedContactId,
+        matchedContactId: inboxMessages.matchedContactId, myRole: inboxMessages.myRole,
       }).from(inboxMessages)
         .where(and(eq(inboxMessages.messageId, messageId), eq(inboxMessages.accountId, accountId)))
         .get();
@@ -894,7 +894,7 @@ export async function fetchBody(accountId: number, messageId: string, classifica
         await InboxService.writeBodyFile(target.id, html);
         // 重新分类：正文拉到后，基于正文的退信/自动回复检测才准确（元数据阶段 bodyText 为空）；sent 邮件不重分
         const reClass = target.classification !== "sent"
-          ? InboxService.classify(target.subject, target.fromEmail, raw.bodyText, !!target.matchedContactId)
+          ? InboxService.classify(target.subject, target.fromEmail, raw.bodyText, !!target.matchedContactId, target.myRole === "cc")
           : target.classification;
         // 正文匹配联系人：退信等 from 匹配不到（mailer-daemon）的情况，从正文提取被退/被抄送的联系人邮箱
         let matchedId = target.matchedContactId;

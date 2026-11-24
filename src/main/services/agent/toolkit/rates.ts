@@ -14,7 +14,7 @@ import { invalidateCache } from "../tool-cache";
 import { rememberWork, fingerprint } from "../working-memory";
 import {
   gate, finishRead, okOut, failOut, audit, promptAction, navAction,
-  optStr, optInt, optBool, toWords, toIds, type ToolCtx,
+  optStr, optInt, optBool, toWords, toIds, MAX_CONSECUTIVE_FAILURES, type ToolCtx,
 } from "./common";
 
 export const quoteSearchSchema = z.object({
@@ -59,7 +59,13 @@ export const rateUpdateEnqueueSchema = z.object({
 
 export async function execQuoteSearch(ctx: ToolCtx, args: z.infer<typeof quoteSearchSchema>): Promise<string> {
   const auth = await requireNavigatorAuthorization();
-  if (!auth.ok) return failOut("navigator_login_required", auth.error || "请先登录运价台账");
+  if (!auth.ok) {
+    ctx.failures?.set("quote_search", MAX_CONSECUTIVE_FAILURES);
+    return failOut("navigator_login_required", auth.error || "请先登录运价台账", {
+      notice: "先请用户在运价库完成 Navigator 授权；本轮不要再次调用 quote_search。",
+      actions: [navAction("打开运价库授权", "#/rates")],
+    });
+  }
   const note = gate(ctx, "quote_search");
   if (note) return note;
   const epoch = navigatorAuthorizationEpoch();

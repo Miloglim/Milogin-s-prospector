@@ -23,7 +23,9 @@ import { invalidateCache } from './agent/tool-cache';
 
 type TurnOutcomeUsage = TurnOutcome["usage"];
 import { executeAction, dropActionsForConversation } from "./agent/actions";
-import { readActiveEndpoint, type WireApi } from "./endpoint.service";
+import { getCenterAiSession } from "./center-ai-session.service";
+import { readLightEndpoint, type WireApi } from "./endpoint.service";
+import { netFetch } from "../net-proxy";
 
 export type { PushFn };
 
@@ -82,23 +84,48 @@ interface ProviderConfig {
   apiKey: string;
   model: string;
   wireApi: WireApi;
+  streaming: boolean;
 }
 
-/** 生效端点：统一走 endpoint.service 解析（界面激活 profile 后立即变化，无需重启）。
- *  需同时具备 BASE_URL + KEY 才算就绪；未就绪时对话直接失败并给出配置指引。 */
+/** 模型调用统一走当前中心会话，桌面端不再保存模型端点或密钥。 */
 function getProviderConfig(): ProviderConfig {
-  const e = readActiveEndpoint();
-  return { configured: !!(e.baseUrl && e.apiKey), baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.model, wireApi: e.wireApi };
+  if (process.env.PROSPECTOR_LOCAL_AI === "1") {
+    const local = readLightEndpoint();
+    if (local.baseUrl && local.apiKey && local.model) {
+      return { configured: true, baseUrl: local.baseUrl, apiKey: local.apiKey, model: local.model, wireApi: local.wireApi, streaming: true };
+    }
+    return { configured: false, baseUrl: "", apiKey: "", model: "", wireApi: "chat_completions", streaming: false };
+  }
+  const center = getCenterAiSession();
+  return center
+    ? { configured: true, baseUrl: `${center.baseUrl.replace(/\/$/, "")}/api/ai`, apiKey: center.accessToken, model: "center-managed", wireApi: "chat_completions", streaming: false }
+    : { configured: false, baseUrl: "", apiKey: "", model: "", wireApi: "chat_completions", streaming: false };
 }
 
-/** 配置状态（不含密钥值），供 UI 显示模式横幅 */
-export function status(): Result<{ configured: boolean; model: string; baseUrl: string; identityOk: boolean }> {
-  const c = getProviderConfig();
-  return okResult({
-    configured: c.configured, model: c.model, baseUrl: c.baseUrl,
-    // 身份已固定为运去哪 agent 助手（恒有效），字段保留供前端状态聚合
-    identityOk: true,
-  });
+/** 中心会话存在不等于模型可用；状态必须读取中心真实 available。 */
+export async function status(): Promise<Result<{ configured: boolean; model: string; baseUrl: string; identityOk: boolean }>> {
+  if (process.env.PROSPECTOR_LOCAL_AI === "1") {
+    const local = readLightEndpoint();
+    if (local.baseUrl && local.apiKey && local.model) return okResult({ configured: true, model: local.model, baseUrl: local.baseUrl, identityOk: true });
+    return okResult({ configured: false, model: "", baseUrl: local.baseUrl, identityOk: true });
+  }
+  const center = getCenterAiSession();
+  if (!center) return okResult({ configured: false, model: "", baseUrl: "", identityOk: true });
+  const baseUrl = `${center.baseUrl.replace(/\/$/, "")}/api/ai`;
+  try {
+    const response = await netFetch(`${baseUrl}/status`, {
+      headers: { Authorization: `Bearer ${center.accessToken}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(5_000),
+    });
+    const payload = await response.json() as { ok?: boolean; data?: { available?: boolean } };
+    return okResult({
+      configured: response.ok && payload.ok === true && payload.data?.available === true,
+      model: "center-managed", baseUrl, identityOk: true,
+    });
+  } catch {
+    // Center status unavailable is a model state, not a renderer transport error.
+    return okResult({ configured: false, model: "center-managed", baseUrl, identityOk: true });
+  }
 }
 
 /** 工具元数据（UI 中文名 + 追问引导）：从注册表派生，渲染端不再维护第二份工具清单 */
@@ -199,10 +226,7 @@ export async function chat(push: PushFn, input: ChatInput): Promise<Result<{ con
   // 配置不全时立刻失败并指路：不静默降级、也不留下半截用户消息
   const cfg0 = getProviderConfig();
   if (!cfg0.configured) {
-    return failResult("未配置模型端点：请到「设置 → 模型与端点」新增端点、填入密钥并启用（Base URL / 模型名都要有）");
-  }
-  if (!cfg0.model) {
-    return failResult("模型名未填：请到「设置 → 模型与端点」给当前端点补上 Model（如 gemini-2.5-flash、deepseek-chat）");
+    return failResult("中心 AI 暂不可用：请登录中心账号并确认中心已启用 AI");
   }
 
   const conversationId = input.conversationId?.trim() || crypto.randomUUID();
@@ -257,7 +281,7 @@ export async function chat(push: PushFn, input: ChatInput): Promise<Result<{ con
       {
         // harness 自带系统提示词（L0 规则）与工具集；历史只带 user/assistant 正文
         const outcome = await runHarnessTurn(DEFAULT_PROFILE, {
-          baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: cfg.wireApi,
+          baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: cfg.wireApi, streaming: cfg.streaming,
           history: await loadConversation(conversationId),
           conversationId, push: touchPush, signal: state.abort.signal,
           contextNote: resolveContextNote(input.context),
@@ -353,7 +377,7 @@ export async function resolveApprovalRequest(push: PushFn, input: ApprovalInput)
   if (!approvalId) return failResult("参数错误: approvalId 必填");
   if (!hasPending(approvalId)) return failResult("审批已不存在（可能已停止或重启作废）");
   const cfg = getProviderConfig();
-  if (!cfg.configured) return failResult("未配置模型端点：请到「设置 → 模型与端点」配置并启用一个端点");
+  if (!cfg.configured) return failResult("中心 AI 暂不可用：请确认中心已启用 AI");
   // 续跑同样用静默计时保护（有产出就续命，只掐真挂起）+ 异常显式推送，避免 rejected promise 被吞、UI 永远等待
   const ac = new AbortController();
   const contextEpoch = navigatorContextEpoch();
@@ -364,7 +388,7 @@ export async function resolveApprovalRequest(push: PushFn, input: ApprovalInput)
   const touchPush: PushFn = (channel, data) => { if (!navigatorContextCurrent(contextEpoch)) return; armResume(); push(channel, data); };
   try {
     const outcome = await resolveApproval(approvalId, !!input.approved, {
-      baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: cfg.wireApi,
+        baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: cfg.wireApi, streaming: cfg.streaming,
       history: [], conversationId: "", push: touchPush, signal: ac.signal,
     });
     if (!navigatorContextCurrent(contextEpoch)) return failResult('Navigator 身份已改变，旧回合已中断');

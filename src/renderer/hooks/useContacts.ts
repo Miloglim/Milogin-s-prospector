@@ -1,9 +1,9 @@
 import { invalidateDomain } from "../lib/cacheDeps";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { ONLINE_LIMITS } from '../../shared/online-crm';
 
 // 客户页离开后短时间内返回，直接使用查询缓存；挂载中的 5 秒轮询和写入失效仍负责保持内容新鲜。
 const CONTACT_CACHE_STALE_MS = 30_000;
+const CONTACT_REFRESH_MS = 30_000;
 
 export interface Contact {
   /** Explicit source identity: center records must never reach local ID APIs. */
@@ -16,6 +16,7 @@ export interface Contact {
   language?: string | null;
   touchStatus?: string;
   relationshipStage?: string | null;
+  aiDealPending?: boolean;
   id: number;
   email: string;
   firstName: string | null;
@@ -69,7 +70,7 @@ export function useContacts(params?: { search?: string; page?: number } & Contac
     // 翻页/筛选/搜索变更时保留上一份数据展示，不闪加载态
     placeholderData: keepPreviousData,
     staleTime: port ? CONTACT_CACHE_STALE_MS : 0,
-    refetchInterval: port ? ONLINE_LIMITS.pollMs : false,
+    refetchInterval: port && !params?.search ? CONTACT_REFRESH_MS : false,
   });
 }
 
@@ -91,8 +92,8 @@ export function useInfiniteContacts(params?: { search?: string } & ContactFilter
       return loaded < lastPage.data.total ? pages.length + 1 : undefined;
     },
     staleTime: port ? CONTACT_CACHE_STALE_MS : 0,
-    refetchInterval: port
-      ? query => (query.state.data?.pages.length ?? 0) <= 1 ? ONLINE_LIMITS.pollMs : false
+    refetchInterval: port && !params?.search
+      ? query => (query.state.data?.pages.length ?? 0) <= 1 ? CONTACT_REFRESH_MS : false
       : false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,

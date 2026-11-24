@@ -1,5 +1,5 @@
 import type { CenterContact, CenterContactGroup, CenterContactGroupPage, CenterContactGroupQuery, CenterContactPage, CenterContactQuery } from '../../../server/core/center-contacts';
-import { FOLLOWUP_TOUCH_STATUSES } from '../../../server/core/leads';
+import { customerBoardAttentionReason, FOLLOWUP_TOUCH_STATUSES } from '../../../server/core/leads';
 import type { CenterContactRef, CenterContactDetail } from '../../../server/core/contact-assignments';
 import { CONTACT_MAIL_LIMITS, type ContactMailEventInput } from '../../../server/core/contact-mail';
 
@@ -118,6 +118,12 @@ export function contactMirrorGroups(rows: CenterContact[], query: CenterContactG
 /** The input is already the account-authorized projection, never an unfiltered center dump. */
 export function contactMirrorPage(rows: CenterContact[], query: CenterContactQuery, userId: string): CenterContactPage {
   const search = query.search.trim().toLowerCase();
+  const attentionOnly = query.attentionOnly ?? query.followupOnly ?? false;
+  const primaryContacts = new Map<string, number>();
+  for (const row of rows) {
+    const current = primaryContacts.get(row.customerId);
+    if (current === undefined || row.contactId < current) primaryContacts.set(row.customerId, row.contactId);
+  }
   const stage = (row: CenterContact) => row.relationshipStage ?? (FOLLOWUP_TOUCH_STATUSES.includes(row.touchStatus) ? 'reaching' : 'cold');
   const time = (value: string | null | undefined) => value ? Date.parse(value) : Number.NEGATIVE_INFINITY;
   const descendingTime = (left: string | null | undefined, right: string | null | undefined) => {
@@ -128,12 +134,17 @@ export function contactMirrorPage(rows: CenterContact[], query: CenterContactQue
     if (query.scope === 'assigned' && ((row.origin !== 'operations' || row.ownerUserId !== userId) && row.isShared !== true)) return false;
     if (query.assignment === 'accepted' && row.assignmentStatus !== 'accepted') return false;
     if (query.groupDimension && query.groupKey !== undefined && mirrorContactGroupKey(row, query.groupDimension) !== query.groupKey) return false;
-    if (query.followupOnly && !FOLLOWUP_TOUCH_STATUSES.includes(row.touchStatus)) return false;
+    if (attentionOnly && !customerBoardAttentionReason({
+      attentionReason: row.attentionReason,
+      touchStatus: row.touchStatus,
+      relationshipStage: row.relationshipStage,
+      isPrimaryContact: primaryContacts.get(row.customerId) === row.contactId,
+    })) return false;
     if (query.crmStage && stage(row) !== query.crmStage) return false;
     if (query.touchStatus && row.touchStatus !== query.touchStatus) return false;
     if (query.stage && row.stage !== query.stage || query.status && row.status !== query.status || query.tags && !row.tags.includes(query.tags) || query.clientType && row.clientType !== query.clientType || query.country && row.country !== query.country || query.language && row.language !== query.language) return false;
     return !search || [row.email, row.firstName, row.lastName, row.title, row.companyName].some(value => value?.toLowerCase().includes(search));
   });
-  filtered.sort((a, b) => (query.followupOnly ? descendingTime(a.lastFollowupAt, b.lastFollowupAt) : 0) || descendingTime(a.updatedAt, b.updatedAt) || b.contactId - a.contactId);
+  filtered.sort((a, b) => (attentionOnly ? descendingTime(a.lastFollowupAt, b.lastFollowupAt) : 0) || descendingTime(a.updatedAt, b.updatedAt) || b.contactId - a.contactId);
   return { items: filtered.slice(query.offset, query.offset + query.limit), total: filtered.length };
 }

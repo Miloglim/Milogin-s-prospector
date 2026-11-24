@@ -61,11 +61,12 @@ CREATE INDEX IF NOT EXISTS crm_contact_commands_retention ON crm_contact_command
 const LINKS_SELECT = `SELECT message_key AS messageKey,local_mail_id AS localMailId,mail_account_id AS mailAccountId,
   mailbox,contact_id AS contactId,customer_id AS customerId,role FROM crm_contact_mail_links`;
 // Bump when a center projection fix requires one authoritative full rescan.
-const READ_FORMAT_VERSION = 2;
+const READ_FORMAT_VERSION = 3;
 const contactValue = (field: string) => `json_extract(snapshot,'$.${field}')`;
 const UPDATED_ORDER = `crm_contact_time(${contactValue('updatedAt')}) DESC,contact_id DESC`;
 const FOLLOWUP_PREDICATE = `${contactValue('touchStatus')} IN ('contacted','replied','bounced','autoreply')`;
 const FOLLOWUP_ORDER = `crm_contact_time(${contactValue('lastFollowupAt')}) DESC,${UPDATED_ORDER}`;
+const ATTENTION_PREDICATE = `(${contactValue('attentionReason')} IS NOT NULL OR ${contactValue('touchStatus')}='replied' OR (contact_id=(SELECT min(p.contact_id) FROM crm_contact_mirror p WHERE p.customer_id=crm_contact_mirror.customer_id) AND ${contactValue('relationshipStage')} IN ('quoting','trial','cooperating')))`;
 const SEARCH_FIELDS = ['email', 'firstName', 'lastName', 'title', 'companyName'] as const;
 const searchValue = (field: string) => `crm_contact_lower(${contactValue(field)})`;
 const GROUP_KEY_SQL = {
@@ -314,7 +315,8 @@ export class SqliteContactMirrorStore implements ContactMirrorStore {
     if (query.groupDimension && query.groupKey !== undefined) {
       conditions.push(`${GROUP_KEY_SQL[query.groupDimension]}=?`); parameters.push(query.groupKey);
     }
-    if (query.followupOnly) conditions.push(FOLLOWUP_PREDICATE);
+    const attentionOnly = query.attentionOnly ?? query.followupOnly ?? false;
+    if (attentionOnly) conditions.push(ATTENTION_PREDICATE);
     if (query.crmStage) {
       conditions.push(`COALESCE(${contactValue('relationshipStage')},CASE WHEN ${FOLLOWUP_PREDICATE} THEN 'reaching' ELSE 'cold' END)=?`); parameters.push(query.crmStage);
     }
@@ -331,11 +333,11 @@ export class SqliteContactMirrorStore implements ContactMirrorStore {
     }
     const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
     // A leading wildcard search scans pre-normalized independent fields, never JS callbacks per row.
-    const source = `crm_contact_mirror${search ? ' INDEXED BY crm_contact_mirror_search_page' : query.followupOnly ? ' INDEXED BY crm_contact_mirror_followup_v2_page' : ''}`;
+    const source = `crm_contact_mirror${search ? ' INDEXED BY crm_contact_mirror_search_page' : ''}`;
     // Deferred read transactions share one snapshot without preventing WAL writers.
     return db.transaction(() => {
       const total = (db.prepare(`SELECT COUNT(*) AS total FROM ${source}${where}`).get(...parameters) as { total: number }).total;
-      const rows = db.prepare(`SELECT snapshot FROM ${source}${where} ORDER BY ${query.followupOnly ? FOLLOWUP_ORDER : UPDATED_ORDER} LIMIT ? OFFSET ?`).all(...parameters, query.limit, query.offset) as { snapshot: string }[];
+      const rows = db.prepare(`SELECT snapshot FROM ${source}${where} ORDER BY ${attentionOnly ? FOLLOWUP_ORDER : UPDATED_ORDER} LIMIT ? OFFSET ?`).all(...parameters, query.limit, query.offset) as { snapshot: string }[];
       return { items: rows.map(row => JSON.parse(row.snapshot) as CenterContact), total };
     })();
   }

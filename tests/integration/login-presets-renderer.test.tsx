@@ -12,7 +12,7 @@ describe('QQ-style login presets without exposing secrets',()=>{
  let root:Root,host:HTMLDivElement;
  const a={accountId:'a',baseUrl:'http://127.0.0.1:55844',email:'a@example.invalid',remembered:true,autoLogin:false,lastUsedAt:2};
  const b={...a,accountId:'b',email:'b@example.invalid',remembered:false,lastUsedAt:1};
- beforeEach(()=>{(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;host=document.createElement('div');document.body.append(host);root=createRoot(host);fixture.session={identity:null,busy:false,error:'',baseUrl:a.baseUrl,remembered:false,accounts:[a,b],selectedAccountId:'a',login:vi.fn(),loginAccount:vi.fn(),removeAccount:vi.fn(async()=>true),register:vi.fn(),logout:vi.fn()};});
+ beforeEach(()=>{(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;host=document.createElement('div');document.body.append(host);root=createRoot(host);fixture.session={identity:null,busy:false,error:'',baseUrl:a.baseUrl,remembered:false,accounts:[a,b],selectedAccountId:'a',login:vi.fn(),loginAccount:vi.fn(),reconnect:vi.fn(async()=>false),removeAccount:vi.fn(async()=>true),register:vi.fn(),logout:vi.fn()};});
  afterEach(async()=>{await act(async()=>root.unmount());host.remove();});
  const mount=()=>act(async()=>root.render(<ProductLogin/>));
  it('prefills a saved account and uses main-owned credentials only after explicit login',async()=>{
@@ -53,5 +53,21 @@ describe('QQ-style login presets without exposing secrets',()=>{
   await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(email,'user@example.invalid');email.dispatchEvent(new Event('input',{bubbles:true}));Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(password,'CenterPassword1');password.dispatchEvent(new Event('input',{bubbles:true}));});
   await act(async()=>fireEvent.submit(host.querySelector('form')!));
   expect(fixture.session.login).toHaveBeenCalled();expect(invoke).not.toHaveBeenCalledWith('accounts:upsert',expect.anything());
+ });
+ it('shows the server cause and next action instead of a generic login failure',async()=>{
+  fixture.session.accounts=[];fixture.session.selectedAccountId=undefined;fixture.session.error='该账号尚未设置中心登录密码，请联系超级管理员重置密码';
+  await mount();
+  expect(host.querySelector('[role=alert]')?.textContent).toContain('该账号尚未设置中心登录密码');
+ });
+ it('falls back to a required password and offers a center retry after offline authority expires',async()=>{
+  fixture.session.error='中心暂时不可用，本机离线授权也已失效。请检查网络或中心服务后重试，或输入账号密码重新登录。';
+  await mount();
+  expect((host.querySelector('#password') as HTMLInputElement).required).toBe(true);
+  expect((host.querySelector('#password') as HTMLInputElement).placeholder).toBe('请输入密码');
+  expect(host.querySelector('[role=alert]')?.textContent).toContain('输入账号密码重新登录');
+  const retry=[...host.querySelectorAll('button')].find(button=>button.textContent==='重新检查中心');
+  expect(retry).toBeTruthy();
+  await act(async()=>fireEvent.click(retry!));
+  expect(fixture.session.loginAccount).toHaveBeenCalledWith({accountId:'a',autoLogin:false});
  });
 });

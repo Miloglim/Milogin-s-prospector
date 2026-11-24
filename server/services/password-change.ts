@@ -11,9 +11,11 @@ export function createPasswordChangeService(repo:PasswordChangeRepository,authRe
    ||!isNewAccountPassword(value.newPassword)||value.newPassword===value.currentPassword)return failure('INVALID_INPUT','新密码至少6位，仅允许英文字母和数字，且必须与当前密码不同');
   const identity=await auth.me(token,'browser');if(!identity.ok)return identity;
   const credential=await authRepo.credential(identity.data.email);if(!credential.ok)return credential;
-  if(!credential.data?.active)return failure('UNAUTHORIZED','会话已失效');
+  if(!credential.data)return failure('ACCOUNT_NOT_FOUND','账号资料不存在，请联系超级管理员');
+  if(!credential.data.active)return failure('ACCOUNT_DISABLED','账号已停用，请联系超级管理员');
+  if(!credential.data.passwordHash)return failure('ACCOUNT_NOT_CONFIGURED','该账号尚未设置中心登录密码，请联系超级管理员重置密码');
   try{
-   if(!await passwords.verify(value.currentPassword,credential.data.passwordHash))return failure('UNAUTHORIZED','当前密码不正确');
+   if(!await passwords.verify(value.currentPassword,credential.data.passwordHash))return failure('INVALID_CREDENTIALS','当前密码不正确');
    return await repo.changePassword(tokens.hash(token),credential.data.passwordHash,credential.data.securityRevision,await passwords.hash(value.newPassword));
   }catch{return failure('UNAVAILABLE','改密暂不可用，请稍后重试');} // Never expose submitted passwords or crypto errors.
  }};

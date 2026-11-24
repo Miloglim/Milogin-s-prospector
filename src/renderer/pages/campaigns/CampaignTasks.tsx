@@ -5,7 +5,7 @@ import { Button, Card, Drawer, Empty, Popconfirm, Progress, Table, Tag, Tooltip,
 import type { ColumnsType } from "antd/es/table";
 import {
   PlusOutlined, RocketOutlined, EditOutlined, PauseCircleOutlined,
-  PlayCircleOutlined, StopOutlined, ClockCircleOutlined, LoadingOutlined, DeleteOutlined,
+  PlayCircleOutlined, StopOutlined, ClockCircleOutlined, LoadingOutlined, DeleteOutlined, MailOutlined,
 } from "@ant-design/icons";
 
 /**
@@ -47,7 +47,7 @@ interface EngineStatus {
   isPaused: boolean; isRunning: boolean;
   currentItem: { id: string; companyName: string; recipients: unknown[]; accountEmail?: string } | null;
   delaySeconds: number; delayUntil: string | null;
-  delayReason?: "group" | "window" | null;
+  delayReason?: "group" | "window" | "rate" | null;
   pausedReason?: "user" | "sender_block" | null;
 }
 
@@ -85,6 +85,14 @@ const fmtDelay = (s: number) => {
   const sec = s % 60;
   return m > 0 ? `${m}分${sec}秒` : `${sec}秒`;
 };
+
+type CampaignInboxStatus = "sent" | "replied" | "bounced" | "autoreply";
+
+function openCampaignInbox(campaignId: string, status?: CampaignInboxStatus): void {
+  const params = new URLSearchParams({ campaign: campaignId });
+  if (status) params.set("campaignStatus", status);
+  window.location.hash = `#/inbox?${params.toString()}`;
+}
 
 export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEdit: (id: string) => void }) {
   const qc = useQueryClient();
@@ -327,9 +335,9 @@ export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEd
 
                 {/* 止损计数 */}
                 <div className="flex flex-wrap gap-1 mb-2 min-h-[22px]">
-                  {r.replied > 0 && <Tag color="green" className="!my-0 !text-[10px]">已收到 {r.replied}</Tag>}
-                  {r.bounced > 0 && <Tag color="orange" className="!my-0 !text-[10px]">退信 {r.bounced}</Tag>}
-                  {r.autoreply > 0 && <Tag color="orange" className="!my-0 !text-[10px]">自动回复 {r.autoreply}</Tag>}
+                  {r.replied > 0 && <button type="button" className="border-0 bg-transparent p-0 cursor-pointer" title="查看任务已收到邮件" aria-label={`查看任务已收到邮件 ${r.replied} 封`} onClick={event => { event.stopPropagation(); openCampaignInbox(r.id, "replied"); }}><Tag color="green" className="!my-0 !text-[10px] !mr-0">已收到 {r.replied}</Tag></button>}
+                  {r.bounced > 0 && <button type="button" className="border-0 bg-transparent p-0 cursor-pointer" title="查看任务退信" aria-label={`查看任务退信 ${r.bounced} 封`} onClick={event => { event.stopPropagation(); openCampaignInbox(r.id, "bounced"); }}><Tag color="orange" className="!my-0 !text-[10px] !mr-0">退信 {r.bounced}</Tag></button>}
+                  {r.autoreply > 0 && <button type="button" className="border-0 bg-transparent p-0 cursor-pointer" title="查看任务自动回复" aria-label={`查看任务自动回复 ${r.autoreply} 封`} onClick={event => { event.stopPropagation(); openCampaignInbox(r.id, "autoreply"); }}><Tag color="orange" className="!my-0 !text-[10px] !mr-0">自动回复 {r.autoreply}</Tag></button>}
                   {r.unsubscribed > 0 && <Tag className="!my-0 !text-[10px]">退订 {r.unsubscribed}</Tag>}
                   {r.skipped > 0 && <Tag className="!my-0 !text-[10px]">跳过 {r.skipped}</Tag>}
                   {r.replied + r.bounced + r.autoreply + r.unsubscribed + r.skipped === 0 && (
@@ -373,6 +381,7 @@ export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEd
             <span className="text-gray-300">·</span>
             <span>{detail.campaign.autoSend ? "无人值守" : "每轮手动开始"}</span>
             {detail.raw?.accountPolicy === "fixed" && <Tag className="!my-0">指定账号</Tag>}
+            <Button size="small" type="text" icon={<MailOutlined />} className="ml-auto" onClick={() => openCampaignInbox(detail.campaign!.id)}>查看任务邮件</Button>
           </div>
         )}
 
@@ -387,6 +396,8 @@ export function CampaignTasks({ onCreate, onEdit }: { onCreate: () => void; onEd
                 <>
                   {status?.delayReason === "window"
                     ? <><ClockCircleOutlined className="text-teal-500" /> 未到发送时段 — 到点自动开始</>
+                    : status?.delayReason === "rate"
+                      ? <><ClockCircleOutlined className="text-teal-500" /> 按安全发信节奏等待 {fmtDelay(delayLeft)}</>
                     : delayLeft > 0
                       ? <><ClockCircleOutlined className="text-teal-500" /> 组间等待 {fmtDelay(delayLeft)}</>
                       : <><LoadingOutlined className="text-blue-500" spin /> 正在发送</>}

@@ -1,13 +1,13 @@
 import { invalidateDomain } from "../../lib/cacheDeps";
 import { isPermissionDenied } from "../../lib/permissionGate";
 import { useRouterState } from "@tanstack/react-router";
-import { useState, useEffect, useRef, type ReactNode, type ComponentRef } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode, type ComponentRef } from "react";
 import { createPortal } from "react-dom";
 import { Table, Button, Input, Space, Tag, message, Form, Select, Popover, Checkbox } from "antd";
-import { PlusOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, ImportOutlined, PartitionOutlined, MailOutlined, ExportOutlined, MoreOutlined, LeftOutlined, CloseOutlined } from "@ant-design/icons";
+import { PlusOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, ImportOutlined, PartitionOutlined, MailOutlined, ExportOutlined, MoreOutlined, LeftOutlined, CloseOutlined, FilterOutlined } from "@ant-design/icons";
 import type { TableColumnsType } from "antd";
 import { useQueryClient } from "@tanstack/react-query";
-import { useInfiniteContacts, useUpsertContact, type Contact, type ContactDataPort, type ContactDataResult } from "../../hooks/useContacts";
+import { useInfiniteContacts, useUpsertContact, type Contact, type ContactDataPort, type ContactDataResult, type ContactFilters } from "../../hooks/useContacts";
 import { ContactDetailDrawer, ContactDetailLayout, SectionTitle, CLIENT_TYPE, STATUS_META, STAGE_META, CRM_STAGES, COUNTRIES } from "../../components/ContactDetail";
 import { ImportDrawer, type ImportDrawerPort } from "../../components/ImportDrawer";
 import { LeadIngressConflictDrawer, type LeadIngressConflictTarget } from "../customers/LeadIngressConflictDrawer";
@@ -21,8 +21,13 @@ const SCROLL_THUMB_MIN_HEIGHT = 24;
 const SCROLL_THUMB_HIDE_MS = 520;
 const SCROLL_KEY_STEP = 42;
 const LOAD_MORE_DISTANCE_PX = 240;
-const DEFAULT_COLS = ["companyName", "country", "clientType", "name", "title", "phone", "whatsapp", "email", "sourceLevel1", "sourceLevel2", "status", "relationshipStage", "stage", "assignee"];
+const CONTACT_TABLE_MIN_HEIGHT = 240;
+const DEFAULT_COLS = ["companyName", "country", "clientType", "name", "email", "title", "phone", "whatsapp", "status", "relationshipStage", "stage", "assignee", "sourceLevel1", "sourceLevel2"];
 const withRequiredCols = (cols: string[]) => [...new Set([...cols, ...REQUIRED_COLS])];
+const normalizeCenterColumnOrder = (cols: string[]) => {
+  const selected = new Set(withRequiredCols(cols));
+  return [...DEFAULT_COLS.filter(key => selected.has(key)), ...cols.filter(key => !DEFAULT_COLS.includes(key) && selected.has(key))];
+};
 
 interface ColDef { key: string; title: string; width?: number; render: (c: Contact) => ReactNode; }
 interface ContactInfiniteData {
@@ -142,6 +147,8 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   const portKey = dataPort?.key ?? 'local';
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filters, setFilters] = useState<ContactFilters>({});
+  const [filterOpen, setFilterOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addConflict, setAddConflict] = useState<LeadIngressConflictTarget | null>(null);
   const [returnInboxId, setReturnInboxId] = useState<number | null>(null);
@@ -155,12 +162,29 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   const [pendingDetailId, setPendingDetailId] = useState<number | null>(null);
   // antd 5 顶层未导出 TableRef 类型：用 ComponentRef<typeof Table>（含 ref.scrollTo）并显式调用
   const tableRef = useRef<ComponentRef<typeof Table>>(null);
+  // 虚拟表格需要明确的视口高度；只渲染可视行，避免滚动加载后整表 DOM 无限增长。
+  const tableBoxRef = useRef<HTMLDivElement>(null);
+  const [tableH, setTableH] = useState(480);
+  // Virtual tables scroll inside rc-virtual-list's holder, not the plain body wrapper.
+  const tableScroller = () => tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-tbody-virtual-holder')
+    ?? tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-body')
+    ?? tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-content');
+  useEffect(() => {
+    const el = tableBoxRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setTableH(Math.max(CONTACT_TABLE_MIN_HEIGHT, el.clientHeight - 2));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [visibleCols, setVisibleCols] = useState<string[]>(() => {
     try {
       const current = dataPort ? localStorage.getItem(CENTER_COLS_KEY) : null;
       const s = current ?? localStorage.getItem(COLS_KEY);
       const saved = s ? JSON.parse(s) as string[] : dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS;
-      return withRequiredCols(dataPort && !current ? [...new Set(saved.flatMap(key => key === 'source' ? ['sourceLevel1', 'sourceLevel2'] : [key]))] : saved);
+      const migrated = dataPort && !current ? [...new Set(saved.flatMap(key => key === 'source' ? ['sourceLevel1', 'sourceLevel2'] : [key]))] : saved;
+      return dataPort ? normalizeCenterColumnOrder(migrated) : withRequiredCols(migrated);
     } catch { return withRequiredCols(dataPort ? DEFAULT_COLS : LOCAL_DEFAULT_COLS); }
   });
   const [form] = Form.useForm();
@@ -171,7 +195,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data, isLoading, error, dataUpdatedAt, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteContacts({ search: debouncedSearch }, dataPort);
+  const { data, isLoading, error, dataUpdatedAt, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteContacts({ search: debouncedSearch, ...filters }, dataPort);
   const upsertContact = useUpsertContact(dataPort);
   const qc = useQueryClient();
 
@@ -180,35 +204,44 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
     setDetailContact(null);
     setPendingDetailId(null);
     setDeletingIds([]);
-    const scroller = tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-content');
+    const scroller = tableScroller();
     if (scroller) scroller.scrollTop = 0;
   }, [portKey]);
 
   const pages = data?.pages ?? [];
   const failedPage = pages.find(page => !page.success);
-  const contacts = [...new Map(pages.flatMap(page => page.success ? page.data?.items ?? [] : []).map(row => [row.id, row])).values()];
-  const total = pages.reduce((value, page) => page.success ? page.data?.total ?? value : value, 0);
+  const contacts = useMemo(() => [...new Map(pages.flatMap(page => page.success ? page.data?.items ?? [] : []).map(row => [row.id, row])).values()], [pages]);
+  const total = useMemo(() => {
+    for (let index = pages.length - 1; index >= 0; index--) {
+      const page = pages[index];
+      if (page?.success && page.data) return page.data.total;
+    }
+    return 0;
+  }, [pages]);
 
   useEffect(() => {
     if (!hasNextPage || isFetchingNextPage) return;
-    const scroller = tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-content');
-    if (!scroller) return;
+    // Capture scroll from whichever element antd picks (plain body, virtual holder, ...).
+    const host = tableBoxRef.current;
+    if (!host) return;
     let requested = false;
-    const loadIfNearBottom = () => {
+    const loadIfNearBottom = (event: Event) => {
       if (requested) return;
+      const scroller = event.target as HTMLElement | null;
+      if (!scroller || typeof scroller.scrollHeight !== 'number') return;
       const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
       if (remaining > LOAD_MORE_DISTANCE_PX) return;
       requested = true;
       void fetchNextPage().finally(() => { requested = false; });
     };
-    scroller.addEventListener('scroll', loadIfNearBottom, { passive: true });
-    return () => scroller.removeEventListener('scroll', loadIfNearBottom);
+    host.addEventListener('scroll', loadIfNearBottom, { passive: true, capture: true });
+    return () => host.removeEventListener('scroll', loadIfNearBottom, { capture: true });
   }, [contacts.length, fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   // Native vertical scrollbars reserve a gutter even when transparent. Overlay only
   // this table's vertical control so its header and fixed action cells reach the border.
   useEffect(() => {
-    const scroller = tableRef.current?.nativeElement.querySelector<HTMLElement>('.ant-table-content');
+    const scroller = tableScroller();
     const container = scroller?.parentElement;
     if (!scroller || !container || typeof ResizeObserver === 'undefined') return;
     const rail = document.createElement('div');
@@ -235,6 +268,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
       const thumbHeight = Math.min(height, Math.max(SCROLL_THUMB_MIN_HEIGHT, height * height / scroller.scrollHeight));
       travel = height - thumbHeight;
       rail.hidden = maximum === 0; rail.style.height = `${height}px`;
+      rail.style.top = `${scroller.getBoundingClientRect().top - container.getBoundingClientRect().top}px`;
       thumb.style.height = `${thumbHeight}px`;
       rail.setAttribute('aria-valuemin', '0'); rail.setAttribute('aria-valuemax', String(maximum));
       paint();
@@ -359,7 +393,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
       setSelectedRowKeys(previous => previous.filter(key => !selected.has(Number(key))));
       message.success(`已删除 ${ids.length} 个联系人`);
       if (dataPort) {
-        for (const key of ["center-contacts", "center-companies", "center-company-detail", "center-contact-detail", "dashboard", "search", "center-assignment", "inbox"]) {
+        for (const key of ["center-contacts", "center-companies", "center-company-detail", "center-contact-detail", "search", "center-assignment", "inbox"]) {
           void qc.invalidateQueries({ queryKey: [key] });
         }
       } else {
@@ -454,15 +488,17 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   }, [form, location.pathname, location.searchStr, dataPort]);
 
   const updateCols = (cols: string[]) => {
-    const next = withRequiredCols(cols);
+    const next = dataPort ? normalizeCenterColumnOrder(cols) : withRequiredCols(cols);
     setVisibleCols(next);
     localStorage.setItem(dataPort ? CENTER_COLS_KEY : COLS_KEY, JSON.stringify(next));
   };
 
   const visibleDefinitions = visibleCols.flatMap(key => COLUMN_DEFS.find(d => d.key === key) ?? []);
   const columns: TableColumnsType<Contact> = [
-    ...visibleDefinitions.map(d => ({
+    ...visibleDefinitions.map((d, index) => ({
       title: d.title, key: d.key, width: d.width,
+      // 横向滚动时保留首个字段作为行身份，避免滚到右侧后认不出是哪家公司。
+      fixed: index === 0 ? "left" as const : undefined,
       render: (_: unknown, r: Contact) => d.render(r),
     })),
     {
@@ -488,7 +524,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
             onClick={(e) => {
               e.stopPropagation();
               if (!inCrm(r)) return;
-              window.location.hash = dataPort ? `#/customers?view=board&centerContact=${r.contactId}&centerCustomer=${r.customerId}` : `#/customers?view=board&detail=${r.id}`;
+              window.location.hash = dataPort ? `#/customers?view=table&centerContact=${r.contactId}&centerCustomer=${r.customerId}` : `#/customers?view=table&detail=${r.id}`;
             }}
           />
           <Button type="text" size="small" icon={<DeleteOutlined />}
@@ -557,11 +593,48 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
   const tableScrollX = COLUMN_DEFS.filter(d => visibleCols.includes(d.key))
     .reduce((s, d) => s + (d.width || 100), 0) + 96 /* 操作列 */ + 32 /* 多选列 */;
 
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const updateFilter = (key: keyof ContactFilters, value?: string) => {
+    setFilters(previous => {
+      const next = { ...previous };
+      if (value) next[key] = value; else delete next[key];
+      return next;
+    });
+    setSelectedRowKeys([]);
+  };
+  const filterPanel = <div className="w-64 space-y-2">
+    <div className="text-[11px] font-semibold text-gray-500">筛选联系人</div>
+    <label className="block text-[11px] text-gray-500">联系状态
+      <Select size="small" className="mt-1 w-full" allowClear placeholder="全部状态" value={filters.touchStatus}
+        onChange={value => updateFilter('touchStatus', value)}
+        options={Object.entries(TOUCH_STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))} />
+    </label>
+    <label className="block text-[11px] text-gray-500">客户阶段
+      <Select size="small" className="mt-1 w-full" allowClear placeholder="全部阶段" value={filters.crmStage}
+        onChange={value => updateFilter('crmStage', value)}
+        options={CRM_STAGES.map(stage => ({ value: stage.key, label: stage.label }))} />
+    </label>
+    <label className="block text-[11px] text-gray-500">客户类型
+      <Select size="small" className="mt-1 w-full" allowClear placeholder="全部类型" value={filters.clientType}
+        onChange={value => updateFilter('clientType', value)}
+        options={[{ value: 'agent', label: '代理' }, { value: 'direct', label: '直客' }]} />
+    </label>
+    <label className="block text-[11px] text-gray-500">国家
+      <Select size="small" className="mt-1 w-full" allowClear showSearch optionFilterProp="label" placeholder="全部国家" value={filters.country}
+        onChange={value => updateFilter('country', value)}
+        options={COUNTRIES.map(country => ({ value: country.code, label: `${country.code} ${country.label}` }))} />
+    </label>
+    <div className="flex justify-end pt-1"><Button size="small" type="text" disabled={!activeFilterCount} onClick={() => setFilters({})}>清除筛选</Button></div>
+  </div>;
   const searchInput = <Input prefix={<SearchOutlined />} placeholder="搜索邮箱、姓名、公司..."
     value={search} onChange={e => setSearch(e.target.value)}
     size="small" style={{ width: 260, maxWidth: "100%" }} allowClear />;
-  const headerActions = <Space size="small">
+  const headerActions = <Space size="small" wrap>
     {headerActionsTarget && searchInput}
+    {dataPort && <Popover trigger="click" placement="bottomRight" open={filterOpen} onOpenChange={setFilterOpen} content={filterPanel}>
+      <Button type="text" size="small" icon={<FilterOutlined />} aria-label="筛选联系人" title="筛选联系人">{activeFilterCount ? `筛选 ${activeFilterCount}` : '筛选'}</Button>
+    </Popover>}
+    {dataPort && <span className="customer-contact-count">共 {total} 人</span>}
     <Popover trigger="click" placement="bottomRight" open={actionsOpen}
       onOpenChange={open => { setActionsOpen(open); if (!open) setActionsView("main"); }} content={actionsPanel}>
       <Button type="text" size="small" icon={<MoreOutlined />} aria-label="更多操作" title="更多操作">更多</Button>
@@ -600,6 +673,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
       {(error || failedPage) && <div role="alert" className="text-xs text-red-500 p-2 bg-red-50">{failedPage?.error || '加载失败'}</div>}
 
       {/* 表格 — 高密度 */}
+      <div ref={tableBoxRef} className="customer-contacts-table-box">
       <Table
         ref={tableRef}
         dataSource={contacts}
@@ -607,13 +681,15 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
         rowKey="id"
         loading={isLoading}
         size="small"
-        scroll={{ x: tableScrollX }}
+        virtual
+        scroll={{ x: tableScrollX, y: tableH }}
         className="prospector-page-table customer-contacts-table [&_.ant-table-thead>tr>th]:!text-[11px] [&_.ant-table-thead>tr>th]:!text-gray-400 [&_.ant-table-thead>tr>th]:!font-medium"
         pagination={false}
         rowSelection={{
           selectedRowKeys,
           onChange: setSelectedRowKeys,
           preserveSelectedRowKeys: true,
+          fixed: true,
         }}
         tableLayout="fixed"
         onRow={(record) => ({
@@ -633,6 +709,7 @@ export function ContactList({ dataPort, importPort, onAssign, renderDetail, head
         })}
         rowClassName="cursor-pointer"
       />
+      </div>
 
       {/* 新增联系人复用联系人详情的浮层和字段密度 */}
       <ContactDetailLayout open={addOpen} onClose={() => { setAddOpen(false); setReturnInboxId(null); }} destroyOnClose>

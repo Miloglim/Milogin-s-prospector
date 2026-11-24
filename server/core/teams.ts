@@ -6,7 +6,20 @@ export const TEAM_ROUTES = {
   candidates: '/api/crm/team-invite-candidates',
   teams: '/api/crm/teams',
   invitations: '/api/crm/team-invitations',
+  messages: '/api/crm/team-messages',
+  messagesRead: '/api/crm/team-messages/read',
+  messagesUnread: '/api/crm/team-messages/unread',
+  conversations: '/api/crm/team-conversations',
+  directory: '/api/crm/team-directory',
+  presence: '/api/crm/team-presence',
+  files: '/api/crm/team-files',
+  archive: '/api/crm/team-conversations/archive',
+  events: '/api/crm/team-events',
 } as const;
+
+export function isTeamRoute(path: string): boolean {
+  return Object.values(TEAM_ROUTES).some(route => path === route || path.startsWith(`${route}/`));
+}
 
 export const TEAM_LIMITS = {
   name: 80,
@@ -17,7 +30,11 @@ export const TEAM_LIMITS = {
   inviteBatch: 20,
   groupMembers: 100,
   bodyBytes: 8192,
+  fileBodyBytes: 12 * 1024 * 1024,
   key: 128,
+  messageBody: 2000,
+  fileBytes: 8 * 1024 * 1024,
+  filename: 240,
 } as const;
 
 export type TeamMemberRole = 'leader' | 'member';
@@ -34,7 +51,7 @@ export function isTeamUnitType(value: unknown): value is TeamUnitType {
 }
 
 export function teamAcceptsMembers(unitType: TeamUnitType | undefined): boolean {
-  return (unitType ?? DEFAULT_TEAM_UNIT_TYPE) === 'sales_team';
+  return unitType === undefined || isTeamUnitType(unitType);
 }
 
 export interface TeamMemberGroup {
@@ -115,6 +132,7 @@ export interface OrganizationUnitSummary {
   parentUnitId: string | null;
   name: string;
   version: number;
+  leaderName?: string;
 }
 
 export interface OrganizationContext {
@@ -138,6 +156,176 @@ export interface TeamDetail {
   team: TeamSnapshot;
   outgoingInvitations: TeamInvitation[];
   children: TeamAdminSummary[];
+}
+
+export interface TeamDirectMessage {
+  messageId: string;
+  teamId: string;
+  senderUserId: string;
+  senderName: string;
+  recipientUserId: string;
+  recipientName: string;
+  body: string;
+  kind: TeamDirectMessageKind;
+  payload: TeamFilePayload | TeamEmailReferencePayload | null;
+  createdAt: string;
+  mine: boolean;
+}
+
+export type TeamDirectMessageKind = 'text' | 'attachment' | 'email_ref';
+
+export interface TeamFilePayload {
+  fileId: string;
+  filename: string;
+  mimeType: string;
+  bytes: number;
+  sha256: string;
+}
+
+export interface TeamEmailReferencePayload {
+  messageKey: string;
+  subject: string;
+  from: string;
+  to: string[];
+  occurredAt: string;
+  summary?: string;
+  excerpt?: string;
+  customerId?: string;
+  contactId?: number;
+}
+
+export interface TeamFileUpload {
+  teamId: string;
+  filename: string;
+  mimeType: string;
+  base64: string;
+  idempotencyKey: string;
+}
+
+export interface TeamFileMeta extends TeamFilePayload {
+  teamId: string;
+  createdAt: string;
+}
+
+export interface TeamConversationArchiveInput {
+  teamId: string;
+  memberUserId: string;
+  from?: string;
+  to?: string;
+  idempotencyKey: string;
+}
+
+export interface TeamArchiveMeta extends TeamFileMeta {
+  messageCount: number;
+}
+
+export type TeamEventType = 'message.created' | 'message.read' | 'message.unread';
+
+export interface TeamEvent {
+  eventId: string;
+  type: TeamEventType;
+  teamId: string;
+  peerUserId: string;
+  messageId: string | null;
+  occurredAt: string;
+}
+
+export interface TeamDirectMessageQuery {
+  teamId?: string;
+  memberUserId: string;
+  limit: number;
+  beforeMessageId?: string;
+}
+
+export interface TeamDirectMessageSend {
+  teamId?: string;
+  recipientUserId: string;
+  body: string;
+  kind?: TeamDirectMessageKind;
+  fileId?: string;
+  payload?: TeamEmailReferencePayload;
+  idempotencyKey: string;
+}
+
+export interface TeamDirectMessagePage {
+  items: TeamDirectMessage[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+export interface TeamMessageReadCommand {
+  teamId: string;
+  memberUserId: string;
+  throughMessageId?: string;
+  idempotencyKey: string;
+}
+
+export interface TeamMessageUnreadCommand {
+  teamId: string;
+  memberUserId: string;
+  messageId: string;
+  idempotencyKey: string;
+}
+
+export interface TeamMessageReadReceipt {
+  lastReadAt: string | null;
+  unreadCount: number;
+}
+
+export type TeamPresenceState = 'online' | 'unread' | 'offline';
+
+export interface TeamPresenceQuery {
+  teamId: string;
+  memberUserId: string;
+}
+
+export interface TeamPresenceView {
+  state: TeamPresenceState;
+  lastSeenAt: string | null;
+  unread: boolean;
+}
+
+export interface TeamDirectConversation {
+  userId: string;
+  teamId: string;
+  displayName: string;
+  email: string | null;
+  manager: boolean;
+  lastMessage: string;
+  lastMessageAt: string;
+  mine: boolean;
+  lastMessageId: string;
+  lastReadAt: string | null;
+  unreadCount: number;
+  presence: 'online' | 'offline';
+}
+
+export interface TeamDirectConversationQuery {
+  teamId?: string;
+  limit: number;
+}
+
+export interface TeamDirectConversationPage {
+  items: TeamDirectConversation[];
+}
+
+export interface TeamDirectoryEntry {
+  userId: string;
+  displayName: string;
+  email: string | null;
+  teamId: string | null;
+  teamName: string | null;
+  manager: boolean;
+  presence: 'online' | 'offline';
+  unreadCount: number;
+}
+
+export interface TeamDirectoryPage {
+  items: TeamDirectoryEntry[];
+}
+
+export interface TeamDirectoryQuery {
+  limit: number;
 }
 
 export interface TeamMemberCandidate {
@@ -225,6 +413,7 @@ export interface TeamMemberGroupDeleteInput {
 }
 
 export interface TeamRepository {
+  currentUser(hash: string): Promise<Result<string>>;
   context(hash: string): Promise<Result<TeamContext>>;
   detail(hash: string, teamId: string): Promise<Result<TeamDetail>>;
   candidates(hash: string, query: TeamMemberCandidateQuery): Promise<Result<TeamMemberCandidatePage>>;
@@ -237,4 +426,14 @@ export interface TeamRepository {
   adjustMember(hash: string, teamId: string, input: TeamMemberAdjustmentInput): Promise<Result<TeamContext>>;
   saveMemberGroup(hash: string, teamId: string, input: TeamMemberGroupInput): Promise<Result<TeamContext>>;
   deleteMemberGroup(hash: string, teamId: string, groupId: string, input: TeamMemberGroupDeleteInput): Promise<Result<TeamContext>>;
+  directory(hash: string, query: TeamDirectoryQuery): Promise<Result<TeamDirectoryPage>>;
+  conversations(hash: string, query: TeamDirectConversationQuery): Promise<Result<TeamDirectConversationPage>>;
+  messages(hash: string, query: TeamDirectMessageQuery): Promise<Result<TeamDirectMessagePage>>;
+  markMessagesRead(hash: string, input: TeamMessageReadCommand): Promise<Result<TeamMessageReadReceipt>>;
+  markMessagesUnread(hash: string, input: TeamMessageUnreadCommand): Promise<Result<TeamMessageReadReceipt>>;
+  presence(hash: string, query: TeamPresenceQuery): Promise<Result<TeamPresenceView>>;
+  uploadFile(hash: string, input: TeamFileUpload): Promise<Result<TeamFileMeta>>;
+  readFile(hash: string, fileId: string): Promise<Result<{ meta: TeamFileMeta; data: Uint8Array }>>;
+  archiveConversation(hash: string, input: TeamConversationArchiveInput): Promise<Result<TeamArchiveMeta>>;
+  sendMessage(hash: string, input: TeamDirectMessageSend): Promise<Result<TeamDirectMessage>>;
 }

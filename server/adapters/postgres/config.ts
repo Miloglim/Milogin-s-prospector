@@ -10,7 +10,7 @@ export const CRM_TEST_HOST = settings.host;
 export const CRM_RUNTIME_MARKER = settings.marker;
 const MILLISECONDS_PER_SECOND = 1000;
 const CONNECTION_MAX = 4;
-const PRODUCTION_DATABASE = "milogin_center";
+const DEFAULT_PRODUCTION_DATABASE = "milogin_center";
 const DEFAULT_PRODUCTION_USER = "milogin_app";
 const LOCAL_HOST = "127.0.0.1";
 const DEFAULT_PRODUCTION_PORT = 5432;
@@ -31,9 +31,15 @@ function productionUser(env: NodeJS.ProcessEnv): string {
   return user;
 }
 
-function productionPool(host: string, port: number, user: string, password: string): PoolConfig {
+function productionDatabase(env: NodeJS.ProcessEnv): string {
+  const database = (env.PROSPECTOR_CENTER_PG_DATABASE || DEFAULT_PRODUCTION_DATABASE).trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(database)) throw new Error("正式中心数据库名称无效");
+  return database;
+}
+
+function productionPool(host: string, port: number, user: string, password: string, database: string): PoolConfig {
   return {
-    host, port, database: PRODUCTION_DATABASE, user,
+    host, port, database, user,
     password, max: CONNECTION_MAX,
     connectionTimeoutMillis: settings.connection_timeout_seconds * MILLISECONDS_PER_SECOND,
     application_name: "prospector-center", options: PRODUCTION_OPTIONS, ssl: false,
@@ -61,21 +67,22 @@ export function readProductionDatabaseConfig(env: NodeJS.ProcessEnv = process.en
   const dsn = env.PROSPECTOR_CENTER_PG_DSN;
   const expectedHost = productionHost(env);
   const expectedUser = productionUser(env);
+  const expectedDatabase = productionDatabase(env);
   if (!dsn) {
     const password = env.PROSPECTOR_CENTER_PG_PASSWORD;
     const port = Number(env.PROSPECTOR_CENTER_PG_PORT || DEFAULT_PRODUCTION_PORT);
     if (!password || !Number.isSafeInteger(port) || port < 1 || port > MAX_PORT) throw new Error("缺少正式中心数据库连接配置");
-    return productionPool(expectedHost, port, expectedUser, password);
+    return productionPool(expectedHost, port, expectedUser, password, expectedDatabase);
   }
   let url: URL;
   try { url = new URL(dsn); }
   catch { throw new Error("正式中心数据库连接配置无效"); }
   const port = Number(url.port || DEFAULT_PRODUCTION_PORT);
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.hostname !== expectedHost
-    || !Number.isSafeInteger(port) || port < 1 || port > MAX_PORT || url.pathname !== `/${PRODUCTION_DATABASE}`
+    || !Number.isSafeInteger(port) || port < 1 || port > MAX_PORT || url.pathname !== `/${expectedDatabase}`
     || decodeURIComponent(url.username) !== expectedUser || !url.password
     || url.search || url.hash) throw new Error("正式中心只能连接本机独立应用数据库");
-  return productionPool(expectedHost, port, expectedUser, decodeURIComponent(url.password));
+  return productionPool(expectedHost, port, expectedUser, decodeURIComponent(url.password), expectedDatabase);
 }
 
 export function readOnlineDatabaseConfig(env: NodeJS.ProcessEnv = process.env): PoolConfig {

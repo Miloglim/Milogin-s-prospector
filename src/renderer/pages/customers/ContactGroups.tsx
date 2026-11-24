@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useDeferredValue, useEffect, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Alert, Button, Checkbox, Pagination, Segmented, Spin, Tag } from 'antd';
-import { CheckSquareOutlined } from '@ant-design/icons';
+import { Alert, Button, Checkbox, Input, Pagination, Segmented, Spin, Tag } from 'antd';
+import { CheckSquareOutlined, ContactsOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SearchOutlined } from '@ant-design/icons';
 import { CENTER_CONTACT_GROUP_DIMENSIONS, CENTER_CONTACT_GROUP_LIMITS, CONTACT_ASSIGNMENT_LIMITS, ONLINE_CHANNELS, type CenterContactGroup, type CenterContactGroupDimension, type CenterContactGroupPage, type CenterContactGroupQuery } from '../../../shared/online-crm';
 import { centerInvoke } from './centerContactPort';
 import { useIdentity } from '../../IdentityContext';
@@ -34,14 +34,18 @@ function selection(dimension:CenterContactGroupDimension,group:CenterContactGrou
  };
 }
 
-export function ContactGroups({ scope = 'all', canAssign = false, selectedGroup, onSelect, onAssign }:{
+export function ContactGroups({ scope = 'all', canAssign = false, selectedGroup, collapsed = false, onCollapsedChange, onSelect, onAssign }:{
  scope?:CenterContactGroupQuery['scope']; canAssign?:boolean;
  selectedGroup?:ContactGroupSelection|null;
+  collapsed?:boolean;
+  onCollapsedChange?:(collapsed:boolean)=>void;
  onSelect:(selection:ContactGroupSelection|null)=>void;
  onAssign?:(selection:{dimension:CenterContactGroupDimension;groups:CenterContactGroup[]})=>Promise<boolean>;
 }) {
  const { identity, baseUrl } = useIdentity();
  const [dimension,setDimension]=useState<CenterContactGroupDimension>(selectedGroup?.dimension??'batch');
+ const [search,setSearch]=useState('');
+ const deferredSearch=useDeferredValue(search.trim());
  const [page,setPage]=useState(1);
  const [selected,setSelected]=useState<Set<string>>(new Set());
  const [selecting,setSelecting]=useState(false);
@@ -49,35 +53,32 @@ export function ContactGroups({ scope = 'all', canAssign = false, selectedGroup,
  useEffect(()=>{setPage(1);},[dimension,scope]);
  useEffect(()=>{setSelected(new Set());},[dimension,scope,page]);
  const query=useQuery({
-  queryKey:['center-contact-groups',baseUrl,identity?.userId,scope,dimension,'',page],
-  queryFn:()=>centerInvoke<CenterContactGroupPage>(ONLINE_CHANNELS.CONTACT_GROUPS,{dimension,scope,search:'',limit:CENTER_CONTACT_GROUP_LIMITS.page,offset:(page-1)*CENTER_CONTACT_GROUP_LIMITS.page}),
+  queryKey:['center-contact-groups',baseUrl,identity?.userId,scope,dimension,deferredSearch,page],
+  queryFn:()=>centerInvoke<CenterContactGroupPage>(ONLINE_CHANNELS.CONTACT_GROUPS,{dimension,scope,search:deferredSearch,limit:CENTER_CONTACT_GROUP_LIMITS.page,offset:(page-1)*CENTER_CONTACT_GROUP_LIMITS.page}),
+  staleTime:30_000,
   placeholderData:keepPreviousData,
  });
  const data=query.data?.ok?query.data.data:undefined;
  const groups=data?.items??[];
- const groupSignature=groups.map(group=>`${group.key}:${group.count}`).join('|');
- const selectableGroups=query.isPlaceholderData?[]:groups;
- const selectableSignature=query.isPlaceholderData?'':groupSignature;
  const selectedGroups=groups.filter(group=>selected.has(group.key));
  const selectedContacts=selectedGroups.reduce((total,group)=>total+group.count,0);
  const tooMany=selectedContacts>CONTACT_ASSIGNMENT_LIMITS.batch;
- useEffect(()=>{
-  if(!selectableGroups.length)return;
-  const current=selectedGroup?.dimension===dimension?selectableGroups.find(group=>group.key===selectedGroup.key):undefined;
-  if(current&&selectedGroup?.count!==undefined)return;
-  onSelect(selection(dimension,current??selectableGroups[0]!));
- },[dimension,selectableSignature,selectedGroup?.dimension,selectedGroup?.key,selectedGroup?.count,onSelect]);
  const error=query.data&&!query.data.ok?query.data.error.message:query.error?.message;
  const toggle=(key:string,checked:boolean)=>setSelected(previous=>{const next=new Set(previous);if(checked)next.add(key);else next.delete(key);return next;});
  const selectPage=()=>setSelected(new Set(groups.map(group=>group.key)));
  const toggleSelecting=()=>setSelecting(value=>{if(value)setSelected(new Set());return !value;});
  const changeDimension=(value:CenterContactGroupDimension)=>{setPage(1);setDimension(value);onSelect(null);};
  async function assign(){if(!onAssign||!selectedGroups.length||tooMany||assigning)return;setAssigning(true);try{if(await onAssign({dimension,groups:selectedGroups})){setSelected(new Set());setSelecting(false);}}finally{setAssigning(false);}}
- return <aside className="contact-group-panel" aria-busy={query.isFetching}>
+ return <aside className={`contact-group-panel${collapsed?' is-collapsed':''}`} aria-busy={query.isFetching}>
   <div className="contact-group-panel-head">
    <div><div className="contact-group-panel-title">联系人分组</div><div className="contact-group-panel-count">{data?.total??0} 组</div></div>
-   {canAssign&&<Button size="small" type={selecting?'primary':'default'} icon={<CheckSquareOutlined/>} onClick={toggleSelecting}>{selecting?'取消':'多选'}</Button>}
+    {!collapsed&&canAssign&&<Button size="small" type={selecting?'primary':'default'} icon={<CheckSquareOutlined/>} onClick={toggleSelecting}>{selecting?'取消':'多选'}</Button>}
+    {onCollapsedChange&&<Button className="contact-group-collapse" size="small" type="text" icon={collapsed?<MenuUnfoldOutlined/>:<MenuFoldOutlined/>} aria-label={collapsed?'展开联系人分组':'收起联系人分组'} title={collapsed?'展开联系人分组':'收起联系人分组'} onClick={()=>onCollapsedChange(!collapsed)}/>}
   </div>
+  <div className="contact-group-panel-search"><Input size="small" allowClear prefix={<SearchOutlined/>} placeholder="搜索联系人、公司..." value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}}/></div>
+  <button type="button" className={`contact-group-panel-all${!selectedGroup?' is-active':''}`} onClick={()=>onSelect(null)}>
+   <ContactsOutlined/><span>全部联系人</span>
+  </button>
   <Segmented<CenterContactGroupDimension> block size="small" value={dimension} onChange={changeDimension} options={CENTER_CONTACT_GROUP_DIMENSIONS.map(value=>({value,label:LABELS[value]}))}/>
   {canAssign&&selecting&&selectedGroups.length>0&&<div className="contact-group-panel-selection">
    <span>已选 {selectedGroups.length} 组 · {selectedContacts} 人</span>

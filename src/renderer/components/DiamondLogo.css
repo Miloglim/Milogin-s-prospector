@@ -43,30 +43,23 @@
 /* idle 时外圈 hover 额外放大（running 时旋转动画优先，放大不生效，仅留光晕） */
 .dl-idle:hover .dl-box { transform: rotate(45deg) scale(1.16); }
 
-/* idle：整体慢呼吸（动效在根层 scale，与视差 translate 正交） */
+/* idle：整体慢呼吸（只改 scale，与视差 translate 正交） */
 .dl-idle { animation: dl-breathe 3.2s ease-in-out infinite; }
-.dl-idle .dl-core { animation: dl-pulse 3.2s ease-in-out infinite; }
 @keyframes dl-breathe {
-  0%, 100% { transform: scale(1); opacity: 0.82; }
-  50%      { transform: scale(1.07); opacity: 1; }
-}
-@keyframes dl-pulse {
-  0%, 100% { opacity: 0.35; }
-  50%      { opacity: 1; }
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.07); }
 }
 
-/* running：外圈持续旋转 + 内核快闪；hover 加速旋转 */
+/* running：外圈持续旋转；hover 加速旋转 */
 .dl-running .dl-box { animation: dl-spin 1.8s linear infinite; }
-.dl-running .dl-core { animation: dl-pulse 0.9s ease-in-out infinite; }
 .dl-running:hover .dl-box { animation-duration: 0.9s; }
 @keyframes dl-spin {
   from { transform: rotate(45deg); }
   to   { transform: rotate(405deg); }
 }
 
-/* 降低动效偏好：关闭呼吸/旋转/闪烁（视差由 JS 侧媒体查询另行跳过） */
+/* 降低动效偏好：关闭呼吸/旋转（视差由 JS 侧媒体查询另行跳过） */
 @media (prefers-reduced-motion: reduce) {
-  .dl-idle, .dl-idle .dl-core,
-  .dl-running .dl-box, .dl-running .dl-core { animation: none; }
+  .dl-idle, .dl-running .dl-box { animation: none; }
   .dl-trackable .dl-track { transition: none; }
 }

@@ -252,7 +252,8 @@ export class PostgresAuthRepository implements AuthRepository {
   credential(email: string): Promise<Result<Credential | null>> {
     return this.execute(async () => {
       const rows = await this.pool.query(`SELECT u.user_id AS "userId",c.password_hash AS "passwordHash",u.active,u.security_revision AS "securityRevision",u.must_change_password AS "mustChangePassword"
-        FROM public.identity_login_emails e JOIN public.identity_users u USING(user_id) JOIN public.identity_credentials c USING(user_id) WHERE e.email=$1`,[email]);
+        FROM public.identity_login_emails e JOIN public.identity_users u USING(user_id)
+        LEFT JOIN public.identity_credentials c USING(user_id) WHERE e.email=$1`,[email]);
       return success(rows.rows[0] ?? null);
     });
   }
@@ -573,6 +574,15 @@ export class PostgresAuthRepository implements AuthRepository {
       const replaced = await this.pool.query(`SELECT 1 FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
         WHERE s.token_hash=$1 AND s.client='api' AND s.revocation_reason IN ('replaced','device-handoff','device-takeover') AND u.active`, [tokenHash]);
       return replaced.rows.length ? failure('DEVICE_REPLACED', '该账号已在另一台电脑登录') : success(null);
+    });
+  }
+  touchPresence(tokenHash: string): Promise<Result<void>> {
+    return this.execute(async () => {
+      await this.pool.query(`INSERT INTO public.identity_desktop_presence(user_id,last_seen_at)
+        SELECT s.user_id,clock_timestamp() FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
+        WHERE ${SESSION_FILTER} AND s.client='api'
+        ON CONFLICT(user_id) DO UPDATE SET last_seen_at=clock_timestamp()`, [tokenHash]);
+      return success(undefined);
     });
   }
   revokeDesktopSession(refreshHash: string): Promise<Result<void>> {

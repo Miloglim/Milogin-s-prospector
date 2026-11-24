@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>销售工作台交互原型</title>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --ink: #18232b;
+      --muted: #66737c;
+      --line: #dfe5e8;
+      --surface: #fff;
+      --soft: #f6f8f8;
+      --canvas: #edf1f2;
+      --rail: #171b1d;
+      --accent: #0f766e;
+      --accent-soft: #e6f4f2;
+      --blue: #2563eb;
+      --amber: #b45309;
+      --red: #c2413b;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { overflow: hidden; color: var(--ink); background: var(--canvas); font-family: "Noto Sans SC", "Microsoft YaHei UI", "Segoe UI", sans-serif; font-size: 13px; }
+    button, input { font: inherit; }
+    .icon { width: 15px; height: 15px; stroke-width: 1.8; }
+    .app { height: 100%; display: grid; grid-template-columns: 218px minmax(0, 1fr); }
+    .rail { min-width: 0; display: flex; flex-direction: column; color: #fff; background: var(--rail); }
+    .brand { padding: 28px 22px 22px; }
+    .brand strong { display: block; font-size: 20px; font-weight: 700; letter-spacing: 0; }
+    .brand span { display: block; margin-top: 4px; color: #a6adb0; font-size: 11px; }
+    .nav { padding: 8px 10px; display: grid; gap: 3px; }
+    .nav button { min-height: 38px; display: flex; align-items: center; gap: 11px; padding: 0 12px; border: 0; border-radius: 6px; color: rgba(255,255,255,.7); background: transparent; text-align: left; cursor: pointer; }
+    .nav button:hover { color: #fff; background: rgba(255,255,255,.055); }
+    .nav button.active { color: #fff; background: rgba(255,255,255,.1); }
+    .rail-spacer { flex: 1; }
+    .team-context { margin: 10px; padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 6px; color: rgba(255,255,255,.7); }
+    .team-context strong { display: block; color: #fff; font-size: 12px; }
+    .team-context small { display: block; margin-top: 5px; font-size: 10px; }
+    .team-avatars { display: flex; margin-top: 10px; }
+    .team-avatars span { width: 23px; height: 23px; display: grid; place-items: center; margin-right: -4px; border: 2px solid var(--rail); border-radius: 50%; color: #fff; background: #496579; font-size: 8px; }
+    .account { min-height: 54px; display: flex; align-items: center; gap: 9px; padding: 0 18px; border-top: 1px solid rgba(255,255,255,.08); color: #a6adb0; font-size: 11px; }
+
+    .shell { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .topbar { flex: 0 0 58px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 18px; border-bottom: 1px solid var(--line); background: #fff; }
+    .top-left { min-width: 0; display: flex; align-items: center; gap: 16px; }
+    .title-row strong { display: block; font-size: 15px; font-weight: 700; }
+    .title-row span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .switch { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--soft); }
+    .switch button { min-height: 28px; padding: 0 11px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; }
+    .switch button.active { color: var(--ink); background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.1); }
+    .tools { display: flex; align-items: center; gap: 8px; }
+    .search { width: 220px; height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; }
+    .search input { width: 100%; border: 0; outline: 0; font-size: 12px; }
+    .icon-btn, .primary { height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border-radius: 6px; cursor: pointer; }
+    .icon-btn { width: 32px; border: 1px solid var(--line); background: #fff; }
+    .primary { padding: 0 12px; border: 1px solid var(--accent); color: #fff; background: var(--accent); }
+
+    .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 226px minmax(0, 1fr) 336px; }
+    .queue-panel, .context-panel { min-height: 0; background: #fff; }
+    .queue-panel { display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+    .panel-head { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+    .panel-head strong { font-size: 12px; font-weight: 650; }
+    .queue-scroll { flex: 1; overflow: auto; padding: 10px 8px 18px; }
+    .queue-section { padding: 5px 0; border-bottom: 1px solid #edf0f1; }
+    .queue-section:last-child { border-bottom: 0; }
+    .queue-section h3 { margin: 0; padding: 0 8px 5px; color: var(--muted); font-size: 9px; font-weight: 600; }
+    .queue-item { width: 100%; min-height: 35px; display: grid; grid-template-columns: 17px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 0 8px; border: 0; border-radius: 5px; color: #3b4952; background: transparent; text-align: left; cursor: pointer; }
+    .queue-item:hover { background: var(--soft); }
+    .queue-item.active { color: var(--accent); background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); font-weight: 600; }
+    .queue-item .icon { width: 13px; height: 13px; }
+    .queue-item em { color: var(--muted); font-size: 9px; font-style: normal; font-variant-numeric: tabular-nums; }
+    .queue-dot { width: 7px; height: 7px; justify-self: center; border-radius: 50%; }
+
+    .main-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
+    .main-scroll { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+    .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
+    .hero h1 { margin: 0; font-size: 22px; font-weight: 720; }
+    .hero p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+    .hero-actions { display: flex; gap: 7px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 13px; border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
+    .metric { padding: 12px 14px; border-right: 1px solid var(--line); }
+    .metric:last-child { border-right: 0; }
+    .metric span { color: var(--muted); font-size: 9px; }
+    .metric strong { display: block; margin-top: 5px; font-size: 20px; font-variant-numeric: tabular-nums; }
+    .metric em { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; font-style: normal; }
+    .metric:nth-child(1) { box-shadow: inset 0 2px var(--red); }
+    .metric:nth-child(2) { box-shadow: inset 0 2px var(--amber); }
+    .metric:nth-child(3) { box-shadow: inset 0 2px var(--blue); }
+    .metric:nth-child(4) { box-shadow: inset 0 2px var(--accent); }
+    .content { border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
+    .content-head { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+    .content-head strong { font-size: 12px; font-weight: 650; }
+    .content-head span { color: var(--muted); font-size: 10px; }
+    .action-group-title { min-height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #edf0f1; color: var(--muted); background: #f8f9f9; font-size: 9px; font-weight: 600; }
+    .action-row { position: relative; min-height: 72px; display: grid; grid-template-columns: minmax(0, 1fr) auto 24px; align-items: center; gap: 12px; padding: 9px 12px 9px 16px; border-bottom: 1px solid #edf0f1; cursor: pointer; transition: background .12s ease; }
+    .action-row:last-child { border-bottom: 0; }
+    .action-row::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: #87939d; }
+    .action-row.urgent::before { background: var(--red); }
+    .action-row.important::before { background: var(--amber); }
+    .action-row.normal::before { background: var(--blue); }
+    .action-row:hover, .action-row.selected { background: #f7fbfa; }
+    .action-row.selected { box-shadow: inset 3px 0 var(--accent); }
+    .action-title { overflow: hidden; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .action-company { margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .action-meta { display: flex; gap: 8px; margin-top: 6px; color: var(--muted); font-size: 9px; }
+    .pill { display: inline-flex; align-items: center; min-height: 20px; padding: 0 7px; border-radius: 4px; font-size: 9px; white-space: nowrap; }
+    .pill.reply { color: #985a08; background: #fff5df; }
+    .pill.due { color: #ae332e; background: #fff0ef; }
+    .pill.waiting { color: #1d4ed8; background: #eef4ff; }
+    .pill.new { color: #08745b; background: #e9f7f1; }
+    .action-next { color: var(--muted); font-size: 10px; text-align: right; }
+    .row-cue { color: #98a5ab; }
+    .row-cue .icon { width: 14px; height: 14px; }
+    .action-row:hover .row-cue, .action-row.selected .row-cue { color: var(--accent); }
+
+    .customer-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .customer-table th { height: 34px; padding: 0 12px; color: var(--muted); background: #f8f9f9; font-size: 9px; font-weight: 600; text-align: left; }
+    .customer-table td { height: 58px; padding: 0 12px; border-top: 1px solid #edf0f1; font-size: 11px; }
+    .customer-table tbody tr { cursor: pointer; }
+    .customer-table tbody tr:hover { background: #f7fbfa; }
+    .customer-table tbody tr.selected { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
+    .stage { display: inline-flex; min-height: 21px; align-items: center; padding: 0 7px; border-radius: 4px; color: #43525a; background: #eef2f3; font-size: 9px; }
+    .stage.quoting { color: #985a08; background: #fff5df; }
+    .stage.following { color: #1d4ed8; background: #eef4ff; }
+
+    .context-panel { display: flex; flex-direction: column; border-left: 1px solid var(--line); }
+    .context-body { flex: 1; min-height: 0; overflow: auto; }
+    .customer-header { padding: 17px 16px 14px; border-bottom: 1px solid var(--line); background: #f5faf9; }
+    .customer-name { font-size: 17px; font-weight: 700; }
+    .customer-sub { margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .customer-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 11px; }
+    .customer-tags span { padding: 4px 7px; border-radius: 4px; color: #50616a; background: #eaf0f1; font-size: 9px; }
+    .header-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
+    .header-actions button { min-height: 33px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+    .header-actions button:first-child { border-color: var(--accent); color: #fff; background: var(--accent); }
+    .section { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .section h3 { margin: 0 0 10px; color: var(--muted); font-size: 10px; font-weight: 650; }
+    .ai-summary { color: #34434c; line-height: 1.65; }
+    .ai-summary strong { color: var(--ink); }
+    .timeline { display: grid; gap: 0; }
+    .event { position: relative; padding: 0 0 13px 18px; }
+    .event:last-child { padding-bottom: 0; }
+    .event::before { content: ""; position: absolute; left: 3px; top: 4px; bottom: -8px; border-left: 1px solid #cfd8dc; }
+    .event:last-child::before { display: none; }
+    .event::after { content: ""; position: absolute; left: 0; top: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+    .event strong { display: block; font-size: 10px; }
+    .event span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+    .quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .quick-grid button { min-height: 58px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5px; padding: 9px; border: 1px solid var(--line); border-radius: 6px; background: #fff; text-align: left; cursor: pointer; }
+    .quick-grid button:hover { border-color: #9db0b8; background: #fafcfc; }
+    .quick-grid strong { font-size: 10px; }
+    .quick-grid span { color: var(--muted); font-size: 9px; }
+
+    @media (max-width: 1100px) {
+      .app { grid-template-columns: 188px minmax(0, 1fr); }
+      .workspace { grid-template-columns: 210px minmax(0, 1fr); }
+      .context-panel { display: none; }
+    }
+    @media (max-width: 900px) {
+      body { overflow: auto; }
+      .app { height: auto; min-height: 100%; grid-template-columns: 1fr; }
+      .rail { display: none; }
+      .topbar { height: auto; min-height: 58px; flex-wrap: wrap; padding: 10px 12px; }
+      .top-left, .tools { width: 100%; }
+      .tools .search { flex: 1; width: auto; }
+      .workspace { min-height: 720px; grid-template-columns: 1fr; }
+      .queue-panel { display: none; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metric { border-bottom: 1px solid var(--line); }
+      .action-row { grid-template-columns: minmax(0, 1fr) 22px; }
+      .action-next { display: none; }
+      .customer-table th:nth-child(4), .customer-table td:nth-child(4) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="rail">
+      <div class="brand"><strong>Prospector.</strong><span>Milogin's workspace</span></div>
+      <nav class="nav">
+        <button><i data-lucide="inbox" class="icon"></i>收件箱</button>
+        <button><i data-lucide="users" class="icon"></i>客户</button>
+        <button class="active"><i data-lucide="layout-dashboard" class="icon"></i>团队</button>
+        <button><i data-lucide="send" class="icon"></i>发送中心</button>
+        <button><i data-lucide="files" class="icon"></i>素材库</button>
+      </nav>
+      <div class="rail-spacer"></div>
+      <div class="team-context"><strong>华东销售一组</strong><small>主管 Daisy Zhou · 7 位成员</small><div class="team-avatars"><span>DZ</span><span>YX</span><span>ZL</span><span>FY</span><span>+3</span></div></div>
+      <div class="account"><i data-lucide="user-round" class="icon"></i><span>你好，用户</span></div>
+    </aside>
+
+    <main class="shell">
+      <header class="topbar">
+        <div class="top-left"><div class="title-row"><strong>我的工作台</strong><span>Yvonne Xu · 华东销售一组</span></div><div class="switch"><button id="mode-actions" class="active" data-mode="actions">行动优先</button><button id="mode-customers" data-mode="customers">客户优先</button></div></div>
+        <div class="tools"><label class="search"><i data-lucide="search" class="icon"></i><input id="search" placeholder="搜索客户或动作" /></label><button class="icon-btn" title="刷新"><i data-lucide="refresh-cw" class="icon"></i></button><button class="primary"><i data-lucide="plus" class="icon"></i>新增客户</button></div>
+      </header>
+
+      <section class="workspace">
+        <aside class="queue-panel">
+          <div class="panel-head"><strong>我的队列</strong><button class="icon-btn" title="筛选"><i data-lucide="sliders-horizontal" class="icon"></i></button></div>
+          <div class="queue-scroll">
+            <div class="queue-section"><h3>今天</h3>
+              <button class="queue-item active" data-filter="all"><i data-lucide="list-todo" class="icon"></i><span>全部行动</span><em data-count="all">0</em></button>
+              <button class="queue-item" data-filter="reply"><span class="queue-dot" style="background:#b45309"></span><span>待回复</span><em data-count="reply">0</em></button>
+              <button class="queue-item" data-filter="due"><span class="queue-dot" style="background:#c2413b"></span><span>今天到期</span><em data-count="due">0</em></button>
+              <button class="queue-item" data-filter="new"><span class="queue-dot" style="background:#0f766e"></span><span>新分配</span><em data-count="new">0</em></button>
+              <button class="queue-item" data-filter="waiting"><span class="queue-dot" style="background:#2563eb"></span><span>等待对方</span><em data-count="waiting">0</em></button>
+            </div>
+            <div class="queue-section"><h3>跟进节奏</h3>
+              <button class="queue-item"><i data-lucide="clock-3" class="icon"></i><span>本周待办</span><em>18</em></button>
+              <button class="queue-item"><i data-lucide="circle-check" class="icon"></i><span>今日完成</span><em>6</em></button>
+            </div>
+          </div>
+        </aside>
+
+        <section class="main-panel"><div class="main-scroll">
+          <div class="hero"><div><h1 id="main-title">今天先处理这些</h1><p id="main-subtitle">11 个行动 · 3 个紧急事项</p></div><div class="hero-actions"><button class="icon-btn" title="筛选"><i data-lucide="sliders-horizontal" class="icon"></i></button><button class="icon-btn" title="导出"><i data-lucide="download" class="icon"></i></button></div></div>
+          <div class="metrics" id="metrics"></div>
+          <section class="content"><div class="content-head"><strong id="content-title">行动队列</strong><span id="content-count"></span></div><div id="content-body"></div></section>
+        </div></section>
+
+        <aside class="context-panel"><div class="panel-head"><strong>客户上下文</strong><button class="icon-btn" title="关闭"><i data-lucide="x" class="icon"></i></button></div><div class="context-body" id="context-body"></div></aside>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const actions = [
+      { id:'a1', customer:'Three Logistics Quotation Logistics', contact:'Daisy Buyer', type:'reply', priority:'urgent', due:'今天 16:00', title:'欧洲线报价已收到，客户等待目的港费用确认', next:'补充目的港费用后回复', amount:'预计 2 个 40HQ', stage:'报价中', group:'现在要做', timeline:[['客户邮件','请确认上海到鹿特丹目的港费用，今天能否更新'],['我方发出','已发送海运费，目的港费用待补'],['分配线索','11-12 09:20 由运营分配']] },
+      { id:'a2', customer:'Gerardo Cota', contact:'Gerardo Cota', type:'due', priority:'urgent', due:'今天 14:30', title:'美线订舱资料缺失，船期即将截关', next:'补齐订舱资料并确认舱位', amount:'1 个 20GP', stage:'跟进中', group:'现在要做', timeline:[['客户邮件','Vessel closing tomorrow. Please confirm booking.'],['任务创建','补齐订舱资料，今天 14:30 到期'],['上次沟通','11-12 16:10 客户确认货好']] },
+      { id:'a3', customer:'Isabella Mendes', contact:'Isabella Mendes', type:'reply', priority:'important', due:'今天 18:00', title:'客户补充了货物信息，需要重新计算报价', next:'重新核价并回复', amount:'1 个 40HQ', stage:'报价中', group:'今天继续', timeline:[['客户邮件','Cargo weight changed to 24 tons.'],['AI 分析','需要重新核价，直接关联报价收益'],['上次报价','11-11 15:20 已发送']] },
+      { id:'a4', customer:'Zenith International', contact:'Anna Zenith', type:'new', priority:'important', due:'今天', title:'新分配线索尚未首次触达', next:'查看客户背景并发开发信', amount:'待确认', stage:'未触达', group:'今天继续', timeline:[['运营分配','11-13 08:30 分配给你'],['公司信息','Zenith International Freight Limited'],['联系人','Anna Zenith · Procurement']] },
+      { id:'a5', customer:'Apex Foods', contact:'Marco Ruiz', type:'reply', priority:'important', due:'今天', title:'客户询问冷藏箱能否安排', next:'确认冷柜资源后回复', amount:'2 个 40RF', stage:'报价中', group:'今天继续', timeline:[['客户邮件','Can you support reefer shipment?'],['AI 分析','询价与收益直接相关，建议今天处理'],['上次沟通','11-12 11:40']] },
+      { id:'a6', customer:'Nordic Home', contact:'Lars Nielsen', type:'waiting', priority:'normal', due:'等待 3 天', title:'报价已发出，三天未收到客户反馈', next:'发送一次简短跟进', amount:'1 个 40HQ', stage:'等待对方', group:'可以稍后', timeline:[['我方发出','11-10 报价已发送'],['系统提醒','已等待 3 天，建议今天跟进'],['客户状态','暂未回复']] },
+      { id:'a7', customer:'Mint Life', contact:'Sofia Kim', type:'waiting', priority:'normal', due:'等待 5 天', title:'客户确认样品后未继续回复', next:'电话确认采购计划', amount:'待确认', stage:'等待对方', group:'可以稍后', timeline:[['客户邮件','Sample received, we will review.'],['我方跟进','11-08 已发送产品资料'],['建议','电话确认是否进入试单']] },
+      { id:'a8', customer:'Blue Ocean Traders', contact:'Owen Tan', type:'new', priority:'normal', due:'明天', title:'运营新分配的东南亚客户', next:'查看联系人并发首封邮件', amount:'待确认', stage:'未触达', group:'可以稍后', timeline:[['运营分配','11-13 10:10 分配给你'],['联系人','Owen Tan · Import Manager'],['公司','Blue Ocean Traders']] }
+    ];
+    const customers = actions.map(action => ({ ...action, last:'11-12', potential: action.amount, next: action.next }));
+    let mode = 'actions';
+    let filter = 'all';
+    let selectedId = 'a1';
+    let query = '';
+    const iconFor = type => type === 'reply' ? 'mail-reply' : type === 'due' ? 'alarm-clock' : type === 'new' ? 'sparkles' : 'hourglass';
+    const typeText = type => ({ reply:'待回复', due:'今天到期', new:'新分配', waiting:'等待对方' })[type];
+    const selected = () => actions.find(action => action.id === selectedId) || actions[0];
+    const filteredActions = () => actions.filter(action => (filter === 'all' || action.type === filter) && (!query || [action.customer, action.contact, action.title, action.next].some(value => value.toLowerCase().includes(query))));
+
+    function metrics() {
+      return [
+        ['待回复', actions.filter(item => item.type === 'reply').length, '今天优先'],
+        ['今天到期', actions.filter(item => item.type === 'due').length, '避免逾期'],
+        ['新分配', actions.filter(item => item.type === 'new').length, '尚未触达'],
+        ['今日完成', 6, '目标 11']
+      ];
+    }
+
+    function renderMetrics() {
+      document.getElementById('metrics').innerHTML = metrics().map(([label, value, note]) => `<div class="metric"><span>${label}</span><strong>${value}</strong><em>${note}</em></div>`).join('');
+    }
+
+    function renderActions() {
+      const list = filteredActions();
+      document.getElementById('content-title').textContent = '行动队列';
+      document.getElementById('content-count').textContent = `${list.length} 项`;
+      const groups = ['现在要做','今天继续','可以稍后'];
+      document.getElementById('content-body').innerHTML = groups.map(group => {
+        const items = list.filter(item => item.group === group);
+        if (!items.length) return '';
+        return `<div class="action-group-title"><span>${group}</span><span>${items.length}</span></div>${items.map(item => `<div class="action-row ${item.priority} ${selectedId === item.id ? 'selected' : ''}" data-action="${item.id}"><div><div class="action-title">${item.title}</div><div class="action-company">${item.customer} · ${item.contact}</div><div class="action-meta"><span class="pill ${item.type}">${typeText(item.type)}</span><span>${item.due}</span><span>${item.amount}</span></div></div><div class="action-next">${item.next}</div><div class="row-cue"><i data-lucide="chevron-right" class="icon"></i></div></div>`).join('')}`;
+      }).join('');
+      document.querySelectorAll('[data-action]').forEach(row => row.addEventListener('click', () => { selectedId = row.dataset.action; render(); }));
+    }
+
+    function renderCustomers() {
+      const list = filteredActions();
+      document.getElementById('content-title').textContent = '我的客户';
+      document.getElementById('content-count').textContent = `${list.length} 位`;
+      document.getElementById('content-body').innerHTML = `<table class="customer-table"><thead><tr><th style="width:30%">客户</th><th style="width:14%">阶段</th><th>下一步</th><th style="width:16%">最近联系</th><th style="width:14%">潜力</th><th style="width:26px"></th></tr></thead><tbody>${list.map(item => `<tr data-action="${item.id}" class="${selectedId === item.id ? 'selected' : ''}"><td><strong>${item.customer}</strong><div class="customer-sub">${item.contact}</div></td><td><span class="stage ${item.stage === '报价中' ? 'quoting' : item.stage === '跟进中' ? 'following' : ''}">${item.stage}</span></td><td>${item.next}</td><td>${item.last || '今天'}</td><td>${item.amount}</td><td class="row-cue"><i data-lucide="chevron-right" class="icon"></i></td></tr>`).join('')}</tbody></table>`;
+      document.querySelectorAll('[data-action]').forEach(row => row.addEventListener('click', () => { selectedId = row.dataset.action; render(); }));
+    }
+
+    function renderContext() {
+      const item = selected();
+      document.getElementById('context-body').innerHTML = `
+        <div class="customer-header"><div class="customer-name">${item.customer}</div><div class="customer-sub">${item.contact} · ${item.stage}</div><div class="customer-tags"><span>${item.amount}</span><span>${typeText(item.type)}</span><span>${item.due}</span></div><div class="header-actions"><button><i data-lucide="mail-reply" class="icon"></i>回复邮件</button><button><i data-lucide="external-link" class="icon"></i>打开客户</button></div></div>
+        <section class="section"><h3>下一步</h3><div class="ai-summary"><strong>${item.next}</strong><br>${item.title}</div></section>
+        <section class="section"><h3>最近往来</h3><div class="timeline">${item.timeline.map(([title, body]) => `<div class="event"><strong>${title}</strong><span>${body}</span></div>`).join('')}</div></section>
+        <section class="section"><h3>快速处理</h3><div class="quick-grid"><button><i data-lucide="circle-check" class="icon"></i><strong>完成行动</strong><span>移出今日队列</span></button><button><i data-lucide="calendar-plus" class="icon"></i><strong>安排明天</strong><span>保留跟进节奏</span></button><button><i data-lucide="file-pen-line" class="icon"></i><strong>记录跟进</strong><span>补充沟通结果</span></button><button><i data-lucide="tags" class="icon"></i><strong>添加标签</strong><span>标记客户状态</span></button></div></section>`;
+      lucide.createIcons();
+    }
+
+    function renderQueue() {
+      document.querySelectorAll('[data-filter]').forEach(button => button.classList.toggle('active', button.dataset.filter === filter));
+      document.querySelectorAll('[data-count]').forEach(count => {
+        const type = count.dataset.count;
+        count.textContent = type === 'all' ? actions.length : String(actions.filter(action => action.type === type).length);
+      });
+    }
+
+    function render() {
+      const list = filteredActions();
+      renderMetrics();
+      renderQueue();
+      if (mode === 'actions') renderActions(); else renderCustomers();
+      document.getElementById('main-subtitle').textContent = mode === 'actions'
+        ? `${list.length} 个行动 · ${list.filter(item => item.priority === 'urgent').length} 个紧急事项`
+        : `${list.length} 位客户 · 按最近联系排序`;
+      renderContext();
+      lucide.createIcons();
+    }
+
+    document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => {
+      mode = button.dataset.mode;
+      document.querySelectorAll('[data-mode]').forEach(item => item.classList.toggle('active', item === button));
+      document.getElementById('main-title').textContent = mode === 'actions' ? '今天先处理这些' : '我的客户';
+      document.getElementById('main-subtitle').textContent = mode === 'actions' ? '11 个行动 · 3 个紧急事项' : '按最近联系与下一步排序';
+      render();
+    }));
+    document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => { filter = button.dataset.filter; render(); }));
+    document.getElementById('search').addEventListener('input', event => { query = event.target.value.trim().toLowerCase(); render(); });
+    render();
+  </script>
+</body>
+</html>

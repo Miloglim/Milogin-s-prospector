@@ -12,6 +12,7 @@ export type { ContactAssignmentDecisionAction, ContactAssignmentLifecycleStatus 
 export { CONTACT_ASSIGNMENT_STATUSES } from './contact-assignment-state';
 /** DTOs carry all persisted states; CONTACT_ASSIGNMENT_STATUSES is the runtime validation source. */
 export type ContactAssignmentStatus = string & {};
+export type ContactAssignmentStatusFilter = ContactAssignmentLifecycleStatus | 'all';
 
 export const CONTACT_ASSIGNMENT_ROUTES = {
   assignments: '/api/crm/contact-assignments',
@@ -47,8 +48,8 @@ export interface ContactAssignment {
   canAccept: boolean; canReject: boolean; canCancel: boolean; canTransfer: boolean;
 }
 export interface ContactAssignmentPage { items: ContactAssignment[]; total: number; }
-export interface ContactAssignmentQuery { view: 'incoming' | 'outgoing'; status: ContactAssignmentLifecycleStatus; search: string; limit: number; offset: number; requestId?: string; groupId?: string; }
-export interface ContactAssignmentGroupQuery { view: 'incoming' | 'outgoing'; status: ContactAssignmentLifecycleStatus; search: string; limit: number; offset: number; }
+export interface ContactAssignmentQuery { view: 'incoming' | 'outgoing'; status: ContactAssignmentStatusFilter; search: string; limit: number; offset: number; requestId?: string; groupId?: string; }
+export interface ContactAssignmentGroupQuery { view: 'incoming' | 'outgoing'; status: ContactAssignmentStatusFilter; search: string; limit: number; offset: number; }
 export interface ContactAssignmentGroup {
   groupId: string; total: number; pending: number; accepted: number; rejected: number; cancelled: number;
   expired?: number; pendingTransfer?: number;
@@ -68,7 +69,7 @@ export type ContactMonitorContact = Pick<CenterContact,
   'contactId' | 'customerId' | 'companyId' | 'companyName' | 'email' | 'firstName' | 'lastName' |
   'title' | 'phone' | 'whatsapp' | 'country' | 'clientType' | 'language' | 'stage' | 'status' |
   'tags' | 'touchStatus' | 'source' | 'sourceDetail' | 'createdAt' | 'updatedAt' | 'ownerUserId' |
-  'ownerName' | 'origin'>;
+  'ownerName' | 'origin' | 'relationshipStage' | 'aiDealPending'>;
 export interface ContactMonitorDetail {
   auditId: string;
   accessedAt: string;

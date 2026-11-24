@@ -83,6 +83,8 @@ describe('application login boundary', () => {
     await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await new Promise(resolve => setTimeout(resolve, 20)); });
     expect(invoke).toHaveBeenCalledWith(CHANNEL.PASSWORD, { currentPassword: 'synthetic-original', newPassword: 'synthetic-replacement' });
     expect(host.textContent).toContain('密码已修改，请使用新密码登录');
+    expect(host.querySelector<HTMLInputElement>('#password')?.value).toBe('');
+    expect(host.querySelector<HTMLInputElement>('input[name="remember"]')?.checked).toBe(false);
   });
   it('starts a handoff instead of replacing another Prospector device, then requires explicit takeover confirmation', async () => {
     const loginInputs: Array<Record<string, unknown>> = [];

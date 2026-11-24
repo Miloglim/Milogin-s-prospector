@@ -50,7 +50,7 @@ describe('AppLayout full-screen routes', () => {
     return host.querySelector('.app-scroll-area') as HTMLDivElement;
   }
 
-  it.each(['/inbox', '/team'])('keeps %s edge-to-edge with scrolling inside its panes', async pathname => {
+  it.each(['/inbox', '/team', '/customers', '/assistant'])('keeps %s edge-to-edge with scrolling inside its panes', async pathname => {
     const scrollArea = await renderRoute(pathname);
     expect(scrollArea.style.height).toBe('100%');
     expect(scrollArea.style.minHeight).toBe('0px');

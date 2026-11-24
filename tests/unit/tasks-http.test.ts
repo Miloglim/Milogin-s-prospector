@@ -8,7 +8,7 @@ const ID='00000000-0000-0000-0000-000000000001',OTHER='00000000-0000-0000-0000-0
 describe('task HTTP routing through service validation',()=>{
  let server:Server,base:string,repo:TaskRepository;
  beforeEach(async()=>{
-  repo={create:vi.fn().mockResolvedValue(success({taskId:ID})),list:vi.fn().mockResolvedValue(success({items:[],total:0})),detail:vi.fn().mockResolvedValue(success({taskId:ID})),reschedule:vi.fn().mockResolvedValue(success({taskId:ID})),complete:vi.fn().mockResolvedValue(success({taskId:ID})),processDue:vi.fn()};
+   repo={create:vi.fn().mockResolvedValue(success({taskId:ID})),list:vi.fn().mockResolvedValue(success({items:[],total:0})),detail:vi.fn().mockResolvedValue(success({taskId:ID})),reschedule:vi.fn().mockResolvedValue(success({taskId:ID})),complete:vi.fn().mockResolvedValue(success({taskId:ID})),cancel:vi.fn().mockResolvedValue(success({taskId:ID})),processDue:vi.fn()};
   const handler=createTaskHandler(createTaskService(repo,{hash:()=> 'session-hash'} as never));
   server=createServer((req,res)=>{void handler(req,res);});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
  });
@@ -21,6 +21,8 @@ describe('task HTTP routing through service validation',()=>{
   expect((await request(`/api/crm/tasks/${ID}/reschedule`,reschedule)).status).toBe(200);expect(repo.reschedule).toHaveBeenCalledWith('session-hash',{...reschedule,taskId:ID});
   const complete={taskId:ID,expectedVersion:3,idempotencyKey:'same-complete-key',feedback:'Done'};
   expect((await request(`/api/crm/tasks/${ID}/complete`,complete)).status).toBe(200);expect(repo.complete).toHaveBeenCalledWith('session-hash',complete);
+  const cancel={taskId:ID,expectedVersion:4,idempotencyKey:'same-cancel-key',reason:'用户取消 3 天跟进任务'};
+  expect((await request(`/api/crm/tasks/${ID}/cancel`,cancel)).status).toBe(200);expect(repo.cancel).toHaveBeenCalledWith('session-hash',cancel);
  });
  it('maps list and detail and rejects invalid paging/status/customer filters',async()=>{
   expect((await request(`/api/crm/tasks?customerId=${ID}&status=open&mine=true&limit=10&offset=20`)).status).toBe(200);
@@ -39,7 +41,7 @@ describe('task HTTP routing through service validation',()=>{
  });
  it('rejects absent bearer and unknown actions and bounds body size',async()=>{
   expect((await request('/api/crm/tasks',undefined,'')).status).toBe(401);expect(repo.list).not.toHaveBeenCalled();
-  expect((await request(`/api/crm/tasks/${ID}/cancel`,{})).status).toBe(404);
+  expect((await request(`/api/crm/tasks/${ID}/cancel`,{})).status).toBe(400);
   expect((await request(`/api/crm/tasks/${ID}/complete/extra`,{})).status).toBe(404);
   expect((await request('/api/crm/tasks',{title:'x'.repeat(1048576)})).status).toBe(413);expect(repo.create).not.toHaveBeenCalled();
  });

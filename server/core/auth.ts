@@ -52,18 +52,19 @@ export const ONLINE_DEFAULTS = {
   request_body_bytes: 4096, password_concurrency: 2, rate_bucket_max: 1000,
   navigator_url: "http://127.0.0.1:8795", navigator_entry_url: "http://127.0.0.1:8795",
 } as const;
-export type OnlineConfig = { [K in keyof typeof ONLINE_DEFAULTS]: typeof ONLINE_DEFAULTS[K] extends string ? string : typeof ONLINE_DEFAULTS[K] extends boolean ? boolean : number } & { public_origin?: string; local_http?: boolean; insecure_http?: boolean };
+export type OnlineConfig = { [K in keyof typeof ONLINE_DEFAULTS]: typeof ONLINE_DEFAULTS[K] extends string ? string : typeof ONLINE_DEFAULTS[K] extends boolean ? boolean : number } & { public_origin?: string; local_http?: boolean; insecure_http?: boolean; allow_any_host?: boolean };
 export const HTTP_STATUS = {
   OK: 200, INVALID_INPUT: 400, UNAUTHORIZED: 401, FORBIDDEN: 403, NOT_FOUND: 404,
   CONFLICT: 409, PAYLOAD_TOO_LARGE: 413, RATE_LIMITED: 429, DATABASE_ERROR: 503, UNAVAILABLE: 503,
   PASSWORD_CHANGE_REQUIRED: 403, DEVICE_REPLACEMENT_REQUIRED: 409, DEVICE_REPLACED: 401,
+  ACCOUNT_NOT_FOUND: 404, ACCOUNT_NOT_CONFIGURED: 409, ACCOUNT_DISABLED: 403, INVALID_CREDENTIALS: 401,
 } as const;
 export interface Identity {
   userId: string; displayName: string; email: string; emailVerified: boolean;
   identityAdmin: boolean; crmRoles: CrmRole[]; crmCapabilities?:string[]|null;
   mustChangePassword?:boolean;
 }
-export interface Credential { userId: string; passwordHash: string; active: boolean; securityRevision: number; mustChangePassword?:boolean; }
+export interface Credential { userId: string; passwordHash: string | null; active: boolean; securityRevision: number; mustChangePassword?:boolean; }
 export interface LoginRequest { email: string; password: string; }
 export interface LoginResponse { token: string; expiresAt: string; identity: Identity; }
 export type NavigatorRole = "superadmin" | "admin" | "operator" | "sales";

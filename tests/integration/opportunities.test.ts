@@ -44,6 +44,7 @@ describe.skipIf(!enabled)('opportunities PostgreSQL rollback-only',()=>{
  it('keeps two routes independent, preserves customer stage/version, and atomically snapshots events',async()=>{
   const id=await customer(),before=(await c.query('SELECT version,relationship_stage FROM crm_customers WHERE customer_id=$1',[id])).rows[0];const a=await opportunity(id),b=await opportunity(id,{pod:'Singapore',title:'Shanghai to Singapore'});
   const next=unwrap(await service.updateStage(sales.token,command(a,'booking_confirmed',{amount:'123.45',currency:'CNY'})));expect(next.version).toBe(2);expect(next.history[1]).toMatchObject({fromStage:'inquiry',toStage:'booking_confirmed',amount:'123.45',currency:'CNY'});expect(unwrap(await service.detail(sales.token,b.opportunityId)).stage).toBe('inquiry');expect((await c.query('SELECT version,relationship_stage FROM crm_customers WHERE customer_id=$1',[id])).rows[0]).toEqual(before);
+  expect((await c.query('SELECT status,source,signal FROM crm_customer_status_events WHERE customer_id=$1',[id])).rows[0]).toMatchObject({status:'won_pending',source:'human',signal:'opportunity'});
   expect(unwrap(await service.list(sales.token,{customerId:id,limit:1,offset:0}))).toMatchObject({total:2,items:[expect.anything()]});
   const events=(await c.query("SELECT payload FROM public.identity_outbox WHERE customer_id=$1 AND event_type='crm.opportunity.stage_changed'",[id])).rows;expect(events).toEqual([{payload:{customerId:id,version:1,opportunityId:a.opportunityId,opportunityVersion:2}}]);
  });

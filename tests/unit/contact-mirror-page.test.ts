@@ -122,6 +122,25 @@ describe('indexed SQLite contact pages', () => {
     expect(store.page(ctx, grouped[1]!).items.map(item => item.contactId)).toEqual([2]);
     expect(store.page(ctx, grouped[3]!).items.map(item => item.contactId)).toEqual([2]);
   });
+  it('uses contact-level attention admission offline without admitting sibling contacts for one task or stage', () => {
+    const attentionDueAt = '2026-11-18T02:30:00.000Z';
+    const rows = [
+      row(1, { customerId: 'customer-a', touchStatus: 'contacted' }),
+      row(2, { customerId: 'customer-a', touchStatus: 'replied' }),
+      row(3, { customerId: 'customer-a', touchStatus: 'bounced' }),
+      row(4, { customerId: 'customer-a', touchStatus: 'autoreply' }),
+      row(5, { customerId: 'customer-b', touchStatus: 'contacted', relationshipStage: 'quoting' }),
+      row(6, { customerId: 'customer-b', touchStatus: 'contacted', relationshipStage: 'quoting' }),
+      row(7, { customerId: 'customer-c', touchStatus: 'contacted', attentionReason: 'task', attentionDueAt }),
+    ];
+    const input: CenterContactQuery = { ...query, limit: 50, attentionOnly: true };
+    const expectedIds = contactMirrorPage(rows, input, ctx.userId).items.map(row => row.contactId).sort((a, b) => a - b);
+    expect(expectedIds).toEqual([2, 5, 7]);
+    const { store } = fixture(); store.replaceContacts(ctx, rows);
+    const page = store.page(ctx, input);
+    expect(page.items.map(row => row.contactId).sort((a, b) => a - b)).toEqual(expectedIds);
+    expect(page.items.find(row => row.contactId === 7)?.attentionDueAt).toBe(attentionDueAt);
+  });
   it('builds the same first-level groups from authorized mirror rows while the center is unavailable', () => {
     const rows = [
       row(1, { sourceDetail: 'batch-a.xlsx', sourceLevel1: '阿里国际站', country: 'Brazil', companyId: 11, companyName: 'Alpha', clientType: 'agent', touchStatus: 'contacted' }),
@@ -141,9 +160,9 @@ describe('indexed SQLite contact pages', () => {
     store.upsertContacts(ctx, [{ ...initial, contactVersion: 4, firstName: 'MÜLLER', updatedAt: '2026-10-15T00:00:00Z' }]);
     store.upsertContacts(ctx, [{ ...initial, contactVersion: 2, firstName: 'obsolete' }]);
     expect(fixture(raw).store.page(ctx, { ...query, search: 'müller' }).total).toBe(1);
-    store.saveDetail(ctx, contactDetailSnapshot({ ...initial, contactVersion: 5, firstName: 'Vitória', lastFollowupAt: '2026-10-16T00:00:00Z', touchStatus: 'contacted' }));
+    store.saveDetail(ctx, contactDetailSnapshot({ ...initial, contactVersion: 5, firstName: 'Vitória', lastFollowupAt: '2026-10-16T00:00:00Z', touchStatus: 'replied' }));
     expect(store.page(ctx, { ...query, search: 'müller' }).total).toBe(0);
-    expect(store.page(ctx, { ...query, search: 'vitória', followupOnly: true }).items).toMatchObject([{ contactId: 1, contactVersion: 5 }]);
+    expect(store.page(ctx, { ...query, search: 'vitória', attentionOnly: true }).items).toMatchObject([{ contactId: 1, contactVersion: 5 }]);
     store.forgetContact(ctx, initial);
     expect(store.page(ctx, query)).toEqual({ items: [], total: 0 });
   });
@@ -155,7 +174,6 @@ describe('indexed SQLite contact pages', () => {
   });
   it.each([
     [{}, 'crm_contact_mirror_page'],
-    [{ followupOnly: true }, 'crm_contact_mirror_followup_v2_page'],
     [{ scope: 'personal' }, 'crm_contact_mirror_source_page'],
   ] as const)('uses an ordering index for %j without a temporary sort', (variant, index) => {
     const { db, raw, store } = fixture(); store.replaceContacts(ctx, [row(1, { touchStatus: 'contacted' })]);

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ONLINE_CHANNELS, ONLINE_LIMITS } from '../shared/online-crm';
 import type { Identity, OnlineLogin, OnlineSessionSnapshot, Result, OnlineRegistration, RegisteredAccount, OnlineHandoffBegin, OnlineHandoffBeginResult, OnlineHandoffComplete, OnlineHandoffState, OnlineHandoffTakeover, OnlineHandoffToken } from '../shared/online-crm';
@@ -55,6 +55,20 @@ const scopeKey = (identity: Identity | null) => identity ? JSON.stringify([
   identity.mustChangePassword,
 ]) : '';
 
+/** Center polls every few seconds; an unchanged identity must not wake every consumer. */
+export function sameIdentity(left: Identity | null, right: Identity | null): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return left.userId === right.userId
+    && left.displayName === right.displayName
+    && left.email === right.email
+    && left.emailVerified === right.emailVerified
+    && left.identityAdmin === right.identityAdmin
+    && (left.crmRoles ?? []).slice().sort().join('\u0000') === (right.crmRoles ?? []).slice().sort().join('\u0000')
+    && (left.crmCapabilities ?? []).slice().sort().join('\u0000') === (right.crmCapabilities ?? []).slice().sort().join('\u0000')
+    && (left.mustChangePassword === true) === (right.mustChangePassword === true);
+}
+
 /** Main owns every credential; only the current public identity enters renderer memory. */
 export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -77,6 +91,10 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if (result?.ok && Array.isArray(result.data?.accounts)) {setAccounts(result.data.accounts);setSelectedAccountId(result.data.selectedAccountId);}
   }, []);
   const apply = useCallback((next: Identity | null) => {
+    if (sameIdentity(currentIdentity.current, next)) {
+      setStatus(activeStatus(next));
+      return;
+    }
     if (scopeKey(next) !== scopeKey(currentIdentity.current)) {
       void queryClient.cancelQueries();
       queryClient.clear();
@@ -152,7 +170,16 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     const result=await invoke<OnlineSessionSnapshot>(ONLINE_CHANNELS.ACCOUNT_LOGIN,input);
     if(version!==epoch.current){actionPending.current=false;return false;}
     await refreshAccounts();
-    if(!result.ok){actionPending.current=false;setBusy(false);setError(result.error.message);return false;}
+    if(!result.ok){
+      actionPending.current=false;setBusy(false);setError(result.error.message);
+      // A saved preset can outlive its account when the client is pointed at another
+      // center. Drop it instead of retrying an account that no longer exists.
+      if(result.error.code==='ACCOUNT_NOT_FOUND'){
+        const removed=await invoke<void>(ONLINE_CHANNELS.ACCOUNT_REMOVE,input.accountId);
+        if(removed.ok)await refreshAccounts();
+      }
+      return false;
+    }
     apply(result.data.identity);setBaseUrl(result.data.baseUrl);setRemembered(result.data.remembered);
     if(result.data.connection==='offline'&&result.data.identity&&!result.data.identity.mustChangePassword)setStatus('offline');
     setBusy(false);actionPending.current=false;void refresh();return true;
@@ -243,5 +270,12 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     void refreshAccounts();
     return true;
   }, [apply,refreshAccounts]);
-  return <IdentityContext.Provider value={{ identity, status, ready: status !== 'restoring', error, baseUrl, remembered, accounts, selectedAccountId, loginAccount, removeAccount, localAvailable, busy, register, login: login as IdentityContextValue['login'], beginHandoff, handoffStatus, completeHandoff, takeoverHandoff, cancelHandoff, logout, refresh, reconnect, changePassword }}>{children}</IdentityContext.Provider>;
+  const value = useMemo<IdentityContextValue>(() => ({
+    identity, status, ready: status !== 'restoring', error, baseUrl, remembered, accounts, selectedAccountId,
+    loginAccount, removeAccount, localAvailable, busy, register, login: login as IdentityContextValue['login'],
+    beginHandoff, handoffStatus, completeHandoff, takeoverHandoff, cancelHandoff, logout, refresh, reconnect, changePassword,
+  }), [identity, status, error, baseUrl, remembered, accounts, selectedAccountId, loginAccount, removeAccount,
+    localAvailable, busy, register, login, beginHandoff, handoffStatus, completeHandoff, takeoverHandoff, cancelHandoff,
+    logout, refresh, reconnect, changePassword]);
+  return <IdentityContext.Provider value={value}>{children}</IdentityContext.Provider>;
 }

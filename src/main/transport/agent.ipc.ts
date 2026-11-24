@@ -21,13 +21,16 @@ export function registerAgentIPC() {
   const push = makePush();
 
   // 启动时记录端点就绪状态 — 排查「助手不回话」的第一现场
-  const st = Agent.status();
-  if (st.success) {
+  void Agent.status().then(st => {
+    if (!st.success) return;
     const d = st.data as { configured: boolean; model: string };
+    const label = process.env.PROSPECTOR_LOCAL_AI === "1" ? "本地 AI" : "中心 AI";
     Log.info("agent.init", d.configured
-      ? `端点就绪 model=${d.model}`
-      : "未配置模型端点（设置 → 模型与端点 里新增并启用后，无需重启即可对话）");
-  }
+      ? `${label} 就绪 model=${d.model}`
+      : process.env.PROSPECTOR_LOCAL_AI === "1"
+        ? "本地 AI 未配置（检查 .env 中 AGENT_API_BASE_URL / AGENT_MODEL / 密钥指针）"
+        : "中心 AI 暂不可用（请检查模型密钥、用户 AI 策略或中心代理）");
+  }).catch(error => Log.warn("agent.init", `中心 AI 状态检查失败: ${error instanceof Error ? error.message : String(error)}`));
 
   // 发起一轮对话（立即返回 ID，正文走 agent:chunk 事件流）
   ipcMain.handle(IPC.AGENT.CHAT, (_e, input: Agent.ChatInput) => Agent.chat(push, input));

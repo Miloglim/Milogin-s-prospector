@@ -17,10 +17,10 @@ export function createTaskHandler(service:TaskService):BrowserHandler { return a
   if(request.method==='POST') {
     const input=await body(request,LEAD_LIMITS.bodyBytes);if(!input.ok){send(response,input);return;}
     if(url.pathname===TASK_ROUTES.tasks){send(response,await service.create(token,input.data));return;}
-    if(url.pathname.startsWith(`${TASK_ROUTES.tasks}/`) && parts.length===2 && (parts[1]===TASK_ROUTES.rescheduleAction || parts[1]===TASK_ROUTES.completeAction)){
+    if(url.pathname.startsWith(`${TASK_ROUTES.tasks}/`) && parts.length===2 && (parts[1]===TASK_ROUTES.rescheduleAction || parts[1]===TASK_ROUTES.completeAction || parts[1]===TASK_ROUTES.cancelAction)){
       if(!input.data||typeof input.data!=='object'||Array.isArray(input.data)||'taskId'in input.data&&input.data.taskId!==parts[0]){send(response,failure('INVALID_INPUT','路径与任务编号不一致'));return;}
       const command={...input.data,taskId:parts[0]};
-      send(response,parts[1]===TASK_ROUTES.completeAction?await service.complete(token,command):await service.reschedule(token,command));return;
+      send(response,parts[1]===TASK_ROUTES.completeAction?await service.complete(token,command):parts[1]===TASK_ROUTES.cancelAction?await service.cancel(token,command):await service.reschedule(token,command));return;
     }
   }
   send(response,failure('NOT_FOUND','任务接口不存在'));

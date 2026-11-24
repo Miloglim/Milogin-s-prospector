@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Alert, Avatar, Button, Dropdown, Modal, message, Skeleton, Table, Tag, Tooltip } from "antd";
+import { Alert, Avatar, Button, Modal, message, Skeleton, Table, Tag, Tooltip } from "antd";
 import type { TableColumnsType } from "antd";
 import {
   UserOutlined, LoadingOutlined, CheckCircleOutlined, ArrowUpOutlined,
@@ -20,7 +20,8 @@ import {
 } from "../../hooks/useAgentTranscript";
 import type { ApprovalReq, Msg, PlanStep } from "../../hooks/useAgentTranscript";
 import { ensureToolMeta, toolLabelText, useToolMetaVersion } from "../../lib/tool-meta";
-import { HomeCards } from "./HomeCards";
+import { AssistantReminders } from "../../components/AssistantReminders";
+import "./assistant.css";
 
 // 工具元数据（注册表派生的中文名/追问引导）：模块加载即取，到达后订阅处统一刷新
 void ensureToolMeta();
@@ -777,7 +778,6 @@ export function AssistantPage() {
   const [identityOk, setIdentityOk] = useState(true);
   const [model, setModel] = useState("");
   /** 已配好的端点清单（模型胶囊点开就地换；只有一份时胶囊退化成纯标签） */
-  const [profiles, setProfiles] = useState<Array<{ id: string; name: string; active: boolean }>>([]);
   const [inputVal, setInputVal] = useState("");
   /** 动作卡：待确认的写入动作（确认弹窗属于「这一屏」，不进现场） */
   const [pendingWrite, setPendingWrite] = useState<ActionDto | null>(null);
@@ -954,42 +954,16 @@ export function AssistantPage() {
     requestAnimationFrame(stickBottom);
   };
 
-  // 模式横幅：设置页可热切端点，所以每次进入/切换会话都重新读一次。
-  // 两条查询并发发出去 —— 串行 await 会把「状态还不知道」的窗口拉长一倍，那段时间够闪一次红条。
+  // 模型由中心统一提供；这里只读当前会话是否可用，不再读取本地端点档案。
   const refreshStatus = async () => {
-    const [r, s] = await Promise.all([
-      window.api.invoke("agent:status") as Promise<
-        IpcResult<{ configured: boolean; model: string; identityOk?: boolean }>>,
-      window.api.invoke("ai:endpointStatus") as Promise<IpcResult<{
-        activeId: string | null;
-        profiles: Array<{ id: string; name: string; baseUrl: string; model: string }>;
-        endpoint: { baseUrl: string; model: string };
-      }>>,
-    ]);
+    const r = await window.api.invoke("agent:status") as IpcResult<
+      { configured: boolean; model: string; identityOk?: boolean }>;
     if (r?.success && r.data) {
       setConfigured(r.data.configured); setModel(r.data.model);
       setIdentityOk(r.data.identityOk !== false);
     } else {
       setConfigured(false);   // 读失败也要落到「未配置」，不能永远停在未知态不提示
     }
-    // 生效档案与可选清单：模型胶囊点开用来就地换端点，并标出当前生效那一份
-    if (s?.success && s.data) {
-      const cut = (u: string) => u.replace(/\/+$/, "");
-      const d = s.data;
-      const eff = d.activeId
-        ?? d.profiles.find(p => cut(p.baseUrl) === cut(d.endpoint.baseUrl) && p.model === d.endpoint.model)?.id
-        ?? null;
-      setProfiles(d.profiles.map(p => ({ id: p.id, name: p.name, active: p.id === eff })));
-    }
-  };
-  /** 就地换端点：激活即写生效参数并同步进程环境，下一轮对话就用它（不用重启） */
-  const switchProfile = async (id: string) => {
-    if (profiles.some(p => p.active && p.id === id)) return;
-    const r = await window.api.invoke("ai:profileActivate", id) as
-      IpcResult<{ configured: boolean; model: string; name: string }>;
-    if (!r?.success) { message.error(r?.error || "切换失败"); return; }
-    message.success(`已切到「${r.data?.name ?? id}」，立即生效`);
-    void refreshStatus();
   };
   useEffect(() => { void refreshStatus(); }, []);
 
@@ -1038,7 +1012,7 @@ export function AssistantPage() {
         }
         setConfigured(status.data.configured);
         if (!status.data.configured) {
-          message.warning({ key: "assistant-model-status", content: "请先在「设置 → 模型与端点」配置并启用模型", duration: MODEL_NOTICE_SECONDS });
+          message.warning({ key: "assistant-model-status", content: "中心 AI 暂不可用，请确认中心已启用 AI", duration: MODEL_NOTICE_SECONDS });
           return;
         }
       } catch { // IPC 不可用时仅提示，不启动模型请求或在对话中留下错误消息。
@@ -1306,20 +1280,11 @@ export function AssistantPage() {
             ))}
           </div>
         ) : messages.length === 0 ? (
-          // 布局与旧版一致：居中大 Logo + 标题 + 副标题 + 底部提示；
-          // 建议区为两张内置功能卡（运价查询 / 自动开发信，docs/home-cards-spec.md）
+          // 新对话页由助手主导：先说清现在最该做的一件事，再列需要注意的，最后给出可直接开口的引导。
           // min-h-full 而非 h-full：窗口矮时内容可滚动不裁切，有余量时仍垂直居中
-          <div className="min-h-full flex flex-col items-center justify-center gap-5 py-6">
-            <div className="text-center">
-              <DiamondLogo size={44} state={sending ? "running" : "idle"} className="text-gray-900" />
-              <div className="text-base font-semibold text-gray-700 mt-3">Hi，我是 Prospector 助手</div>
-              <div className="text-xs text-gray-400 mt-1">已接入运价 / 邮件 / 客户 / 跟进 / 发信 11 项能力，写操作一律先弹确认</div>
-            </div>
-            <div className="w-full max-w-[min(56rem,92%)] flex flex-col items-center gap-3">
-              <HomeCards onSend={(t) => { void handleSend(t); }} />
-            </div>
-            <div className="text-[11px] text-gray-400">
-              输入 <code>/</code> 唤出快捷命令 · 多步任务会亮出任务清单 · 写操作先在对话里请你就地确认
+          <div className="min-h-full flex flex-col items-center justify-center py-6">
+            <div className="w-full max-w-[min(52rem,94%)]">
+              <AssistantReminders onSend={(t) => { void handleSend(t); }} />
             </div>
           </div>
         ) : (
@@ -1391,7 +1356,7 @@ export function AssistantPage() {
       )}
 
       {/* 输入区 */}
-      <div className="pt-3 relative" ref={inputBoxRef}>
+      <div className="pt-3 relative mx-auto w-full max-w-[820px]" ref={inputBoxRef}>
         {/* 写操作就地确认卡（不再用居中弹窗遮挡正在流出的回答） */}
         {approval && (
           <div className="mb-2 max-w-[720px] border border-amber-200 bg-amber-50/70 rounded-lg px-3 py-2.5">
@@ -1444,9 +1409,13 @@ export function AssistantPage() {
           </div>
         )}
         <Sender
+          rootClassName="assistant-composer"
+          classNames={{ content: "assistant-composer-content", input: "assistant-composer-input", actions: "assistant-composer-actions", footer: "assistant-composer-footer" }}
+          styles={{ content: { background: "transparent" }, input: { background: "transparent" } }}
           value={inputVal}
           onChange={(v) => setInputVal(v)}
-          placeholder="问我任何关于运价、邮件、客户、发信的事…（输入 / 看快捷命令）"
+          placeholder="有什么可以帮你？可以回客户、查运价或处理待办"
+          autoSize={{ minRows: 1, maxRows: 6 }}
           loading={sending}
           onSubmit={(text) => { setInputVal(""); handleSend(text); }}
           onCancel={handleStop}
@@ -1476,38 +1445,19 @@ export function AssistantPage() {
               if (t) { setInputVal(""); handleSend(t); }
             }
           }}
+          footer={<div className="assistant-composer-meta">
+            {configured && model && (
+              <Tooltip title="当前中心会话使用的模型">
+                <span className="assistant-composer-model"><span className="truncate font-mono" title={model}>{model}</span></span>
+              </Tooltip>
+            )}
+            {sessionUsage && ((sessionUsage.input ?? 0) > 0 || (sessionUsage.output ?? 0) > 0) && (
+              <Tooltip title="本会话累计 token">
+                <span className="assistant-composer-usage">{fmtTokens(sessionUsage.input)} 入 · {fmtTokens(sessionUsage.output)} 出</span>
+              </Tooltip>
+            )}
+          </div>}
         />
-        {/* 聊天框的延伸标签：模型胶囊骑在输入框下沿（白底压住那一小段边线），点一下就切端点 */}
-        {/* 容器常驻并占好行高，胶囊本身等状态读到再出现 —— 否则它"从无到有"会把输入区顶一下 */}
-        <div className="relative z-10 -mt-1.5 pb-0.5 min-h-[19px] flex items-center gap-1.5 pl-2.5">
-          {configured && model && (profiles.length > 1 ? (
-            <Dropdown trigger={["click"]} menu={{
-              items: profiles.map(p => ({
-                key: p.id,
-                label: <span>{p.name}{p.active && <span className="text-teal-600 ml-1.5">●</span>}</span>,
-              })),
-              onClick: ({ key }) => { void switchProfile(String(key)); },
-            }}>
-              <span className="flex items-center gap-1 h-[19px] px-2 rounded-full border border-gray-200 bg-white text-[11px] leading-none text-gray-500 cursor-pointer transition-colors hover:border-teal-200 hover:text-teal-600 shadow-[0_1px_2px_rgba(0,0,0,0.04)] max-w-[240px]">
-                <span className="font-mono truncate" title={model}>{model}</span>
-                <DownOutlined style={{ fontSize: 7 }} />
-              </span>
-            </Dropdown>
-          ) : (
-            <Tooltip title="当前生效的模型；要多配几个端点就能在这里就地切换">
-              <span className="flex items-center h-[19px] px-2 rounded-full border border-gray-200 bg-white text-[11px] leading-none text-gray-400 max-w-[240px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                <span className="font-mono truncate" title={model}>{model}</span>
-              </span>
-            </Tooltip>
-          ))}
-          {sessionUsage && ((sessionUsage.input ?? 0) > 0 || (sessionUsage.output ?? 0) > 0) && (
-            <Tooltip title="本会话累计 token（端点实测回报值；切页切会话都留着，设置页可看全应用累计）">
-              <span className="ml-auto shrink-0 font-normal text-[10.5px] text-gray-300 tabular-nums">
-                {fmtTokens(sessionUsage.input)} 入 · {fmtTokens(sessionUsage.output)} 出
-              </span>
-            </Tooltip>
-          )}
-        </div>
       </div>
 
       {/* 动作卡写入确认：展示字段 diff，确认后才执行主进程留存的闭包 */}

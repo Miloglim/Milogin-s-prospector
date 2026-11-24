@@ -1,13 +1,14 @@
-import type { ImportFileContent } from "../../shared/online-crm";
+import type { ImportFileContent, QuoteReviewQuery, QuoteReviewDecision } from "../../shared/online-crm";
 import type { AccountProfile, Result, Identity, OnlineLogin, ImportPreview, ImportRequest, ImportReceipt, PublishRequest, PublishReceipt, LeadBootstrap, LeadQuery, LeadPage, LeadDetail, LeadCommand, FollowupRequest, OnlineFeed, NotificationReadAllReceipt } from '../../shared/online-crm';
 import type { OnlineSessionSnapshot, OnlinePasswordChange, OnlineRegistration, RegisteredAccount, OnlineFeedRequest, OnlineHandoffBegin, OnlineHandoffBeginResult, OnlineHandoffComplete, OnlineHandoffState, OnlineHandoffTakeover, OnlineHandoffToken } from '../../shared/online-crm';
 import type { LoginAccountQuery, SavedAccountLogin, OnlineLogout, LeadIngressDecisionDTO, LeadIngressDecisionQuery, LeadIngressResolutionCommand, LeadIngressResolutionReceipt } from '../../shared/online-crm';
-import { TEAM_ROUTES, type CustomerCreate, type CustomerUpdate, type MemberQuery, type MemberPage, type TeamContext, type TeamCreateInput, type TeamCreateReceipt, type TeamDetail, type TeamDissolveInput, type TeamInvitationDecision, type TeamInviteInput, type TeamLeaderInput, type TeamMemberAdjustmentInput, type TeamMemberCandidatePage, type TeamMemberCandidateQuery, type TeamMemberGroupDeleteInput, type TeamMemberGroupInput, type TeamMoveInput } from '../../shared/online-crm';
+import { TEAM_ROUTES, type CustomerCreate, type CustomerUpdate, type MemberQuery, type MemberPage, type TeamContext, type TeamConversationArchiveInput, type TeamCreateInput, type TeamCreateReceipt, type TeamDetail, type TeamDirectoryPage, type TeamDirectoryQuery, type TeamDirectConversationPage, type TeamDirectConversationQuery, type TeamDirectMessage, type TeamDirectMessagePage, type TeamDirectMessageQuery, type TeamDirectMessageSend, type TeamArchiveMeta, type TeamEvent, type TeamFileMeta, type TeamFileOpenResult, type TeamFileUpload, type TeamMessageReadCommand, type TeamMessageReadReceipt, type TeamMessageUnreadCommand, type TeamDissolveInput, type TeamInvitationDecision, type TeamInviteInput, type TeamLeaderInput, type TeamMemberAdjustmentInput, type TeamMemberCandidatePage, type TeamMemberCandidateQuery, type TeamMemberGroupDeleteInput, type TeamMemberGroupInput, type TeamMoveInput, type TeamPresenceQuery, type TeamPresenceView } from '../../shared/online-crm';
 import { LEAD_ROUTES } from '../../../server/core/leads';
-import { failure } from '../../../server/core/crm';
+import { failure, success } from '../../../server/core/crm';
+import type { PrepareImportedLeadsInput, PreparedCampaignNextStep } from '../../shared/online-crm';
 import {CENTER_CONTACT_GROUP_ROUTE,centerContactGroupQuery,centerContactQuery,centerContactPath,type CenterContactGroupPage,type CenterContactGroupQuery,type CenterContactPage,type CenterContactQuery} from '../../../server/core/center-contacts';
 import { WORKBOOK_IMPORT_ROUTE, type WorkbookImportRequest, type WorkbookImportReceipt } from '../../../server/core/customer-import';
-import type { FollowupTask, TaskQuery, TaskPage, TaskCreate, TaskReschedule, TaskComplete } from '../../../server/core/tasks';
+import type { FollowupTask, TaskQuery, TaskPage, TaskCreate, TaskReschedule, TaskComplete, TaskCancel } from '../../../server/core/tasks';
 import { TEAM_ATTENTION_ROUTES, type TeamAttentionCreate, type TeamAttentionItem, type TeamAttentionPage, type TeamAttentionQuery, type TeamAttentionTransitionAction } from '../../../server/core/team-attention';
 import { TEAM_MONITORING_LIMITS, TEAM_MONITORING_ROUTES, type TeamMonitoringContactSummary, type TeamMonitoringMailDetail, type TeamMonitoringMemberDetail, type TeamMonitoringOverview, type TeamMonitoringQuery } from '../../../server/core/team-monitoring';
 import { CUSTOMER_GRADES, SALES_PERFORMANCE_LIMITS, SALES_PERFORMANCE_ROUTES, SALES_PERFORMANCE_STRATA, type CustomerGradeOverrideClear, type CustomerGradeOverrideReceipt, type CustomerGradeOverrideSet, type CustomerGradePage, type CustomerGradeQuery, type SalesPerformanceOverview, type SalesPerformanceQuery } from '../../../server/core/sales-performance';
@@ -23,11 +24,16 @@ import { contactShareQuery, contactShareCreate, contactShareDecision, contactSha
 import { LEAD_INGRESS_ROUTES, validateLeadIngressDecisionQuery, validateLeadIngressResolution } from '../../../server/core/lead-ingress';
 import type { ContactMailAnalysisCorrection, ContactMailAnalysisQuery, ContactMailAnalysisRecord, ContactMailAnalysisSubmission, ContactMailAnalysisView } from '../../../server/core/mail-analysis';
 import { CONTACT_MAIL_ANALYSIS_ROUTES } from '../../../server/core/mail-analysis';
+import type { AiProposal, SalesCase, SalesCaseDetail } from '../../../server/core/sales-case';
+import { CUSTOMER_STATUS_ROUTES, type CustomerStatusCorrection, type CustomerStatusResume, type CustomerStatusState, type CustomerStatusView } from '../../../server/core/customer-status';
+import type { QuoteCandidate, QuoteCase, QuoteCaseDetail, QuoteReviewRequest, QuoteReviewPage, UpsertQuoteCaseInput } from '../../../server/core/quote-case';
 import { contactMailAnalysisCorrection, contactMailAnalysisQuery, contactMailAnalysisSubmission } from '../../../server/services/contact-mail-analysis';
 import { Log } from '../logger';
+import { prepareAssignmentDraft, prepareCampaignDraft } from './lead-campaign-planner.service';
 const MONITORING_UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 /** IO port is implemented by the adapter; this service never touches the local CRM. */
 export interface OnlineCrmPort {
+  refreshContactMirror?():Promise<Result<void>>;
   requestLive?<T>(method:string,path:string,body?:unknown):Promise<Result<T>>;
   contactDetail?(reference:CenterContactRef):Promise<Result<CenterContactDetail>>;
   contactMonitorDetail?(reference:CenterContactRef):Promise<Result<ContactMonitorDetail>>;
@@ -57,6 +63,7 @@ export interface OnlineCrmPort {
   createTask?(input:TaskCreate):Promise<Result<FollowupTask>>;
   rescheduleTask?(input:TaskReschedule):Promise<Result<FollowupTask>>;
   completeTask?(input:TaskComplete):Promise<Result<FollowupTask>>;
+  cancelTask?(input:TaskCancel):Promise<Result<FollowupTask>>;
   teamAttention?(query:TeamAttentionQuery):Promise<Result<TeamAttentionPage>>;
   createTeamAttention?(input:TeamAttentionCreate):Promise<Result<TeamAttentionItem>>;
   transitionTeamAttention?(itemId:string,action:TeamAttentionTransitionAction,input:Omit<import('../../../server/core/team-attention').TeamAttentionTransition,'itemId'|'action'>):Promise<Result<TeamAttentionItem>>;
@@ -77,6 +84,18 @@ export interface OnlineCrmPort {
   teamAdjustMember?(teamId:string,input:TeamMemberAdjustmentInput):Promise<Result<TeamContext>>;
   teamSaveMemberGroup?(teamId:string,input:TeamMemberGroupInput):Promise<Result<TeamContext>>;
   teamDeleteMemberGroup?(teamId:string,groupId:string,input:TeamMemberGroupDeleteInput):Promise<Result<TeamContext>>;
+  teamMessages?(query:TeamDirectMessageQuery):Promise<Result<TeamDirectMessagePage>>;
+  teamMessageRead?(input:TeamMessageReadCommand):Promise<Result<TeamMessageReadReceipt>>;
+  teamMessageUnread?(input:TeamMessageUnreadCommand):Promise<Result<TeamMessageReadReceipt>>;
+  teamPresence?(query:TeamPresenceQuery):Promise<Result<TeamPresenceView>>;
+  teamFileUpload?(input:TeamFileUpload):Promise<Result<TeamFileMeta>>;
+  teamFileOpen?(fileId:string):Promise<Result<TeamFileOpenResult>>;
+  teamArchive?(input:TeamConversationArchiveInput):Promise<Result<TeamArchiveMeta>>;
+  teamEvents?(onEvent:(event:TeamEvent)=>void,onClose?:()=>void):Promise<Result<() => void>>;
+  teamSendMessage?(input:TeamDirectMessageSend):Promise<Result<TeamDirectMessage>>;
+  teamConversations?(query:TeamDirectConversationQuery):Promise<Result<TeamDirectConversationPage>>;
+  teamDirectory?(query:TeamDirectoryQuery):Promise<Result<TeamDirectoryPage>>;
+  salesCaseList?(query:{limit:number;offset:number}):Promise<Result<SalesCase[]>>;
 }
 export function createOnlineCrmService(port:OnlineCrmPort) {
   const validated = <I,T>(input:unknown,parse:(value:unknown)=>Result<I>,send:(value:I)=>Promise<Result<T>>):Promise<Result<T>> => {
@@ -87,8 +106,39 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
   const salesPage = (limit:number,offset:number):boolean => Number.isSafeInteger(limit) && limit>=1 && limit<=SALES_PERFORMANCE_LIMITS.pageMax && Number.isSafeInteger(offset) && offset>=0;
   const salesWindow = (from:string,to:string):boolean => typeof from==='string' && typeof to==='string' && Number.isFinite(Date.parse(from)) && Number.isFinite(Date.parse(to)) && Date.parse(from)<Date.parse(to);
   const salesUuid = (value:string|undefined):boolean => value===undefined || MONITORING_UUID.test(value);
-  const decision=(action:'accept'|'reject'|'cancel',input:unknown)=>validated(input,contactAssignmentDecision,value=>port.request<ContactAssignment>('POST',`${CONTACT_ASSIGNMENT_ROUTES.assignments}/${encodeURIComponent(value.requestId)}/${action}`,value));
-  const groupDecision=(action:'accept'|'reject'|'cancel',input:unknown)=>validated(input,contactAssignmentGroupDecision,value=>port.request<ContactAssignmentReceipt>('POST',`${CONTACT_ASSIGNMENT_ROUTES.groups}/${encodeURIComponent(value.groupId)}/${action}`,value));
+  const prepareProposal = async(caseIds:string[],campaign:{campaignId:string;name:string;eligible:number})=>{
+    await Promise.all(caseIds.map(caseId=>port.request('POST',`/api/crm/sales-cases/${encodeURIComponent(caseId)}/proposals`,{
+      proposalType:'campaign_draft',payload:{campaignId:campaign.campaignId,name:campaign.name,eligible:campaign.eligible,startNow:false},
+      evidence:[],confidence:1,model:null,version:'lead-campaign-planner-v1',
+    },true).catch(error=>{Log.warn('sales-workflow.campaign',`开发任务建议写入失败: ${error instanceof Error?error.message:String(error)}`);return failure('UNAVAILABLE','开发任务建议暂不可用');})));
+  };
+  const decision=async(action:'accept'|'reject'|'cancel',input:unknown)=>{
+    const result=await validated(input,contactAssignmentDecision,value=>port.request<ContactAssignment>('POST',`${CONTACT_ASSIGNMENT_ROUTES.assignments}/${encodeURIComponent(value.requestId)}/${action}`,value));
+    if(action==='accept'&&result.ok&&Number.isSafeInteger(result.data.contactId)&&result.data.contactId>0&&typeof result.data.customerId==='string'&&result.data.customerId){
+      const ref={contactId:result.data.contactId,customerId:result.data.customerId};
+      const ensured=await port.request<SalesCase>('POST','/api/crm/sales-cases/ensure',{...ref,source:'assignment_accept'},true);
+      const caseIds=ensured.ok?[ensured.data.caseId]:[];
+      const prepared=prepareAssignmentDraft([ref],caseIds);
+      if(prepared.success){await prepareProposal(prepared.data.caseIds,prepared.data);Object.assign(result.data,{nextStep:{kind:'campaign_draft',campaignId:prepared.data.campaignId,name:prepared.data.name,eligible:prepared.data.eligible}});}
+      else Log.warn('sales-workflow.campaign',`接收线索后未生成开发草稿：${prepared.error}`);
+    }
+    return result;
+  };
+  const groupDecision=async(action:'accept'|'reject'|'cancel',input:unknown)=>{
+    const result=await validated(input,contactAssignmentGroupDecision,value=>port.request<ContactAssignmentReceipt>('POST',`${CONTACT_ASSIGNMENT_ROUTES.groups}/${encodeURIComponent(value.groupId)}/${action}`,value));
+    if(action==='accept'&&result.ok){
+      const refs=result.data.items.filter(item=>Number.isSafeInteger(item.contactId)&&item.contactId>0&&typeof item.customerId==='string'&&item.customerId).map(item=>({contactId:item.contactId,customerId:item.customerId}));
+      if(!refs.length)return result;
+      const ensured=await Promise.all(refs.map(async ref=>{
+        const item=await port.request<SalesCase>('POST','/api/crm/sales-cases/ensure',{...ref,source:'assignment_accept'},true);
+        return item.ok?item.data.caseId:null;
+      }));
+      const prepared=prepareAssignmentDraft(refs,ensured.filter((id):id is string=>!!id));
+      if(prepared.success){await prepareProposal(prepared.data.caseIds,prepared.data);if(result.data.items[0])Object.assign(result.data.items[0],{nextStep:{kind:'campaign_draft',campaignId:prepared.data.campaignId,name:prepared.data.name,eligible:prepared.data.eligible}});}
+      else Log.warn('sales-workflow.campaign',`批量接收线索后未生成开发草稿：${prepared.error}`);
+    }
+    return result;
+  };
   return {
     contactShares:(input:ContactShareQuery)=>validated(input,contactShareQuery,query=>{
       const params=new URLSearchParams({view:query.view,limit:String(query.limit),offset:String(query.offset)});
@@ -139,6 +189,85 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     createOpportunity:(input:OpportunityCreate)=>port.request<Opportunity>('POST',OPPORTUNITY_ROUTES.opportunities,input),
     opportunityDetail:(id:string)=>port.request<Opportunity>('GET',`${OPPORTUNITY_ROUTES.opportunities}/${encodeURIComponent(id)}`),
     opportunityStage:(input:OpportunityUpdateStage)=>port.request<Opportunity>('POST',`${OPPORTUNITY_ROUTES.opportunities}/${encodeURIComponent(input.opportunityId)}/${OPPORTUNITY_ROUTES.stageAction}`,input),
+    salesCaseList:(query:{limit:number;offset:number})=>{
+      if(!query||!Number.isSafeInteger(query.limit)||query.limit<1||query.limit>100||!Number.isSafeInteger(query.offset)||query.offset<0)return Promise.resolve(failure('INVALID_INPUT','销售 Case 查询参数无效'));
+      return port.salesCaseList?.(query)??port.request<SalesCase[]>('GET',`/api/crm/sales-cases?${new URLSearchParams({limit:String(query.limit),offset:String(query.offset)})}`);
+    },
+    salesCaseDetail:(caseId:string)=>{
+      if(typeof caseId!=='string'||!caseId.trim())return Promise.resolve(failure('INVALID_INPUT','销售 Case ID 无效'));
+      return port.request<SalesCase>('GET',`/api/crm/sales-cases/${encodeURIComponent(caseId)}`);
+    },
+    salesCaseOverview:(caseId:string)=>{
+      if(typeof caseId!=='string'||!caseId.trim())return Promise.resolve(failure('INVALID_INPUT','销售 Case ID 无效'));
+      return port.request<SalesCaseDetail>('GET',`/api/crm/sales-cases/${encodeURIComponent(caseId)}/overview`);
+    },
+    ensureSalesCase:(input:{contactId:number;customerId:string;source?:string})=>{
+      if(!input||!Number.isSafeInteger(input.contactId)||input.contactId<1||typeof input.customerId!=='string'||!input.customerId.trim())return Promise.resolve(failure('INVALID_INPUT','销售 Case 联系人参数无效'));
+      return port.request<SalesCase>('POST','/api/crm/sales-cases/ensure',input,true);
+    },
+    prepareImportedLeads:async(input:PrepareImportedLeadsInput):Promise<Result<PreparedCampaignNextStep>>=>{
+      if(!input||!Array.isArray(input.refs)||!input.refs.length||input.refs.length>10000)return failure('INVALID_INPUT','开发任务联系人无效');
+      const refs=input.refs.filter(ref=>Number.isSafeInteger(ref.contactId)&&ref.contactId>0&&typeof ref.customerId==='string'&&ref.customerId);
+      if(!refs.length)return failure('INVALID_INPUT','开发任务联系人无效');
+      await port.refreshContactMirror?.();
+      const prepared=prepareCampaignDraft({refs,caseIds:Array.isArray(input.caseIds)?input.caseIds:[],name:input.name||'已验证线索',groupKey:input.groupKey});
+      if(!prepared.success)return failure('CONFLICT',prepared.error);
+      await prepareProposal(prepared.data.caseIds.slice(0,1),prepared.data);
+      return success({campaignId:prepared.data.campaignId,name:prepared.data.name,eligible:prepared.data.eligible});
+    },
+    transitionSalesCase:(caseId:string,input:unknown)=>{
+      if(typeof caseId!=='string'||!caseId.trim()||!input||typeof input!=='object'||Array.isArray(input))return Promise.resolve(failure('INVALID_INPUT','销售 Case 推进参数无效'));
+      return port.request<SalesCase>('POST',`/api/crm/sales-cases/${encodeURIComponent(caseId)}/transition`,input,true);
+    },
+    salesCaseProposalList:(caseId:string,status?:string)=>{
+      if(typeof caseId!=='string'||!caseId.trim())return Promise.resolve(failure('INVALID_INPUT','销售 Case ID 无效'));
+      return port.request<AiProposal[]>('GET',`/api/crm/sales-cases/${encodeURIComponent(caseId)}/proposals${status?`?status=${encodeURIComponent(status)}`:''}`);
+    },
+    salesCaseProposalCreate:(caseId:string,input:unknown)=>{
+      if(typeof caseId!=='string'||!caseId.trim())return Promise.resolve(failure('INVALID_INPUT','销售 Case ID 无效'));
+      return port.request<AiProposal>('POST',`/api/crm/sales-cases/${encodeURIComponent(caseId)}/proposals`,input,true);
+    },
+    salesCaseProposalAct:(input:{caseId:string;proposalId:string;action:'accept'|'edit'|'ignore';payload?:Record<string,unknown>})=>{
+      if(!input||typeof input.caseId!=='string'||typeof input.proposalId!=='string'||!['accept','edit','ignore'].includes(input.action))return Promise.resolve(failure('INVALID_INPUT','建议操作无效'));
+      return port.request<AiProposal>('POST',`/api/crm/sales-cases/${encodeURIComponent(input.caseId)}/proposals/${encodeURIComponent(input.proposalId)}`,{action:input.action,...(input.payload?{payload:input.payload}:{})},true);
+    },
+    quoteCaseList:(query:{caseId?:string;messageKey?:string;limit:number;offset:number})=>{
+      if(!query||!Number.isSafeInteger(query.limit)||query.limit<1||query.limit>100||!Number.isSafeInteger(query.offset)||query.offset<0)return Promise.resolve(failure('INVALID_INPUT','报价查询参数无效'));
+      const params=new URLSearchParams({limit:String(query.limit),offset:String(query.offset)});if(query.caseId)params.set('caseId',query.caseId);if(query.messageKey)params.set('messageKey',query.messageKey);
+      return port.request<QuoteCase[]>('GET',`/api/crm/quote-cases?${params}`);
+    },
+    quoteCaseDetail:(quoteCaseId:string)=>{
+      if(typeof quoteCaseId!=='string'||!quoteCaseId.trim())return Promise.resolve(failure('INVALID_INPUT','报价 Case ID 无效'));
+      return port.request<QuoteCaseDetail>('GET',`/api/crm/quote-cases/${encodeURIComponent(quoteCaseId)}`);
+    },
+    quoteCaseUpsert:(input:UpsertQuoteCaseInput)=>{
+      if(!input||typeof input.caseId!=='string'||typeof input.messageKey!=='string'||typeof input.threadKey!=='string')return Promise.resolve(failure('INVALID_INPUT','报价 Case 参数无效'));
+      return port.request<QuoteCaseDetail>('POST','/api/crm/quote-cases/upsert',input,true);
+    },
+    quoteCaseSelect:(quoteCaseId:string,candidate:QuoteCandidate)=>{
+      if(typeof quoteCaseId!=='string'||!quoteCaseId.trim()||!candidate||typeof candidate.id!=='string')return Promise.resolve(failure('INVALID_INPUT','选择报价参数无效'));
+      return port.request<QuoteCaseDetail>('POST',`/api/crm/quote-cases/${encodeURIComponent(quoteCaseId)}/select`,candidate,true);
+    },
+    quoteCaseRequery:(quoteCaseId:string,input:Record<string,unknown>)=>{
+      if(typeof quoteCaseId!=='string'||!quoteCaseId.trim()||!input||typeof input!=='object')return Promise.resolve(failure('INVALID_INPUT','重新查询参数无效'));
+      return port.request<QuoteCaseDetail>('POST',`/api/crm/quote-cases/${encodeURIComponent(quoteCaseId)}/requery`,input,true);
+    },
+    quoteCaseReview:(quoteId:string,input:{reviewerUserId:string;reason?:string;linkedMessageId?:string;linkedTaskId?:string})=>{
+      if(typeof quoteId!=='string'||!quoteId.trim()||!input||typeof input.reviewerUserId!=='string')return Promise.resolve(failure('INVALID_INPUT','报价审核参数无效'));
+      return port.request<QuoteReviewRequest>('POST',`/api/crm/quote-cases/${encodeURIComponent(quoteId)}/review`,input,true);
+    },
+    quoteReviewList:(query:QuoteReviewQuery)=>{
+      if(!query||!Number.isSafeInteger(query.limit)||query.limit<1||query.limit>100||!Number.isSafeInteger(query.offset)||query.offset<0)return Promise.resolve(failure('INVALID_INPUT','审核查询参数无效'));
+      const params=new URLSearchParams({status:query.status??'pending',limit:String(query.limit),offset:String(query.offset)});
+      return port.request<QuoteReviewPage>('GET',`/api/crm/quote-cases/reviews?${params}`);
+    },
+    quoteReviewDecide:(reviewId:string,decision:QuoteReviewDecision)=>{
+      if(typeof reviewId!=='string'||!reviewId.trim()||!decision||(decision.action!=='approve'&&decision.action!=='reject'))return Promise.resolve(failure('INVALID_INPUT','审核动作无效'));
+      return port.request<QuoteReviewRequest>('POST',`/api/crm/quote-cases/reviews/${encodeURIComponent(reviewId)}/decision`,decision,true);
+    },
+    customerStatus:(customerId:string)=>port.requestLive?port.requestLive<CustomerStatusView>('GET',`${CUSTOMER_STATUS_ROUTES.base}/${encodeURIComponent(customerId)}`):Promise.resolve(failure('UNAVAILABLE','客户状态服务暂不可用')),
+    customerStatusCorrect:(input:CustomerStatusCorrection)=>port.requestLive?port.requestLive<CustomerStatusState>('POST',`${CUSTOMER_STATUS_ROUTES.base}/${encodeURIComponent(input.customerId)}/correct`,input):Promise.resolve(failure('UNAVAILABLE','客户状态服务暂不可用')),
+    customerStatusResume:(input:CustomerStatusResume)=>port.requestLive?port.requestLive<CustomerStatusState>('POST',`${CUSTOMER_STATUS_ROUTES.base}/${encodeURIComponent(input.customerId)}/resume-ai`,input):Promise.resolve(failure('UNAVAILABLE','客户状态服务暂不可用')),
     teamContext:()=>port.request<TeamContext>('GET',TEAM_ROUTES.context),
     teamDetail:(teamId:string)=>port.request<TeamDetail>('GET',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}`),
     teamCandidates:(query:TeamMemberCandidateQuery)=>{
@@ -155,6 +284,17 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     teamAdjustMember:(teamId:string,input:TeamMemberAdjustmentInput)=>port.teamAdjustMember?.(teamId,input) ?? port.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/members`,input),
     teamSaveMemberGroup:(teamId:string,input:TeamMemberGroupInput)=>port.teamSaveMemberGroup?.(teamId,input) ?? port.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/groups`,input),
     teamDeleteMemberGroup:(teamId:string,groupId:string,input:TeamMemberGroupDeleteInput)=>port.teamDeleteMemberGroup?.(teamId,groupId,input) ?? port.request<TeamContext>('POST',`${TEAM_ROUTES.teams}/${encodeURIComponent(teamId)}/groups/${encodeURIComponent(groupId)}/delete`,input),
+    teamMessages:(query:TeamDirectMessageQuery)=>{const params=new URLSearchParams({memberUserId:query.memberUserId,limit:String(query.limit)});if(query.teamId)params.set('teamId',query.teamId);if(query.beforeMessageId)params.set('beforeMessageId',query.beforeMessageId);return port.teamMessages?.(query) ?? port.request<TeamDirectMessagePage>('GET',`${TEAM_ROUTES.messages}?${params}`);},
+    teamMessageRead:(input:TeamMessageReadCommand)=>port.teamMessageRead?.(input) ?? port.request<TeamMessageReadReceipt>('POST',TEAM_ROUTES.messagesRead,input),
+    teamMessageUnread:(input:TeamMessageUnreadCommand)=>port.teamMessageUnread?.(input) ?? port.request<TeamMessageReadReceipt>('POST',TEAM_ROUTES.messagesUnread,input),
+    teamFileUpload:(input:TeamFileUpload)=>port.teamFileUpload?.(input) ?? port.request<TeamFileMeta>('POST',TEAM_ROUTES.files,input),
+    teamFileOpen:(fileId:string)=>port.teamFileOpen?.(fileId) ?? Promise.resolve(failure('UNAVAILABLE','文件服务暂不可用')),
+    teamArchive:(input:TeamConversationArchiveInput)=>port.teamArchive?.(input) ?? port.request<TeamArchiveMeta>('POST',TEAM_ROUTES.archive,input,true),
+    teamEvents:(onEvent:(event:TeamEvent)=>void,onClose?:()=>void)=>port.teamEvents?.(onEvent,onClose) ?? Promise.resolve(failure('UNAVAILABLE','团队事件流暂不可用')),
+    teamPresence:(query:TeamPresenceQuery)=>port.teamPresence?.(query) ?? port.request<TeamPresenceView>('POST',TEAM_ROUTES.presence,query),
+    teamSendMessage:(input:TeamDirectMessageSend)=>port.teamSendMessage?.(input) ?? port.request<TeamDirectMessage>('POST',TEAM_ROUTES.messages,input,true),
+    teamConversations:(query:TeamDirectConversationQuery)=>{const params=new URLSearchParams({limit:String(query.limit)});if(query.teamId)params.set('teamId',query.teamId);return port.teamConversations?.(query) ?? port.request<TeamDirectConversationPage>('GET',`${TEAM_ROUTES.conversations}?${params}`);},
+    teamDirectory:(query:TeamDirectoryQuery)=>port.teamDirectory?.(query) ?? port.request<TeamDirectoryPage>('GET',`${TEAM_ROUTES.directory}?${new URLSearchParams({limit:String(query.limit)})}`),
     register:(input:OnlineRegistration)=>port.register?.(input) ?? Promise.resolve(failure('UNAVAILABLE','注册暂不可用')),
     login:(input:OnlineLogin)=>port.login(input), logout:(input?:OnlineLogout)=>port.logout(input), preview:(input?:ImportFileContent)=>port.preview(input),
     beginHandoff:(input:OnlineHandoffBegin)=>port.beginHandoff?.(input) ?? Promise.resolve(failure('UNAVAILABLE','换机暂不可用')),
@@ -172,7 +312,10 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     removeAccount:(accountId:string)=>port.removeAccount?.(accountId) ?? Promise.resolve(failure('UNAVAILABLE','账号预设暂不可用')),
     changePassword:(input:OnlinePasswordChange)=>port.changePassword?.(input) ?? Promise.resolve(failure('UNAVAILABLE','改密不可用')),
     bootstrap:()=>port.request<LeadBootstrap>('GET','/api/crm/bootstrap'),
-    importRows:(input:ImportRequest)=>port.request<ImportReceipt>('POST','/api/crm/imports',input,true),
+    importRows:async(input:ImportRequest)=>{
+      const result=await port.request<ImportReceipt>('POST','/api/crm/imports',input,true);
+      return result;
+    },
     leadIngressDecision:(input:LeadIngressDecisionQuery)=>{const parsed=validateLeadIngressDecisionQuery(input?.source,input?.idempotencyKey);if(!parsed.ok)return Promise.resolve(parsed);return port.leadIngressDecision?.(parsed.data)??port.request<LeadIngressDecisionDTO>('GET',`${LEAD_INGRESS_ROUTES.decision}?source=${encodeURIComponent(parsed.data.source)}&idempotencyKey=${encodeURIComponent(parsed.data.idempotencyKey)}`);},
     resolveLeadIngress:(input:LeadIngressResolutionCommand)=>{const parsed=validateLeadIngressResolution(input);if(!parsed.ok)return Promise.resolve(parsed);return port.resolveLeadIngress?.(parsed.data)??port.request<LeadIngressResolutionReceipt>('POST',LEAD_INGRESS_ROUTES.resolve,parsed.data);},
     publish:(id:string,input:PublishRequest)=>port.request<PublishReceipt>('POST',`/api/crm/imports/${encodeURIComponent(id)}/publish`,input),
@@ -187,6 +330,7 @@ export function createOnlineCrmService(port:OnlineCrmPort) {
     createTask:(input:TaskCreate)=>port.createTask?.(input) ?? Promise.resolve(failure('UNAVAILABLE','任务服务不可用')),
     rescheduleTask:(input:TaskReschedule)=>port.rescheduleTask?.(input) ?? Promise.resolve(failure('UNAVAILABLE','任务服务不可用')),
     completeTask:(input:TaskComplete)=>port.completeTask?.(input) ?? Promise.resolve(failure('UNAVAILABLE','任务服务不可用')),
+    cancelTask:(input:TaskCancel)=>port.cancelTask?.(input) ?? Promise.resolve(failure('UNAVAILABLE','任务服务不可用')),
     teamAttention:(query:TeamAttentionQuery)=>port.teamAttention?.(query) ?? port.request<TeamAttentionPage>('GET',`${TEAM_ATTENTION_ROUTES.items}?${new URLSearchParams({limit:String(query.limit),offset:String(query.offset),...(query.status?{status:query.status}:{}),...(query.reason?{reason:query.reason}:{}),...(query.targetMemberUserId?{targetMemberUserId:query.targetMemberUserId}:{})})}`),
     createTeamAttention:(input:TeamAttentionCreate)=>port.createTeamAttention?.(input) ?? port.request<TeamAttentionItem>('POST',TEAM_ATTENTION_ROUTES.items,input,true),
     acknowledgeTeamAttention:(itemId:string,input:Omit<import('../../../server/core/team-attention').TeamAttentionTransition,'itemId'|'action'>)=>port.transitionTeamAttention?.(itemId,'acknowledge',input) ?? port.request<TeamAttentionItem>('POST',`${TEAM_ATTENTION_ROUTES.items}/${encodeURIComponent(itemId)}/acknowledge`,input,true),

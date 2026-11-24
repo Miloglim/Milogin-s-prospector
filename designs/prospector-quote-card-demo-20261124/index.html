@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prospector · 报价助手 Demo</title>
+<style>
+  :root {
+    --ink: #17212b; --muted: #6e7b87; --line: #e2e7eb; --soft: #f5f7f9; --surface: #fff;
+    --teal: #0f766e; --teal-soft: #edf8f5; --amber: #a15c00; --red: #b42318; --rail: #17191c;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; overflow: hidden; background: #eef2f5; color: var(--ink); font: 14px/1.5 "Noto Sans SC", "Segoe UI", "Microsoft YaHei UI", sans-serif; }
+  button, input, textarea { font: inherit; }
+  button { cursor: pointer; }
+  .app { height: 100vh; display: grid; grid-template-columns: 180px minmax(0, 1fr); }
+  .rail { background: var(--rail); color: #fff; padding: 22px 16px; display: flex; flex-direction: column; gap: 26px; }
+  .brand small { display: block; color: rgba(255,255,255,.45); font-size: 10px; letter-spacing: .08em; }
+  .brand strong { display: block; margin-top: 2px; font-size: 19px; letter-spacing: .02em; }
+  .brand i { color: #5eead4; font-style: normal; }
+  .rail-nav { display: grid; gap: 5px; }
+  .rail-nav span { padding: 9px 10px; border-radius: 5px; color: rgba(255,255,255,.6); font-size: 12px; }
+  .rail-nav span.active { background: rgba(255,255,255,.12); color: #fff; }
+  .rail-note { margin-top: auto; color: rgba(255,255,255,.35); font-size: 11px; line-height: 1.6; }
+  .workspace { min-width: 0; height: 100vh; display: flex; flex-direction: column; }
+  .topbar { flex: 0 0 54px; height: 54px; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #dce3e8; background: rgba(255,255,255,.82); }
+  .crumbs { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .crumbs b { color: var(--ink); font-weight: 600; }
+  .demo-tabs { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .demo-tabs button { border: 1px solid transparent; background: transparent; color: var(--muted); border-radius: 5px; padding: 5px 9px; font-size: 12px; white-space: nowrap; }
+  .demo-tabs button.active { background: #fff; border-color: var(--line); color: var(--ink); box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+  .inbox { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr) 336px; }
+
+  .mail-list { min-width: 0; border-right: 1px solid #dce3e8; background: #fff; display: flex; flex-direction: column; }
+  .list-head { flex: 0 0 auto; padding: 12px 14px 9px; border-bottom: 1px solid #eef1f3; }
+  .list-title { display: flex; align-items: baseline; justify-content: space-between; }
+  .list-title strong { font-size: 14px; }
+  .list-title span { color: var(--muted); font-size: 11px; }
+  .search { margin-top: 9px; height: 30px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid #e0e6ea; border-radius: 5px; background: #f8fafb; color: #9aa5ae; font-size: 12px; }
+  .mail-items { flex: 1; min-height: 0; overflow: auto; }
+  .mail-item { width: 100%; border: 0; border-bottom: 1px solid #f0f3f5; background: #fff; text-align: left; padding: 10px 14px; display: grid; gap: 3px; color: inherit; }
+  .mail-item:hover { background: #f8fafb; }
+  .mail-item.active { background: #f1f7f5; box-shadow: inset 3px 0 0 var(--teal); }
+  .mail-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .mail-top strong { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mail-top time { color: #9aa5ae; font-size: 10px; flex-shrink: 0; }
+  .mail-subject { font-size: 12px; color: #34414d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mail-item.active .mail-subject { font-weight: 600; }
+  .mail-preview { font-size: 11px; color: #8a959f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mail-tag { display: inline-flex; align-items: center; gap: 4px; width: fit-content; font-size: 9px; padding: 1px 5px; border-radius: 3px; background: #fff8e8; color: var(--amber); }
+  .unread { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); flex-shrink: 0; }
+
+  .reader { min-width: 0; display: flex; flex-direction: column; background: #fff; }
+  .reader-head { flex: 0 0 auto; padding: 14px 20px 11px; border-bottom: 1px solid #eef1f3; }
+  .reader-subject { margin: 0; font-size: 17px; line-height: 1.35; font-weight: 650; }
+  .reader-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; background: #e6f0ee; color: var(--teal); display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .reader-meta b { color: var(--ink); font-weight: 600; }
+  .reader-actions { margin-left: auto; display: flex; gap: 6px; }
+  .reader-body { flex: 1; min-height: 0; overflow: auto; padding: 18px 22px 26px; color: #34414d; font-size: 13px; line-height: 1.75; }
+  .reader-body p { margin: 0 0 12px; max-width: 72ch; }
+  .reader-body .sign { color: var(--muted); }
+  .composer { flex: 0 0 auto; margin: 0 20px 14px; min-height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid #e0e6ea; border-radius: 6px; color: #9aa5ae; font-size: 12px; cursor: text; }
+  .composer span { flex: 1; }
+
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn { border: 1px solid #d8e0e5; background: #fff; color: #3c4a55; border-radius: 5px; min-height: 30px; padding: 0 10px; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+  .btn:hover { border-color: #b8c5cd; background: #fbfcfd; }
+  .btn.primary { border-color: var(--teal); background: var(--teal); color: #fff; }
+  .btn.primary:hover { background: #0d655e; }
+  .btn.quiet { border-color: transparent; background: transparent; color: var(--muted); padding-left: 5px; padding-right: 5px; }
+  .btn.small { min-height: 26px; padding: 0 8px; font-size: 11px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+
+  .context { min-width: 0; border-left: 1px solid #dce3e8; background: #f8fafb; display: flex; flex-direction: column; min-height: 0; }
+  .contact-block { flex: 0 0 auto; padding: 13px 14px 11px; background: #fff; border-bottom: 1px solid #e9edf0; }
+  .contact-top { display: flex; align-items: center; gap: 9px; }
+  .contact-top .avatar { width: 30px; height: 30px; }
+  .contact-name { min-width: 0; }
+  .contact-name strong { display: block; font-size: 13px; line-height: 1.3; }
+  .contact-name small { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .contact-rows { margin-top: 9px; display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+  .contact-rows div { display: flex; justify-content: space-between; gap: 10px; }
+  .contact-rows b { color: #34414d; font-weight: 500; }
+  .quote-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+
+  .quote-panel { background: #fff; border: 1px solid #dfe6ea; border-radius: 8px; overflow: hidden; }
+  .quote-head { display: flex; align-items: center; gap: 8px; padding: 10px 11px; border-bottom: 1px solid #eef1f3; }
+  .quote-head strong { font-size: 13px; font-weight: 650; }
+  .status { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 4px; background: var(--soft); color: var(--muted); font-size: 10px; white-space: nowrap; }
+  .status.ready { background: var(--teal-soft); color: var(--teal); }
+  .status.warn { background: #fff8e8; color: var(--amber); }
+  .status.bad { background: #fff3f1; color: var(--red); }
+  .status i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .quote-body { padding: 10px 11px 11px; }
+  .route { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+  .route b { color: #2c3944; font-weight: 600; }
+  .route .edit { border: 0; background: transparent; color: var(--teal); padding: 0; font-size: 10px; }
+  .route .missing { color: var(--red); font-weight: 600; }
+  .rec { margin-top: 9px; padding: 10px; border: 1px solid #b9dcd3; border-left: 3px solid var(--teal); border-radius: 6px; background: #f7fcfa; }
+  .rec small { display: block; color: var(--teal); font-size: 9px; font-weight: 700; letter-spacing: .04em; }
+  .rec-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 3px; }
+  .rec-line strong { font-size: 12px; font-weight: 650; }
+  .rec-line .price { color: var(--teal); font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rec-meta { margin-top: 3px; color: var(--muted); font-size: 10px; }
+  .quote-actions { margin-top: 10px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .quote-actions .push { margin-left: auto; }
+
+  .port-list { margin-top: 8px; display: grid; gap: 6px; }
+  .port-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid #e6ecef; border-radius: 6px; background: #fff; }
+  .port-row.missing { border-style: dashed; background: #fbfbfb; }
+  .port-row strong { display: block; font-size: 12px; }
+  .port-row small { display: block; color: var(--muted); font-size: 10px; }
+  .port-row .price { color: var(--teal); font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .port-row .price.missing { color: var(--muted); font-size: 11px; font-weight: 500; }
+
+  .review-block { margin-top: 9px; padding-top: 9px; border-top: 1px solid #eef1f3; font-size: 11px; color: var(--muted); }
+  .review-block strong { display: block; color: #2c3944; font-size: 12px; margin-bottom: 3px; }
+  .review-block p { margin: 0; line-height: 1.6; }
+  .review-quote { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .review-quote b { color: var(--teal); font-size: 15px; }
+
+  .hint { margin-top: 9px; padding: 7px 8px; border-radius: 5px; background: #fff8e8; color: #7a5200; font-size: 11px; line-height: 1.55; }
+  .muted-line { margin-top: 7px; color: var(--muted); font-size: 10px; }
+
+  .drawer { position: fixed; top: 54px; right: 0; bottom: 0; width: 540px; max-width: calc(100vw - 200px); background: #fff; border-left: 1px solid #dce3e8; box-shadow: -14px 0 34px rgba(16,24,40,.12); display: none; flex-direction: column; z-index: 6; }
+  .drawer.open { display: flex; }
+  .drawer-head { display: flex; align-items: center; gap: 8px; padding: 13px 15px; border-bottom: 1px solid #eef1f3; }
+  .drawer-head strong { font-size: 14px; }
+  .drawer-head .close { margin-left: auto; }
+  .drawer-route { padding: 9px 15px; border-bottom: 1px solid #f1f4f6; color: var(--muted); font-size: 11px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .drawer-route b { color: #2c3944; }
+  .compare { flex: 1; min-height: 0; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { padding: 8px 11px; background: #f7f9fa; color: var(--muted); font-size: 10px; font-weight: 600; text-align: left; white-space: nowrap; }
+  td { padding: 10px 11px; border-top: 1px solid #eef1f3; color: #44515c; vertical-align: middle; white-space: nowrap; }
+  tr.recommended td { background: #f5fbf9; }
+  tr.selected td { background: #eef8f5; }
+  .candidate-name { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink); }
+  .tag { display: inline-flex; padding: 1px 5px; border-radius: 3px; background: var(--teal-soft); color: var(--teal); font-size: 9px; font-weight: 700; }
+  td.money { color: var(--teal); font-weight: 700; }
+  .select-row { border: 1px solid #d8e1e5; background: #fff; border-radius: 4px; padding: 4px 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+  tr.selected .select-row { border-color: var(--teal); color: var(--teal); }
+  .internal { border-top: 1px dashed #dfe6ea; padding: 10px 15px 12px; }
+  .internal summary { color: var(--muted); font-size: 11px; cursor: pointer; }
+  .internal p { margin: 6px 0 0; color: #687680; font-size: 11px; line-height: 1.6; }
+  .drawer-foot { border-top: 1px solid #eef1f3; padding: 11px 15px; display: flex; align-items: center; gap: 8px; background: #fff; }
+  .drawer-foot .sel { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; }
+  .drawer-foot .sel b { color: var(--ink); }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(13,22,30,.28); display: none; place-items: center; padding: 20px; z-index: 10; }
+  .modal-backdrop.open { display: grid; }
+  .modal { width: min(640px, 100%); max-height: 84vh; overflow: auto; background: #fff; border-radius: 8px; box-shadow: 0 18px 50px rgba(16,24,40,.2); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; border-bottom: 1px solid var(--line); }
+  .modal-head strong { font-size: 14px; }
+  .modal-body { padding: 13px 15px 15px; display: grid; gap: 9px; }
+  .modal-body input, .modal-body textarea { width: 100%; border: 1px solid #dbe3e8; border-radius: 5px; padding: 9px 10px; color: var(--ink); resize: vertical; }
+  .modal-body textarea { min-height: 300px; line-height: 1.65; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 0 15px 15px; }
+  .toast { position: fixed; right: 20px; bottom: 20px; padding: 9px 12px; border: 1px solid #cfe2dc; border-radius: 6px; background: #f7fcfa; color: var(--teal); font-size: 12px; box-shadow: 0 8px 24px rgba(16,24,40,.1); opacity: 0; transform: translateY(8px); transition: .18s; pointer-events: none; z-index: 20; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  @media (max-width: 1280px) {
+    .inbox { grid-template-columns: 284px minmax(0, 1fr) 310px; }
+    .app { grid-template-columns: 156px minmax(0, 1fr); }
+  }
+  @media (max-width: 1040px) {
+    .inbox { grid-template-columns: 260px minmax(0, 1fr) 290px; }
+    .reader-body { padding: 15px 16px 22px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><small>Milogin's</small><strong>Prospector<i>.</i></strong></div>
+    <nav class="rail-nav"><span>任务</span><span class="active">收件箱</span><span>我的客户</span><span>运价库</span></nav>
+    <div class="rail-note">报价助手 Demo<br>演示呈现与状态，不接真实业务。</div>
+  </aside>
+  <main class="workspace">
+    <header class="topbar">
+      <div class="crumbs">收件箱 / <b>客户来信</b></div>
+      <div class="demo-tabs" id="tabs">
+        <button data-mode="compact" class="active">默认</button>
+        <button data-mode="compare">对比</button>
+        <button data-mode="ports">多港口</button>
+        <button data-mode="review">主管审核</button>
+        <button data-mode="sent">已发送</button>
+        <button data-mode="error">异常</button>
+      </div>
+    </header>
+    <div class="inbox">
+      <section class="mail-list">
+        <div class="list-head">
+          <div class="list-title"><strong>收件箱</strong><span>24 封未读</span></div>
+          <div class="search">搜索邮件、联系人</div>
+        </div>
+        <div class="mail-items">
+          <button class="mail-item active">
+            <div class="mail-top"><span class="unread"></span><strong>Zayne</strong><time>09:42</time></div>
+            <div class="mail-subject">Buenas tardes - YQN / Triman y fletes China</div>
+            <div class="mail-preview">Que flete marítimo tienen de puertos base de China…</div>
+            <span class="mail-tag">询价 · 待处理</span>
+          </button>
+          <button class="mail-item">
+            <div class="mail-top"><span class="unread"></span><strong>Marina Costa</strong><time>08:15</time></div>
+            <div class="mail-subject">Re: Booking confirmation SZX-Santos</div>
+            <div class="mail-preview">Please confirm the vessel and cutoff date…</div>
+          </button>
+          <button class="mail-item">
+            <div class="mail-top"><strong>刘敏</strong><time>昨天</time></div>
+            <div class="mail-subject">Fw: 宁波出货计划与舱位确认</div>
+            <div class="mail-preview">这周宁波的舱位比较紧，先看下客户需求…</div>
+          </button>
+          <button class="mail-item">
+            <div class="mail-top"><strong>Diego Ramos</strong><time>昨天</time></div>
+            <div class="mail-subject">Quote request - Qingdao to Callao</div>
+            <div class="mail-preview">Could you share your best rate for 2x40HQ…</div>
+          </button>
+          <button class="mail-item">
+            <div class="mail-top"><strong>WCA Secretariat</strong><time>11/22</time></div>
+            <div class="mail-subject">WCA 欧洲21国会员资料更新</div>
+            <div class="mail-preview">Please review the updated member directory…</div>
+          </button>
+          <button class="mail-item">
+            <div class="mail-top"><strong>Finance</strong><time>11/21</time></div>
+            <div class="mail-subject">Statement of Account - October 2026</div>
+            <div class="mail-preview">Attached please find the statement for October…</div>
+          </button>
+          <button class="mail-item">
+            <div class="mail-top"><strong>Ana Silva</strong><time>11/20</time></div>
+            <div class="mail-subject">Automatic reply: Rates inquiry</div>
+            <div class="mail-preview">I am currently out of the office and will return…</div>
+          </button>
+        </div>
+      </section>
+
+      <section class="reader">
+        <header class="reader-head">
+          <h1 class="reader-subject">Buenas tardes - YQN / Triman y fletes China</h1>
+          <div class="reader-meta">
+            <span class="avatar">Z</span><b>Zayne</b><span>zayne@trimanshipping.com</span><span>·</span><span>今天 09:42</span><span>·</span><span>收件人：我</span>
+            <div class="reader-actions"><button class="btn small">回复</button><button class="btn small">转发</button></div>
+          </div>
+        </header>
+        <div class="reader-body">
+          <p>Buenas tardes:</p>
+          <p>Ustedes pertenecen a YQN LOGISTICS SHENZHEN CO LTD.??? O su Agente es TRIMAN SHIPPING.??? Estos son 2 Agentes diferentes por lo que me queda duda porque la dirección de email viene del dominio Triman y menciona a YQN, favor de aclarar.</p>
+          <p>Que flete marítimo tienen de puertos base de China SHENZHEN – QINGDAO – NINGBO.???? Y con que Navieras estan Ofreciendo fletes y cargando.???</p>
+          <p class="sign">Quedo a la espera de su respuesta.<br>Gracias,</p>
+        </div>
+        <div class="composer"><span>回复 Zayne…</span></div>
+      </section>
+
+      <aside class="context">
+        <div class="contact-block">
+          <div class="contact-top">
+            <span class="avatar">Z</span>
+            <div class="contact-name"><strong>Zayne</strong><small>Triman Shipping · zayne@trimanshipping.com</small></div>
+          </div>
+          <div class="contact-rows">
+            <div><span>客户</span><b>Triman Shipping</b></div>
+            <div><span>状态</span><b>待跟进 · 询价</b></div>
+            <div><span>负责人</span><b>李然</b></div>
+          </div>
+        </div>
+        <div class="quote-scroll" id="quote-slot"></div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<div class="drawer" id="drawer">
+  <div class="drawer-head"><strong>运价对比</strong><span class="status ready" id="drawer-count"><i></i></span><button class="btn quiet close" onclick="closeDrawer()">收起</button></div>
+  <div class="drawer-route">Shenzhen → Santos · 40HQ<span>· 有效期与 ETD 来自运价库</span></div>
+  <div class="compare" id="drawer-body"></div>
+  <div class="internal"><details><summary>内部参考</summary><p>来源群：华南基本港群 / 华北基本港群 · 发送人：内部运价同事 · 仅用于 AI 判断，不进入客户回复。</p></details></div>
+  <div class="drawer-foot"><div class="sel" id="drawer-selected"></div><button class="btn" onclick="closeDrawer()">收起</button><button class="btn primary" onclick="openDraft()">用这条报价回复</button></div>
+</div>
+
+<div class="modal-backdrop" id="modal"><div class="modal"><div class="modal-head"><strong>回复草稿</strong><button class="btn quiet" onclick="closeModal()">关闭</button></div><div class="modal-body"><input id="draft-subject" value="Re: Buenas tardes - YQN / Triman y fletes China"><textarea id="draft-body">Dear Zayne,
+
+Thank you for your message. YQN Logistics and Triman Shipping belong to the same group; Triman is a YQN subdomain, so you are speaking with the same team.
+
+Please find our current ocean freight reference as follows:
+
+[客户报价表]
+
+Ningbo is not quoted yet and will be confirmed separately.
+
+Prices are for reference and subject to final confirmation with the carrier.
+
+Best regards,
+YQN Logistics</textarea></div><div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="toast('草稿已保留，未发送')">保留草稿</button></div></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+  const candidates = [
+    { id: 'msc-szx', carrier: 'MSC', pol: 'Shenzhen', pod: 'Santos', container: '40HQ', price: 1850, valid: '2026-11-30', etd: '2026-11-28', free: '14 days', recommended: true },
+    { id: 'cosco-szx', carrier: 'COSCO', pol: 'Shenzhen', pod: 'Santos', container: '40HQ', price: 1920, valid: '2026-11-27', etd: '2026-11-26', free: '10 days' },
+    { id: 'cma-szx', carrier: 'CMA', pol: 'Shenzhen', pod: 'Santos', container: '40HQ', price: 2040, valid: '2026-12-03', etd: '2026-11-30', free: '14 days' },
+    { id: 'msc-qingdao', carrier: 'MSC', pol: 'Qingdao', pod: 'Santos', container: '40HQ', price: 1960, valid: '2026-11-29', etd: '2026-11-27', free: '12 days' }
+  ];
+  let mode = 'compact';
+  let selected = 'msc-szx';
+  let busy = false;
+  let drawerOpen = false;
+  const slot = document.getElementById('quote-slot');
+  const tabs = document.getElementById('tabs');
+
+  const money = n => 'USD ' + n.toLocaleString('en-US');
+  const selectedCandidate = () => candidates.find(c => c.id === selected) || candidates[0];
+  function toast(text) { const el = document.getElementById('toast'); el.textContent = text; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2200); }
+  function closeModal() { document.getElementById('modal').classList.remove('open'); }
+  function openDraft() { document.getElementById('modal').classList.add('open'); }
+
+  function status(text, tone = 'ready') { return `<span class="status ${tone}"><i></i>${text}</span>`; }
+  function route(missingPod = false) {
+    return `<div class="route">起运 <b>Shenzhen</b><button class="edit" onclick="toast('起运港编辑入口')">改</button><span>·</span>目的 ${missingPod ? '<span class="missing">未识别</span>' : '<b>Santos</b>'}<button class="edit" onclick="toast('目的港编辑入口')">改</button><span>·</span><b>40HQ</b></div>`;
+  }
+
+  function compact() {
+    if (busy) {
+      return `<section class="quote-panel"><div class="quote-head"><strong>运价</strong>${status('AI 正在整理', 'warn')}</div><div class="quote-body">${route()}<div class="hint">正在从真实运价候选中筛选…</div></div></section>`;
+    }
+    const c = selectedCandidate();
+    return `<section class="quote-panel">
+      <div class="quote-head"><strong>运价</strong>${status('已整理')}<span style="margin-left:auto;color:#9aa5ae;font-size:10px">AI 建议 · 86%</span></div>
+      <div class="quote-body">${route()}
+        <div class="rec"><small>AI 建议</small>
+          <div class="rec-line"><strong>${c.carrier} · ${c.container}</strong><span class="price">${money(c.price)}</span></div>
+          <div class="rec-meta">至 ${c.valid.slice(5).replace('-', '/')} · ETD ${c.etd.slice(5).replace('-', '/')} · 免箱 ${c.free.replace(' days', ' 天')}</div>
+        </div>
+        <div class="quote-actions"><button class="btn primary" onclick="openDraft()">用这条报价回复</button><button class="btn" onclick="setMode('compare')">对比 ${candidates.length} 条</button><button class="btn quiet push" onclick="aiQuote()">重新整理</button></div>
+      </div>
+    </section>`;
+  }
+
+  function ports() {
+    const rows = [
+      { pol: 'Shenzhen', price: 1850, meta: 'MSC · 至 11/30 · ETD 11/28', id: 'msc-szx' },
+      { pol: 'Qingdao', price: 1960, meta: 'MSC · 至 11/29 · ETD 11/27', id: 'msc-qingdao' },
+      { pol: 'Ningbo', missing: true, meta: '不拿其他港口价格替代' }
+    ];
+    return `<section class="quote-panel">
+      <div class="quote-head"><strong>多港口报价</strong>${status('2 港有价', 'warn')}<span style="margin-left:auto;color:#9aa5ae;font-size:10px">1 港待补</span></div>
+      <div class="quote-body">
+        <div class="route">目的 <b>Santos</b><span>·</span><b>40HQ</b><span>·</span>客户询问 3 个起运港</div>
+        <div class="port-list">${rows.map(r => `<div class="port-row${r.missing ? ' missing' : ''}"><div><strong>${r.pol}</strong><small>${r.meta}</small></div><span class="price${r.missing ? ' missing' : ''}">${r.missing ? '暂无有效报价' : money(r.price)}</span>${r.missing ? '<button class="btn small" onclick="toast(\'请补充 Ningbo 的运价或稍后重试\')">核价</button>' : `<button class="btn small" onclick="choose('${r.id}')">${selected === r.id ? '已选' : '选'}</button>`}</div>`).join('')}</div>
+        <div class="quote-actions"><button class="btn primary" onclick="openDraft()">起草回复</button><button class="btn quiet" onclick="setMode('compare')">看候选</button></div>
+        <div class="muted-line">宁波缺价会单独说明，不用其他港口价格顶替。</div>
+      </div>
+    </section>`;
+  }
+
+  function review() {
+    const c = selectedCandidate();
+    return `<section class="quote-panel">
+      <div class="quote-head"><strong>报价审核</strong>${status('待主管确认', 'warn')}</div>
+      <div class="quote-body">
+        <div class="review-block"><strong>${c.carrier} · ${c.pol} → ${c.pod} · ${c.container}</strong><div class="review-quote"><span>${money(c.price)} · 有效至 ${c.valid}</span></div><p>ETD ${c.etd} · 免箱 ${c.free}</p></div>
+        <div class="review-block"><strong>客户回复草稿</strong><p>YQN 与 Triman 属于同一主体；附深圳、青岛报价，宁波暂无有效运价，将另行补充。</p></div>
+        <div class="quote-actions"><button class="btn primary" onclick="toast('已通过报价')">通过</button><button class="btn" onclick="toast('已退回销售修改')">退回修改</button><button class="btn quiet" onclick="openDraft()">完整草稿</button></div>
+      </div>
+    </section>`;
+  }
+
+  function sent() {
+    const c = selectedCandidate();
+    return `<section class="quote-panel">
+      <div class="quote-head"><strong>已发送报价</strong>${status('已发送')}</div>
+      <div class="quote-body">
+        <div class="review-block"><strong>${c.carrier} · ${c.pol} → ${c.pod} · ${c.container}</strong><p>${money(c.price)} · 有效至 ${c.valid} · ETD ${c.etd}</p></div>
+        <div class="review-block"><strong>今天 10:18 发送给 Zayne</strong><p>等待客户回复 · 下次跟进 11/26</p></div>
+        <div class="quote-actions"><button class="btn" onclick="toast('已打开客户跟进')">查看跟进</button><button class="btn quiet" onclick="toast('历史报价只读')">报价历史</button></div>
+      </div>
+    </section>`;
+  }
+
+  function error() {
+    return `<section class="quote-panel">
+      <div class="quote-head"><strong>运价</strong>${status('需要补充信息', 'bad')}</div>
+      <div class="quote-body">${route(true)}<div class="hint">缺少目的港，暂时无法查询真实运价。补充后再核价。</div>
+        <div class="quote-actions"><button class="btn primary" onclick="toast('请补充目的港')">补充目的港</button><button class="btn" onclick="toast('已重新核价')">重新核价</button></div>
+      </div>
+    </section>`;
+  }
+
+  function drawerRows() {
+    return candidates.map(c => `<tr class="${c.recommended ? 'recommended' : ''}${selected === c.id ? ' selected' : ''}"><td><span class="candidate-name">${c.carrier}${c.recommended ? '<span class="tag">AI 建议</span>' : ''}</span></td><td>${c.pol}</td><td class="money">${money(c.price)}</td><td>${c.valid}</td><td>${c.etd}</td><td><button class="select-row" onclick="choose('${c.id}')">${selected === c.id ? '已选' : '选这条'}</button></td></tr>`).join('');
+  }
+  function renderDrawer() {
+    document.getElementById('drawer-count').innerHTML = `<i></i>${candidates.length} 条候选`;
+    document.getElementById('drawer-body').innerHTML = `<table><thead><tr><th>船司</th><th>起运港</th><th>海运费</th><th>有效期</th><th>ETD</th><th>选择</th></tr></thead><tbody>${drawerRows()}</tbody></table>`;
+    const c = selectedCandidate();
+    document.getElementById('drawer-selected').innerHTML = `已选 <b>${c.carrier} · ${money(c.price)}</b> · 有效至 ${c.valid}`;
+    document.getElementById('drawer').classList.toggle('open', drawerOpen);
+  }
+
+  function choose(id) { selected = id; toast('已选 ' + candidates.find(c => c.id === id).carrier); render(); }
+  function closeDrawer() { drawerOpen = false; setMode('compact'); }
+
+  function aiQuote() {
+    busy = true; render();
+    setTimeout(() => { busy = false; selected = (candidates.find(c => c.recommended) || candidates[0]).id; toast('AI 已选出 MSC'); render(); }, 700);
+  }
+
+  function setMode(next) {
+    mode = next;
+    drawerOpen = next === 'compare';
+    for (const b of tabs.querySelectorAll('button')) b.classList.toggle('active', b.dataset.mode === next);
+    render();
+  }
+
+  function render() {
+    slot.innerHTML = mode === 'ports' ? ports() : mode === 'review' ? review() : mode === 'sent' ? sent() : mode === 'error' ? error() : compact();
+    if (drawerOpen) renderDrawer();
+    else document.getElementById('drawer').classList.remove('open');
+  }
+
+  tabs.addEventListener('click', event => {
+    const button = event.target.closest('button[data-mode]');
+    if (button) setMode(button.dataset.mode);
+  });
+  render();
+</script>
+</body>
+</html>

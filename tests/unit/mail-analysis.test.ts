@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   actionabilityFor,
+  dealWonSignalFor,
   mailRelevanceFor,
   mailThreadKey,
   mechanicalMailAnalysis,
@@ -46,6 +47,16 @@ describe('mail business analysis', () => {
     expect(mechanicalMailAnalysis({ kind: 'replied', direction: 'inbound', subject: 'Re: quotation', preview: 'Please quote 2 containers', fromEmail: 'buyer@customer.test', toEmails: ['sales@agency.test'], ccEmails: [], matchedContact: true, primaryEmail: 'buyer@customer.test', internal: false })).toMatchObject({ contactState: 'replied', signals: [{ code: 'quote_request' }], actionability: { requiresAction: true } });
     expect(mechanicalMailAnalysis({ kind: 'bounced', direction: 'inbound', subject: 'Delivery status notification', preview: 'mailbox unavailable', fromEmail: 'mailer-daemon@customer.test', toEmails: ['sales@agency.test'], ccEmails: [], matchedContact: true, primaryEmail: 'buyer@customer.test', internal: false })).toMatchObject({ contactState: 'bounced', classification: 'bounced' });
     expect(mechanicalMailAnalysis({ kind: 'autoreply', direction: 'inbound', subject: 'Out of office', preview: '', fromEmail: 'buyer@customer.test', toEmails: ['sales@agency.test'], ccEmails: [], matchedContact: true, primaryEmail: 'buyer@customer.test', internal: false })).toMatchObject({ contactState: 'autoreply', actionability: { requiresAction: false } });
+  });
+
+  it('recognizes contract and booking confirmations as deal-won candidates', () => {
+    const contract = mechanicalMailAnalysis({ kind: 'replied', direction: 'inbound', subject: 'Contract signed', preview: 'Contract signed. Booking number COSU12345678. Please proceed.', fromEmail: 'buyer@customer.test', toEmails: ['sales@agency.test'], ccEmails: [], matchedContact: true, primaryEmail: 'buyer@customer.test', internal: false });
+    expect(contract.signals[0]).toMatchObject({ code: 'contract_signed', confidence: 0.9 });
+    expect(contract.actionability).toMatchObject({ requiresAction: true, nextAction: '核对成交信息；不符合请取消记录', priority: 'important' });
+    const booking = mechanicalMailAnalysis({ kind: 'replied', direction: 'inbound', subject: '訂艙確認', preview: '订舱号 COSU98765432', fromEmail: 'buyer@customer.test', toEmails: ['sales@agency.test'], ccEmails: [], matchedContact: true, primaryEmail: 'buyer@customer.test', internal: false });
+    expect(booking.signals[0]?.code).toBe('booking_confirmed');
+    expect(dealWonSignalFor({ classification: 'replied', relevance: 'customer_business', signals: [{ code: 'order_followup', label: '订单跟进', confidence: 0.97, evidence: 'Contract signed.' }], evidence: ['Contract signed. Booking number COSU12345678.'] })).toMatchObject({ code: 'contract_signed', confidence: 0.86 });
+    expect(dealWonSignalFor({ classification: 'replied', relevance: 'customer_business', signals: [], evidence: ['Please send a new quotation.'] })).toBeUndefined();
   });
 
   it('deduplicates the same thread action while treating Re/Fwd prefixes as one thread', () => {

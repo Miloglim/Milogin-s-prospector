@@ -6,6 +6,7 @@ import { PlayCircleOutlined } from "@ant-design/icons";
 import { CampaignTasks } from "./CampaignTasks";
 import { CampaignWizard } from "./CampaignWizard";
 import { HistoryPage } from "../history/HistoryPage";
+import { TemplateList } from "../templates/TemplateList";
 
 /**
  * 发送中心 — 开发任务为唯一操作入口。
@@ -81,6 +82,7 @@ export function SendCenter() {
             ),
           },
           { key: "history", label: "发送历史", children: <HistoryPage /> },
+          { key: "templates", label: "素材库", children: <TemplateList /> },
         ]}
       />
       <CampaignWizard

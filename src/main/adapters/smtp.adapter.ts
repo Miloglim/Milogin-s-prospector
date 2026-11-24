@@ -142,6 +142,7 @@ export async function sendBcc(item: SendItem & { body: string }): Promise<Result
       const sigHtml = isHtml(signature) ? signature : escapeHtml(signature).replace(/\n/g, "<br>");
       const embedded = await embedInlineImages(bodyHtml + (sigHtml ? `<br><br>${sigHtml}` : ""), loadInlineImage);
       const { html, attachments } = embedded;
+      const allAttachments = [...attachments, ...(item.attachments ?? [])];
       if (embedded.unresolved.length) {
         Log.warn("send.image", `${embedded.unresolved.length} 处图片引用发信端取不到（悬空 cid:/相对路径/读不到），`
           + `收件人可能看到裂图——请把这些图片直接粘贴进签名（会自动转内嵌）：${embedded.unresolved.slice(0, 3).join(" | ")}`);
@@ -150,12 +151,13 @@ export async function sendBcc(item: SendItem & { body: string }): Promise<Result
         from, ...rcptField, ...ccField, subject,
         text: stripHtml(body + (signature ? `\n\n${signature}` : "")),
         html,
-        attachments,
+        attachments: allAttachments,
       };
     } else {
       mailOptions = {
         from, ...rcptField, ...ccField, subject,
         text: body + (signature ? `\n\n${signature}` : ""),
+        ...(item.attachments?.length ? { attachments: item.attachments } : {}),
       };
     }
 

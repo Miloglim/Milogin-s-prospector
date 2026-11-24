@@ -206,7 +206,7 @@ export function Opportunities({ detail, canCreate, onChange, onSelect, selectedO
     <Input aria-label={`${label}币种`} placeholder="币种" value={fields.currency} maxLength={CURRENCY_LENGTH} disabled={locked} onChange={event => change(fields.amount, event.target.value)} />
   </div>;
   return <section className="customer-detail-section customer-opportunities">
-    <div className="customer-receipt-heading"><h2>商机</h2><Space size="small"><Button type="text" size="small" disabled={busy || uncertain} onClick={() => { setError(''); if (needsRefresh) void refreshRejectedDraft(); else void refresh(); }}>刷新</Button>{canCreate && !creating && <Button size="small" disabled={locked} onClick={() => { draftCustomerVersion.current = customerVersion.current; setCreating(true); setEditing(null); setError(''); }}>新增商机</Button>}</Space></div>
+    <div className="customer-receipt-heading"><h2>商机</h2>{canCreate && !creating && <Button size="small" disabled={locked} onClick={() => { draftCustomerVersion.current = customerVersion.current; setCreating(true); setEditing(null); setError(''); }}>新增商机</Button>}</div>
     {error && <Alert type="error" message={error} />}
     {creating && <div className="customer-opportunity-draft">
       <Input aria-label="商机标题" placeholder="商机标题" value={draft.title} maxLength={OPPORTUNITY_LIMITS.title} disabled={locked} onChange={event => setDraft(current => ({ ...current, title: event.target.value }))} />

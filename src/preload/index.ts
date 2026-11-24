@@ -20,6 +20,7 @@ const api = {
     if (!sendChannels.has(channel)) throw new Error(`IPC 通道未授权: ${channel}`);
     ipcRenderer.send(channel, ...args);
   },
+  channels: { invoke: [...invokeChannels], events: [...eventChannels] },
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     if (!eventChannels.has(channel)) throw new Error(`事件通道未授权: ${channel}`);
     const handler = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args);

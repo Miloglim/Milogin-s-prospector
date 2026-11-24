@@ -71,4 +71,10 @@ describe('inbox deterministic classification rules', () => {
   it('leaves customer inquiry mail for the AI analyzer', () => {
     expect(classifyInboxByRule(base)).toBeNull();
   });
+
+  it('routes cc-only copies locally without creating an action', () => {
+    expect(classifyInboxByRule({ ...base, isCcOnly: true })).toMatchObject({
+      category: 'other', requiresAction: false, priority: 'normal', source: 'rule',
+    });
+  });
 });

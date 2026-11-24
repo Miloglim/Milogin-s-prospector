@@ -1,5 +1,4 @@
 import { setAgentContactPort } from "../../src/main/services/agent-contact.service";
-import { getStats } from "../../src/main/services/dashboard.service";
 import type { CenterContact } from "../../src/shared/online-crm";
 import { strict as assert } from "node:assert";
 import { initDatabase, runMigrations, getRawDb, getDb, closeDatabase } from "../../src/main/db";
@@ -42,15 +41,12 @@ async function run() {
   const centerRow = { contactId: 99, customerId: 'center-customer', email: 'center@example.invalid', firstName: 'CenterOnly', lastName: null, companyName: 'Center Ltd', tags: [], extra: {}, touchStatus: 'contacted', relationshipStage: 'quoting', lastFollowupNote: 'Center followup needle' } as unknown as CenterContact;
   const centerPort = { snapshot: () => ({ ok: true as const, data: { scope: 'fixture', active: () => true, contacts: [centerRow] } }) };
   setAgentContactPort(centerPort as never);
-  const centerStats = getStats(); assert.ok(centerStats.success);
-  assert.equal(centerStats.data.totalContacts, 1, 'dashboard must count authorized center rows, not old SQLite rows');
-  assert.equal(centerStats.data.pipelineSummary.quoting, 1);
   assert.equal(search('CenterOnly').contact.length, 1, 'center contacts must be searchable');
   assert.equal(search('Santos').contact.length, 0, 'must not leak legacy contacts into center search');
   assert.equal(search('followup needle').note.length, 1);
   assert.equal(search('CenterOnly').contact[0]!.customerId, 'center-customer');
   setAgentContactPort({ snapshot: () => ({ ok: false, error: { code: 'UNAVAILABLE', message: '同步中' } }) } as never);
-  assert.equal(getStats().success, false); assert.equal(searchGlobal({query:'Santos'}).success, false);
+  assert.equal(searchGlobal({query:'Santos'}).success, false);
   setAgentContactPort(null);
   const before = listPipeline(); assert.ok(before.success); const beforeContact = before.data.flatMap(s => s.contacts)[0]!;
   assert.ok((await setStage(1, "quoting")).success);

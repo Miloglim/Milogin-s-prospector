@@ -154,7 +154,7 @@ describe("三桶候选生成", () => {
     const drop = c.find(x => x.key.startsWith("intel-drop"))!;
     expect(drop.text).toBe("SANTOS MSC 40HQ 降到 $2800（原 $3200），可以给 Juan Garcia 同步");
     // 降价卡不再只是"看一眼"：深链指向跟进看板的运价更新面板（同一个方案引擎），关联到客户时分数上浮
-    expect(drop.href).toBe("#/customers?view=board&ratepush=1");
+    expect(drop.href).toBe("#/customers?view=table&ratepush=1");
     expect(drop.prefix).toBe("同步运价");
     expect(drop.score).toBe(39);          // 30 + 降幅 12.5% → +5，再 +4（有客户关联）
 

@@ -3,19 +3,11 @@
 // 只承担一件事：把用户的一句自然语言翻成结构化参数（首页「自动开发信」的要求输入框）。
 // 红线：名单由确定性规则选出（dev-letter.service），模型不决定选谁、也不发任何东西
 //       （docs/home-cards-spec.md §5-3 + docs/task-card-devletter-spec.md §4）。
-import OpenAI from "openai";
-import { readActiveEndpoint, isOpenAiLuna, extractResponsesText } from "../endpoint.service";
-import { netFetch } from "../../net-proxy";
-import { Log } from "../../logger";
-
-const ONCE_MAX_OUTPUT_TOKENS = 400;
+import { chat, isAiConfigured } from "../ai.service";
 
 /** 模型端点是否可用（UI 要如实告诉用户"这次是关键词理解的"） */
 export function onceModelReady(): boolean {
-  try {
-    const e = readActiveEndpoint();
-    return !!(e.baseUrl && e.apiKey);
-  } catch { return false; }
+  return isAiConfigured();
 }
 
 /**
@@ -23,58 +15,14 @@ export function onceModelReady(): boolean {
  * 由调用方走确定性兜底——绝不因为"模型没听懂"就把用户的整条要求丢掉。
  */
 export async function askJsonOnce<T>(system: string, user: string, timeoutMs = 20_000): Promise<T | null> {
-  const e = readActiveEndpoint();
-  if (!e.baseUrl || !e.apiKey) return null;
-  // fetch 注入形状照 harness.ts：走 netFetch（设置里配了代理就经它出去，海外端点必须经代理）
-  const fetchImpl: typeof fetch = async (url, init) =>
-    (await netFetch(url as string, init as RequestInit)) as Response;
-  const client = new OpenAI({ baseURL: e.baseUrl, apiKey: e.apiKey, timeout: timeoutMs, maxRetries: 1, fetch: fetchImpl });
-  if (e.wireApi === "responses") {
-    const parameters = { model: e.model, instructions: system, input: user,
-      reasoning: { effort: "none" as const }, max_output_tokens: ONCE_MAX_OUTPUT_TOKENS, store: false };
-    try {
-      const r = await client.responses.create({ ...parameters, text: { format: { type: "json_object" } } });
-      const hit = looseJson<T>(extractResponsesText(r));
-      if (hit) return hit;
-      throw new Error("返回里没有 JSON");
-    } catch (err) {
-      // 仅格式参数不被兼容网关接受时才去掉它重试；鉴权和网络错误不重复请求。
-      if ((err as { status?: number }).status !== 400 && (err as Error).message !== "返回里没有 JSON") {
-        Log.warn("llm.once", `Responses 解析失败: ${(err as Error).message}`);
-        return null;
-      }
-      try {
-        const r = await client.responses.create(parameters);
-        return looseJson<T>(extractResponsesText(r));
-      } catch (e2) {
-        Log.warn("llm.once", `Responses 解析失败: ${(err as Error).message} / ${(e2 as Error).message}`);
-        return null;
-      }
-    }
-  }
-  const messages = [
-    { role: "system" as const, content: system },
-    { role: "user" as const, content: user },
-  ];
-  const parameters = isOpenAiLuna(e.baseUrl, e.model)
-    ? { model: e.model, max_completion_tokens: ONCE_MAX_OUTPUT_TOKENS, reasoning_effort: "none" as const, messages }
-    : { model: e.model, temperature: 0, max_tokens: ONCE_MAX_OUTPUT_TOKENS, messages };
+  if (!isAiConfigured()) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const r = await client.chat.completions.create({
-      ...parameters, response_format: { type: "json_object" },
-    });
-    const hit = looseJson<T>(r.choices?.[0]?.message?.content ?? "");
-    if (hit) return hit;
-    throw new Error("返回里没有 JSON");
-  } catch (err) {
-    // 部分网关不认 response_format：去掉它再试一次；仍失败就交回调用方兜底
-    try {
-      const r = await client.chat.completions.create(parameters);
-      return looseJson<T>(r.choices?.[0]?.message?.content ?? "");
-    } catch (e2) {
-      Log.warn("llm.once", `一次性解析失败: ${(err as Error).message} / ${(e2 as Error).message}`);
-      return null;
-    }
+    const result = await chat(system, user, { signal: controller.signal, feature: "draft" });
+    return result.success ? looseJson<T>(result.data) : null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

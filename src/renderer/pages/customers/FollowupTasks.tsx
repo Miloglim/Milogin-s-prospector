@@ -96,7 +96,7 @@ export function FollowupTasks({ detail, canCreate, opportunity }: { detail: Lead
   }
   const locked = busy || uncertain;
   return <section className="customer-detail-section customer-tasks">
-    <div className="customer-receipt-heading"><h2>下一步</h2><Button type="text" size="small" disabled={busy} onClick={() => { setError(''); void refresh(); }}>刷新</Button></div>
+    <div className="customer-receipt-heading"><h2>下一步</h2></div>
     {error && <Alert type="error" message={error} />}
     {canCreate && <div className="customer-task-draft">
       {(editing?.task.opportunityTitle || (!editing && opportunity?.title)) && <span>{editing?.task.opportunityTitle ?? opportunity?.title}</span>}

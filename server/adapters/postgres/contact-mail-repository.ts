@@ -8,6 +8,8 @@ import { loadContactIn, canReadContact, contactPermissionsFor, contactDetailIn, 
 import type { LeadActor } from './lead-repository';
 import { FOLLOWUP_TIME_LIMITS } from '../../core/leads';
 import { recordMechanicalMailAnalysisIn } from './contact-mail-analysis-repository';
+import { customerHasAiDealPendingIn, recordCustomerStatusEventIn } from './customer-status-repository';
+import { customerStatusChange } from '../../core/customer-status';
 const MILLISECONDS_PER_SECOND = 1000;
 const SELECT = `event_id AS "eventId",actor_id AS "actorId",contact_id AS "contactId",customer_id AS "customerId",event_key AS "eventKey",mailbox_key AS "mailboxKey",message_key AS "messageKey",kind,direction,occurred_at AS "occurredAt",subject,preview,from_email AS "fromEmail",to_emails AS "toEmails",cc_emails AS "ccEmails",recorded_at AS "recordedAt",activity_id::text AS "activityId",classification_correction AS correction,classification_revision AS "correctionRevision"`;
 function mapped(row: ContactMailEvent): ContactMailEvent { const {correction,correctionRevision,...event}=row;return { ...event,...(correction?{correction}:{}),...(correctionRevision?{correctionRevision}:{}), contentHash:contactMailContentHash(row), occurredAt: new Date(row.occurredAt).toISOString(), recordedAt: new Date(row.recordedAt).toISOString() }; }
@@ -71,7 +73,10 @@ export async function recordContactMailEventIn(client: PoolClient, actor: LeadAc
     const latest = (await client.query("SELECT max(occurred_at) AS stamp FROM crm_shared_activities WHERE contact_id=$1 AND customer_id=$2 AND opportunity_id IS NULL AND contact_status IS NOT NULL AND method IN ('email','phone','visit','other')", [input.contactId, input.customerId])).rows[0].stamp;
     activityId = (await client.query('INSERT INTO crm_shared_activities(customer_id,interaction_id,actor_id,note,method,occurred_at,recorded_at,created_at,contact_id,contact_status) VALUES($1,NULL,$2,$3,\'email\',$4,$5,$5,$6,$7) RETURNING id::text', [input.customerId, actor.userId, input.subject || input.preview, occurred, recorded, input.contactId, touch])).rows[0].id;
     // A backfill may add evidence without replacing newer manual or mail contact status.
-    if (!(touch === 'contacted' && ['replied','bounced','autoreply'].includes(contact.touchStatus)) && (!latest || occurred.getTime() > new Date(latest).getTime() || occurred.getTime() === new Date(latest).getTime() && contact.touchStatus !== touch)) await client.query('UPDATE contacts SET crm_touch_status=$2 WHERE id=$1', [input.contactId, touch]);
+    // A later bounce on a follow-up email is not evidence that the customer was never reached.
+    const preservesTouch = touch === 'bounced' && ['contacted','replied','autoreply'].includes(contact.touchStatus)
+      || touch === 'contacted' && ['replied','bounced','autoreply'].includes(contact.touchStatus);
+    if (!preservesTouch && (!latest || occurred.getTime() > new Date(latest).getTime() || occurred.getTime() === new Date(latest).getTime() && contact.touchStatus !== touch)) await client.query('UPDATE contacts SET crm_touch_status=$2 WHERE id=$1', [input.contactId, touch]);
   }
   // Delivery classification is derived from mail facts, never a generic contact field edit.
   // Older backfills must not replace a newer mail classification or manual contact result.
@@ -88,6 +93,10 @@ export async function recordContactMailEventIn(client: PoolClient, actor: LeadAc
   }
   await refreshMailProjectionIn(client,input,contact.email);
   await client.query('UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1', [input.contactId]);
+  const projectedTouch=(await client.query('SELECT crm_touch_status AS "touchStatus" FROM contacts WHERE id=$1',[input.contactId])).rows[0]?.touchStatus??contact.touchStatus;
+  const aiDealPending=await customerHasAiDealPendingIn(client,input.customerId);
+  const statusChange=customerStatusChange({relationshipStage:contact.relationshipStage,touchStatuses:[contact.touchStatus],aiDealPending,nextTouchStatus:projectedTouch});
+  if(statusChange.changed)await recordCustomerStatusEventIn(client,{eventKey:`mail:${actor.userId}:${input.eventKey}`,customerId:input.customerId,contactId:input.contactId,status:statusChange.after,previousStatus:statusChange.before,source:'system',signal:'mail',actorUserId:actor.userId,reason:`${input.kind}:${input.direction}`,payload:{mailEventId:eventId,kind:input.kind,direction:input.direction,activityId,subject:input.subject,correctionRevision:revision.data??null},occurredAt:occurred});
   await recordContactEventIn(client,actor,contact,CONTACT_ASSIGNMENT_EVENTS.followup,(contact.contactVersion ?? 1)+1,activityId ?? undefined,eventId);
   const analysis=await recordMechanicalMailAnalysisIn(client,actor,input,eventId,contentHash,primary??null,occurred.getTime()+(revision.data??0));
   if(!analysis.ok)return analysis;

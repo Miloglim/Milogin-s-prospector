@@ -1,10 +1,10 @@
 import {LEAD_IMPORT_FIELDS, fillForwardImportCompanyFields, leadImportMapping, normalizeImportCustomerType, normalizeImportEmail} from '../../../../server/core/lead-import-fields';
 import { importRowIssue, isSkippableImportIssue } from '../../../../server/core/leads';
-import { ONLINE_CHANNELS, CENTER_CONTACT_LIMITS, LIFECYCLE_LIMITS, centerContactDisplayStatus, centerContactRemark, type CenterContact, type CenterContactQuery, type CenterContactPage, type CenterContactDetail, type ContactDelete, type ContactDeleteReceipt, type Result, type ImportPreview, type ImportReceipt, type ImportRequest } from '../../../shared/online-crm';
+import { ONLINE_CHANNELS, CENTER_CONTACT_LIMITS, LIFECYCLE_LIMITS, centerContactDisplayStatus, centerContactRemark, type CenterContact, type CenterContactQuery, type CenterContactPage, type CenterContactDetail, type ContactDelete, type ContactDeleteReceipt, type Result, type ImportPreview, type ImportReceipt, type ImportRequest, type LeadIngressDecisionDTO, type LeadIngressResolutionReceipt, type PreparedCampaignNextStep } from '../../../shared/online-crm';
 import type { Contact, ContactDataPort, ContactFilters } from '../../hooks/useContacts';
-import type { ImportDrawerPort, ImportExecutionResult } from '../../components/ImportDrawer';
+import type { ImportDrawerPort, ImportExecutionResult, ImportProgress } from '../../components/ImportDrawer';
 import { importFingerprint, prepareImportRequests } from './customerImport';
-import type { LeadIngressConflictNotice } from './LeadIngressConflictDrawer';
+import type { LeadIngressConflictNotice, LeadIngressConflictPolicy } from './LeadIngressConflictDrawer';
 import { isPermissionDenied } from '../../lib/permissionGate';
 
 export type CenterInvoke = <T>(channel: string, input?: unknown) => Promise<Result<T>>;
@@ -37,7 +37,7 @@ export interface CenterContactPort extends ContactDataPort {
   records: Map<number, CenterContact>;
   scope?:CenterContactQuery['scope'];
   isCurrent():boolean;
-  readAll(filters?: { search?: string; followupOnly?: boolean } & ContactFilters): Promise<{ success: boolean; data?: CenterContact[]; error?: string }>;
+  readAll(filters?: { search?: string; attentionOnly?: boolean; /** @deprecated Use attentionOnly. */ followupOnly?: boolean } & ContactFilters): Promise<{ success: boolean; data?: CenterContact[]; error?: string }>;
 }
 export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'all', assignment, group, isCurrent = () => true }: { key: string; invoke?: CenterInvoke; scope?: CenterContactQuery['scope']; assignment?: 'accepted'; group?: Pick<CenterContactQuery,'groupDimension'|'groupKey'>; isCurrent?: () => boolean }): CenterContactPort {
   const records = new Map<number, CenterContact>();
@@ -79,7 +79,7 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
   }
   let creation: { signature: string; payload: ImportRequest } | null = null;
   const scans = new Map<string, ReturnType<CenterContactPort['readAll']>>();
-  const read = async (params: { search?: string; page?: number; pageSize?: number; followupOnly?: boolean } & ContactFilters = {}) => {
+  const read = async (params: { search?: string; page?: number; pageSize?: number; attentionOnly?: boolean; /** @deprecated Use attentionOnly. */ followupOnly?: boolean } & ContactFilters = {}) => {
     const pageSize = params.pageSize ?? CENTER_CONTACT_LIMITS.page;
     const { page, pageSize: _pageSize, ...filters } = params;
     const result = await invoke<CenterContactPage>(ONLINE_CHANNELS.CONTACT_LIST, { search: '', ...filters, scope, ...(assignment ? { assignment } : {}), ...(group ?? {}), limit: pageSize, offset: ((page ?? 1) - 1) * pageSize });
@@ -135,7 +135,7 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
         return {
           success: false,
           error: message,
-          ...(receipt?.conflict ? { conflict: { source: 'flat_import' as const, idempotencyKey: `${attemptedKey.slice(0, SERVER_IMPORT_KEY_LENGTH)}:${receipt.index}`, message } } : {}),
+          ...(receipt?.conflict ? { conflict: { source: 'flat_import' as const, idempotencyKey: `${attemptedKey.slice(0, SERVER_IMPORT_KEY_LENGTH)}:${receipt.index}`, message, incoming: { companyName: fields.companyName, contactName: fields.name, email: fields.email, country: fields.country } } } : {}),
         };
       }
       creation = null; return { success: true };
@@ -162,9 +162,29 @@ export function createCenterContactPort({ key, invoke = centerInvoke, scope = 'a
 /** Original drawer delegates full file bytes and stable, repeatable batches to the center. */
 export function createCenterImportPort(invoke: CenterInvoke, operations: boolean, refresh: () => void, isCurrent = () => true): ImportDrawerPort {
   let preview: ImportPreview | null = null;
-  let prepared: { fingerprint: string; batches: Array<{ offset: number; payload: ImportRequest }>; imported: number; skipped: number; overlaps: number } | null = null;
+  let prepared: { fingerprint: string; batches: Array<{ offset: number; payload: ImportRequest }>; imported: number; skipped: number; overlaps: number; refs: Array<{contactId:number;customerId:string}>; caseIds: string[]; name: string; processed: number; total: number } | null = null;
+  let progressReporter: ((progress: ImportProgress) => void) | undefined;
   let blocked: { conflicts: LeadIngressConflictNotice[]; receipt: ImportReceipt; resolved: number; failure?: string } | null = null;
+  type NextStep = NonNullable<ImportExecutionResult['data']>['nextStep'];
+  let nextStep: NextStep | undefined;
+  let autoPolicy: LeadIngressConflictPolicy | null = null;
   const attemptKey = (key: string, index: number) => `${key.slice(0, SERVER_IMPORT_KEY_LENGTH)}:${index}`;
+  const conflictFor = (request: ImportRequest, row: ImportReceipt['rows'][number]): LeadIngressConflictNotice => ({
+    source: 'flat_import', idempotencyKey: attemptKey(request.idempotencyKey, row.index), rowLabel: `第 ${row.index + IMPORT_ROW_OFFSET} 行`,
+    message: row.message ?? '存在冲突，需要确认后才能继续',
+    incoming: { companyName: row.companyName, contactName: row.contactName, email: row.email, country: row.country },
+  });
+  const resolveWithPolicy = async (conflict: LeadIngressConflictNotice, policy: LeadIngressConflictPolicy): Promise<'resolved' | 'not_applicable' | { error: string }> => {
+    const decision = await invoke<LeadIngressDecisionDTO>(ONLINE_CHANNELS.LEAD_INGRESS_DECISION, { source: conflict.source, idempotencyKey: conflict.idempotencyKey });
+    if (!decision.ok) return { error: decision.error.message };
+    const data = decision.data;
+    if (data.level !== policy.level || data.status !== 'needs_resolution' || !data.suggestedActions.includes(policy.action)) return 'not_applicable';
+    if (policy.action === 'attach_company' && !data.candidates[0]) return 'not_applicable';
+    const receipt = await invoke<LeadIngressResolutionReceipt>(ONLINE_CHANNELS.LEAD_INGRESS_RESOLVE, {
+      decisionId: data.decisionId, action: policy.action, expectedVersion: data.version, idempotencyKey: crypto.randomUUID(),
+    } satisfies import('../../../shared/online-crm').LeadIngressResolutionCommand);
+    return receipt.ok ? 'resolved' : { error: receipt.error.message };
+  };
   const acceptedOrSkipped = (row: ImportReceipt['rows'][number]) => ['created', 'duplicate'].includes(row.status) || row.status === 'restricted_conflict' && !row.conflict;
   const completeReceipt = (receipt: ImportReceipt) => {
     if (!prepared) return;
@@ -180,15 +200,34 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
       const result = await invoke<ImportReceipt>(ONLINE_CHANNELS.IMPORT, request);
       if (!isCurrent()) return { success: false, error: '账号已切换，请重新导入' };
       if (!result.ok) { refresh(); return { success: false, error: result.error.message }; }
+      if (result.data.nextStep) nextStep = result.data.nextStep;
+      for (const row of result.data.rows) if (row.status === 'created' && row.contactId && row.customerId) {
+        if (!prepared.refs.some(ref => ref.contactId === row.contactId && ref.customerId === row.customerId)) prepared.refs.push({ contactId: row.contactId, customerId: row.customerId });
+        if (row.caseId && !prepared.caseIds.includes(row.caseId)) prepared.caseIds.push(row.caseId);
+      }
       const conflictRows = result.data.rows.filter(row => row.status === 'restricted_conflict' && row.conflict);
       if (conflictRows.length) {
-        const conflicts = conflictRows.map(conflictRow => ({
-          source: 'flat_import',
-          idempotencyKey: attemptKey(request.idempotencyKey, conflictRow.index),
-          rowLabel: `第 ${conflictRow.index + IMPORT_ROW_OFFSET} 行`,
-          message: conflictRow.message ?? '存在冲突，需要确认后才能继续',
-        } satisfies LeadIngressConflictNotice));
         const failure = result.data.rows.find(row => !['created', 'duplicate'].includes(row.status) && !row.conflict)?.message;
+        let conflicts = conflictRows.map(conflictRow => conflictFor(request, conflictRow));
+        let autoResolved = 0;
+        if (autoPolicy) {
+          const remaining: LeadIngressConflictNotice[] = [];
+          for (const item of conflicts) {
+            const outcome = await resolveWithPolicy(item, autoPolicy);
+            if (outcome === 'resolved') autoResolved += 1;
+            else if (outcome === 'not_applicable') remaining.push(item);
+            else { refresh(); return { success: false, error: outcome.error }; }
+          }
+          conflicts = remaining;
+          prepared.imported += autoResolved;
+        }
+        if (!conflicts.length) {
+          if (failure) { refresh(); return { success: false, error: `部分行未导入：${failure}` }; }
+          completeReceipt(result.data);
+          prepared.processed += request.rows.length;
+          progressReporter?.({ processed: prepared.processed, total: prepared.total });
+          continue;
+        }
         blocked = { conflicts, receipt: result.data, resolved: 0, ...(failure ? { failure } : {}) };
         refresh();
         return { success: false, error: conflicts[0]!.message, conflict: conflicts[0] };
@@ -198,15 +237,28 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
         return { success: false, error: result.data.rows.find(row => !acceptedOrSkipped(row))?.message ?? '部分行未导入，请核对文件内容' };
       }
       completeReceipt(result.data);
+      prepared.processed += request.rows.length;
+      progressReporter?.({ processed: prepared.processed, total: prepared.total });
     }
-    const data = { imported: prepared.imported, skipped: prepared.skipped, overlaps: prepared.overlaps }; prepared = null; refresh(); return { success: true, data };
+    const final = prepared;
+    prepared = null;
+    let nextStepError: string | undefined;
+    if (!nextStep && final.refs.length) {
+      progressReporter?.({ processed: final.total, total: final.total, phase: 'preparing' });
+      try {
+        const result = await invoke<PreparedCampaignNextStep>(ONLINE_CHANNELS.PREPARE_IMPORTED_LEADS, { refs: final.refs, caseIds: final.caseIds, name: final.name, groupKey: `${new Date().toISOString().slice(0,10)}:${final.name}` });
+        if (result.ok && result.data && typeof result.data.campaignId === 'string' && typeof result.data.name === 'string') nextStep = { kind: 'campaign_draft', ...result.data };
+        else if (!result.ok) nextStepError = result.error.message;
+      } catch { nextStepError = '开发任务准备暂不可用'; }
+    }
+    const data = { imported: final.imported, skipped: final.skipped, overlaps: final.overlaps, ...(nextStep ? { nextStep } : {}), ...(nextStepError ? { nextStepError } : {}) }; nextStep = undefined; refresh(); return { success: true, data };
   };
   return {
     async preview(input) {
       const result = await invoke<ImportPreview>(ONLINE_CHANNELS.PREVIEW, input);
       if (!isCurrent()) return { success: false, error: '账号已切换，请重新导入' };
       if (!result.ok) return { success: false, error: result.error.message };
-      preview = result.data; prepared = null;
+      preview = result.data; prepared = null; blocked = null; autoPolicy = null; nextStep = undefined;
       const mapping = leadImportMapping(result.data.headers);
       const suggestedMapping = Object.fromEntries(Object.entries(mapping).map(([field,header])=>[header,field]));
       const effectiveRows = fillForwardImportCompanyFields(result.data.rows, mapping);
@@ -217,6 +269,7 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
     async execute(input) {
       if (!isCurrent()) return { success: false, error: '账号已切换，请重新导入' };
       if (!preview) return { success: false, error: '请重新预览文件' };
+      progressReporter = input.onProgress;
       const mapping = Object.fromEntries(Object.entries(input.mapping).filter(([, field]) => field).map(([header, field]) => [field, header]));
       const fingerprint = importFingerprint(input, mapping,input.rows);
       if (prepared && prepared.fingerprint !== fingerprint) return { success: false, error: '预览数据已改变，请重新确认导入' };
@@ -254,17 +307,28 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
         if(!rows.length)return {success:false,error:'没有可导入条目'};
         const result = prepareImportRequests({ source: 'desktop-import', sourceDetail: preview.fileName, kind: operations ? 'operations' : 'personal', companyMatching:true, mapping }, rows);
         if (!result.ok) return { success: false, error: result.error.message };
-        prepared = { fingerprint, batches: result.data, imported: 0, skipped: 0, overlaps: 0 };
+        prepared = { fingerprint, batches: result.data, imported: 0, skipped: 0, overlaps: 0, refs: [], caseIds: [], name: preview.fileName || '已验证线索', processed: 0, total: rows.length };
       }
       return run();
     },
-    async continueAfterConflict(conflict) {
+    async continueAfterConflict(conflict: LeadIngressConflictNotice, policy?: LeadIngressConflictPolicy) {
       const index = blocked?.conflicts.findIndex(item => item.source === conflict.source && item.idempotencyKey === conflict.idempotencyKey) ?? -1;
       if (!blocked || index < 0) {
         return { success: false, error: '冲突上下文已变化，请重新预览文件' };
       }
+      if (policy) autoPolicy = policy;
       blocked.conflicts.splice(index, 1);
       blocked.resolved += 1;
+      if (autoPolicy && blocked.conflicts.length) {
+        const remaining: LeadIngressConflictNotice[] = [];
+        for (const item of blocked.conflicts) {
+          const outcome = await resolveWithPolicy(item, autoPolicy);
+          if (outcome === 'resolved') blocked.resolved += 1;
+          else if (outcome === 'not_applicable') remaining.push(item);
+          else { blocked.conflicts = remaining; refresh(); return { success: false, error: outcome.error }; }
+        }
+        blocked.conflicts = remaining;
+      }
       if (blocked.conflicts.length) return { success: false, error: blocked.conflicts[0]!.message, conflict: blocked.conflicts[0] };
       if (blocked.failure) {
         const message = blocked.failure;
@@ -273,6 +337,7 @@ export function createCenterImportPort(invoke: CenterInvoke, operations: boolean
         return { success: false, error: `部分行未导入：${message}` };
       }
       completeReceipt(blocked.receipt);
+      if (prepared) { prepared.processed += blocked.receipt.rows.length; progressReporter?.({ processed: prepared.processed, total: prepared.total }); }
       if (prepared) prepared.imported += blocked.resolved;
       blocked = null;
       return run();

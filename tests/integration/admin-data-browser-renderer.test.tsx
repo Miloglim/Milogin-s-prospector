@@ -41,7 +41,7 @@ describe("read-only management data browser", () => {
     expect(host.textContent).not.toContain("编辑");
     expect(host.textContent).not.toContain("删除");
     expect(api.data).toHaveBeenCalledWith(expect.objectContaining({ table: "public.identity_users", limit: 25, offset: 0 }));
-    await act(async () => { (Array.from(host.querySelectorAll("button")).find(button => button.textContent?.replace(/\s/g, "") === "刷新") as HTMLButtonElement).click(); await new Promise(resolve => setTimeout(resolve, 10)); });
-    expect(api.data).toHaveBeenCalledTimes(2);
+    expect(Array.from(host.querySelectorAll("button")).some(button => button.textContent?.replace(/\s/g, "") === "刷新")).toBe(false);
+    expect(api.data).toHaveBeenCalledTimes(1);
   });
 });

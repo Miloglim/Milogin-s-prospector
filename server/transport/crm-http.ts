@@ -9,7 +9,7 @@ export function createCrmHandler(service:LeadService):BrowserHandler{return asyn
  const token=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.authorization??'')?.[1]??'';
  if(method==='GET'&&path===CENTER_CONTACT_ROUTE){
   const query:Record<string,unknown>={};
-  for(const [key,value] of url.searchParams){if(key in query){send(response,failure('INVALID_INPUT','联系人查询参数重复'));return;}query[key]=['limit','offset'].includes(key)?Number(value):key==='followupOnly'?(value==='true'?true:value==='false'?false:value):value;}
+  for(const [key,value] of url.searchParams){if(key in query){send(response,failure('INVALID_INPUT','联系人查询参数重复'));return;}query[key]=['limit','offset'].includes(key)?Number(value):['attentionOnly','followupOnly'].includes(key)?(value==='true'?true:value==='false'?false:value):value;}
   send(response,await service.contacts(token,query));return;
  }
  if(method==='GET'&&path===CENTER_CONTACT_GROUP_ROUTE){

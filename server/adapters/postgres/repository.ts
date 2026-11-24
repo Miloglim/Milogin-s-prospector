@@ -36,7 +36,7 @@ export class PostgresCrmRepository implements CrmRepository {
     try { return await action(); }
     catch (error) {
       const code = sqlCode(error);
-      this.log.write("ERROR", context, `数据库操作失败 code=${code}`);
+      this.log.write("ERROR", context, `数据库操作失败 code=${code} message=${error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500)}`);
       if (code === EMAIL_CONFLICT) return failure("CONFLICT", "资料已存在，未覆盖现有记录");
       if (code === FOREIGN_KEY_ERROR || code === CHECK_ERROR) return failure("INVALID_INPUT", "资料引用或约束无效");
       return failure("DATABASE_ERROR", "数据库操作失败，请检查测试服务状态");

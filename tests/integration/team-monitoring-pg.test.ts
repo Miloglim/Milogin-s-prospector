@@ -122,8 +122,9 @@ describe.runIf(enabled)('CP6 team monitoring rollback PostgreSQL', () => {
       const leaderOverview = unwrap(await repo.overview(tokenHash(leaderA.token), { limit: 20, offset: 0, unitLimit: 20, unitOffset: 0 }));
       expect(leaderOverview.scope).toBe('leader');
       expect(leaderOverview.units.items.map(item => item.unitId)).toEqual([teamA]);
-      expect(leaderOverview.members.items.map(item => item.userId)).toEqual(expect.arrayContaining([memberA1.id, memberA2.id]));
+      expect(leaderOverview.members.items.map(item => item.userId)).toEqual(expect.arrayContaining([leaderA.id, memberA1.id, memberA2.id]));
       expect(leaderOverview.members.items.map(item => item.userId)).not.toContain(memberB1.id);
+      expect(leaderOverview.members.items[0]).toMatchObject({ userId: leaderA.id, role: 'leader' });
       const summaryA1 = leaderOverview.members.items.find(item => item.userId === memberA1.id)!;
       expect(summaryA1).not.toHaveProperty('score');
       expect(summaryA1).not.toHaveProperty('grade');
@@ -136,6 +137,7 @@ describe.runIf(enabled)('CP6 team monitoring rollback PostgreSQL', () => {
       const secondPage = unwrap(await repo.overview(tokenHash(operations.token), { limit: 1, offset: 1, unitLimit: 20, unitOffset: 0 }));
       expect(firstPage.members.total).toBeGreaterThanOrEqual(3);
       expect(firstPage.members.items).toHaveLength(1);
+      expect(firstPage.members.items[0]!.role).toBe('leader');
       expect(secondPage.members.items[0]!.userId).not.toBe(firstPage.members.items[0]!.userId);
       expect(firstPage.units.items.map(item => item.unitId)).toEqual(expect.arrayContaining([teamA, teamB]));
       expect(firstPage.pool!.unassignedOperationsContacts).toBeGreaterThanOrEqual(1);
@@ -149,7 +151,7 @@ describe.runIf(enabled)('CP6 team monitoring rollback PostgreSQL', () => {
       expect(secondOperationsView.units.items.map(item => item.unitId)).toEqual(expect.arrayContaining([teamA, teamB]));
       const superadminView = unwrap(await repo.overview(tokenHash(identityAdmin.token), { limit: 20, offset: 0, unitLimit: 20, unitOffset: 0 }));
       expect(superadminView.scope).toBe('superadmin');
-      expect(superadminView.members.items.map(item => item.userId)).toEqual(expect.arrayContaining([memberA1.id, memberA2.id, memberB1.id]));
+      expect(superadminView.members.items.map(item => item.userId)).toEqual(expect.arrayContaining([leaderA.id, leaderB.id, memberA1.id, memberA2.id, memberB1.id]));
       expect(superadminView.units.items.map(item => item.unitId)).toEqual(expect.arrayContaining([teamA, teamB]));
       expect(await repo.overview(tokenHash(memberA1.token), { limit: 20, offset: 0, unitLimit: 20, unitOffset: 0 }))
         .toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });

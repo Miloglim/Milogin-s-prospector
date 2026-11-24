@@ -10,7 +10,10 @@ import { LEGACY_MAIL_SYNC_DDL } from '../core/legacy-mail-sync';
 import { INBOX_LABEL_DDL } from '../core/inbox-label-storage';
 import { MAIL_ANALYSIS_QUEUE_DDL } from '../core/mail-analysis-queue-storage';
 import { INBOX_TODO_DDL } from '../core/inbox-todo-storage';
+import { INBOX_CONVERSATION_STATE_DDL } from '../core/inbox-conversation-state-storage';
 import { INBOX_SEEN_OUTBOX_DDL } from '../core/inbox-seen-outbox-storage';
+import { SEND_RATE_STORAGE_DDL } from '../core/send-rate-storage';
+import { INQUIRY_QUOTE_DDL } from '../core/inquiry-quote-storage';
 export const BASE_SCHEMA_SQL = `${MAIL_CLASSIFICATION_CHANGES_DDL}
 ${CENTER_SEND_AUTHORIZATION_DDL}
 ${LEGACY_CONTACT_MAP_DDL}
@@ -19,7 +22,10 @@ ${LEGACY_MAIL_SYNC_DDL}
 ${INBOX_LABEL_DDL}
 ${MAIL_ANALYSIS_QUEUE_DDL}
 ${INBOX_TODO_DDL}
+${INBOX_CONVERSATION_STATE_DDL}
 ${INBOX_SEEN_OUTBOX_DDL}
+${SEND_RATE_STORAGE_DDL}
+${INQUIRY_QUOTE_DDL}
 CREATE TABLE IF NOT EXISTS email_accounts (
   id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
   email text NOT NULL UNIQUE,
@@ -124,6 +130,8 @@ CREATE TABLE IF NOT EXISTS inbox_messages (
 CREATE INDEX IF NOT EXISTS idx_inbox_unmatched_from ON inbox_messages(lower(from_email)) WHERE matched_contact_id IS NULL;
 -- 客户详情「邮件往来」按 matched_contact_id 取数；回填后的事件补齐也走它
 CREATE INDEX IF NOT EXISTS idx_inbox_matched ON inbox_messages(matched_contact_id);
+CREATE INDEX IF NOT EXISTS idx_inbox_time_id ON inbox_messages(received_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_inbox_classification_time ON inbox_messages(classification, received_at DESC, id DESC);
 CREATE TABLE IF NOT EXISTS interactions (
   id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
   contact_id integer NOT NULL REFERENCES contacts(id),

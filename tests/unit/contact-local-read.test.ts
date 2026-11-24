@@ -31,10 +31,10 @@ describe('local contact query parity', () => {
     expect(contactMirrorPage(rows, { ...query, stage: 'f2', status: 'replied', tags: 'priority', clientType: 'agent', country: 'Brazil', language: 'PT', touchStatus: 'contacted', crmStage: 'cooperating' }, 'alice').items).toEqual([rows[0]]);
     expect(contactMirrorPage(rows, { ...query, crmStage: 'quoting' }, 'alice').items).toEqual([rows[1]]);
   });
-  it('keeps uncontacted off the board and orders by occurrence time, then update time and ID', () => {
+  it('keeps execution-only touch states off the board and orders real replies', () => {
     const rows = [row(1, { touchStatus: 'contacted', lastFollowupAt: '2026-10-14T10:00:00Z', updatedAt: '2026-10-15T20:00:00Z' }), row(2, { touchStatus: 'replied', lastFollowupAt: '2026-10-15T10:00:00Z' }), row(3), row(4, { touchStatus: 'contacted', lastFollowupAt: null })];
-    expect(contactMirrorPage(rows, { ...query, limit: 100, followupOnly: true }, 'alice').items.map(x => x.contactId)).toEqual([2, 1, 4]);
-    expect(contactMirrorPage(rows, { ...query, followupOnly: true, crmStage: 'reaching' }, 'alice').total).toBe(3);
+    expect(contactMirrorPage(rows, { ...query, limit: 100, attentionOnly: true }, 'alice').items.map(x => x.contactId)).toEqual([2]);
+    expect(contactMirrorPage(rows, { ...query, attentionOnly: true, crmStage: 'reaching' }, 'alice').total).toBe(1);
   });
   it('matches case insensitive names/title/company search and never sorts caller data in place', () => {
     const rows = [row(1, { companyName: 'Vitória' }), row(2, { lastName: 'MÜLLER' }), row(3, { title: 'Agent' })];

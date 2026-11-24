@@ -20,6 +20,7 @@ vi.mock('antd', async () => {
     Button,
     Drawer: ({ children, footer, open }: { children: React.ReactNode; footer?: React.ReactNode; open: boolean }) => open ? <div>{children}{footer}</div> : null,
     Radio,
+    Checkbox: ({ children, checked, onChange }: { children: React.ReactNode; checked?: boolean; onChange?: (event: { target: { checked: boolean } }) => void }) => <label><input type="checkbox" checked={checked} onChange={event => onChange?.({ target: { checked: event.target.checked } })} />{children}</label>,
     Spin: () => <span>加载中</span>,
     Tag: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   };
@@ -94,7 +95,7 @@ describe('lead ingress conflict drawer', () => {
     await mount(invoke, source);
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.LEAD_INGRESS_DECISION, { source, idempotencyKey: 'attempt:0' });
     expect(host.textContent).toContain('第 2 行');
-    expect(host.textContent).toContain('域名与现有公司一致');
+    expect(host.textContent).toContain('邮箱域名与下面这家公司相同');
   });
 
   it('renders only the server-provided candidate summary', async () => {
@@ -122,8 +123,8 @@ describe('lead ingress conflict drawer', () => {
   });
 
   it.each([
-    ['attach_company', '关联现有公司'],
-    ['create_new', '作为新记录'],
+    ['attach_company', '并入现有公司'],
+    ['create_new', '仍然新建公司'],
     ['restore', '恢复已删除联系人'],
   ] as const)('resolves with the %s decision', async (action, label) => {
     const onResolved = vi.fn();
@@ -137,6 +138,18 @@ describe('lead ingress conflict drawer', () => {
     const write = invoke.mock.calls.find(call => call[0] === ONLINE_CHANNELS.LEAD_INGRESS_RESOLVE)![1] as Record<string, unknown>;
     expect(write).toMatchObject({ action, expectedVersion: 4 });
     expect(onResolved).toHaveBeenCalledTimes(1);
+  });
+
+  it('can apply the same decision to later conflicts of the same type', async () => {
+    const onResolved = vi.fn();
+    const invoke = vi.fn(async (channel: string) => channel === ONLINE_CHANNELS.LEAD_INGRESS_DECISION
+      ? { ok: true as const, data: decision('attach_company') }
+      : { ok: true as const, data: { decision: decision('attach_company'), customerId: candidate.customerId, companyId: candidate.companyId, contactIds: [candidate.contactId] } });
+    await mount(invoke, 'flat_import', onResolved);
+    await act(async () => { host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); });
+    const submit = Array.from(host.querySelectorAll('button')).find(button => button.textContent === '确认处理')!;
+    await act(async () => { submit.click(); await flush(); });
+    expect(onResolved).toHaveBeenCalledWith(expect.anything(), { action: 'attach_company', level: 'exact_domain' });
   });
 
   it('retains the same resolution key after an unknown transport outcome and invalidates caches', async () => {
@@ -191,5 +204,33 @@ describe('lead ingress conflict drawer', () => {
     const resumed = await port.continueAfterConflict!(result.conflict!);
     expect(resumed).toMatchObject({ success: true, data: { imported: 2, skipped: 0 } });
     expect(invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.IMPORT)).toHaveLength(1);
+  });
+
+  it('applies the chosen resolution to later conflicts of the same type', async () => {
+    const refresh = vi.fn();
+    const preview = { headers: ['Company', 'Email'], rows: [
+      { Company: 'Created Company', Email: 'created@example.invalid' },
+      { Company: 'Similar One', Email: 'one@example.invalid' },
+      { Company: 'Similar Two', Email: 'two@example.invalid' },
+    ], fileName: 'bulk.csv' };
+    const invoke = vi.fn(async (channel: string, input?: unknown) => {
+      if (channel === ONLINE_CHANNELS.PREVIEW) return { ok: true as const, data: preview };
+      if (channel === ONLINE_CHANNELS.IMPORT) return { ok: true as const, data: { batchId: 'batch-b', version: 1, rows: [
+        { rowId: 'row-0', index: 0, status: 'created', customerId: candidate.customerId, contactId: 8 },
+        { rowId: 'row-1', index: 1, status: 'restricted_conflict', companyName: 'Similar One', message: '公司名称接近', conflict: { decisionId: '44444444-4444-4444-8444-444444444444', level: 'strong_company', candidates: [candidate] } },
+        { rowId: 'row-2', index: 2, status: 'restricted_conflict', companyName: 'Similar Two', message: '公司名称接近', conflict: { decisionId: '55555555-5555-4555-8555-555555555555', level: 'strong_company', candidates: [candidate] } },
+      ] } };
+      if (channel === ONLINE_CHANNELS.LEAD_INGRESS_DECISION) return { ok: true as const, data: { ...decision('attach_company'), level: 'strong_company', idempotencyKey: (input as { idempotencyKey: string }).idempotencyKey, candidates: [candidate] } };
+      return { ok: true as const, data: { decision: { ...decision('attach_company'), level: 'strong_company' }, customerId: candidate.customerId, companyId: candidate.companyId, contactIds: [candidate.contactId] } };
+    });
+    const port = createCenterImportPort(invoke as never, true, refresh);
+    const parsed = await port.preview({ type: 'csv', data: 'Company,Email' });
+    expect(parsed.success).toBe(true);
+    const result = await port.execute({ type: 'csv', data: 'Company,Email', mapping: parsed.data!.suggestedMapping });
+    expect(result.conflict?.rowLabel).toBe('第 3 行');
+    const resumed = await port.continueAfterConflict!(result.conflict!, { action: 'attach_company', level: 'strong_company' });
+    expect(resumed).toMatchObject({ success: true, data: { imported: 3 } });
+    expect(invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.LEAD_INGRESS_DECISION)).toHaveLength(1);
+    expect(invoke.mock.calls.filter(call => call[0] === ONLINE_CHANNELS.LEAD_INGRESS_RESOLVE)).toHaveLength(1);
   });
 });

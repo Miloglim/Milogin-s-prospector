@@ -5,7 +5,7 @@ import "./DiamondLogo.css";
 
 // ── 程序菱形标识（Prospector 菱形 logo）──
 // 描边/内核用 currentColor：深色侧栏继承白色、浅色页面继承黑色，无需分场景配色。
-// state：static 无动效（按钮内联用）；idle 呼吸（待机"活着"）；running 旋转+内核快闪（agent 输出中）。
+// state：static 无动效（按钮内联用）；idle 缩放呼吸（待机"活着"）；running 旋转（agent 输出中）。
 // 视差：外圈(.dl-track--box)与中心点(.dl-track--core)按**全局指针**做不同系数位移，
 // 形成立体轨迹跟踪——与 hover 无关，鼠标在窗口任意位置都会朝它偏转。
 // 规范见 docs/diamond-logo-parallax-spec.md。
@@ -30,6 +30,10 @@ export function DiamondLogo({ size = 16, state = "idle", className }: {
   // 全局指针跟踪：所有实例共用 lib/pointer 的单个 window 监听（rAF 批量派发）
   useEffect(() => {
     if (!trackable || prefersReducedMotion()) return;
+    // Reading layout on every pointer frame forces reflow once another logo wrote its translate.
+    // Cache the box and refresh it only when the page resizes or any scroll container moves.
+    let rect: DOMRect | null = null;
+    const invalidate = () => { rect = null; };
     return subscribePointer((x, y) => {
       const root = rootRef.current;
       if (!root) return;
@@ -40,13 +44,13 @@ export function DiamondLogo({ size = 16, state = "idle", className }: {
         if (coreEl) coreEl.style.translate = "0px 0px";
         return;
       }
-      const r = root.getBoundingClientRect();
+      const r = rect ?? (rect = root.getBoundingClientRect());
       if (r.right < 0 || r.bottom < 0 || r.left > innerWidth || r.top > innerHeight) return;  // 不可见不浪费帧
       const p = parallaxFor(x - (r.left + r.width / 2), y - (r.top + r.height / 2), size);
       root.classList.toggle("dl-near", p.near);    // 半径内快跟随，半径外走回弹曲线
       if (boxEl) boxEl.style.translate = `${p.bx}px ${p.by}px`;
       if (coreEl) coreEl.style.translate = `${p.cx}px ${p.cy}px`;
-    });
+    }, invalidate);
   }, [trackable, size]);
 
   return (

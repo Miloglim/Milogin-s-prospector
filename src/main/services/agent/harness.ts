@@ -123,6 +123,7 @@ export interface HarnessOptions {
   apiKey: string;
   model: string;
   wireApi?: WireApi;
+  streaming?: boolean;
   history: ChatMsg[];
   conversationId: string;
   push: PushFn;
@@ -282,6 +283,8 @@ function makeClient(baseUrl: string, apiKey: string): OpenAI {
       try {
         const body = JSON.parse(init.body) as Record<string, unknown>;
         if (Array.isArray(body.messages)) {
+          // Center OpenAI-compatible endpoint needs an explicit feature for policy checks.
+          if (!body.feature) body.feature = "agent";
           Object.assign(body, extras);
           const luna = isOpenAiLuna(baseUrl, String(body.model ?? ""));
           if (luna) {
@@ -501,7 +504,7 @@ async function streamRun(
   // 而 SDK 的流式分支只累积 name/arguments/callId（把签名丢了 → 第 2 轮直接 400）；
   // 非流式分支会把整条 tool_call 存进 providerData 并原样 spread 回去。故对 google 族走非流式。
   const family = endpointFamily(o.baseUrl);
-  const streaming = o.wireApi === "responses" || family !== "google";
+  const streaming = o.streaming !== false && (o.wireApi === "responses" || family !== "google");
 
   if (!streaming) {
     const r = await run(agent, (resumeState ?? o.history) as never, {

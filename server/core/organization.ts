@@ -69,7 +69,7 @@ export function canDissolveOrganizationUnit(
   return { allowed: true };
 }
 
-/** Members belong to one sales team; leaders may lead any number of sales teams or operations groups. */
+/** Members belong to one team; leaders may lead any number of sales teams or operations groups. */
 export function canCreateOrganizationAssignment(
   kind: OrganizationUnitKind,
   role: OrganizationAssignmentRole,
@@ -78,8 +78,7 @@ export function canCreateOrganizationAssignment(
 ): AssignmentRuleResult {
   if (kind === 'company') return { allowed: false, reason: '公司根不接受成员关系' };
   if (role === 'member') {
-    if (kind !== 'sales_team') return { allowed: false, reason: '只有销售团队接受普通成员' };
-    if (existing.some(item => item.role === 'member' && item.unitId !== unitId)) return { allowed: false, reason: '普通成员只能属于一个销售团队' };
+    if (existing.some(item => item.role === 'member' && item.unitId !== unitId)) return { allowed: false, reason: '普通成员只能属于一个团队' };
     if (existing.some(item => item.role === 'leader')) return { allowed: false, reason: '负责人不能同时作为普通成员加入团队' };
     return { allowed: true };
   }

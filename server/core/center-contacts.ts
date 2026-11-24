@@ -1,6 +1,6 @@
 import type {ContactPermissions} from './contact-sharing';
 import { CRM_STAGES, failure, success, type JsonObject, type Result } from './crm';
-import { CONTACT_TOUCH_STATUSES, type ContactTouchStatus, type CustomerStage, type LeadState } from './leads';
+import { CONTACT_TOUCH_STATUSES, type ContactTouchStatus, type CustomerBoardAttentionReason, type CustomerStage, type LeadState } from './leads';
 
 export const CENTER_CONTACT_ROUTE = '/api/crm/contacts';
 export const CENTER_CONTACT_GROUP_ROUTE = '/api/crm/contact-groups';
@@ -19,7 +19,10 @@ export interface CenterContactQuery {
   stage?: string; status?: string; tags?: string; clientType?: string; country?: string; language?: string;
   touchStatus?: ContactTouchStatus;
   scope?: 'all' | 'personal' | 'assigned'; assignment?: 'accepted';
-  followupOnly?: boolean; crmStage?: CustomerStage;
+  attentionOnly?: boolean;
+  /** @deprecated Use attentionOnly. */
+  followupOnly?: boolean;
+  crmStage?: CustomerStage;
   /** A card selection from the first-level contact group view. */
   groupDimension?: CenterContactGroupDimension; groupKey?: string;
 }
@@ -28,6 +31,10 @@ export interface CenterContact {
   contactId: number; customerId: string; customerVersion: number;
   permissions?: ContactPermissions; isShared?: boolean; canSendMail?: boolean; contactVersion?: number; canDelete?: boolean; canEdit?: boolean; canAssign?: boolean; canFollowup?: boolean;
   relationshipStage?: CustomerStage;
+  aiDealPending?: boolean;
+  attentionReason?: CustomerBoardAttentionReason;
+  /** Earliest open-task due time matched to this contact; unrelated customer tasks never populate it. */
+  attentionDueAt?: string | null;
   /** Latest real contact activity by occurrence time; notes and opportunity activities are excluded. */
   lastFollowupAt?: string | null; lastFollowupNote?: string | null;
   companyId: number; companyName: string; email: string | null;
@@ -62,7 +69,7 @@ export interface CenterContactGroupPage { items: CenterContactGroup[]; total: nu
 export function centerContactQuery(value: unknown): Result<CenterContactQuery> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return failure('INVALID_INPUT', '联系人查询参数无效');
   const input = value as Record<string, unknown>;
-  const allowed: readonly string[] = ['search', 'limit', 'offset', ...CENTER_CONTACT_FILTERS, 'scope', 'assignment', 'followupOnly', 'crmStage', 'touchStatus', 'groupDimension', 'groupKey'];
+  const allowed: readonly string[] = ['search', 'limit', 'offset', ...CENTER_CONTACT_FILTERS, 'scope', 'assignment', 'attentionOnly', 'followupOnly', 'crmStage', 'touchStatus', 'groupDimension', 'groupKey'];
   if (Object.keys(input).some(key => !allowed.includes(key))) return failure('INVALID_INPUT', '联系人查询含未知参数');
   const search = input.search ?? '';
   const limit = input.limit ?? CENTER_CONTACT_LIMITS.page;
@@ -77,10 +84,10 @@ export function centerContactQuery(value: unknown): Result<CenterContactQuery> {
     if (input.assignment !== 'accepted') return failure('INVALID_INPUT', '分配状态无效');
     query.assignment = 'accepted';
   }
-  if (input.followupOnly !== undefined) {
-    if (typeof input.followupOnly !== 'boolean') return failure('INVALID_INPUT', '跟进筛选无效');
-    query.followupOnly = input.followupOnly;
-  }
+  if (input.attentionOnly !== undefined && typeof input.attentionOnly !== 'boolean') return failure('INVALID_INPUT', '关注筛选无效');
+  if (input.followupOnly !== undefined && typeof input.followupOnly !== 'boolean') return failure('INVALID_INPUT', '跟进筛选无效');
+  const attentionOnly = input.attentionOnly ?? input.followupOnly;
+  if (attentionOnly !== undefined) query.attentionOnly = attentionOnly as boolean;
   if (input.crmStage !== undefined) {
     if (!['cold', ...CRM_STAGES].includes(input.crmStage as string)) return failure('INVALID_INPUT', '客户关系阶段无效');
     query.crmStage = input.crmStage as CustomerStage;
@@ -106,7 +113,9 @@ export function centerContactQuery(value: unknown): Result<CenterContactQuery> {
 export function centerContactPath(query: CenterContactQuery): string {
   const fields = [['search', query.search], ['limit', String(query.limit)], ['offset', String(query.offset)]];
   for (const key of CENTER_CONTACT_FILTERS) if (query[key] !== undefined) fields.push([key, query[key]!]);
-  for (const key of ['scope', 'assignment', 'followupOnly', 'crmStage', 'touchStatus'] as const) if (query[key] !== undefined) fields.push([key, String(query[key])]);
+  for (const key of ['scope', 'assignment', 'crmStage', 'touchStatus'] as const) if (query[key] !== undefined) fields.push([key, String(query[key])]);
+  const attentionOnly = query.attentionOnly ?? query.followupOnly;
+  if (attentionOnly !== undefined) fields.push(['attentionOnly', String(attentionOnly)]);
   if (query.groupDimension !== undefined) fields.push(['groupDimension', query.groupDimension], ['groupKey', query.groupKey!]);
   return `${CENTER_CONTACT_ROUTE}?${fields.map(([key, value]) => `${key}=${encodeURIComponent(value!)}`).join('&')}`;
 }

@@ -84,9 +84,11 @@ describe('sidebar account, search and messages footer', () => {
   it('allows opening cached messages offline while disabling the bulk write',async()=>{
     state.offline=true;await mount();
     expect(host.querySelector('.sidebar-brand-dot')?.classList.contains('is-offline')).toBe(true);
-    const item=Array.from(host.querySelectorAll('li')).find(li=>li.textContent==='客户')!;
+    const item=host.querySelector<HTMLElement>('li[data-nav-key="/team"]')!;
     expect(item.getAttribute('aria-disabled')).toBe('false');
-    await act(async()=>{ item.click(); });expect(state.navigate).toHaveBeenCalledWith({to:'/customers'});
+    await act(async()=>{ item.click(); });
+    const customer = Array.from(host.querySelectorAll<HTMLElement>('.sidebar-team-subitem')).find(entry => entry.textContent === '我的客户')!;
+    await act(async()=>{ customer.click(); });expect(state.navigate).toHaveBeenCalledWith({to:'/customers'});
     const messages=host.querySelector<HTMLButtonElement>('button[aria-label="消息中心"]')!;
     expect(messages.disabled).toBe(false);
     await act(async()=>{messages.click();await Promise.resolve();});
@@ -104,14 +106,47 @@ describe('sidebar account, search and messages footer', () => {
     await act(async () => { brand.click(); });
     expect(state.reconnect).toHaveBeenCalledOnce();
   });
-  it('hides unreleased dashboard, rates and conversation history entries', async () => {
+  it('shows rates and the assistant task entry while keeping conversation history off', async () => {
     await mount();
     expect(host.textContent).not.toContain('仪表盘');
-    expect(host.textContent).not.toContain('运价库');
-    expect(host.textContent).not.toContain('新对话');
+    expect(host.textContent).toContain('运价库');
+    expect(host.textContent).toMatch(/新对话|任务/);
     expect(host.textContent).not.toContain('还没有会话');
-    expect(host.textContent).toContain('团队');
+    expect(host.textContent).toContain('我的');
     expect(host.textContent).toContain('发送中心');
-    expect(host.textContent).toContain('素材库');
+    expect(host.textContent).not.toContain('素材库');
+  });
+
+  it('keeps only my customers under the my navigation group', async () => {
+    state.roles = ['operations'];
+    await mount();
+    const teamItem = host.querySelector<HTMLElement>('li[data-nav-key="/team"]')!;
+    await act(async () => {
+      teamItem.click();
+      await new Promise(resolve => setTimeout(resolve, 20));
+    });
+    const menuItems = Array.from(host.querySelectorAll<HTMLElement>('.sidebar-team-subitem'));
+    expect(menuItems.map(item => item.textContent)).toEqual(['我的客户']);
+    expect(host.textContent).not.toContain('我的团队');
+    expect(host.textContent).not.toContain('团队管理');
+    expect(host.textContent).not.toContain('绩效');
+    const customer = menuItems[0]!;
+    await act(async () => customer.click());
+    expect(state.navigate).toHaveBeenCalledWith({ to: '/customers' });
+  });
+
+  it('turns the new conversation entry into a short assistant callout', async () => {
+    const snapshot = {
+      reminders: [{ reminderId: 'reminder-1', title: '报价待你确认：Acme', detail: 'Shanghai → Santos · CMA · USD 1800', target: 'team_review', priority: 2, source: 'ai', createdAt: '2026-11-18T01:00:00.000Z' }],
+      settings: { enabled: true, intervalMinutes: 60, checks: { mail: true, task: true, quoteReview: true, stalled: true } },
+      lastCheckedAt: '2026-11-18T02:00:00.000Z', lastError: null, aiConfigured: true, due: false,
+    };
+    const invoke = vi.fn(async (channel: string) => channel === 'assistant:snapshot' ? { success: true, data: snapshot } : { success: true, data: [] });
+    Object.defineProperty(window, 'api', { configurable: true, value: { invoke, on: () => () => {} } });
+    await mount();
+    const entry = Array.from(host.querySelectorAll<HTMLElement>('li')).find(item => item.textContent?.includes('确认报价'))!;
+    expect(entry).toBeTruthy();
+    await act(async () => { entry.click(); });
+    expect(window.location.hash).toBe('#/assistant');
   });
 });

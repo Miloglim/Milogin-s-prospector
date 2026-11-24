@@ -35,6 +35,7 @@ export interface DesktopSessionRepository extends DesktopHandoffRepository {
   cancelDesktopHandoff(tokenHash: string): Promise<Result<void>>;
   rotateDesktopSession(refreshHash: string, input: DesktopRotation): Promise<Result<{ identity: Identity; expiresAt: string; absoluteExpiresAt?: string } | null>>;
   desktopIdentity(tokenHash: string): Promise<Result<Identity | null>>;
+  touchPresence?(tokenHash: string): Promise<Result<void>>;
   revokeDesktopSession(refreshHash: string): Promise<Result<void>>;
   changePassword(hash: string, expectedHash: string, revision: number, newHash: string, client?: 'api' | 'browser'): Promise<Result<void>>;
 }

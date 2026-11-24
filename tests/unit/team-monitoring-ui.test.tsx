@@ -47,7 +47,10 @@ const stages = { cold: 0, reaching: 1, quoting: 1, trial: 0, cooperating: 0, los
 const overview: TeamMonitoringOverview = {
   scope: 'leader', generatedAt: '2026-10-30T02:00:00Z',
   units: { items: [{ unitId: teamId, name: team.name, kind: 'sales_team', parentUnitId: null, memberCount: 12, counts, rates }], total: 1 },
-  members: { items: [{ userId: memberId, displayName: 'Sales One', email: 'sales@example.invalid', teamId, teamName: team.name, organizationKind: 'sales_team', counts, rates, stages, lastActivityAt: '2026-10-30T01:00:00Z', latestImportantReplyAt: '2026-10-30T01:00:00Z' }], total: 11 },
+  members: { items: [
+    { userId: memberId, displayName: 'Sales One', email: 'sales@example.invalid', role: 'member', teamId, teamName: team.name, organizationKind: 'sales_team', counts, rates, stages, lastActivityAt: '2026-10-30T01:00:00Z', latestImportantReplyAt: '2026-10-30T01:00:00Z' },
+    { userId: identity.userId, displayName: identity.displayName, email: identity.email, role: 'leader', teamId, teamName: team.name, organizationKind: 'sales_team', counts, rates, stages, lastActivityAt: '2026-10-30T00:00:00Z', latestImportantReplyAt: null },
+  ], total: 11 },
   counts, rates, pool: null, importantReplies: [mail],
 };
 const member: TeamMonitoringMemberDetail = {
@@ -99,8 +102,12 @@ describe('team monitoring renderer', () => {
   it('uses server paging and applies the selected team without filtering rows in the browser', async () => {
     const invoke = await mount();
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MONITORING, expect.objectContaining({ limit: 10, offset: 0, unitLimit: 20 }));
-    expect(host.querySelectorAll('.team-monitoring-member-row')).toHaveLength(1);
-    const select = host.querySelector<HTMLSelectElement>('select[aria-label="选择监控团队"]')!;
+    expect(host.querySelectorAll('.team-monitoring-member-row')).toHaveLength(2);
+    expect(host.querySelector('.team-monitoring-member-row')?.textContent).toContain('Leader');
+    expect(host.querySelector('.team-monitoring-member-row')?.textContent).toContain('负责人');
+    expect(host.querySelector('.team-monitoring-units')).toBeNull();
+    expect(host.querySelector('button[aria-label="刷新团队数据"], button[aria-label="刷新绩效数据"]')).toBeNull();
+    const select = host.querySelector<HTMLSelectElement>('select[aria-label="选择分析团队"]')!;
     await act(async () => { select.value = teamId; select.dispatchEvent(new Event('change', { bubbles: true })); });
     await act(flush);
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MONITORING, expect.objectContaining({ teamId, offset: 0 }));
@@ -111,16 +118,17 @@ describe('team monitoring renderer', () => {
 
   it('drills into a member, audited contact and structured mail, then links to the customer monitor route', async () => {
     const invoke = await mount();
-    await act(async () => host.querySelector<HTMLButtonElement>('.team-monitoring-member-row')!.click());
+    const salesRow = Array.from(host.querySelectorAll<HTMLButtonElement>('.team-monitoring-member-row')).find(row => row.textContent?.includes('Sales One'))!;
+    await act(async () => salesRow.click());
     await act(flush);
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MONITORING_MEMBER, memberId, 10, 0);
     await act(async () => host.querySelector<HTMLButtonElement>('.team-monitoring-member-detail .team-monitoring-mail-row')!.click());
     await act(flush);
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MONITORING_CONTACT, 7, customerId, 20, 0);
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.TEAM_MONITORING_MAIL, eventId, 7, customerId);
-    expect(host.textContent).toContain('客户页监督详情');
+    expect(host.textContent).toContain('客户页详情');
     expect(host.textContent).not.toMatch(/编辑|删除|发送|新建任务/);
-    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '客户页监督详情')!.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '客户页详情')!.click());
     expect(window.location.hash).toBe(`#/customers?monitorContact=7&centerCustomer=${encodeURIComponent(customerId)}`);
   });
 });

@@ -6,7 +6,7 @@ export type GlobalStatusNotice = {
   content: string;
 };
 
-const LOCAL_ROUTES = new Set(['/customers', '/customers-online', '/account', '/messages', '/team']);
+const LOCAL_ROUTES = new Set(['/customers', '/customers-online', '/account', '/messages', '/team', '/assistant']);
 
 export function globalStatusNotices(input: {
   offline: boolean;

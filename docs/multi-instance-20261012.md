@@ -1,5 +1,7 @@
 # 开发多实例
 
+> 2026-11-13 当前规则：重复执行 `npm run dev` 会自动分配 `.work/dev-multi/window-N` 独立开发 profile，实现安全多开；每个 profile 仍保留 Electron 单实例锁，正式安装包也保持单实例。下文保留 2026-10-12 历史实现依据。
+
 > 2026-10-13 用户已撤回双实例运行。start-multi.bat、dev-dual.mjs、dev:dual/dev:multi 已删除，普通入口使用 dev-single.mjs。下文保留历史交付依据，不再作为启动说明；资料目录未删除。
 
 当前验收：普通入口真实启动成功，重复启动只唤醒同一主进程；页面服务自动选取可用5173，不再要求55845。旧无窗口启动器占55845已精确停止，中心未关闭。隔离生产Electron主进程app.relaunch后登录页正常、页面服务持续可用、页面异常0；类型/架构/最新桌面构建通过。证据 .work/single-start-relaunch-report.json、single-start-relaunch.png及single-start日志。删除前checkpoint：D:/Agent Basement/checkpoints/prospector-single-start-20261013。正式安装包及全部历史闪退路径尚未验证。

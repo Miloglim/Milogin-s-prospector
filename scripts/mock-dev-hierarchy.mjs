@@ -26,12 +26,14 @@ const DEV_BASE_URL = 'http://127.0.0.1:55847';
 const DEV_DATABASE = 'milogin_center';
 const DEV_PORT = 55846;
 const ADMIN_EMAIL = 'admin@yqn.com';
+const MILOGIN_EMAIL = 'milogin@qq.com';
 const MOCK_EMAIL_PREFIX = 'mock.hierarchy.';
 const MOCK_SOURCE = 'mock-dev-hierarchy-20261029';
 const CRM_SCHEMA = process.env.PROSPECTOR_MOCK_CRM_SCHEMA || 'public';
 if (!/^[a-z_][a-z0-9_]*$/i.test(CRM_SCHEMA)) fail('PROSPECTOR_MOCK_CRM_SCHEMA 不是合法 schema 名称');
 const crmTable = table => `${CRM_SCHEMA}.${table}`;
 const RETIRED_ORG_UNIT_NAMES = ['Mock 渠道运营中心'];
+const MILOGIN_MOCK_TEAM_NAMES = ['Mock Milogin 运营组', 'Mock Milogin 销售组'];
 const ACCOUNT_PROFILE_DIRECTORY = 'prospecting-email-dev';
 const MANIFEST = path.resolve('.work/mock-dev-hierarchy/manifest.json');
 const SCHEMA_BUNDLE = path.resolve('.work/mock-dev-hierarchy/schema.cjs');
@@ -311,6 +313,94 @@ async function ensureTeams(client, accounts) {
   return ids;
 }
 
+async function findMilogin(client) {
+  const result = await client.query(`SELECT u.user_id AS "userId",u.display_name AS "displayName",e.email
+    FROM public.identity_users u JOIN public.identity_login_emails e USING(user_id)
+    WHERE lower(e.email)=lower($1) AND u.active AND u.deleted_at IS NULL FOR UPDATE OF u,e`, [MILOGIN_EMAIL]);
+  if (result.rowCount !== 1) fail(`找不到开发账号 ${MILOGIN_EMAIL}`);
+  return result.rows[0];
+}
+
+async function ensureMockTeam(client, input) {
+  const existing = await client.query(`SELECT unit_id AS "teamId" FROM ${CRM_SCHEMA}.crm_org_units
+    WHERE parent_unit_id IS NOT DISTINCT FROM $1::uuid AND lower(btrim(name))=lower(btrim($2)) FOR UPDATE`, [input.parentId, input.name]);
+  const teamId = existing.rows[0]?.teamId || randomUUID();
+  if (existing.rowCount) {
+    await client.query(`UPDATE ${CRM_SCHEMA}.crm_org_units SET kind=$2,created_by=$3,version=version+1,updated_at=now(),dissolved_at=NULL,dissolved_by=NULL
+      WHERE unit_id=$1`, [teamId, input.kind, input.createdBy]);
+  } else {
+    await client.query(`INSERT INTO ${CRM_SCHEMA}.crm_org_units(unit_id,kind,parent_unit_id,name,created_by)
+      VALUES($1,$2,$3,$4,$5)`, [teamId, input.kind, input.parentId, input.name, input.createdBy]);
+  }
+  return teamId;
+}
+
+async function ensureMiloginSalesRole(client, userId) {
+  await client.query("DELETE FROM public.identity_product_grants WHERE user_id=$1 AND product_id='crm'", [userId]);
+  await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role,active) VALUES($1,'crm','sales',true)", [userId]);
+  const roles = (await client.query("SELECT role FROM public.identity_product_grants WHERE user_id=$1 AND product_id='crm' AND active ORDER BY role", [userId])).rows.map(row => row.role);
+  await client.query(`INSERT INTO public.identity_product_access(user_id,product_id,active,scope,capabilities)
+    VALUES($1,'crm',true,'own',$2::jsonb) ON CONFLICT(user_id,product_id)
+    DO UPDATE SET active=true,scope='own',capabilities=EXCLUDED.capabilities`, [userId, JSON.stringify(capabilitiesFor(roles))]);
+  return roles;
+}
+
+async function attachMiloginMockRelations(pool) {
+  const passwords = new PasswordAdapter(1);
+  await passwords.initialize();
+  const passwordHash = await passwords.hash(randomUUID().replaceAll('-', ''));
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('statement_timeout',$1,true)", [String(STATEMENT_TIMEOUT_MS)]);
+    await client.query('SELECT pg_advisory_xact_lock(19042902)');
+    await assertCumulativeSchema(client);
+    const milogin = await findMilogin(client);
+    const company = (await client.query(`SELECT unit_id AS "unitId",name FROM ${CRM_SCHEMA}.crm_org_units
+      WHERE kind='company' AND dissolved_at IS NULL ORDER BY created_at,unit_id LIMIT 1 FOR UPDATE`)).rows[0];
+    if (!company) fail('缺少公司根节点');
+
+    const involvedKeys = ['operations', 'operationsSecondary', 'supervisorEast', 'memberAnna', 'memberBen', 'memberCara'];
+    const mockUsers = [];
+    for (const spec of ACCOUNTS.filter(item => involvedKeys.includes(item.key))) mockUsers.push(await ensureAccount(client, spec, passwordHash));
+    const byKey = accountMap(mockUsers);
+    const opsCreator = byKey.get('operations').userId;
+    const operationsTeamId = await ensureMockTeam(client, { name: MILOGIN_MOCK_TEAM_NAMES[0], kind: 'operations_group', parentId: company.unitId, createdBy: opsCreator });
+    const salesTeamId = await ensureMockTeam(client, { name: MILOGIN_MOCK_TEAM_NAMES[1], kind: 'sales_team', parentId: company.unitId, createdBy: opsCreator });
+
+    const teamIds = [operationsTeamId, salesTeamId];
+    const userIds = [...mockUsers.map(user => user.userId), milogin.userId];
+    await client.query(`DELETE FROM ${CRM_SCHEMA}.crm_org_assignments WHERE unit_id=ANY($1::uuid[]) AND user_id=ANY($2::uuid[])`, [teamIds, userIds]);
+    const leaders = [
+      [byKey.get('operations').userId, operationsTeamId, true],
+      [byKey.get('operationsSecondary').userId, operationsTeamId, false],
+      [byKey.get('supervisorEast').userId, salesTeamId, true],
+      [milogin.userId, salesTeamId, false],
+    ];
+    for (const [userId, teamId, primary] of leaders) {
+      await client.query(`INSERT INTO ${CRM_SCHEMA}.crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'leader',$3)`, [userId, teamId, primary]);
+    }
+    for (const key of ['memberAnna', 'memberBen', 'memberCara']) {
+      await client.query(`INSERT INTO ${CRM_SCHEMA}.crm_org_assignments(user_id,unit_id,role,is_primary) VALUES($1,$2,'member',false)`, [byKey.get(key).userId, salesTeamId]);
+    }
+    const roles = await ensureMiloginSalesRole(client, milogin.userId);
+    await client.query('COMMIT');
+    return {
+      milogin: { ...milogin, roles },
+      company,
+      teams: [{ name: MILOGIN_MOCK_TEAM_NAMES[0], teamId: operationsTeamId }, { name: MILOGIN_MOCK_TEAM_NAMES[1], teamId: salesTeamId }],
+      mockAccounts: mockUsers.map(({ userId, email, displayName, role }) => ({ userId, email, displayName, role })),
+      leaders: leaders.map(([userId, teamId, primary]) => ({ userId, teamId, primary })),
+      members: ['memberAnna', 'memberBen', 'memberCara'].map(key => ({ userId: byKey.get(key).userId, email: byKey.get(key).email, teamId: salesTeamId })),
+    };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch { /* the transaction is already closed */ }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function mockUserIds(client) {
   const result = await client.query(`SELECT u.user_id AS "userId",e.email FROM public.identity_users u
     JOIN public.identity_login_emails e USING(user_id) WHERE e.email LIKE $1`, [`${MOCK_EMAIL_PREFIX}%@yqn.com`]);
@@ -352,7 +442,7 @@ async function cleanupRows(client, users) {
   const contacts = await client.query(`SELECT c.id FROM ${crmTable('contacts')} c
     JOIN ${crmTable('crm_customer_contacts')} cc ON cc.contact_id=c.id WHERE cc.customer_id=ANY($1::uuid[])`, [customerIds]);
   const contactIds = contacts.rows.map(row => row.id);
-  const currentTeamNames = TEAMS.filter(team => team.kind !== 'company').map(team => team.name);
+  const currentTeamNames = [...TEAMS.filter(team => team.kind !== 'company').map(team => team.name), ...MILOGIN_MOCK_TEAM_NAMES];
   const knownTeamNames = [...currentTeamNames, ...RETIRED_ORG_UNIT_NAMES];
   const teams = await client.query(`SELECT unit_id AS "teamId",name FROM ${CRM_SCHEMA}.crm_org_units
     WHERE kind<>'company' AND name=ANY($1::text[])`, [knownTeamNames]);
@@ -1275,13 +1365,17 @@ async function cleanup(pool, dryRun) {
 
 async function main() {
   const command = process.argv[2];
-  if (!['setup', 'status', 'cleanup'].includes(command)) fail('用法: node scripts/mock-dev-hierarchy.mjs setup|status|cleanup [--dry-run]');
+  if (!['setup', 'attach-milogin', 'status', 'cleanup'].includes(command)) fail('用法: node scripts/mock-dev-hierarchy.mjs setup|attach-milogin|status|cleanup [--dry-run]');
   const config = readConfig();
   const pool = new Pool({ host: config.host, port: config.port, database: config.database, user: config.app, password: config.appPassword, max: 2, application_name: 'prospector-mock-dev-hierarchy' });
   try {
     if (command === 'setup') {
       const result = await setup(pool);
       log('INFO', `Mock 层级已创建；${result.manifest.accounts.length} 个账号，${result.manifest.customers.length} 条线索`);
+      process.stdout.write(JSON.stringify({ ok: true, ...result }, null, 2) + '\n');
+    } else if (command === 'attach-milogin') {
+      const result = await attachMiloginMockRelations(pool);
+      log('INFO', `Milogin Mock 关系已挂接；${result.mockAccounts.length} 个账号，${result.teams.length} 个团队`);
       process.stdout.write(JSON.stringify({ ok: true, ...result }, null, 2) + '\n');
     } else if (command === 'cleanup') {
       const result = await cleanup(pool, process.argv.includes('--dry-run'));

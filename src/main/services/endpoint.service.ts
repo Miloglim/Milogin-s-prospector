@@ -8,6 +8,7 @@
 //   AGENT_API_KEY=sk-xxx              ← 兼容旧的手写配置（无指针时回落它）
 // 解析优先级：指针指向的密钥 > AGENT_API_KEY > 旧 DEEPSEEK_API_KEY（仅能力调用回落）。
 import { Log } from "../logger";
+import { readEnvironmentSecret } from "../../../server/adapters/environment-secret";
 
 export const WIRE_APIS = ["chat_completions", "responses"] as const;
 export type WireApi = (typeof WIRE_APIS)[number];
@@ -44,7 +45,7 @@ export function readActiveEndpoint(): ActiveEndpoint {
   const model = (process.env.AGENT_MODEL || "").trim();
   const wireApi = readWireApi(process.env.AGENT_WIRE_API);
   const keyEnv = (process.env.AGENT_KEY_ENV || "").trim();
-  const pointed = keyEnv ? (process.env[keyEnv] || "").trim() : "";
+  const pointed = keyEnv ? (process.env[keyEnv] || readEnvironmentSecret(keyEnv)).trim() : "";
   const legacy = (process.env.AGENT_API_KEY || "").trim();
   const apiKey = pointed || legacy;
   const source: ActiveEndpoint["source"] = !baseUrl || !apiKey
@@ -157,7 +158,7 @@ export function readLightEndpoint(main: ActiveEndpoint = readActiveEndpoint()): 
   const baseUrl = (process.env.LIGHT_API_BASE_URL || "").trim();
   const keyEnv = (process.env.LIGHT_KEY_ENV || "").trim();
   const model = (process.env.LIGHT_MODEL || "").trim();
-  const pointed = keyEnv ? (process.env[keyEnv] || "").trim() : "";
+  const pointed = keyEnv ? (process.env[keyEnv] || readEnvironmentSecret(keyEnv)).trim() : "";
   const legacy = (process.env.LIGHT_API_KEY || "").trim();
   const apiKey = pointed || legacy;
   if (baseUrl && apiKey && model) {

@@ -6,7 +6,7 @@ import {
   Card, Input, InputNumber, Button, message, notification, Table, Modal, Form, Tag, Space,
   Switch, Tooltip, Badge, Popconfirm, Select, Segmented,
 } from "antd";
-import { PlusOutlined, DeleteOutlined, CheckCircleOutlined, EditOutlined, DownloadOutlined, SyncOutlined, FolderOpenOutlined, PlayCircleOutlined } from "@ant-design/icons";
+import { DeleteOutlined, CheckCircleOutlined, EditOutlined, DownloadOutlined, SyncOutlined, FolderOpenOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { toolLabelText, useToolMetaVersion } from "../../lib/tool-meta";
 import { CONVS_CHANGED } from "../../lib/agent-route";
@@ -222,100 +222,13 @@ function ControlRow({ label, hint, children }: {
   </div>;
 }
 
-function KbDispatchCard() {
-  const qc = useQueryClient();
-  const { data: cfg } = useQuery({
-    queryKey: ["kb", "config"],
-    queryFn: () => window.api.invoke("kb:getConfig") as Promise<{
-      baseUrl: string; hasToken: boolean; tokenPreview: string; applicationId: string;
-    }>,
-  });
-  const DEFAULT_BASE_URL = "https://kb.iyunquna.com";
-  const [token, setToken] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [appId, setAppId] = useState("");
-  const [adv, setAdv] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null);
-
-  // 一键：补默认地址 + 存令牌 → 探针测连通
-  const connect = async () => {
-    setBusy(true);
-    const patch: Record<string, string> = {};
-    if (token.trim()) patch.token = token.trim();
-    if (!cfg?.baseUrl) patch.baseUrl = baseUrl.trim() || DEFAULT_BASE_URL;
-    else if (baseUrl.trim()) patch.baseUrl = baseUrl.trim();
-    if (adv && (appId.trim() || cfg?.applicationId)) patch.applicationId = appId.trim();
-    if (Object.keys(patch).length) {
-      const s = await window.api.invoke("kb:setConfig", patch) as { success: boolean; error?: string };
-      if (!s?.success) { setTest({ ok: false, text: s?.error || "保存失败" }); setBusy(false); return; }
-      invalidateDomain(qc, "kb");
-      setToken("");
-    }
-    const r = await window.api.invoke("kb:testConnection") as {
-      success: boolean; error?: string; data?: { verdict: string; hint: string };
-    };
-    setTest(r?.success ? { ok: r.data?.verdict === "connected", text: r.data?.hint || "已测试" } : { ok: false, text: r?.error || "测试失败" });
-    setBusy(false);
-  };
-
-  const status = test
-    ? (test.ok ? <Tag color="green">已连通</Tag> : <Tag color="orange">未连通</Tag>)
-    : (cfg?.hasToken ? <Tag color="green">已配置</Tag> : <Tag>未配置</Tag>);
-
-  return (
-    <SettingCard icon="" title="KB 中转接口" status={status}>
-      <div className="text-[11px] text-gray-400 mb-2">
-        填入 KB 测试令牌即可让 Prospector 访问公司内网接口。令牌在 KB「个人中心 → 申请测试令牌」获取，24 小时后需重新申请。
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="w-[72px] text-right text-[11px] text-gray-500 shrink-0">KB 令牌</span>
-        <Input.Password size="small" className="flex-1"
-          placeholder={cfg?.hasToken ? `已配置 ${cfg.tokenPreview}，留空则不修改` : "粘贴 kbtt_ 开头的令牌"}
-          value={token} onChange={e => setToken(e.target.value)} onPressEnter={connect} />
-        {cfg?.hasToken && (
-          <Button size="small" danger type="text" onClick={async () => {
-            await window.api.invoke("kb:setConfig", { token: "" });
-            invalidateDomain(qc, "kb"); setTest(null); message.success("令牌已清除");
-          }}>清除</Button>
-        )}
-      </div>
-      <div className="flex items-center justify-between mt-2">
-        <button className="text-[11px] text-gray-400 hover:text-teal-600" onClick={() => setAdv(v => !v)}>
-          {adv ? "收起高级设置" : "高级设置"}
-        </button>
-        <Button size="small" type="primary" loading={busy} onClick={connect}>保存并测试连接</Button>
-      </div>
-
-      {adv && (
-        <div className="mt-2 space-y-2 pt-2 border-t border-gray-100">
-          <div className="flex items-center gap-2">
-            <span className="w-[72px] text-right text-[11px] text-gray-500 shrink-0">KB 地址</span>
-            <Input size="small" placeholder={DEFAULT_BASE_URL}
-              value={baseUrl} onChange={e => setBaseUrl(e.target.value)} />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-[72px] text-right text-[11px] text-gray-500 shrink-0">App ID</span>
-            <Input size="small" placeholder="生产环境用，可选"
-              value={appId} onChange={e => setAppId(e.target.value)} />
-          </div>
-        </div>
-      )}
-
-      {test && (
-        <div className={`mt-2 text-[11px] leading-snug px-2 py-1.5 rounded border ${test.ok ? "bg-green-50 border-green-200 text-green-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
-          {test.text}
-        </div>
-      )}
-    </SettingCard>
-  );
-}
-
 // ── 运价台账：用户授权后实时查询 ──
 function RatesSourceCard() {
   const qc = useQueryClient();
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  const [partnerKey, setPartnerKey] = useState("");
+  const [partnerBusy, setPartnerBusy] = useState(false);
   const { data: config } = useQuery({
     queryKey: ["rates", "config"],
     queryFn: () => window.api.invoke("system:getConfig") as Promise<{ success: boolean; data?: { rates?: { url?: string } } }>,
@@ -324,6 +237,10 @@ function RatesSourceCard() {
   const { data: st } = useQuery({
     queryKey: ["rates", "navigatorStatus"],
     queryFn: () => window.api.invoke("rates:navigatorStatus") as Promise<NavigatorResult<NavigatorStatus>>,
+  });
+  const { data: partner } = useQuery({
+    queryKey: ["rates", "partnerStatus"],
+    queryFn: () => window.api.invoke("rates:partnerStatus") as Promise<{ configured: boolean; baseUrl: string | null }>,
   });
   const save = async () => {
     setBusy(true);
@@ -334,6 +251,33 @@ function RatesSourceCard() {
       await qc.invalidateQueries({ queryKey: ["rates"] });
     } catch { message.error("地址保存失败，请检查应用连接", 2); }
     finally { setBusy(false); }
+  };
+  const ensurePartner = async () => {
+    setPartnerBusy(true);
+    try {
+      const result = await window.api.invoke("rates:partnerEnsure") as { ok: boolean; error?: string };
+      if (!result.ok) { message.error(result.error || "自动获取 Navigator 接口凭证失败"); return; }
+      message.success("已自动获取 Navigator 接口凭证", 2);
+      await qc.invalidateQueries({ queryKey: ["rates"] });
+    } finally { setPartnerBusy(false); }
+  };
+  const savePartnerKey = async () => {
+    if (!partnerKey.trim()) return;
+    setPartnerBusy(true);
+    try {
+      const result = await window.api.invoke("rates:partnerSave", partnerKey.trim()) as { ok: boolean; error?: string };
+      if (!result.ok) { message.error(result.error || "接口凭证无效"); return; }
+      setPartnerKey(''); message.success("Navigator 接口凭证已保存", 2);
+      await qc.invalidateQueries({ queryKey: ["rates"] });
+    } finally { setPartnerBusy(false); }
+  };
+  const clearPartnerKey = async () => {
+    setPartnerBusy(true);
+    try {
+      await window.api.invoke("rates:partnerClear");
+      message.success("已移除 Navigator 接口凭证", 2);
+      await qc.invalidateQueries({ queryKey: ["rates"] });
+    } finally { setPartnerBusy(false); }
   };
 
   return (
@@ -352,53 +296,18 @@ function RatesSourceCard() {
         {st?.ok ? `当前服务：${st.data?.baseUrl || "—"}` : st?.error}
         {st?.data?.user ? ` · ${st.data.user.display_name || st.data.user.name}` : ""}
       </div>
-    </SettingCard>
-  );
-}
-
-// ── 联网检索源：公司背调与航线行情调研共用的两把密钥（通道 ai:getKeys / ai:setKey）──
-function SearchKeyCard() {
-  const qc = useQueryClient();
-  const [exa, setExa] = useState("");
-  const [tavily, setTavily] = useState("");
-  const [busy, setBusy] = useState(false);
-  const { data: keys } = useQuery({
-    queryKey: ["ai", "keys"],
-    queryFn: () => window.api.invoke("ai:getKeys") as Promise<{ success: boolean; data?: Record<string, boolean> }>,
-  });
-  const st = keys?.success ? keys.data : undefined;
-  const on = (n: string) => !!st?.[n];
-
-  const save = async (name: string, value: string, clear = false) => {
-    setBusy(true);
-    const r = await window.api.invoke("ai:setKey", { name, value: clear ? "" : value.trim() }) as { success: boolean; error?: string };
-    setBusy(false);
-    if (!r?.success) { message.error(r?.error || "写入失败"); return; }
-    message.success(clear ? "密钥已清除" : "已写入 .env，本次运行立即生效");
-    invalidateDomain(qc, "ai");
-    if (name === "EXA_API_KEY") setExa(""); else setTavily("");
-  };
-
-  const row = (label: string, name: string, ph: string, val: string, set: (v: string) => void) => (
-    <div className="flex items-center gap-2 mt-2">
-      <span className="w-[72px] text-right text-[11px] text-gray-500 shrink-0">{label}</span>
-      <Input.Password size="small" className="flex-1"
-        placeholder={on(name) ? "已配置，留空则不修改" : ph}
-        value={val} onChange={e => set(e.target.value)}
-        onPressEnter={() => { if (val.trim()) void save(name, val); }} />
-      <Button size="small" type="primary" loading={busy} disabled={!val.trim()} onClick={() => void save(name, val)}>保存</Button>
-      {on(name) && <Button size="small" danger type="text" onClick={() => void save(name, "", true)}>清除</Button>}
-    </div>
-  );
-
-  return (
-    <SettingCard icon="" title="联网检索源">
-      <div className="text-[11px] text-gray-400 mb-1">
-        「公司背调」和「航线行情调研」靠它查公开网页：两把密钥填一把就够（Exa 优先，无结果自动回落 Tavily）。
-        密钥存项目根目录 .env，界面不回显，保存后无需重启。
+      <div className="mt-3 border-t border-gray-100 pt-3">
+        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+          <span>接口凭证</span>
+          <Tag color={partner?.configured ? "green" : "orange"}>{partner?.configured ? "已连接" : "未获取"}</Tag>
+          <Button size="small" type="text" loading={partnerBusy} onClick={() => void ensurePartner()}>自动获取</Button>
+          {partner?.configured && <Button size="small" type="text" danger onClick={() => void clearPartnerKey()}>移除</Button>}
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <Input.Password size="small" aria-label="Navigator 接口凭证" placeholder="获取失败时手动填写 nav_sec_..." value={partnerKey} onChange={event => setPartnerKey(event.target.value)} onPressEnter={() => void savePartnerKey()} />
+          <Button size="small" loading={partnerBusy} disabled={!partnerKey.trim()} onClick={() => void savePartnerKey()}>保存凭证</Button>
+        </div>
       </div>
-      {row("Exa 密钥", "EXA_API_KEY", "粘贴 Exa 控制台的 API Key", exa, setExa)}
-      {row("Tavily 密钥", "TAVILY_API_KEY", "粘贴 tvly- 开头的 API Key", tavily, setTavily)}
     </SettingCard>
   );
 }
@@ -809,12 +718,11 @@ function AgentAuditCard() {
           size="small"
           loading={isLoading}
           pagination={{ pageSize: 8, hideOnSinglePage: true }}
-          locale={{ emptyText: "暂无记录 — 在「新对话」里让助手查价/查联系人后会出现在这里" }}
+          locale={{ emptyText: "暂无记录 — 聊天查询已停用" }}
         />
       )}
       {open && (
         <div className="pt-2 flex items-center gap-2 flex-wrap">
-          <Button size="small" icon={<SyncOutlined spin={isFetching} />} onClick={() => void refetch()}>刷新</Button>
           <Button size="small" loading={diag.running} onClick={() => { void exportDiag(); }}>导出诊断包</Button>
           {diag.name && (
             <span className="text-[11px] text-gray-400">
@@ -825,219 +733,6 @@ function AgentAuditCard() {
           {diag.error && <span className="text-[11px] text-red-400">{diag.error}</span>}
         </div>
       )}
-    </SettingCard>
-  );
-}
-
-// ── 模型与端点：多套 profile + 一键热切换 + 真连通性测试 ──────────────
-// 密钥只写 .env（后端 provider.service 负责），界面永不回显密钥值。
-// 激活即写生效参数并同步 process.env —— 切换后不用重启应用。
-interface ProfileDto {
-  id: string; name: string; baseUrl: string; model: string; wireApi: "chat_completions" | "responses"; keyEnv: string;
-  hasKey: boolean; active: boolean;
-}
-interface EndpointStatus {
-  profiles: ProfileDto[];
-  activeId: string | null;
-  endpoint: { hasBaseUrl: boolean; hasKey: boolean; baseUrl: string; model: string; wireApi: "chat_completions" | "responses"; source: string; keyEnv: string };
-  configured: boolean;
-}
-type TestState = { running?: boolean; ok?: boolean; text?: string };
-
-const ENDPOINT_PRESETS = [
-  { label: "Gemini Flash（推荐）", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.7-flash", wireApi: "chat_completions" as const },
-  { label: "OpenAI GPT-5.6 Luna", baseUrl: "https://api.openai.com/v1", model: "gpt-5.6-luna", wireApi: "responses" as const },
-  { label: "Agnes（云端 OpenAI 兼容）", baseUrl: "https://apihub.agnes-ai.com/v1", model: "agnes-2.5-pro-beta", wireApi: "chat_completions" as const },
-  { label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-v4-flash", wireApi: "chat_completions" as const },
-  { label: "本地 Ollama", baseUrl: "http://localhost:11434/v1", model: "qwen3:8b", wireApi: "chat_completions" as const },
-  { label: "公司内部中转", baseUrl: "https://sub2api.iyunquna.com/v1", model: "gpt-5.6-luna", wireApi: "responses" as const },
-];
-
-function ProviderCard() {
-  const qc = useQueryClient();
-  const [testStates, setTestStates] = useState<Record<string, TestState>>({});
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<ProfileDto | null>(null);
-  const [form] = Form.useForm();
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["ai", "endpoint"],
-    queryFn: () => window.api.invoke("ai:endpointStatus") as Promise<{ success: boolean; data?: EndpointStatus }>,
-  });
-  const st = data?.success ? data.data : null;
-  const profiles = st?.profiles ?? [];
-
-  // 只读展示：主进程自动检测到的出网代理状态（探活失败即直连，不阻塞任何功能）
-  const { data: proxyData } = useQuery({
-    queryKey: ["ai", "proxy"],
-    queryFn: () => window.api.invoke("ai:proxyInfo") as Promise<{
-      success: boolean; data?: { active: boolean; proxy: string; candidate: string };
-    }>,
-  });
-  const proxy = proxyData?.success ? proxyData.data : null;
-
-  const refresh = () => {
-    void invalidateDomain(qc, "ai");
-  };
-
-  const runTest = async (p: ProfileDto) => {
-    setTestStates(s => ({ ...s, [p.id]: { running: true } }));
-    const r = await window.api.invoke("ai:profileTest", p.id) as
-      { success: boolean; data?: { ok: boolean; latencyMs: number; error?: string }; error?: string };
-    if (!r?.success) { setTestStates(s => ({ ...s, [p.id]: { ok: false, text: r?.error || "测试失败" } })); return; }
-    const d = r.data!;
-    setTestStates(s => ({
-      ...s,
-      [p.id]: { ok: d.ok, text: d.ok ? `通 · ${(d.latencyMs / 1000).toFixed(1)}s` : (d.error || "失败") },
-    }));
-  };
-
-  const openForm = (p: ProfileDto | null) => {
-    const preset = ENDPOINT_PRESETS[0]!;
-    setEditing(p);
-    form.setFieldsValue(p
-      ? { name: p.name, baseUrl: p.baseUrl, model: p.model, wireApi: p.wireApi ?? "chat_completions", apiKey: "" }
-      : { name: "", baseUrl: preset.baseUrl, model: preset.model, wireApi: preset.wireApi, apiKey: "" });
-    setFormOpen(true);
-  };
-
-  const submitForm = async () => {
-    const v = await form.validateFields();
-    const { apiKey, ...cfg } = v as { apiKey?: string; name: string; baseUrl: string; model: string; wireApi: "chat_completions" | "responses" };
-    const r = await window.api.invoke("ai:profileUpsert", { ...(editing ? { id: editing.id } : {}), ...cfg }) as
-      { success: boolean; error?: string; data?: { id?: string } };
-    if (!r?.success) { message.error(r?.error || "保存失败"); return; }
-    const pid = editing?.id ?? r.data?.id;
-    if (pid && (apiKey ?? "").trim()) {
-      await window.api.invoke("ai:profileKey", { id: pid, value: apiKey!.trim() });
-    }
-    message.success(editing ? "已保存" : "已添加，填密钥后即可启用");
-    setFormOpen(false);
-    refresh();
-  };
-
-  return (
-    <SettingCard icon="" title="模型与端点">
-      <div className="text-[11px] text-gray-500 mb-2 leading-relaxed">
-        {st?.activeId
-          ? <>当前生效：<b>{profiles.find(p => p.id === st.activeId)?.name ?? st.activeId}</b> · {st.endpoint.baseUrl} · 模型 {st.endpoint.model || "未填"} · {st.endpoint.wireApi === "responses" ? "Responses" : "Chat Completions"}</>
-          : <>尚未激活任何端点。{st?.endpoint.hasBaseUrl && st.endpoint.hasKey
-            ? <>正在使用 .env 手写配置（{st.endpoint.baseUrl}），建议「添加服务商」后启用，便于随时切换。</>
-            : <>对话与背调/开发信/邮件总结都会走这一份配置。</>}</>}
-      </div>
-
-      <Table<ProfileDto>
-        dataSource={profiles}
-        rowKey="id"
-        size="small"
-        loading={isLoading}
-        pagination={false}
-        locale={{ emptyText: "还没有服务商 — 点下面「添加服务商」，或直接用预设模板" }}
-        columns={[
-          {
-            title: "端点", dataIndex: "name", key: "name",
-            render: (v: string, r) => (
-              <div>
-                <span className="text-[12px] font-medium text-gray-800">
-                  {r.active && <span className="text-teal-600 mr-1">●</span>}{v}
-                </span>
-                <div className="text-[11px] text-gray-400 font-mono">{r.baseUrl} · {r.wireApi === "responses" ? "Responses" : "Chat Completions"}</div>
-              </div>
-            ),
-          },
-          { title: "模型", dataIndex: "model", key: "model", width: 130,
-            render: (v: string) => <span className="text-[11px] font-mono">{v || "—"}</span> },
-          { title: "密钥", dataIndex: "hasKey", key: "hasKey", width: 60,
-            render: (v: boolean) => v ? <Tag color="green" className="!my-0">已配</Tag> : <Tag className="!my-0">未配</Tag> },
-          {
-            title: "测试", key: "test", width: 120,
-            render: (_: unknown, r) => {
-              const t = testStates[r.id];
-              return (
-                <Space size={4}>
-                  <Button size="small" loading={t?.running} onClick={() => void runTest(r)}>测试</Button>
-                  {t && !t.running && (
-                    <span className={`text-[11px] ${t.ok ? "text-green-600" : "text-red-500"}`}>{t.text}</span>
-                  )}
-                </Space>
-              );
-            },
-          },
-          {
-            title: "操作", key: "ops", width: 150,
-            render: (_: unknown, r) => (
-              <Space size={2} wrap>
-                <Button size="small" type={r.active ? "default" : "primary"} ghost={!r.active} disabled={r.active}
-                  onClick={async () => {
-                    const res = await window.api.invoke("ai:profileActivate", r.id) as { success: boolean; error?: string };
-                    if (res?.success) { message.success(`已切到「${r.name}」，立即生效`); refresh(); }
-                    else message.error(res?.error || "切换失败");
-                  }}>
-                  {r.active ? "使用中" : "启用"}
-                </Button>
-                <Button size="small" type="text" onClick={() => openForm(r)}>编辑</Button>
-                <Popconfirm title="删除该服务商？其密钥一并清除" onConfirm={async () => {
-                  await window.api.invoke("ai:profileDelete", r.id);
-                  refresh();
-                }}>
-                  <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
-              </Space>
-            ),
-          },
-        ]}
-      />
-
-      <div className="pt-2">
-        <Space wrap size={8}>
-          <Button size="small" icon={<PlusOutlined />} onClick={() => openForm(null)}>添加服务商</Button>
-          <Tooltip title="主进程的 fetch 不读系统代理，海外端点（Gemini / OpenAI）必须经本地代理才通。这里自动读你系统里配的那个，不做端口扫描，探活成功才用。">
-            <span className="text-[11px] text-gray-400">
-              出网代理：{proxy?.active
-                ? <span className="text-teal-600">已自动启用 {proxy.proxy}</span>
-                : proxy?.candidate
-                  ? <span className="text-amber-600">检测到 {proxy.candidate} 但未连通（直连中，开启 VPN 后自动跟上）</span>
-                  : <span>未检测到（直连中）</span>}
-            </span>
-          </Tooltip>
-          <Button size="small" type="text" onClick={() => invalidateDomain(qc, "ai")}>重新探测</Button>
-        </Space>
-      </div>
-
-      <Modal open={formOpen} title={editing ? "编辑服务商" : "添加服务商"} okText="保存"
-        cancelText="取消" maskClosable={false}
-        onOk={submitForm} onCancel={() => setFormOpen(false)} destroyOnHidden>
-        <Form form={form} layout="vertical" size="small" className="pt-1">
-          {!editing && (
-            <Form.Item label="快速模板">
-              <Space wrap size={4}>
-                {ENDPOINT_PRESETS.map(p => (
-                  <Tag key={p.label} className="cursor-pointer" onClick={() => form.setFieldsValue({ baseUrl: p.baseUrl, model: p.model, wireApi: p.wireApi })}>
-                    {p.label}
-                  </Tag>
-                ))}
-              </Space>
-            </Form.Item>
-          )}
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: "给这个端点起个名" }]}>
-            <Input placeholder="如 Agnes 测试档 / 本地 Ollama" />
-          </Form.Item>
-          <Form.Item name="baseUrl" label="Base URL" rules={[{ required: true, pattern: /^https?:\/\//, message: "需以 http(s):// 开头" }]}>
-            <Input placeholder="https://xxx/v1" className="!font-mono" />
-          </Form.Item>
-          <Form.Item name="wireApi" label="接口类型" rules={[{ required: true, message: "请选择接口类型" }]}
-            extra="供应商配置写 wire_api=responses 时选 Responses；原有服务商保持 Chat Completions。">
-            <Select options={[{ value: "chat_completions", label: "Chat Completions" }, { value: "responses", label: "Responses" }]} />
-          </Form.Item>
-          <Form.Item name="model" label="模型名" rules={[{ required: true, message: "模型名必填，否则会报 400" }]}>
-            <Input placeholder="如 agnes-2.5-pro-beta / deepseek-chat" className="!font-mono" />
-          </Form.Item>
-          <Form.Item name="apiKey" label="API 密钥">
-            <Input.Password placeholder={editing ? "留空则不修改" : "粘贴密钥（如 sk-…），启用前需填写"} autoComplete="off" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
     </SettingCard>
   );
 }
@@ -1268,11 +963,8 @@ export function SettingsPage() {
           </SettingCard>
         </SettingsPanel>
         {/* ═══ 高级 ═══ */}
-        <SettingsPanel id="sec-advanced" title="高级" description="API、客户跟进、数据与测试模式">
-          <SettingCard title="API 与服务">
-          <ProviderCard />
-          <SearchKeyCard />
-          <KbDispatchCard />
+        <SettingsPanel id="sec-advanced" title="高级" description="客户跟进、数据与测试模式">
+          <SettingCard title="服务与助手">
           <RatesSourceCard />
           <AgentConversationCard />
           <AgentAuditCard />
@@ -1292,7 +984,7 @@ export function SettingsPage() {
                 onChange={value => { if (value !== null) saveConfigMut.mutate({ crm: { warnDays: value } }); }} />
               <span>天</span>
             </Space>
-            <div className="text-[10px] text-gray-400 mt-2">超过阈值生效；显式提醒仍以提醒到期时间为准。看板、仪表盘和助手使用同一口径。</div>
+            <div className="text-[10px] text-gray-400 mt-2">超过阈值生效；显式提醒仍以提醒到期时间为准。看板与助手使用同一口径。</div>
           </SettingCard>
           <SettingCard icon="" title="默认跟进间隔">
             <div className="text-[11px] text-gray-400 mb-2">
@@ -1315,16 +1007,6 @@ export function SettingsPage() {
                 })}
                 hint="天" />
             ))}
-          </SettingCard>
-          <SettingCard icon="" title="Dashboard 待办">
-            <SettingRow label="提前提醒" value={config?.crm?.todoAdvanceDays ?? 2} type="number"
-              onSave={v => saveConfigMut.mutate({
-                crm: { ...config?.crm, todoAdvanceDays: Number(v) },
-              })}
-              hint="天" />
-            <div className="text-[10px] text-gray-400 mt-1">
-              跟进提醒到期前 N 天开始在仪表盘显示
-            </div>
           </SettingCard>
           <SettingCard icon="" title="自动归档">
             <SettingRow label="无回复归档" value={config?.crm?.autoArchiveDays ?? 30} type="number"
@@ -1418,7 +1100,7 @@ export function SettingsPage() {
           </SettingCard>
         </SettingsPanel>
         <SettingsPanel id="sec-about" title="关于" description="版本与更新">
-          <SettingCard title="Milogin’s Prospector">
+          <SettingCard title="Milogin's Prospector">
             <div className="flex justify-between py-3 text-xs text-gray-500"><span>版本</span><span
               onMouseDown={event => { if (event.shiftKey && event.button === 0) window.dispatchEvent(new Event("open-onboarding")); }}
               onClick={event => { if (event.shiftKey) window.dispatchEvent(new Event("open-onboarding")); }}

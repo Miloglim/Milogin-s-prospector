@@ -74,6 +74,7 @@ export async function matchCenterMailboxMessage(
   if (!current) return okResult({ matched: 0, classification: originalClassification });
   const context = { ...current };
   if (!source.accountEmail) return failResult('邮件发信账号缺失，无法建立中心关联');
+  const ownDomain = source.accountEmail.trim().toLowerCase().split('@')[1] || '';
   try {
     const direction = originalClassification === 'sent' ? 'outbound' : 'inbound';
     const ccOnly = source.myRole === 'cc' && direction === 'inbound';
@@ -82,6 +83,7 @@ export async function matchCenterMailboxMessage(
       for (const address of [...new Set(addresses)]) {
         if (!sameContext(port, context)) return;
         if (address === source.accountEmail.trim().toLowerCase()) continue;
+        if (ownDomain && address.split('@')[1] === ownDomain) continue;
         const rows = await port.findByEmail(context, address);
         if (!sameContext(port, context)) return;
         // Uniqueness is per address and explicit center reference, never per company or row position.
@@ -102,7 +104,6 @@ export async function matchCenterMailboxMessage(
     const bounceText = options.bounceText ?? source.bodyPreview ?? '';
     if (originalClassification === 'bounce') {
       if (options.isSenderBlock?.(bounceText)) return okResult({ matched: 0, classification: originalClassification });
-      const ownDomain = source.accountEmail.trim().toLowerCase().split('@')[1];
       for (const tier of bounceTiers(bounceText)) {
         if (!tier.length) continue;
         // Explicit failed recipients remain authoritative even when absent or ambiguous in the mirror.

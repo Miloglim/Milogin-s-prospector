@@ -2,12 +2,12 @@ import {LEAD_IMPORT_FIELDS, normalizeImportCustomerType, normalizeImportEmail} f
 import { isSkippableImportIssue } from '../../../server/core/leads';
 import { invalidateDomain } from "../lib/cacheDeps";
 import { useState, useRef, useContext, useMemo, useEffect } from "react";
-import { Drawer, Tabs, Upload, Input, Button, Table, Select, message, Tag, Space } from "antd";
+import { Drawer, Tabs, Upload, Input, Button, Table, Select, message, Tag, Space, Modal } from "antd";
 import { DeleteOutlined, InboxOutlined } from "@ant-design/icons";
 import { QueryClientContext } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
 import { ONLINE_LIMITS, importRowIssue, type ImportFileContent, type ImportRow } from "../../shared/online-crm";
-import { LeadIngressConflictDrawer, type LeadIngressConflictNotice } from "../pages/customers/LeadIngressConflictDrawer";
+import { LeadIngressConflictDrawer, type LeadIngressConflictNotice, type LeadIngressConflictPolicy } from "../pages/customers/LeadIngressConflictDrawer";
 
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -113,10 +113,11 @@ type Step = "input" | "preview";
 
 export interface ImportDrawerPort {
   preview(input:ImportFileContent):Promise<{success:boolean;data?:PreviewData;error?:string}>;
-  execute(input:ImportFileContent & {mapping:Record<string,string>;rows?:Array<Record<string,string>>;skippedRows?:number[]}):Promise<ImportExecutionResult>;
-  continueAfterConflict?(conflict:LeadIngressConflictNotice):Promise<ImportExecutionResult>;
+  execute(input:ImportFileContent & {mapping:Record<string,string>;rows?:Array<Record<string,string>>;skippedRows?:number[];onProgress?:(progress:ImportProgress)=>void}):Promise<ImportExecutionResult>;
+  continueAfterConflict?(conflict:LeadIngressConflictNotice, policy?:LeadIngressConflictPolicy):Promise<ImportExecutionResult>;
 }
-export interface ImportExecutionResult { success:boolean;data?:{imported:number;skipped:number;overlaps?:number};error?:string;conflict?:LeadIngressConflictNotice; }
+export interface ImportProgress { processed:number; total:number; phase?:'importing'|'preparing' }
+export interface ImportExecutionResult { success:boolean;data?:{imported:number;skipped:number;overlaps?:number;nextStep?:{kind:'campaign_draft';campaignId:string;name:string;eligible:number};nextStepError?:string};error?:string;conflict?:LeadIngressConflictNotice; }
 export function ImportDrawer({ open, onClose, port, disabled = false }: { open: boolean; onClose: () => void; port?:ImportDrawerPort; disabled?: boolean }) {
   const qc = useContext(QueryClientContext);
   const [step, setStep] = useState<Step>("input");
@@ -124,6 +125,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
   const [pasteText, setPasteText] = useState("");
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [editedRows, setEditedRows] = useState<EditedRows>({});
@@ -143,6 +145,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
     setSelectedRowKeys([]);
     setLoading(false);
     setImporting(false);
+    setImportProgress(null);
     setConflict(null);
     rawDataRef.current = null;
   };
@@ -211,6 +214,22 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
       message.success(`导入 ${r.data.imported} 条，跳过 ${r.data.skipped} 条（重复）${r.data.overlaps ? `，标记 ${r.data.overlaps} 条范围重叠` : ''}`);
       if (!port && qc) void invalidateDomain(qc, "contacts");
       handleClose();
+      if (r.data.nextStep) {
+        const step = r.data.nextStep;
+        Modal.confirm({
+          title: `已为 ${step.eligible} 个联系人准备好开发任务`,
+          content: `任务「${step.name}」已保存为草稿，还没有发送。进入发送中心核对名单、内容和发送节奏后再启动。`,
+          okText: '去发送中心', cancelText: '稍后处理',
+          onOk: () => { window.location.hash = '#/campaigns'; },
+        });
+      } else if (r.data.imported > 0) {
+        Modal.confirm({
+          title: `已导入 ${r.data.imported} 条线索`,
+          content: `${r.data.nextStepError ? `联系人已保存，但开发任务没有自动准备：${r.data.nextStepError}\n\n` : '联系人已经保存。'}下一步可在发送中心创建开发任务，核对名单、内容和发送节奏后再启动。`,
+          okText: '去发送中心', cancelText: '稍后处理',
+          onOk: () => { window.location.hash = '#/campaigns'; },
+        });
+      }
       return;
     }
     if (r.conflict) {
@@ -233,11 +252,12 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
     if (disabled) { message.error('导入需要连接服务器'); return; }
     if (!rawDataRef.current) return;
     setImporting(true);
+    setImportProgress({ processed: 0, total: importableCount });
     try {
       const skippedRowSet=new Set(skippedRows);
       const activeRowsForExecution=rowsForExecution.filter((_,index)=>!skippedRowSet.has(index));
       const legacyInput={...rawDataRef.current,type:'tsv' as const,data:toTsv(preview?.headers??[],activeRowsForExecution),encoding:undefined};
-      const r = await (port ? port.execute({...rawDataRef.current,mapping,rows:rowsForExecution,skippedRows}) : window.api.invoke("contacts:import", {
+      const r = await (port ? port.execute({...rawDataRef.current,mapping,rows:rowsForExecution,skippedRows,onProgress:setImportProgress}) : window.api.invoke("contacts:import", {
         mode: "execute", ...legacyInput, mapping,
       })) as ImportExecutionResult;
       acceptExecution(r);
@@ -245,9 +265,10 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
       message.error("导入失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setImporting(false);
+      setImportProgress(null);
     }
   };
-  const finishConflict = async () => {
+  const finishConflict = async (_receipt?: unknown, policy?: LeadIngressConflictPolicy) => {
     const pending = conflict;
     setConflict(null);
     if (!pending || !port?.continueAfterConflict) {
@@ -257,7 +278,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
     }
     setImporting(true);
     try {
-      acceptExecution(await port.continueAfterConflict(pending));
+      acceptExecution(await port.continueAfterConflict(pending, policy));
     } catch (err) {
       message.error("导入失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -342,7 +363,7 @@ export function ImportDrawer({ open, onClose, port, disabled = false }: { open: 
             loading={importing}
             disabled={!readyToImport || disabled}
             onClick={executeImport}>
-            确认导入 {importableCount} 条
+            {importProgress ? importProgress.phase === 'preparing' ? '正在准备开发任务' : `导入中 ${importProgress.processed}/${importProgress.total}` : `确认导入 ${importableCount} 条`}
           </Button>
         </Space>
       </div> : undefined}

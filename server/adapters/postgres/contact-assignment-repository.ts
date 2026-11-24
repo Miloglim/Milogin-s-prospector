@@ -14,8 +14,11 @@ import {FOLLOWUP_TIME_LIMITS} from '../../core/leads';
 import type {LeadActor} from './lead-repository';
 import {CONTACT_MAIL_LIMITS} from '../../core/contact-mail';
 import {contactMailEventsIn} from './contact-mail-repository';
+import { customerHasAiDealPendingIn, recordCustomerStatusEventIn } from './customer-status-repository';
+import { customerStatusChange } from '../../core/customer-status';
 import {migrateContactAssignmentGroups} from './contact-assignment-group-schema';
 import { evaluateLeadIngressIn } from './lead-match-repository';
+import { ensureSalesCaseIn } from './sales-case-repository';
 const MILLISECONDS_PER_SECOND=1000;
 const CONTACT_ASSIGNMENT_EXPIRY_POLL_SECONDS=30;
 const CONTACT_ASSIGNMENT_EXPIRY_LOCK=570058;
@@ -24,8 +27,14 @@ export const CONTACT_OWNER_SQL="COALESCE((SELECT own.owner_user_id FROM crm_cont
 const JOINS=`FROM contacts ct JOIN crm_customer_contacts cc ON cc.contact_id=ct.id JOIN crm_customers c ON c.customer_id=cc.customer_id JOIN companies co ON co.id=c.company_id`;
 const LAST_FOLLOWUP_AT=lastEffectiveFollowupSql('occurred_at');
 const LAST_FOLLOWUP_NOTE=lastEffectiveFollowupSql('note');
-const PROJECTION=`ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '代理' THEN 'agent' WHEN '直客' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT COALESCE(array_agg(DISTINCT sid),'{}'::uuid[]) FROM crm_contact_assignment_requests sar CROSS JOIN LATERAL unnest(sar.supervisor_user_ids) sid WHERE sar.contact_id=ct.id AND sar.customer_id=c.customer_id AND sar.status='accepted') AS supervisor_user_ids,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted','pending_transfer')) AS active_assignment_status,(SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1) AS "relationshipStage",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
-export type ContactRow=CenterContact & {created_by:string;development_restriction:string|null;active_assignment_status:string|null;supervisor_user_ids:string[];shared_grants?:Array<ContactShareGrant & {targetUserId:string}>};
+const PRIMARY_CONTACT_ID_SQL=`(SELECT min(primary_contact.id) FROM crm_customer_contacts primary_link JOIN contacts primary_contact ON primary_contact.id=primary_link.contact_id WHERE primary_link.customer_id=c.customer_id AND primary_contact.crm_deleted_at IS NULL)`;
+const OPEN_TASK_MATCH_SQL=`ft.customer_id=c.customer_id AND ft.status='open' AND ((ft.source_contact_id IS NOT NULL AND ft.source_contact_id=ct.id) OR (ft.source_contact_id IS NULL AND ct.id=${PRIMARY_CONTACT_ID_SQL}))`;
+const OPEN_TASK_FOR_CONTACT_SQL=`EXISTS(SELECT 1 FROM crm_followup_tasks ft WHERE ${OPEN_TASK_MATCH_SQL})`;
+const ATTENTION_DUE_AT_SQL=`(SELECT min(ft.due_at) FROM crm_followup_tasks ft WHERE ${OPEN_TASK_MATCH_SQL})`;
+const ACTIVE_RELATIONSHIP_STAGE_SQL=`ct.id=${PRIMARY_CONTACT_ID_SQL} AND c.relationship_stage IN ('quoting','trial','cooperating')`;
+const BOARD_ATTENTION_SQL=`ct.crm_touch_status='replied' OR ${OPEN_TASK_FOR_CONTACT_SQL} OR (${ACTIVE_RELATIONSHIP_STAGE_SQL})`;
+const PROJECTION=`ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '代理' THEN 'agent' WHEN '直客' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",EXISTS(SELECT 1 FROM crm_ai_proposals ap JOIN crm_sales_cases sc ON sc.case_id=ap.case_id WHERE sc.customer_id=c.customer_id AND ap.proposal_type='deal_won' AND ap.status='applied_pending_confirmation') AS "aiDealPending",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted','pending_transfer')) AS active_assignment_status,COALESCE((SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1),CASE WHEN ct.id=${PRIMARY_CONTACT_ID_SQL} THEN c.relationship_stage END) AS "relationshipStage",CASE WHEN ct.crm_touch_status='replied' THEN 'reply' WHEN ${OPEN_TASK_FOR_CONTACT_SQL} THEN 'task' WHEN ${ACTIVE_RELATIONSHIP_STAGE_SQL} THEN 'stage' END AS "attentionReason",${ATTENTION_DUE_AT_SQL} AS "attentionDueAt",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
+export type ContactRow=CenterContact & {created_by:string;development_restriction:string|null;active_assignment_status:string|null;shared_grants?:Array<ContactShareGrant & {targetUserId:string}>};
 const NOTIFICATION_VALUE_MAX=240;
 function notificationValue(value:unknown):string|null {
  if(value===undefined||value===null||value==='')return null;
@@ -50,7 +59,7 @@ export function canDeleteContact(a:LeadActor,row:ContactRow):boolean{
  if(row.active_assignment_status==='pending_transfer')return ownManager(a,row);
  return ownManager(a,row)||row.origin==='personal'&&row.ownerUserId===a.userId&&a.capabilities.includes('leads.develop');
 }
-function mapped(a:LeadActor,row:ContactRow):CenterContact {const {created_by:_,development_restriction:__,active_assignment_status:___,supervisor_user_ids:_____,shared_grants:______,...ct}=row,permissions=contactPermissionsFor(a,row),assignmentStatus=row.active_assignment_status==='pending_transfer'?'accepted':row.active_assignment_status;return {...ct,assignmentStatus:assignmentStatus as CenterContact['assignmentStatus'],relationshipStage:ct.relationshipStage??(['contacted','replied','bounced','autoreply'].includes(ct.touchStatus)?'reaching':'cold'),lastFollowupAt:ct.lastFollowupAt?new Date(ct.lastFollowupAt).toISOString():null,lastFollowupNote:ct.lastFollowupNote??null,createdAt:new Date(ct.createdAt).toISOString(),updatedAt:new Date(ct.updatedAt).toISOString(),canDelete:canDeleteContact(a,row),permissions,isShared:!!row.shared_grants?.some(g=>g.targetUserId===a.userId)&&row.ownerUserId!==a.userId,canSendMail:permissions.canSendMail,canEdit:edit(a,row),canFollowup:permissions.canFollowup,canAssign:assign(a,row)};}
+function mapped(a:LeadActor,row:ContactRow):CenterContact {const {created_by:_,development_restriction:__,active_assignment_status:___,shared_grants:_____,...ct}=row,permissions=contactPermissionsFor(a,row),assignmentStatus=row.active_assignment_status==='pending_transfer'?'accepted':row.active_assignment_status;return {...ct,assignmentStatus:assignmentStatus as CenterContact['assignmentStatus'],relationshipStage:ct.relationshipStage??(['contacted','replied','bounced','autoreply'].includes(ct.touchStatus)?'reaching':'cold'),attentionDueAt:ct.attentionDueAt?new Date(ct.attentionDueAt).toISOString():null,lastFollowupAt:ct.lastFollowupAt?new Date(ct.lastFollowupAt).toISOString():null,lastFollowupNote:ct.lastFollowupNote??null,createdAt:new Date(ct.createdAt).toISOString(),updatedAt:new Date(ct.updatedAt).toISOString(),canDelete:canDeleteContact(a,row),permissions,isShared:!!row.shared_grants?.some(g=>g.targetUserId===a.userId)&&row.ownerUserId!==a.userId,canSendMail:permissions.canSendMail,canEdit:edit(a,row),canFollowup:permissions.canFollowup,canAssign:assign(a,row)};}
 async function contact(c:PoolClient,input:CenterContactRef,lock=false,includeDeleted=false):Promise<ContactRow|undefined>{return (await c.query(`SELECT ${PROJECTION} ${JOINS} WHERE ct.id=$1 AND c.customer_id=$2 AND co.crm_deleted_at IS NULL ${includeDeleted?'':'AND ct.crm_deleted_at IS NULL'} ${lock?'FOR UPDATE OF ct,c':''}`,[input.contactId,input.customerId])).rows[0];}
 export async function contactDetailIn(c:PoolClient,a:LeadActor,input:CenterContactRef):Promise<Result<CenterContactDetail>>{
  const ct=await contact(c,input);if(!ct||!read(a,ct))return failure('NOT_FOUND','联系人不存在');
@@ -75,7 +84,7 @@ export async function contactMonitorDetailIn(c:PoolClient,a:LeadActor,input:Cent
  const safe=mapped(a,ct);
  return success({
   auditId:String(audit.id),accessedAt:new Date(audit.at).toISOString(),relationship:'direct_leader',
-  contact:{contactId:safe.contactId,customerId:safe.customerId,companyId:safe.companyId,companyName:safe.companyName,email:safe.email,firstName:safe.firstName,lastName:safe.lastName,title:safe.title,phone:safe.phone,whatsapp:safe.whatsapp,country:safe.country,clientType:safe.clientType,language:safe.language,stage:safe.stage,status:safe.status,tags:safe.tags,touchStatus:safe.touchStatus,source:safe.source,sourceDetail:safe.sourceDetail,createdAt:safe.createdAt,updatedAt:safe.updatedAt,ownerUserId:safe.ownerUserId,ownerName:safe.ownerName,origin:safe.origin},
+  contact:{contactId:safe.contactId,customerId:safe.customerId,companyId:safe.companyId,companyName:safe.companyName,email:safe.email,firstName:safe.firstName,lastName:safe.lastName,title:safe.title,phone:safe.phone,whatsapp:safe.whatsapp,country:safe.country,clientType:safe.clientType,language:safe.language,stage:safe.stage,status:safe.status,tags:safe.tags,touchStatus:safe.touchStatus,source:safe.source,sourceDetail:safe.sourceDetail,createdAt:safe.createdAt,updatedAt:safe.updatedAt,ownerUserId:safe.ownerUserId,ownerName:safe.ownerName,origin:safe.origin,relationshipStage:safe.relationshipStage,aiDealPending:!!safe.aiDealPending},
   company:{contactId:ct.contactId,customerId:ct.customerId,companyId:ct.companyId,name:ct.companyName,domain:co.domain,country:co.country},
   activities:activities.map(x=>({...x,createdAt:new Date(x.createdAt).toISOString(),occurredAt:new Date(x.occurredAt).toISOString(),recordedAt:new Date(x.recordedAt).toISOString()})),
   mailEvents:await contactMailEventsIn(c,input),mailEventLimit:CONTACT_MAIL_LIMITS.history,
@@ -83,22 +92,23 @@ export async function contactMonitorDetailIn(c:PoolClient,a:LeadActor,input:Cent
 }
 export async function listContactsIn(c:PoolClient,a:LeadActor,q:CenterContactQuery,companyId?:number):Promise<Result<CenterContactPage>>{
  const manager=contactManager(a),global=all(a),develop=a.capabilities.includes('leads.develop');if(!manager&&!global&&!develop)return failure('FORBIDDEN','无联系人查询权限');
+ const attentionOnly=q.attentionOnly??q.followupOnly??false;
  const filter=`WHERE ct.crm_deleted_at IS NULL AND co.crm_deleted_at IS NULL ${companyId!==undefined?`AND co.id=${companyId}`:""} AND ($1::boolean OR ($2::boolean AND c.origin='operations') OR ($3::boolean AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql('$4::uuid',CONTACT_OWNER_SQL)})))
  AND (ct.email ILIKE $5 ESCAPE '!' OR ct.first_name ILIKE $5 ESCAPE '!' OR ct.last_name ILIKE $5 ESCAPE '!' OR ct.title ILIKE $5 ESCAPE '!' OR co.name ILIKE $5 ESCAPE '!' OR COALESCE(ct.extra->>'note','') ILIKE $5 ESCAPE '!')
  AND ($6::text IS NULL OR ct.stage=$6) AND ($7::text IS NULL OR ct.status=$7) AND ($8::text IS NULL OR ct.tags ? $8) AND ($9::text IS NULL OR COALESCE(CASE co.customer_type WHEN '代理' THEN 'agent' WHEN '直客' THEN 'direct' END,ct.client_type)=$9) AND ($10::text IS NULL OR COALESCE(co.country,ct.country)=$10)
  AND ($11::text='all' OR ($11='personal' AND c.origin='personal' AND ${CONTACT_OWNER_SQL}=$4::uuid) OR ($11='assigned' AND c.origin='operations' AND (${CONTACT_OWNER_SQL}=$4::uuid OR ${sharedAccessSql('$4::uuid',CONTACT_OWNER_SQL)})))
  AND ($12::text IS NULL OR ($12='accepted' AND EXISTS(SELECT 1 FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status='accepted')) OR ($12='unassigned' AND ${CONTACT_OWNER_SQL} IS NULL AND NOT EXISTS(SELECT 1 FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status='pending')))
- AND (NOT $13::boolean OR ct.crm_touch_status IN ('contacted','replied','bounced','autoreply'))
+ AND (NOT $13::boolean OR (${BOARD_ATTENTION_SQL}))
  AND ($14::text IS NULL OR COALESCE((SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1),CASE WHEN ct.crm_touch_status IN ('contacted','replied','bounced','autoreply') THEN 'reaching' ELSE 'cold' END)=$14)
  AND ($15::text IS NULL OR ct.crm_touch_status=$15) AND ($16::text IS NULL OR ct.language=$16)
  AND ($17::text IS NULL OR (CASE $17::text ${Object.entries(CONTACT_GROUP_SQL).map(([dimension,value])=>`WHEN '${dimension}' THEN ${value.key}`).join(' ')} END)=$18::text)`;
- const p=[global,manager,develop,a.userId,`%${q.search.replace(/[!%_]/g,'!$&')}%`,q.stage??null,q.status??null,q.tags??null,q.clientType??null,q.country??null,q.scope??'all',q.assignment??null,q.followupOnly??false,q.crmStage??null,q.touchStatus??null,q.language??null,q.groupDimension??null,q.groupKey??null];
+ const p=[global,manager,develop,a.userId,`%${q.search.replace(/[!%_]/g,'!$&')}%`,q.stage??null,q.status??null,q.tags??null,q.clientType??null,q.country??null,q.scope??'all',q.assignment??null,attentionOnly,q.crmStage??null,q.touchStatus??null,q.language??null,q.groupDimension??null,q.groupKey??null];
  // Materialize only authorized row identities before expensive display projections. Pair the
  // contact with its customer so pagination cannot grant access to a sibling association.
- const order=q.followupOnly?'page.last_followup_at DESC NULLS LAST,':'';
+ const order=attentionOnly?'page.last_followup_at DESC NULLS LAST,':'';
  const count=await c.query(`SELECT count(*)::int AS n ${JOINS} ${filter}`,p),rows=await c.query(`WITH contact_page AS MATERIALIZED (
- SELECT ct.id AS contact_id,c.customer_id,ct.updated_at ${q.followupOnly?`,${LAST_FOLLOWUP_AT} AS last_followup_at`:''}
- ${JOINS} ${filter} ORDER BY ${q.followupOnly?'last_followup_at DESC NULLS LAST,':''}ct.updated_at DESC,ct.id DESC LIMIT $19 OFFSET $20
+ SELECT ct.id AS contact_id,c.customer_id,ct.updated_at ${attentionOnly?`,${LAST_FOLLOWUP_AT} AS last_followup_at`:''}
+ ${JOINS} ${filter} ORDER BY ${attentionOnly?'last_followup_at DESC NULLS LAST,':''}ct.updated_at DESC,ct.id DESC LIMIT $19 OFFSET $20
  ) SELECT ${PROJECTION} FROM contact_page page JOIN contacts ct ON ct.id=page.contact_id JOIN crm_customer_contacts cc ON cc.contact_id=page.contact_id AND cc.customer_id=page.customer_id JOIN crm_customers c ON c.customer_id=page.customer_id JOIN companies co ON co.id=c.company_id
  ORDER BY ${order}page.updated_at DESC,page.contact_id DESC`,[...p,q.limit,q.offset]);return success({items:rows.rows.map(row=>mapped(a,row)),total:count.rows[0].n});
 }
@@ -117,7 +127,7 @@ export async function listContactGroupsIn(c:PoolClient,a:LeadActor,q:CenterConta
    count(DISTINCT co.id)::int AS company_count,
    count(DISTINCT COALESCE(NULLIF(co.country,''),NULLIF(ct.country,'')))::int AS country_count,
    count(*) FILTER(WHERE ct.crm_touch_status IN ('contacted','replied','bounced','autoreply'))::int AS touched_count,
-   bool_or(concat_ws(' ',ct.email,ct.first_name,ct.last_name,co.name,ct.title,ct.phone) ILIKE $6 ESCAPE '!') AS member_match,
+   (bool_or(concat_ws(' ',ct.email,ct.first_name,ct.last_name,co.name,ct.title,ct.phone) ILIKE $6 ESCAPE '!') FILTER (WHERE $6::text <> '')) AS member_match,
    max(ct.created_at) AS latest_imported_at,
    max(ct.updated_at) AS latest_updated_at,
    (array_agg(DISTINCT co.name ORDER BY co.name) FILTER(WHERE co.name IS NOT NULL))[1:3] AS companies,
@@ -161,7 +171,7 @@ export async function contactAssignmentsIn(c:PoolClient,a:LeadActor,q:ContactAss
   const rows=await c.query(`${REQUEST_SELECT} WHERE COALESCE(gm.group_id,r.request_id)=$2 AND ${visible('$3')} ORDER BY r.created_at,r.request_id`,[a.userId,q.groupId,q.view==='outgoing'&&(contactManager(a)||assignmentOversight(a))]);
   return success({items:rows.rows.map(r=>mapRequest(a,r)),total:rows.rows.length});
  }
- const filter=`WHERE ct.crm_deleted_at IS NULL AND ${visible('$4')} AND r.status=$2 AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!')`,p=[a.userId,q.status,`%${q.search.replace(/[!%_]/g,'!$&')}%`,q.view==='outgoing'&&(contactManager(a)||assignmentOversight(a))];
+ const filter=`WHERE ct.crm_deleted_at IS NULL AND ${visible('$4')} AND ($2::text='all' OR r.status=$2) AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!')`,p=[a.userId,q.status,`%${q.search.replace(/[!%_]/g,'!$&')}%`,q.view==='outgoing'&&(contactManager(a)||assignmentOversight(a))];
  const rows=await c.query(`${REQUEST_SELECT} ${filter} ORDER BY r.created_at DESC,r.request_id DESC LIMIT $5 OFFSET $6`,[...p,q.limit,q.offset]),count=await c.query(`SELECT count(*)::int AS n FROM crm_contact_assignment_requests r JOIN contacts ct ON ct.id=r.contact_id JOIN crm_customers c ON c.customer_id=r.customer_id JOIN companies co ON co.id=c.company_id ${filter}`,p);return success({items:rows.rows.map(r=>mapRequest(a,r)),total:count.rows[0].n});
 }
 export async function contactAssignmentGroupsIn(c:PoolClient,a:LeadActor,q:ContactAssignmentGroupQuery):Promise<Result<ContactAssignmentGroupPage>>{
@@ -182,7 +192,7 @@ export async function contactAssignmentGroupsIn(c:PoolClient,a:LeadActor,q:Conta
   JOIN public.identity_users actor ON actor.user_id=r.actor_id JOIN public.identity_users target ON target.user_id=r.target_user_id
   WHERE ct.crm_deleted_at IS NULL AND ${visible}
   GROUP BY COALESCE(gm.group_id,r.request_id),r.target_user_id,r.actor_id
-  HAVING bool_or(r.status=$2 AND (co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!'))
+  HAVING ($2::text='all' OR bool_or(r.status=$2)) AND bool_or(co.name ILIKE $3 ESCAPE '!' OR ct.first_name ILIKE $3 ESCAPE '!' OR ct.last_name ILIKE $3 ESCAPE '!')
  ) SELECT *,count(*) OVER()::int AS group_total FROM grouped ORDER BY created_at DESC,group_id DESC LIMIT $5 OFFSET $6`,[a.userId,q.status,search,manager,q.limit,q.offset]);
  const items=rows.rows.map(row=>{const pending=Number(row.pending);return {groupId:String(row.group_id),total:Number(row.total),pending,accepted:Number(row.accepted),rejected:Number(row.rejected),cancelled:Number(row.cancelled),expired:Number(row.expired),pendingTransfer:Number(row.pending_transfer),actorName:String(row.actor_name),targetName:String(row.target_name),createdAt:new Date(row.created_at).toISOString(),contactNames:row.contact_names as string[],companyNames:row.company_names as string[],canAcceptAll:pending>0&&q.view==='incoming'&&a.capabilities.includes('leads.develop'),canRejectAll:pending>0&&q.view==='incoming'&&a.capabilities.includes('leads.develop'),canCancelAll:pending>0&&contactManager(a)};});
  return success({items,total:Number(rows.rows[0]?.group_total??0)});
@@ -229,6 +239,12 @@ export async function decideContactAssignmentIn(c:PoolClient,a:LeadActor,action:
    await c.query('INSERT INTO crm_contact_ownership(contact_id,customer_id,owner_user_id,assignment_request_id,source_org_unit_id,created_by) VALUES($1,$2,$3,$4,$5,$6)',[row.contact_id,row.customer_id,row.target_user_id,row.request_id,row.source_org_unit_id,a.userId]);
    await c.query('UPDATE crm_contact_assignment_requests SET status=\'accepted\',version=version+1,decided_at=now() WHERE request_id=$1',[row.request_id]);
    await c.query('UPDATE contacts SET crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1',[row.contact_id]);
+   if((await c.query("SELECT to_regclass('crm_sales_cases') AS table_name")).rows[0]?.table_name){
+    const targetCase=(await c.query("SELECT case_id FROM crm_sales_cases WHERE contact_id=$1 AND owner_user_id=$2 AND state NOT IN ('won','lost') FOR UPDATE",[row.contact_id,row.target_user_id])).rows[0];
+    if(!targetCase)await c.query("UPDATE crm_sales_cases SET owner_user_id=$2,updated_at=now(),version=version+1 WHERE contact_id=$1 AND state NOT IN ('won','lost')",[row.contact_id,row.target_user_id]);
+    const after=(await c.query("SELECT case_id FROM crm_sales_cases WHERE contact_id=$1 AND owner_user_id=$2 AND state NOT IN ('won','lost')",[row.contact_id,row.target_user_id])).rows[0];
+    if(!after)await ensureSalesCaseIn(c,{customerId:row.customer_id,contactId:Number(row.contact_id),ownerUserId:row.target_user_id,source:'assignment_accept',summary:ct.companyName});
+   }
    event=row.status==='pending_transfer'?CONTACT_ASSIGNMENT_EVENTS.transferred:CONTACT_ASSIGNMENT_EVENTS.accepted;
   }else if(action==='reject'){
    if(row.target_user_id!==a.userId||!a.capabilities.includes('leads.develop')||!['pending','pending_transfer'].includes(row.status))return failure('CONFLICT','分配请求不可拒绝');
@@ -393,6 +409,8 @@ export async function contactFollowupIn(c:PoolClient,a:LeadActor,input:CenterCon
   if(!Number.isFinite(occurred.getTime())||occurred.getTime()>recorded.getTime()+FOLLOWUP_TIME_LIMITS.future_skew_seconds*MILLISECONDS_PER_SECOND||method==='note'&&input.contactStatus!==undefined)return failure('INVALID_INPUT','跟进时间或触达状态无效');
   const note=!permissions.canFollowup&&input.stage!==undefined?`关系阶段：${input.stage}`:input.note;
   const changes=notificationValues([['contactStatus',ct.touchStatus,input.contactStatus],['stage',ct.relationshipStage??null,input.stage]]);
+  const aiDealPending=await customerHasAiDealPendingIn(c,ct.customerId);
+  const statusChange=customerStatusChange({relationshipStage:ct.relationshipStage,touchStatuses:[ct.touchStatus],aiDealPending,nextRelationshipStage:input.stage,nextTouchStatus:input.contactStatus,allowRegression:true});
   const activity=(await c.query('INSERT INTO crm_shared_activities(customer_id,interaction_id,actor_id,note,stage,method,occurred_at,recorded_at,created_at,contact_id,contact_status) VALUES($1,NULL,$2,$3,$4,$5,$6,$7,$7,$8,$9) RETURNING id::text',[ct.customerId,a.userId,note,input.stage??null,method,occurred,recorded,ct.contactId,input.contactStatus??null])).rows[0];
   // Only explicit user results synchronize compatible legacy display fields.
   // Unable to contact is not evidence of an invalid mailbox; notes/tags never manufacture touch.
@@ -400,6 +418,7 @@ export async function contactFollowupIn(c:PoolClient,a:LeadActor,input:CenterCon
   // Relationship stage lives in the activity timeline; ordinary tags are independent customer metadata.
   await c.query('UPDATE contacts SET crm_touch_status=COALESCE($2,crm_touch_status),status=COALESCE($3,status),crm_contact_version=crm_contact_version+1,updated_at=now() WHERE id=$1',[ct.contactId,input.contactStatus??null,legacyStatus]);
   await refreshMailProjectionIn(c,input,ct.email);
+  if(statusChange.changed)await recordCustomerStatusEventIn(c,{eventKey:`followup:${ct.contactId}:${input.idempotencyKey}`,customerId:ct.customerId,contactId:ct.contactId,status:statusChange.after,previousStatus:statusChange.before,source:'human',signal:'followup',actorUserId:a.userId,reason:note,payload:{activityId:activity.id,stage:input.stage??null,contactStatus:input.contactStatus??null,method,changes},occurredAt:occurred});
   await contactEvent(c,a,ct,CONTACT_ASSIGNMENT_EVENTS.followup,input.expectedVersion+1,activity.id,undefined,{stage:input.stage??null,contactStatus:input.contactStatus??null,method,changes});
   return contactDetailIn(c,a,input);
  },()=>contactDetailIn(c,a,input));

@@ -9,6 +9,7 @@ import type {
   TeamMonitoringMailSummary,
   TeamMonitoringMemberDetail,
   TeamMonitoringMemberSummary,
+  TeamMonitoringFollowup,
   TeamMonitoringOverview,
   TeamMonitoringPoolSummary,
   TeamMonitoringQuery,
@@ -21,6 +22,7 @@ import type {
 import { teamMonitoringScopeFor } from '../../core/team-monitoring';
 import type { MailAnalysisSource, MailBusinessSignal, MailIntentCode, MailPriority, MailRelevance } from '../../core/mail-analysis';
 import type { MailClassification } from '../../core/contact-mail';
+import { customerGradeFor } from '../../core/sales-performance';
 import { assertCenterDatabasePool } from './config';
 import { migrateTeamMonitoringSchema } from './team-monitoring-schema';
 
@@ -51,6 +53,7 @@ type MemberRow = CountRow & {
   userId: string;
   displayName: string;
   email: string | null;
+  role: TeamMonitoringMemberSummary['role'];
   teamId: string;
   teamName: string;
   organizationKind: TeamMonitoringMemberSummary['organizationKind'];
@@ -139,9 +142,9 @@ function statsCtes(scope: TeamMonitoringScope): string {
     ${visibleUnitsCte(scope)},
     visible_members AS (
       SELECT a.user_id AS "userId",u.display_name AS "displayName",e.email,
-        unit.unit_id AS "teamId",unit.name AS "teamName",unit.kind AS "organizationKind"
+        a.role,unit.unit_id AS "teamId",unit.name AS "teamName",unit.kind AS "organizationKind"
       FROM visible_units unit
-      JOIN crm_org_assignments a ON a.unit_id=unit.unit_id AND a.role='member' AND a.ended_at IS NULL
+      JOIN crm_org_assignments a ON a.unit_id=unit.unit_id AND a.role IN ('leader','member') AND a.ended_at IS NULL
       JOIN public.identity_users u ON u.user_id=a.user_id
       LEFT JOIN LATERAL (
         SELECT email FROM public.identity_login_emails mail
@@ -299,6 +302,7 @@ function member(row: MemberRow): TeamMonitoringMemberSummary {
   const value = counts(row);
   return {
     userId: row.userId, displayName: row.displayName, email: row.email,
+    role: row.role,
     teamId: row.teamId, teamName: row.teamName, organizationKind: row.organizationKind,
     counts: value, rates: rates(value), stages: stages(row.stages),
     lastActivityAt: iso(row.lastActivityAt), latestImportantReplyAt: iso(row.latestImportantReplyAt),
@@ -444,7 +448,7 @@ export class PostgresTeamMonitoringRepository implements TeamMonitoringRepositor
       const filter = `WHERE ($2::uuid IS NULL OR "teamId"=$2) AND ($3::uuid IS NULL OR "userId"=$3)`;
       const memberRows = await client.query(`${ctes}
         SELECT * FROM member_stats ${filter}
-        ORDER BY COALESCE("lastActivityAt","latestImportantReplyAt") DESC NULLS LAST,"displayName","userId" LIMIT $4 OFFSET $5`,
+        ORDER BY ("role"='leader') DESC,COALESCE("lastActivityAt","latestImportantReplyAt") DESC NULLS LAST,"displayName","userId" LIMIT $4 OFFSET $5`,
       [actor.userId, query.teamId ?? null, query.memberUserId ?? null, query.limit, query.offset]);
       const totalMembers = await client.query(`${ctes} SELECT count(*)::int AS total FROM member_stats ${filter}`,
         [actor.userId, query.teamId ?? null, query.memberUserId ?? null]);
@@ -597,6 +601,77 @@ export class PostgresTeamMonitoringRepository implements TeamMonitoringRepositor
         ) analysis ON true
         WHERE owner."userId"=$2
         ORDER BY event.occurred_at DESC,event.event_id DESC LIMIT $3 OFFSET $4`, [actor.userId, userId, limit, offset]);
+      const followups = await client.query(`${ctes},
+        owned AS (
+          SELECT * FROM contact_facts WHERE "ownerUserId"=$2
+        ),
+        customer_scope AS (
+          SELECT "customerId",min("companyName") AS "customerName",min(stage) AS stage,
+            (array_agg("contactId" ORDER BY ("touchStatus"<>'uncontacted') DESC,"updatedAt" DESC))[1] AS "contactId",
+            (array_agg("contactName" ORDER BY ("touchStatus"<>'uncontacted') DESC,"updatedAt" DESC))[1] AS "contactName"
+          FROM owned GROUP BY "customerId"
+        ),
+        reply_counts AS (
+          SELECT event.customer_id AS customer_id,count(DISTINCT event.event_id)::int AS valid_replies
+          FROM crm_contact_mail_events event
+          JOIN crm_contact_mail_analyses analysis ON analysis.event_id=event.event_id AND analysis.is_current
+          JOIN owned ON owned."contactId"=event.contact_id AND owned."customerId"=event.customer_id
+          WHERE analysis.classification='replied' AND analysis.relevance='customer_business'
+          GROUP BY event.customer_id
+        ),
+        opportunity_counts AS (
+          SELECT customer_id,
+            count(*) FILTER(WHERE stage='closed_won')::int AS won_opportunities,
+            count(*) FILTER(WHERE stage NOT IN ('closed_won','closed_lost'))::int AS open_opportunities
+          FROM crm_opportunities GROUP BY customer_id
+        ),
+        last_activity AS (
+          SELECT owned."customerId" AS customer_id,max(activity.occurred_at) AS occurred_at
+          FROM crm_shared_activities activity
+          JOIN owned ON owned."customerId"=activity.customer_id AND (activity.contact_id IS NULL OR activity.contact_id=owned."contactId")
+          WHERE activity.method NOT IN ('legacy','note') GROUP BY owned."customerId"
+        ),
+        last_outbound AS (
+          SELECT event.customer_id,max(event.occurred_at) AS occurred_at
+          FROM crm_contact_mail_events event JOIN owned ON owned."contactId"=event.contact_id AND owned."customerId"=event.customer_id
+          WHERE event.direction='outbound' GROUP BY event.customer_id
+        ),
+        task_counts AS (
+          SELECT task.customer_id,
+            count(*) FILTER(WHERE task.status='open')::int AS open_tasks,
+            count(*) FILTER(WHERE task.status='open' AND task.due_at<clock_timestamp())::int AS overdue_tasks
+          FROM crm_followup_tasks task
+          WHERE COALESCE(task.source_responsible_user_id,(SELECT owner_user_id FROM crm_customers WHERE customer_id=task.customer_id))=$2
+          GROUP BY task.customer_id
+        ),
+        latest_analysis AS (
+          SELECT DISTINCT ON (event.customer_id) event.customer_id,analysis.summary,analysis.next_action,analysis.priority
+          FROM crm_contact_mail_events event
+          JOIN owned ON owned."contactId"=event.contact_id AND owned."customerId"=event.customer_id
+          JOIN crm_contact_mail_analyses analysis ON analysis.event_id=event.event_id AND analysis.is_current
+          ORDER BY event.customer_id,event.occurred_at DESC,event.event_id DESC
+        )
+        SELECT customer."customerId",customer."customerName",customer."contactId",customer."contactName",customer.stage,
+          EXISTS(SELECT 1 FROM crm_ai_proposals ap JOIN crm_sales_cases sc ON sc.case_id=ap.case_id WHERE sc.customer_id=customer."customerId" AND ap.proposal_type='deal_won' AND ap.status='applied_pending_confirmation') AS "aiDealPending",
+          COALESCE(reply.valid_replies,0)::int AS "validReplyCount",
+          COALESCE(opportunity.won_opportunities,0)::int AS "wonOpportunityCount",
+          COALESCE(opportunity.open_opportunities,0)::int AS "openOpportunityCount",
+          override.grade AS "overrideGrade",
+          GREATEST(activity.occurred_at,outbound.occurred_at) AS "lastFollowupAt",
+          analysis.next_action AS "nextAction",analysis.summary AS "recentSummary",analysis.priority,
+          COALESCE(task.open_tasks,0)::int AS "openTasks",COALESCE(task.overdue_tasks,0)::int AS "overdueTasks"
+        FROM customer_scope customer
+        LEFT JOIN reply_counts reply ON reply.customer_id=customer."customerId"
+        LEFT JOIN opportunity_counts opportunity ON opportunity.customer_id=customer."customerId"
+        LEFT JOIN crm_customer_grade_overrides override ON override.customer_id=customer."customerId"
+        LEFT JOIN last_activity activity ON activity.customer_id=customer."customerId"
+        LEFT JOIN last_outbound outbound ON outbound.customer_id=customer."customerId"
+        LEFT JOIN task_counts task ON task.customer_id=customer."customerId"
+        LEFT JOIN latest_analysis analysis ON analysis.customer_id=customer."customerId"
+        ORDER BY COALESCE(task.overdue_tasks,0) DESC,
+          CASE analysis.priority WHEN 'urgent' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
+          GREATEST(activity.occurred_at,outbound.occurred_at) ASC NULLS FIRST,customer."customerId"
+        LIMIT 4`, [actor.userId, userId]);
       return success({
         scope: actor.scope,
         generatedAt: new Date().toISOString(),
@@ -614,6 +689,18 @@ export class PostgresTeamMonitoringRepository implements TeamMonitoringRepositor
           status: String(row.status), note: row.note ? String(row.note) : null, updatedAt: new Date(row.updatedAt).toISOString(),
         })) satisfies TeamMonitoringAttentionSummary[],
         recentMail: (recentMail.rows as MailRow[]).map(mail),
+        followups: followups.rows.map(row => {
+          const grade = customerGradeFor({ validReplyCount: number(row.validReplyCount), wonOpportunityCount: number(row.wonOpportunityCount), repeatPurchaseCount: 0, openOpportunityCount: number(row.openOpportunityCount) }).grade;
+          const lastFollowup = row.lastFollowupAt ? new Date(row.lastFollowupAt) : null;
+          const urgency = number(row.overdueTasks) > 0 ? 'urgent' : row.priority === 'urgent' || row.priority === 'important' ? row.priority : 'normal';
+          return {
+            customerId: String(row.customerId), customerName: String(row.customerName), contactId: number(row.contactId), contactName: row.contactName ? String(row.contactName) : null,
+            stage: row.stage as TeamMonitoringFollowup['stage'], aiDealPending: Boolean(row.aiDealPending), grade: row.overrideGrade ? String(row.overrideGrade) as TeamMonitoringFollowup['grade'] : grade,
+            urgency: urgency as TeamMonitoringFollowup['urgency'], lastFollowupAt: lastFollowup ? lastFollowup.toISOString() : null,
+            daysSinceFollowup: lastFollowup ? Math.max(0, Math.floor((Date.now() - lastFollowup.getTime()) / 86_400_000)) : null,
+            nextAction: row.nextAction ? String(row.nextAction) : null, recentSummary: row.recentSummary ? String(row.recentSummary) : null,
+          };
+        }),
       });
     });
   }
@@ -626,6 +713,7 @@ export class PostgresTeamMonitoringRepository implements TeamMonitoringRepositor
         COALESCE(NULLIF(concat_ws(' ',contact.first_name,contact.last_name),''),contact.email,'') AS name,
         contact.email,COALESCE(company.country,contact.country) AS country,contact.title,
         customer.relationship_stage AS stage,contact.crm_touch_status AS "touchStatus",
+        EXISTS(SELECT 1 FROM crm_ai_proposals ap JOIN crm_sales_cases sc ON sc.case_id=ap.case_id WHERE sc.customer_id=customer.customer_id AND ap.proposal_type='deal_won' AND ap.status='applied_pending_confirmation') AS "aiDealPending",
         COALESCE(own.owner_user_id,customer.owner_user_id) AS "ownerUserId",
         owner.display_name AS "ownerName",customer.origin,
         contact.created_at AS "createdAt",contact.updated_at AS "updatedAt"
@@ -655,7 +743,7 @@ export class PostgresTeamMonitoringRepository implements TeamMonitoringRepositor
         contactId: number(row.contactId), customerId: String(row.customerId),
         companyId: number(row.companyId), companyName: String(row.companyName), name: String(row.name),
         email: row.email ? String(row.email) : null, country: row.country ? String(row.country) : null,
-        title: row.title ? String(row.title) : null, stage: row.stage, touchStatus: row.touchStatus,
+        title: row.title ? String(row.title) : null, stage: row.stage, touchStatus: row.touchStatus, aiDealPending: Boolean(row.aiDealPending),
         ownerUserId: row.ownerUserId ? String(row.ownerUserId) : null, ownerName: row.ownerName ? String(row.ownerName) : null,
         origin: row.origin, createdAt: new Date(row.createdAt).toISOString(), updatedAt: new Date(row.updatedAt).toISOString(),
         mail: { items: (mailRows.rows as MailRow[]).map(mail), total: number(total.rows[0].total) },

@@ -8,10 +8,16 @@ import { browserAuthorization } from './navigator-browser.adapter';
 import { readConfiguredRatesBase } from './center-endpoint.adapter';
 import { Log } from '../logger';
 import { EVENTS } from '../events';
+import { currentCenterUserId } from '../services/center-identity.service';
 const REQUEST_TIMEOUT_SECONDS = 20;
+const AUTH_REQUEST_TIMEOUT_SECONDS = 8;
 const MILLISECONDS_PER_SECOND = 1000;
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const file = () => path.join(app.getPath('userData'),'navigator-refresh.enc');
+export const navigatorBaseUrl = () => validateNavigatorBase(
+  process.env.RATES_REMOTE_URL || loadConfig().rates?.url || readConfiguredRatesBase() || '',
+  app.isPackaged,
+);
 let authorizationEpoch = 0;
 const identityListeners = new Set<() => void>();
 export const navigatorAuthorizationEpoch = () => authorizationEpoch;
@@ -29,7 +35,7 @@ const client = new NavigatorClient({
       if (!window.isDestroyed()) window.webContents.send(EVENTS.NAVIGATOR_IDENTITY_CHANGED,{epoch:authorizationEpoch});
     }
   },
-  baseUrl: () => validateNavigatorBase(process.env.RATES_REMOTE_URL || loadConfig().rates?.url || readConfiguredRatesBase() || '',app.isPackaged),
+  baseUrl: navigatorBaseUrl,
   async loadRefresh(base) {
     try {
       if (!safeStorage.isEncryptionAvailable() || safeStorage.getSelectedStorageBackend?.() === 'basic_text') return null;
@@ -52,7 +58,8 @@ const client = new NavigatorClient({
   browserLogin: (base) => browserAuthorization(base,(url) => shell.openExternal(url)),
   newQueryId: randomUUID,
   async request(url,init) {
-    const response = await fetch(url,{...init,redirect:'error',signal:AbortSignal.timeout(REQUEST_TIMEOUT_SECONDS*MILLISECONDS_PER_SECOND)});
+    const timeout = new URL(url).pathname.startsWith('/api/prospector/') ? AUTH_REQUEST_TIMEOUT_SECONDS : REQUEST_TIMEOUT_SECONDS;
+    const response = await fetch(url,{...init,redirect:'error',signal:AbortSignal.timeout(timeout*MILLISECONDS_PER_SECOND)});
     if (new URL(url).pathname.startsWith('/images/')) {
       const mime = response.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
       if (response.status !== 200) return {status:response.status,body:null};
@@ -75,11 +82,25 @@ const client = new NavigatorClient({
     return {status:response.status,body:await response.json()};
   },
 });
-export const navigatorStatus = () => client.status();
+export const navigatorStatus = async () => {
+  const status = await client.status();
+  if (status.ok && status.data?.authenticated) {
+    const centerUserId = currentCenterUserId();
+    const navigatorUserId = String(status.data.user?.user_id || '');
+    if (centerUserId && navigatorUserId && centerUserId !== navigatorUserId) {
+      return { ok: false as const, code: 'IDENTITY_MISMATCH', error: '运价库当前授权账号与 Prospector 登录账号不一致，请在运价库退出后重新授权同一账号' };
+    }
+  }
+  return status;
+};
 export const navigatorHasAuthorization = () => client.hasAuthorization();
 export const loginNavigator = () => client.login();
 export const logoutNavigator = () => client.logout();
-export const requireNavigatorAuthorization = () => client.requireAuthorization();
+export const requireNavigatorAuthorization = async () => {
+  const status = await navigatorStatus();
+  if (status.ok && status.data?.authenticated) return status;
+  return { ok: false as const, code: 'AUTH_REQUIRED', error: (status as { error?: string }).error || '请先登录并授权 Navigator' };
+};
 export const queryNavigatorRates = (filters:Record<string,unknown>,queryId?:string,kind:'rates'|'space' = 'rates') => client.query(filters,queryId,kind);
 export const fetchNavigatorImage = (name:string) => client.image(name);
 export const fetchNavigatorOptions = () => client.options();

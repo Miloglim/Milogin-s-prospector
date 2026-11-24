@@ -51,7 +51,10 @@ describe('global remembered session lifecycle',()=>{
     const fixture=setup(),grant=offlineGrant(),clock=Date.now();
     await fixture.store.save({baseUrl:base,userId:kind==='user'?'other':identity.userId,refreshToken:'fixture-refresh',offlineAccess:kind==='signature'?{...grant,payload:grant.payload+' '}:grant,trustedPublicKey:kind==='key'?'untrusted':grant.publicKey,lastSeenAt:kind==='rollback'?clock+61000:kind==='expiry'?clock+OFFLINE_ACCESS_LIMITS.validity_seconds*1000:clock});
     fixture.fetcher.mockImplementation(async()=>response(failure('DATABASE_ERROR','unavailable')));const client=fixture.client();
-    expect((await client.restore()).ok).toBe(false);expect(client.currentIdentity()).toBeNull();expect(fixture.saved()).not.toBeNull();
+    const restored=await client.restore();
+    expect(restored.ok).toBe(false);
+    expect(restored.ok?false:restored.error.message).toContain('输入账号密码重新登录');
+    expect(client.currentIdentity()).toBeNull();expect(fixture.saved()).not.toBeNull();
   });
   it('offline explicit logout removes identity and restart authorization',async()=>{
     const fixture=setup(),grant=offlineGrant();await fixture.store.save({baseUrl:base,userId:identity.userId,refreshToken:'fixture-refresh',offlineAccess:grant,trustedPublicKey:grant.publicKey,lastSeenAt:Date.now()});

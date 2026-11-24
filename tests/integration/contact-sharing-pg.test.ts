@@ -90,4 +90,35 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION==='1')('contact sharing rol
 
   } finally {await client.query('ROLLBACK');expect(await counts()).toEqual(before);client.release();await pool.end();}
  },30000);
+ it('keeps one customer-level task or stage on one deterministic board contact',async()=>{
+  const pool=new Pool(readTestDatabaseConfig()),client=await pool.connect();await client.query('BEGIN');
+  try{
+   const facade={options:pool.options,connect:async()=>({query:(sql:string,args?:unknown[])=>client.query(sql==='BEGIN'?'SAVEPOINT board_attention_test':sql==='COMMIT'?'RELEASE SAVEPOINT board_attention_test':sql==='ROLLBACK'?'ROLLBACK TO SAVEPOINT board_attention_test':sql,args),release:()=>{}})} as unknown as Pool;
+   const repo=new PostgresLeadRepository(facade,{write:()=>{}});unwrap(await repo.migrate());
+   const userId=randomUUID(),token=randomBytes(32).toString('base64url'),hash=tokenAdapter.hash(token);
+   await client.query('INSERT INTO public.identity_users(user_id,display_name) VALUES($1,$2)',[userId,'board-attention-user']);
+   await client.query("INSERT INTO public.identity_product_grants(user_id,product_id,role) VALUES($1,'crm','sales')",[userId]);
+   await client.query("INSERT INTO public.identity_product_access(user_id,product_id,scope,capabilities) VALUES($1,'crm','own',$2)",[userId,JSON.stringify(capabilitiesFor(['sales']))]);
+   await client.query("INSERT INTO public.identity_sessions(token_hash,user_id,security_revision,expires_at,client) VALUES($1,$2,1,now()+interval '1 hour','api')",[hash,userId]);
+   async function customer(label:string,stage='cold'){
+    const company=(await client.query('INSERT INTO companies(name) VALUES($1) RETURNING id',[label])).rows[0].id;
+    return String((await client.query("INSERT INTO crm_customers(company_id,source,customer_key,source_detail,state,owner_user_id,created_by,origin,relationship_stage) VALUES($1,'board-attention',$2,'synthetic','owned',$3,$3,'personal',$4) RETURNING customer_id",[company,randomUUID(),userId,stage])).rows[0].customer_id);
+   }
+   async function contacts(customerId:string,label:string){
+    const companyId=Number((await client.query('SELECT company_id FROM crm_customers WHERE customer_id=$1',[customerId])).rows[0].company_id),ids:number[]=[];
+    for(const suffix of ['one','two','three']){const id=Number((await client.query('INSERT INTO contacts(email,first_name,company_id) VALUES($1,$2,$3) RETURNING id',[`${randomUUID()}@example.invalid`,`${label}-${suffix}`,companyId])).rows[0].id);ids.push(id);await client.query('INSERT INTO crm_customer_contacts(customer_id,contact_id) VALUES($1,$2)',[customerId,id]);}
+    return ids;
+   }
+   const taskLabel=`board-task-${randomUUID()}`,taskCustomer=await customer(taskLabel),taskContacts=await contacts(taskCustomer,taskLabel);
+   const taskRow=(await client.query("INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,source_contact_id) VALUES($1,'Board task',now()+interval '1 day',$2,$3) RETURNING task_id,due_at",[taskCustomer,userId,taskContacts[1]])).rows[0],taskId=taskRow.task_id,expectedDueAt=new Date(taskRow.due_at).toISOString();
+   const sourceBoard=unwrap(await repo.listContacts(hash,{search:taskLabel,limit:50,offset:0,attentionOnly:true}));
+   expect(sourceBoard.total).toBe(1);expect(sourceBoard.items[0]).toMatchObject({contactId:taskContacts[1],attentionReason:'task',attentionDueAt:expectedDueAt});
+   await client.query('UPDATE crm_followup_tasks SET source_contact_id=NULL WHERE task_id=$1',[taskId]);
+   const primaryTaskBoard=unwrap(await repo.listContacts(hash,{search:taskLabel,limit:50,offset:0,attentionOnly:true}));
+   expect(primaryTaskBoard.total).toBe(1);expect(primaryTaskBoard.items[0]).toMatchObject({contactId:taskContacts[0],attentionReason:'task',attentionDueAt:expectedDueAt});
+   const stageLabel=`board-stage-${randomUUID()}`,stageCustomer=await customer(stageLabel,'quoting'),stageContacts=await contacts(stageCustomer,stageLabel);
+   const stageBoard=unwrap(await repo.listContacts(hash,{search:stageLabel,limit:50,offset:0,attentionOnly:true}));
+   expect(stageBoard.total).toBe(1);expect(stageBoard.items[0]).toMatchObject({contactId:stageContacts[0],attentionReason:'stage',relationshipStage:'quoting',attentionDueAt:null});
+  }finally{await client.query('ROLLBACK');client.release();await pool.end();}
+ },30000);
 });

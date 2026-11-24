@@ -48,6 +48,7 @@ import { TASK_ROUTES } from './core/tasks';
 import { OPPORTUNITY_ROUTES } from './core/opportunities';
 import { PostgresOpportunityRepository } from './adapters/postgres/opportunity-repository';
 import { migrateLeadOverlapSchema } from './adapters/postgres/lead-overlap-schema';
+import { migrateTaskMailLinkSchema } from './adapters/postgres/task-mail-link-schema';
 import { createOpportunityService } from './services/opportunities';
 import { createOpportunityHandler } from './transport/opportunities-http';
 import { createManagementDashboardService } from './services/management-dashboard';
@@ -60,14 +61,32 @@ import { PostgresCampaignRepository } from './adapters/postgres/campaign-reposit
 import { createCampaignService } from './services/campaigns';
 import { createCampaignHandler } from './transport/campaigns-http';
 import { CAMPAIGN_ROUTES } from './core/campaigns';
+import { PostgresAiRepository } from './adapters/postgres/ai-repository';
+import { createAiService } from './services/ai';
+import { createAiHandler } from './transport/ai-http';
+import { AI_ROUTES } from './core/ai';
+import { PostgresSalesCaseRepository } from './adapters/postgres/sales-case-repository';
+import { createSalesCaseService } from './services/sales-cases';
+import { createSalesCaseHandler } from './transport/sales-case-http';
+import { PostgresQuoteCaseRepository } from './adapters/postgres/quote-case-repository';
+import { createQuoteService, QUOTE_ROUTES } from './services/quotes';
+import { createQuoteHandler } from './transport/quote-http';
 import { PostgresTeamRepository } from './adapters/postgres/team-repository';
 import { createTeamService } from './services/teams';
 import { createTeamHandler } from './transport/team-http';
-import { TEAM_ROUTES } from './core/teams';
+import { PostgresSampleMailRepository } from './adapters/postgres/sample-mail-repository';
+import { createSampleMailService } from './services/sample-mail';
+import { createSampleMailHandler } from './transport/sample-mail-http';
+import { SAMPLE_MAIL_ROUTES } from './core/sample-mail';
+import { isTeamRoute } from './core/teams';
 import { PostgresContactMailAnalysisRepository } from './adapters/postgres/contact-mail-analysis-repository';
 import { createContactMailAnalysisService } from './services/contact-mail-analysis';
 import { createContactMailAnalysisHandler } from './transport/contact-mail-analysis-http';
 import { CONTACT_MAIL_ANALYSIS_ROUTES } from './core/mail-analysis';
+import { PostgresCustomerStatusRepository } from './adapters/postgres/customer-status-repository';
+import { createCustomerStatusService } from './services/customer-status';
+import { createCustomerStatusHandler } from './transport/customer-status-http';
+import { CUSTOMER_STATUS_ROUTES } from './core/customer-status';
 import { PostgresTeamAttentionRepository } from './adapters/postgres/team-attention-repository';
 import { createTeamAttentionService } from './services/team-attention';
 import { createTeamAttentionHandler } from './transport/team-attention-http';
@@ -113,6 +132,7 @@ async function main() {
     if(!(await contactMailAnalysisRepo.migrate()).ok)throw new Error('邮件分析迁移被拒绝');
     const teamAttentionRepo=new PostgresTeamAttentionRepository(pool,serverLog);
     if(!(await teamAttentionRepo.migrate()).ok)throw new Error('团队关注迁移被拒绝');
+    const mailLinkClient=await pool.connect();try{if(!(await migrateTaskMailLinkSchema(mailLinkClient)).ok)throw new Error('任务邮件关联迁移被拒绝');}finally{mailLinkClient.release();}
     const teamMonitoringRepo=new PostgresTeamMonitoringRepository(pool,serverLog);
     if(!(await teamMonitoringRepo.migrate()).ok)throw new Error('团队监控迁移被拒绝');
     const opportunityRepo=new PostgresOpportunityRepository(pool,serverLog);
@@ -124,15 +144,26 @@ async function main() {
     if(!(await contactChangeRepo.migrate()).ok)throw new Error('联系人变化迁移被拒绝');
     const campaignRepo=new PostgresCampaignRepository(pool,serverLog);
     if(!(await campaignRepo.migrate()).ok)throw new Error('自动开发任务迁移被拒绝');
+    const aiRepo=new PostgresAiRepository(pool,serverLog);
+    if(!(await aiRepo.migrate()).ok)throw new Error('AI 管理迁移被拒绝');
+    const sampleMailRepo=new PostgresSampleMailRepository(pool,serverLog);
+    if(!(await sampleMailRepo.migrate()).ok)throw new Error('样例邮件迁移被拒绝');
+    const ai=createAiService(aiRepo);
+    const salesCaseRepo=new PostgresSalesCaseRepository(pool,serverLog);
+    if(!(await salesCaseRepo.migrate()).ok)throw new Error('AI 销售工作流迁移被拒绝');
+    const salesCases=createSalesCaseHandler(createSalesCaseService(salesCaseRepo,tokenAdapter));
+    const quoteCases=createQuoteHandler(createQuoteService(new PostgresQuoteCaseRepository(pool,serverLog),tokenAdapter));
     const opportunities=createOpportunityHandler(createOpportunityService(opportunityRepo,tokenAdapter));
     const taskService=createTaskService(taskRepo,tokenAdapter);
     const tasks=createTaskHandler(taskService);
     const teams=createTeamHandler(createTeamService(teamRepo,tokenAdapter));
+    const sampleMail=createSampleMailHandler(createSampleMailService(sampleMailRepo,tokenAdapter));
     const contactShares=createContactSharingHandler(createContactSharingService(leadRepo,tokenAdapter));
     const contactAssignments=createContactAssignmentHandler(createContactAssignmentService(leadRepo,tokenAdapter));
     const sendAcceptance=createSendAcceptanceHandler(createSendAcceptanceService(leadRepo,tokenAdapter));
     const contactMail=createContactMailHandler(createContactMailService(leadRepo,tokenAdapter));
     const contactMailAnalysis=createContactMailAnalysisHandler(createContactMailAnalysisService(contactMailAnalysisRepo,tokenAdapter));
+    const customerStatus=createCustomerStatusHandler(createCustomerStatusService(new PostgresCustomerStatusRepository(pool,serverLog),tokenAdapter));
     const teamAttention=createTeamAttentionHandler(createTeamAttentionService(teamAttentionRepo,tokenAdapter));
     const teamMonitoring=createTeamMonitoringHandler(createTeamMonitoringService(teamMonitoringRepo,tokenAdapter));
     const salesPerformance=createSalesPerformanceHandler(createSalesPerformanceService(salesPerformanceRepo,tokenAdapter,clock));
@@ -140,10 +171,16 @@ async function main() {
     const notifications=createEventsHandler(createNotificationService(notificationRepo,tokenAdapter));
     const contactChanges=createContactChangeHandler(createContactChangeService(contactChangeRepo,tokenAdapter));
     const campaigns=createCampaignHandler(createCampaignService(campaignRepo,tokenAdapter));
+    const aiHttp=createAiHandler(auth,ai);
     const collaboration:import('./transport/http').BrowserHandler=async(request,response)=>{
       const route=new URL(request.url??'/','http://localhost').pathname;
+      if(route===AI_ROUTES.status||route===AI_ROUTES.chat||route===AI_ROUTES.receipts){await aiHttp(request,response);return;}
+      if(route===CUSTOMER_STATUS_ROUTES.base||route.startsWith(`${CUSTOMER_STATUS_ROUTES.base}/`)){await customerStatus(request,response);return;}
+      if(route==='/api/crm/sales-cases'||route.startsWith('/api/crm/sales-cases/')){await salesCases(request,response);return;}
+      if(route===QUOTE_ROUTES.list||route.startsWith(`${QUOTE_ROUTES.list}/`)){await quoteCases(request,response);return;}
       if(route===LEAD_INGRESS_ROUTES.decision||route===LEAD_INGRESS_ROUTES.resolve){await leadIngress(request,response);return;}
-      if(route===TEAM_ROUTES.context||route===TEAM_ROUTES.candidates||route===TEAM_ROUTES.teams||route.startsWith(`${TEAM_ROUTES.teams}/`)||route.startsWith(`${TEAM_ROUTES.invitations}/`)){await teams(request,response);return;}
+      if(isTeamRoute(route)){await teams(request,response);return;}
+      if(route===SAMPLE_MAIL_ROUTES.packages||route===SAMPLE_MAIL_ROUTES.upload||route.startsWith('/api/crm/sample-mail/')){await sampleMail(request,response);return;}
       if(Object.values(SEND_ACCEPTANCE_ROUTES).some(path=>path===route)){await sendAcceptance(request,response);return;}
       if(route===CONTACT_MAIL_ROUTE){await contactMail(request,response);return;}
       if(route===CONTACT_MAIL_ANALYSIS_ROUTES.analyses||route===CONTACT_MAIL_ANALYSIS_ROUTES.ai||route===CONTACT_MAIL_ANALYSIS_ROUTES.correct){await contactMailAnalysis(request,response);return;}
@@ -160,7 +197,7 @@ async function main() {
     };
     const offlineIssuer=loadOfflineAccessIssuer(onlineRuntimeDirectory(),config.public_origin ?? `http://${config.host}:${config.port}`);
     const desktop=createDesktopAuthHandler(createDesktopSessionService(repo,passwords,tokenAdapter,clock,config.session_ttl_seconds,offlineIssuer),gate,config);
-    const server=createOnlineServer(auth,gate,config,serverLog,instanceId,createAdminHandler(auth,admin,tokenAdapter,gate,config,createAdminStatic(),createPasswordChangeService(repo,repo,passwords,tokenAdapter,auth),dashboard,dataBrowser),collaboration,desktop);
+    const server=createOnlineServer(auth,gate,config,serverLog,instanceId,createAdminHandler(auth,admin,tokenAdapter,gate,config,createAdminStatic(undefined,{navigator:config.navigator_entry_url ?? config.navigator_url ?? ""}),createPasswordChangeService(repo,repo,passwords,tokenAdapter,auth),dashboard,dataBrowser,ai),collaboration,desktop);
     await new Promise<void>((resolve,reject) => { server.once("error",reject); server.listen(config.port,config.host,resolve); });
     started=true;
     const dispatcher=startNotificationDispatcher(notificationRepo,serverLog);

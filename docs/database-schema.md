@@ -1,5 +1,101 @@
 # Prospector Database Schema
 
+## 2026-11-18 客户状态历史回填写入规则
+
+历史回填不新增表，继续写 `crm_customer_status_events` 和 `crm_customer_status_state`。事件键为 `backfill:<customerId>:<sourceKey>`，`source/signal` 均为 `import`，`reason` 标注“历史回填”。非锁定客户会建立当前投影；人工锁定客户只写历史事件，投影的 `status/manual_locked/version` 保持不变。
+
+脚本默认只读并输出 `.work/status-backfill-report.json`，`--apply` 才在单事务中写入。重复执行只补缺失事件，不重复插入、不回溯修改业务事实。
+
+## 2026-11-18 客户状态当前投影与人工锁定（中心 PostgreSQL）
+
+迁移名：`084-customer-status-command`。
+
+| 表/字段 | 约束与用途 |
+|---|---|
+| `crm_customer_status_state` | 每客户一行当前状态；保存 `status/previous_status/source/signal/contact_id/actor_user_id/reason/occurred_at/version` |
+| `manual_locked/manual_reason/manual_by/manual_at` | 人工纠错后锁定自动来源；锁定时必须同时有原因、操作者和时间 |
+| `crm_customer_status_events.signal` | 扩展 `opportunity/sales_case/ai_resume`，覆盖商机、Case 和恢复 AI |
+
+状态投影与事件在同一事务更新，事件仍是不可变历史。人工纠正允许回退并锁定 `ai/system/import` 自动写入；恢复 AI 只解除锁定，不删除历史。旧客户没有投影时继续用兼容字段派生，下一次业务写入后建立投影。
+
+## 2026-11-18 客户状态事件（中心 PostgreSQL）
+
+迁移名：`083-customer-status-events`。
+
+| 字段 | 约束与用途 |
+|---|---|
+| `event_key` | 唯一幂等键；跟进、邮件和后续 AI 信号各用自己的稳定键 |
+| `customer_id/contact_id` | 客户必填，联系人可空；分别级联客户和置空联系人 |
+| `status/previous_status` | 未触达、已触达、已回复、询价/报价、试单/谈判、成交待确认、已成交、已流失 |
+| `source/signal` | 来源 `ai/human/system/import`；信号 `followup/mail/deal_won/correction/import` |
+| `evidence_json/payload_json` | 原文证据或事务内关联；不替代邮件、活动和 Case 事实表 |
+| `occurred_at/recorded_at` | 业务发生时间与中心记录时间 |
+
+事件只追加，不更新、不删除。系统邮件信号默认不允许状态倒退，人工跟进可显式回退；AI 成交待确认优先于普通跟进结果。本轮事件与兼容字段同事务写入，后续人工纠错和状态链历史读取复用同一表。
+
+## 2026-11-17 团队邮件引用（中心消息快照）
+
+迁移名：`076-team-email-reference`。`crm_team_messages.kind` 增加 `email_ref`；消息 `payload_json` 保存主题、发件人、收件人、时间、摘要和可选 customer/contact ID，不保存完整 HTML、附件或本地邮箱消息 ID。邮件引用不改变客户、任务或邮件事实。
+
+## 2026-11-17 团队聊天归档（中心文件存储）
+
+迁移名：`075-team-archives`。`crm_team_files.purpose` 增加 `team_archive`，归档文件按团队+用途+SHA-256 去重。归档正文以 JSONL/gzip 存放在 `PROSPECTOR_FILE_ROOT`，数据库只保留文件元数据；消息事实表不变。单个归档最多 20000 条消息，超出要求缩小时间范围。
+
+## 2026-11-17 团队文件与附件消息（中心 PostgreSQL）
+
+| 表/字段 | 变更与用途 |
+|---|---|
+| `crm_team_files` | 中心文件元数据：团队、用途、文件名、MIME、大小、SHA-256、相对存储键、创建人、软删除时间；按团队+用途+哈希唯一去重 |
+| `crm_team_messages.kind/payload_json` | `text` 或 `attachment`；附件消息保存 `fileId/filename/mimeType/bytes/sha256` 快照，不保存二进制 |
+
+迁移名：`074-team-files`。文件本体由中心文件服务写入 `PROSPECTOR_FILE_ROOT` 或后续对象存储；客户端只通过中心 API 上传和下载。单文件上限 8 MiB，API 不返回磁盘路径。打开附件时主进程写入临时目录后调用系统默认程序。
+
+## 2026-11-16 团队阅读游标与任务邮件关联（中心 PostgreSQL）
+
+| 迁移 | 变更与用途 |
+|---|---|
+| `072-team-message-read-cursor` | `crm_team_message_reads.last_read_message_id` 保存精确阅读位置，支持显式已读/未读和会话未读数 |
+| `073-task-mail-link` | `crm_followup_tasks.source_message_key` 保存收件箱邮件稳定键，`source_kind` 扩展 `mail_manual`；开放任务按客户+邮件键唯一，重复创建返回同一任务 |
+
+`GET team-messages` 只读；打开聊天后由 renderer 显式调用 mark-read。任务邮件关联使用邮箱事件的稳定 `messageKey`，不使用本地 SQLite 自增 messageId。客户跟进详情返回最多 4 条派生客户跟进，客户等级复用 `customerGradeFor` 与覆盖表，不新增重复等级字段。
+
+本地 SQLite 迁移 `v0.75-drop-inbox-functional-folders` 删除 `inbox_functional_folders` 和 `inbox_functional_folder_operations`；普通文件夹、AI 建议文件夹、置顶和待办状态不受影响。
+
+## 2026-11-16 团队在线状态与阅读游标（中心 PostgreSQL）
+
+| 表 | 字段 | 约束与用途 |
+|---|---|---|
+| `public.identity_desktop_presence` | `user_id`、`last_seen_at` | 每账号一行；桌面客户端 `online:status` 轮询刷新 `last_seen_at`，90 秒内视为在线 |
+| `crm_team_message_reads` | `team_id`、`user_id`、`peer_user_id`、`last_read_at`、`updated_at` | 当前账号读取与指定成员的私聊后更新阅读游标；主键为团队+本人+对端，不保存消息正文 |
+
+迁移名：`071-team-presence-reads`。在线状态只表示客户端近期心跳，不推断业务活跃；未读只统计对端发给当前账号且晚于阅读游标的私聊。成员状态点为绿色在线、黄色在线且有未读、灰色离线；离线悬停显示最近在线时间。
+
+## 2026-11-16 跟进任务取消（中心 PostgreSQL）
+
+| 字段 | 变更与用途 |
+|---|---|
+| `crm_followup_tasks.status` | 状态扩展为 `open/completed/cancelled`；`cancelled` 表示用户主动取消，不等同完成 |
+| `completed_at/completed_by/feedback` | 取消时继续复用这三个既有字段记录结束时间、操作者与取消原因（默认填写取消说明）；不新增列 |
+
+迁移名：`070-task-cancellation`。状态检查约束要求 `completed/cancelled` 都有结束时间、操作者和非空反馈；取消使用 `expectedVersion` 条件更新并复用幂等回执；重复取消返回同一结果，不重新打开任务，也不删除任务或改负责人。当前收件箱的“取消跟进”只覆盖本次页面内创建的任务，邮件到任务的关联字段尚未建立。
+
+## 2026-11-13 团队一对一私聊（中心 PostgreSQL）
+
+| 表 | 字段 | 约束与用途 |
+|---|---|---|
+| `crm_team_messages` | `message_id`、`team_id`、`sender_user_id`、`recipient_user_id`、`body`、`operation_key`、`created_at` | 团队内成员一对一消息；`operation_key` 唯一用于发送幂等；发送人与接收人不能相同；正文去除首尾空白后 1–2000 字符 |
+
+迁移名：`069-team-direct-messages`。外键分别指向 `crm_org_units` 与 `public.identity_users`；`idx_crm_team_messages_pair(team_id,sender_user_id,recipient_user_id,created_at,message_id)` 支持双方会话读取。该表不保存团队群聊、附件、已读回执或邮件正文；会话列表从同一事实表派生，不增加重复状态表。
+
+## 2026-11-18 助理巡检（本地 SQLite）
+
+| 表 | 字段 | 约束与用途 |
+|---|---|---|
+| `assistant_reminders` | `reminder_id`、`signature`、`title`、`detail`、`target`、`kind`、`facts_json`、`priority`、`source`、`created_at`、`dismissed_at`、`expires_at` | Logo 助手提醒的当前投影；`kind=mail|quote|task|followup`，`facts_json` 保存结构化卡片字段；`signature` 唯一用于去重，忽略后保留 72 小时不再出现，7 天后清理；`source=ai|rule`。`v0.76-assistant-card-facts` 为旧库补列 |
+| `assistant_state` | `id=1`、`enabled`、`interval_minutes`、`checks_json`、`last_checked_at`、`last_status`、`last_error` | 当前账号的巡检开关、频率、四类检查范围和上次结果；单行表，随账号本地库隔离 |
+
+迁移名：`v0.75-assistant-reminders`。提醒只是中心事实和本地分析的投影，可随时重算；不保存模型原始回复。
+
 ## 2026-11-12 收件箱置顶与文件夹（本地 SQLite）
 
 | 表/字段 | 变更与用途 |
@@ -8,6 +104,8 @@
 | `inbox_label_candidates` | 保存 AI 建议文件夹的候选邮件；用户确认后才转入 `inbox_message_labels` |
 | `inbox_pinned_messages` | 当前账号置顶邮件；`message_id` 主键并随邮件级联删除 |
 | `inbox_folder_suggestion_dismissals` | 用户删除 AI 建议后记录规范化名称，避免下次启动重复建议 |
+| `inbox_functional_folders` | `name`、`color`、`match_mode`、`group_by`、`conditions_json`、`sort_order`、时间戳；只保存实时查询定义，不保存邮件成员关系；联系人类使用 `senderEmail`，对话增量类使用 `conversationKey + receivedAfter` |
+| `inbox_functional_folder_operations` | 功能文件夹写操作幂等回执；保留 30 天，重复请求返回同一结果 |
 
 迁移名：`v0.72-inbox-folders`。旧标签默认补为 `source=user/status=active`，不丢失原有邮件关联；所有数据只存在当前账号本机 SQLite。
 
@@ -17,10 +115,21 @@
 |---|---|---|
 | `inbox_mail_analyses` | `message_id`、`content_hash`、`category`、`priority`、`requires_action`、`summary`、`next_action`、`due_hint`、`confidence`、`evidence_json`、`source`、`analyzer_version`、`status`、`error`、`updated_at` | 每封本地邮件一行；`message_id` 主键并随邮件级联删除；`status` 为 `pending/ready/failed`；人工结果以 `source=human` 标记且不会被 AI 覆盖 |
 | `mail_analysis_jobs` | `job_key`、`payload_json`、`status`、`attempt`、`next_attempt_at`、`last_error`、`created_at`、`updated_at`、`completed_at` | 客户邮件 AI 分析的本地可恢复队列；主键为幂等任务键；状态为 `pending/running/retrying/completed/failed`；启动时 `running` 恢复为 `pending`，完成记录保留7天、失败记录保留30天 |
-| `inbox_todo_states` | `message_id`、`state`、`operation_key`、`updated_at` | 单封邮件内联待办状态；`message_id` 主键并随邮件级联删除；`state=open/done`；`operation_key` 唯一用于幂等；与邮件已读状态独立 |
+| `inbox_todo_states` | `message_id`、`state`、`operation_key`、`updated_at` | 单封邮件内联待办状态；`message_id` 主键并随邮件级联删除；`state=open/done`；`operation_key` 唯一用于幂等；与邮件已读状态独立。2026-11-18 起新的 open/done 写入同步投影为中心 `crm_followup_tasks` 的 `mail_manual` 任务；本表保留为离线/快速 UI 缓存，历史 open 记录在打开收件箱时渐进回填 |
+| `inbox_conversation_states` | `conversation_key`、`state`、`source_message_id`、`operation_key`、`updated_at` | 拖拽产生的会话级手动分类；`conversation_key` 为“联系人邮箱+规范化主题”；`state=todo/needs_reply/waiting_other/important`；只挂到该会话最新邮件；与 AI 分析分开 |
 | `inbox_seen_outbox` | `account_id`、`message_id`、`attempts`、`last_error`、`created_at`、`updated_at` | 程序内已读待回写 IMAP `\Seen` 的持久 outbox；`(account_id,message_id)` 主键；服务器确认前保留，重启或回写失败不会恢复未读 |
+| `public.ai_user_policies` | `user_id`、`enabled`、`daily_token_limit`、`monthly_token_limit`、`max_output_tokens`、`allowed_features`、`updated_by`、`updated_at` | 中心 AI 用户策略；模型密钥不在表内，只保存开关与配额 |
+| `public.ai_usage_events` | `event_id`、`user_id`、`product`、`feature`、`model`、`input_tokens`、`output_tokens`、`status`、`latency_ms`、`request_id`、`created_at` | 中心 AI 用量元数据；不保存 prompt、邮件正文、附件或模型完整响应 |
+| `public.ai_model_profiles` | `model_id`、`label`、`base_url`、`model_name`、`wire_api`、`key_env`、`allowed_features`、`enabled`、`is_default`、`max_output_tokens`、`updated_at` | 模型档案；只保存密钥环境变量名，不保存密钥值 |
+| `public.ai_policy_audit` | `audit_id`、`actor_user_id`、`target_user_id`、`before_json`、`after_json`、`reason`、`created_at` | 管理台修改 AI 用户策略的审计记录 |
+| `crm_sales_cases` | `case_id`、`customer_id`、`contact_id`、`owner_user_id`、`state`、摘要、下一动作、版本和时间戳 | AI 销售工作流的会话级 Case；同一联系人同一负责人只允许一个开放 Case |
+| `crm_case_events` | `case_id`、`event_key`、`event_type`、`source`、`payload_json`、`evidence_json`、时间和操作者 | 只追加业务事件，事件键幂等 |
+| `crm_ai_proposals` | Case、建议类型、状态、payload、证据、置信度、模型版本和处理记录 | AI 内部建议；不直接等于外发或报价事实 |
+| `crm_quote_cases / crm_quote_drafts / crm_quote_revisions` | 询盘、报价草稿和不可变版本 | 报价浮层只是草稿投影，关闭后仍可恢复 |
+| `crm_quote_review_requests` | 报价、请求人、审核人、状态、意见和团队消息/任务关联 | 主管审核复用团队通道 |
+| `crm_ai_feedback_events` | 用户、对象、动作、修改前/后和原因 | 隐式反馈账本，不直接写模型权重 |
 
-迁移名：`v0.72-inbox-mail-analyses`、`v0.72-mail-analysis-queue`、`v0.72-inbox-todo-states`。三张表只存在当前账号本机 SQLite，不同步中心，不保存正文、附件或模型原始响应；最近 200 封只作为回填起点，不是固定能力上限。分析任务表只保存恢复所需输入和状态，重启后恢复 `pending/retrying`，崩溃遗留的 `running` 回到 `pending` 后重新提交。待办状态表只记录用户已处理/重新打开，不修改原邮件或 AI 分析记录。
+迁移名：`v0.72-inbox-mail-analyses`、`v0.72-mail-analysis-queue`、`v0.72-inbox-todo-states`、`v0.74-inbox-conversation-states`。这些表只存在当前账号本机 SQLite，不同步中心，不保存正文、附件或模型原始响应；最近 200 封只作为回填起点，不是固定能力上限。分析任务表只保存恢复所需输入和状态，重启后恢复 `pending/retrying`，崩溃遗留的 `running` 回到 `pending` 后重新提交。待办状态表只记录用户已处理/重新打开，不修改原邮件或 AI 分析记录；会话状态表记录用户拖拽分类，优先于 AI 派生判断，清除后恢复 AI 判断。
 
 ## 2026-11-09 换机事务（066-067，工作区已实现，正式未部署）
 
@@ -28,6 +137,7 @@
 |---|---|---|
 | `066-device-handoff` | `public.identity_device_handoffs` | 记录换机请求、旧/新设备、旧 session、状态、盘点摘要、接管原因和过期时间 |
 | `067-device-handoff-audit` | `public.identity_audit` 事件约束 | 允许记录 begin、ready、blocked、completed、takeover、cancelled 六类换机审计 |
+| `068-uniform-team-membership` | `crm_validate_org_assignment()` | 运营组与销售团队统一接受普通成员；普通成员仍全公司最多属于一个团队，且不能同时担任负责人 |
 
 `identity_device_handoffs` 的唯一键为 `(user_id,desktop_product,request_key)`，同一用户同一产品同时只能存在一个 `waiting_old_device / ready / blocked` 请求。token 只保存哈希；摘要只保存计数、阻断项与检查时间，不保存密码、邮件正文、邮件凭据、OAuth、会话令牌或 `master.key`。完成事务锁住请求和用户，在一个事务内撤销旧 session、创建新 session、标记请求完成并写审计；旧 access/refresh 后续返回 `DEVICE_REPLACED`。
 
@@ -41,7 +151,7 @@
 | `inbox_message_labels` | `message_id`、`label_id`、`created_at` | 邮件与标签多对多；`(message_id,label_id)` 主键；邮件或标签删除时级联清理关系 |
 | `inbox_label_operations` | `operation_key`、`result_json`、`created_at` | 标签写操作幂等回执；保留 30 天，重复请求返回同一结果 |
 
-迁移名：`v0.71-inbox-labels`。该能力只写本机业务 SQLite，不同步中心，也不替代邮件分类或联系人标签。
+迁移名：`v0.71-inbox-labels`、`v0.74-inbox-functional-folders`。两类能力都只写本机业务 SQLite，不同步中心；功能文件夹不替代普通文件夹、邮件分类或联系人标签，也不会写 `inbox_message_labels`。
 
 ## 2026-11-03 线索范围重叠（065，工作区已实现，正式未部署）
 
@@ -104,7 +214,7 @@ Prospector 生产连接使用 `search_path=prospector,public`，Navigator 使用
 | 表 | 作用 | 关键约束 |
 |---|---|---|
 | `prospector.crm_org_units` | 公司根、运营组、销售团队的 canonical 组织树 | `kind=company/operations_group/sales_team`；公司根唯一；销售团队为叶子；同一父级名称大小写不敏感唯一 |
-| `prospector.crm_org_assignments` | 负责人/普通成员关系 | 普通成员在全部销售团队中最多一条；每个组织单元最多一个 primary leader；leader 可管理多个销售团队 |
+| `prospector.crm_org_assignments` | 负责人/普通成员关系 | 运营组和销售团队使用同一成员模型；普通成员在全部团队中最多一条；每个组织单元最多一个 primary leader；leader 可管理多个团队 |
 | `prospector.crm_org_invitations` | 邀请和生命周期历史 | pending/accepted/declined/cancelled/expired；同一单元同一账号只有一条 pending；取消更新状态而不删除历史 |
 | `prospector.crm_org_idempotency` | 创建、移动、换负责人、成员和分组操作的幂等回执 | `(actor_id,operation,idempotency_key)` 主键；相同请求重放首次结果，不同请求冲突 |
 | `prospector.crm_org_member_groups` | 团队内展示分组 | 有条目版本；只用于展示，不改变归属或权限 |
@@ -335,3 +445,11 @@ Account prospector.db adds nullable send_campaign_targets.center_reference_json 
 ## 030-lead-field-extension（2026-10-19，未部署正式中心）
 
 `companies.customer_type text NULL CHECK IN ('代理','直客')`；`contacts.whatsapp/source_level1/source_level2 text NULL`。公司业务类型复用industry、网站复用domain；一二级来源不进入公司表。扩展联系人共享字段约束允许whatsapp，历史约束原迁移不改写；实际权限排除公司类型和国家。公司无分类时仅兼容读旧contact.client_type，不自动猜测回填。新迁移置于lead迁移链末尾，隔离实例创建与重复migrate通过。详见 `lead-import-fields-20261019.md`。
+
+## 080/081/082 AI 销售工作流（2026-11-17，工作区）
+
+- `080-ai-sales-workflow-foundation`：`crm_sales_cases`、`crm_case_events`、`crm_ai_proposals`、`crm_quote_cases`、`crm_quote_drafts`、`crm_quote_revisions`、`crm_quote_review_requests`、`crm_ai_feedback_events`。Case 绑定中心客户、联系人和负责人；报价草稿保留候选、用户版本和审核请求。
+- `081-deal-won-proposals`：允许 `deal_won` 建议和 `applied_pending_confirmation` 状态，成交建议必须可撤销并保留证据；同一 Case 只允许一个待确认成交建议。
+- `082-ai-sales-workflow-integrity`：为同一 Case/邮件报价、同一报价 Case 草稿和事件/版本查询增加唯一约束与索引。迁移只追加表和索引，不重写原 Campaign、联系人、任务或邮件表。
+
+本地 SQLite 同步增加 `inbox_quote_cards`（按邮件缓存报价卡）和 `send_rate_events`（发信速率预约）；两者都是可重建投影，不作为中心事实的替代。

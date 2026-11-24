@@ -12,7 +12,8 @@ import {
   DeleteOutlined, PlusOutlined, SendOutlined, EnvironmentOutlined, CopyOutlined, SwapOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { ONLINE_LIMITS } from '../../../shared/online-crm';
+import { attentionDueLabel, ONLINE_LIMITS } from '../../../shared/online-crm';
+import { CUSTOMER_ATTENTION_URGENCY_PRIORITY, customerAttentionUrgency, type CustomerAttentionUrgency, type CustomerBoardAttentionReason } from '../../../../server/core/leads';
 
 // ══════════════════════════════════════════════════════════════
 // 类型 & 常量（沿用旧 PE）
@@ -32,6 +33,8 @@ export interface PipelineContact {
   country: string | null; language: string | null; clientType: string | null;
   assignee: string | null;
   stageChangedAt: string | null;
+  attentionReason?: CustomerBoardAttentionReason;
+  attentionDueAt?: string | null;
 }
 
 export interface StageData { key: string; label: string; color: string; contacts: PipelineContact[]; }
@@ -62,6 +65,19 @@ const EMAIL_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   cc: { label: "抄送", color: "#ff9800" },
 };
 
+const ATTENTION_REASON_META: Record<CustomerBoardAttentionReason, { label: string; color: string }> = {
+  reply: { label: "客户回复", color: "green" },
+  task: { label: "已约跟进", color: "gold" },
+  stage: { label: "业务阶段", color: "blue" },
+};
+const ATTENTION_URGENCY_COLOR: Record<CustomerAttentionUrgency, string> = {
+  overdue: 'red',
+  reply: 'green',
+  due_today: 'orange',
+  upcoming_task: 'cyan',
+  stage: 'blue',
+};
+
 function daysAgo(d: string) {
   const delta = Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
   if (delta === 0) return "今天";
@@ -80,6 +96,24 @@ function followAgeClass(contact: PipelineContact): string {
   return "text-gray-400";
 }
 
+function attentionUrgency(contact: PipelineContact, now: Date): CustomerAttentionUrgency | undefined {
+  return customerAttentionUrgency({ attentionReason: contact.attentionReason, attentionDueAt: contact.attentionDueAt }, now);
+}
+
+function compareAttentionOrder(left: PipelineContact, right: PipelineContact, now: Date): number {
+  const leftUrgency = attentionUrgency(left, now), rightUrgency = attentionUrgency(right, now);
+  const urgencyOrder = (leftUrgency ? CUSTOMER_ATTENTION_URGENCY_PRIORITY[leftUrgency] : 5) - (rightUrgency ? CUSTOMER_ATTENTION_URGENCY_PRIORITY[rightUrgency] : 5);
+  const leftFollowup = left.lastFollowupAt ? Date.parse(left.lastFollowupAt) : 0;
+  const rightFollowup = right.lastFollowupAt ? Date.parse(right.lastFollowupAt) : 0;
+  return urgencyOrder || rightFollowup - leftFollowup;
+}
+
+function AttentionUrgencyTag({ contact, now }: { contact: PipelineContact; now: Date }) {
+  const urgency = attentionUrgency(contact, now), label = attentionDueLabel(contact.attentionDueAt, now);
+  if (!urgency || !label) return null;
+  return <Tag color={ATTENTION_URGENCY_COLOR[urgency]} className="text-[10px] my-0 leading-none py-0.5 px-1.5 flex-shrink-0">{label}</Tag>;
+}
+
 // 阶段内排序：最近跟进倒序（见渲染处 sort；旧按跟进人分组已废弃 — 筛选栏有专门的跟进人筛选）
 
 // ══════════════════════════════════════════════════════════════
@@ -89,6 +123,7 @@ function followAgeClass(contact: PipelineContact): string {
 export function CrmPipeline({ dataPort }: { dataPort?: PipelineDataPort } = {}) {
   const location = useRouterState({ select: s => s.location });
   const qc = useQueryClient();
+  const attentionNow = new Date();
   const [detailId, setDetailId] = useState<number | null>(null);
   const [currentTab, setCurrentTab] = useState("info");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -479,12 +514,7 @@ export function CrmPipeline({ dataPort }: { dataPort?: PipelineDataPort } = {}) 
               {!collapsed[s.key] && (
                 <div>
                   {[...visible]
-                    .sort((a, b) => {
-                      // 最近跟进倒序（最新在最上）；无跟进记录的沉底（按创建时间新旧再排）
-                      const ta = a.lastFollowupAt ? new Date(a.lastFollowupAt).getTime() : 0;
-                      const tb = b.lastFollowupAt ? new Date(b.lastFollowupAt).getTime() : 0;
-                      return tb - ta;
-                    })
+                    .sort((left, right) => compareAttentionOrder(left, right, attentionNow))
                     .map(c => (
                       <div key={c.id}
                         id={`crm-contact-${c.id}`}
@@ -496,6 +526,12 @@ export function CrmPipeline({ dataPort }: { dataPort?: PipelineDataPort } = {}) 
                           <span className="text-[9px] text-gray-400 flex-shrink-0 px-1 rounded bg-gray-50">{c.country}</span>
                         ) : null}
                         <span className="text-[11px] text-gray-400 flex-1 truncate">{c.companyName || "—"}</span>
+                        {c.attentionReason ? (
+                          <Tag color={ATTENTION_REASON_META[c.attentionReason]?.color ?? 'default'} className="text-[10px] my-0 leading-none py-0.5 px-1.5 flex-shrink-0">
+                            {ATTENTION_REASON_META[c.attentionReason]?.label ?? c.attentionReason}
+                          </Tag>
+                        ) : null}
+                        <AttentionUrgencyTag contact={c} now={attentionNow} />
                         <span className="flex items-center gap-2 flex-shrink-0">
                           {c.lastFollowupAt ? (
                             <span className={`text-[10px] flex items-center gap-1 ${followAgeClass(c)}`}>

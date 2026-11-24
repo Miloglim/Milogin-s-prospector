@@ -83,7 +83,7 @@ export function CustomerLegacyShell(props: Props) {
     { key: 'country', title: '国家', width: 70, render: (_, row) => row.country || '—' },
     { key: 'source', title: '来源', width: 90, ellipsis: true, render: (_, row) => row.source || '—' },
     { key: 'owner', title: '负责人', width: 90, ellipsis: true, render: (_, row) => row.ownerName || '—' },
-    { key: 'customerStage', title: '客户阶段', width: 100, render: (_, row) => scope === 'pool' ? '—' : stageLabel(row.stage) },
+    { key: 'customerStage', title: '客户阶段', width: 132, render: (_, row) => scope === 'pool' ? '—' : <Space size={4} wrap>{stageLabel(row.stage)}{row.aiDealPending && <Tag color="gold">成交待确认</Tag>}</Space> },
     { key: 'updated', title: '最近动态', width: 105, render: (_, row) => formatDate(row.recentActivityAt) },
   ];
   const columns = tableColumns.filter(column => visibleColumns.includes(String(column.key)));
@@ -145,7 +145,7 @@ export function CustomerLegacyShell(props: Props) {
       {CRM_STAGES.map(stage => {const rows=leads.items.filter(item => customerBoardStage(item) === stage.key).sort((a,b)=>(Date.parse(b.recentActivityAt??'')||0)-(Date.parse(a.recentActivityAt??'')||0));const closed=collapsed[stage.key]??rows.length===0;return <section key={stage.key}>
         <button className="customer-classic-stage" style={{borderLeftColor:stage.color}} onClick={()=>setCollapsed(previous=>({...previous,[stage.key]:!(previous[stage.key]??rows.length===0)}))}>{closed?<RightOutlined />:<DownOutlined />}<span className="customer-stage-dot" style={{background:stage.color}} /><strong>{stage.label}</strong><span className="customer-stage-count">{rows.length}</span></button>
         {!closed && (rows.length ? rows.map(item=><div key={item.customerId} className={`customer-classic-row ${selectedCustomerId===item.customerId?'is-selected':''}`}>
-          <button className="customer-classic-row-main" onClick={()=>onOpenDetail(item.customerId)}><strong>{primaryContact(item)}</strong><span className="customer-country">{item.country||'—'}</span><span className="customer-row-company">{item.companyName}</span><span className="customer-row-date">{formatDate(item.recentActivityAt)}</span>{item.ownerName&&<Tag color="geekblue">{item.ownerName}</Tag>}</button>
+          <button className="customer-classic-row-main" onClick={()=>onOpenDetail(item.customerId)}><strong>{primaryContact(item)}</strong><span className="customer-country">{item.country||'—'}</span><span className="customer-row-company">{item.companyName}</span><span className="customer-row-date">{formatDate(item.recentActivityAt)}</span>{item.aiDealPending&&<Tag color="gold">成交待确认</Tag>}{item.ownerName&&<Tag color="geekblue">{item.ownerName}</Tag>}</button>
           <Checkbox aria-label={`选择 ${item.companyName}`} checked={selectedKeys.includes(item.customerId)} onChange={event=>setSelectedKeys(previous=>event.target.checked?[...previous,item.customerId]:previous.filter(key=>key!==item.customerId))} />
         </div>):<div className="customer-classic-empty">暂无</div>)}
       </section>;})}{pagination}

@@ -9,6 +9,7 @@ import { okResult, failResult, type Result } from "../errors";
 import { Log } from "../logger";
 import { saveDatabase } from "../db";
 import { nudge as nudgeSuggestions } from "./suggestion-bus";
+import { wakeAssistant } from "./assistant-bus";
 import { loadConfig } from "../config";
 import { DEFAULT_CRM_OVERDUE_DAYS, normalizeCrmThresholds } from "../../shared/crm";
 
@@ -203,6 +204,7 @@ export function addNote(contactId: number, text: string): Result<void> {
   }).run();
   saveDatabase();
   nudgeSuggestions();   // 跟进写入 → 建议流热更新（沉默天数/到期名单变了）
+  wakeAssistant('crm-followup');
   return okResult(undefined);
 }
 
@@ -228,6 +230,7 @@ export async function setReminder(contactId: number, reminderAt: string, note?: 
   }
   saveDatabase();
   nudgeSuggestions();   // 提醒/跟进变化 → 建议流热更新
+  wakeAssistant('crm-reminder');
   return okResult(undefined);
 }
 

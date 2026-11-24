@@ -17,7 +17,10 @@ describe('settings information architecture', () => {
     expect(settings).not.toContain('id="sec-api"');
     expect(settings).not.toContain('id="sec-crm"');
     expect(settings).not.toContain('id="sec-data"');
-    expect(settings).toContain('<SettingCard title="API 与服务">');
+    expect(settings).toContain('<SettingCard title="服务与助手">');
+    expect(settings).not.toContain('<ProviderCard />');
+    expect(settings).not.toContain('<SearchKeyCard />');
+    expect(settings).not.toContain('<KbDispatchCard />');
     expect(settings).toContain('<SettingCard title="客户跟进">');
     expect(settings).toContain('<SettingCard title="数据">');
     expect(settings).toContain('<SettingCard icon="" title="测试模式">');

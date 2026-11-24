@@ -43,3 +43,6 @@ send/config.json
 .agents/
 # 开发端本机中心地址；正式包使用打包脚本生成的临时 assets
 assets/center.json
+
+# 本机开发日志（含运行输出，不入库）
+/logs/

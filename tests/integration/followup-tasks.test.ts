@@ -96,6 +96,13 @@ describe.skipIf(!enabled)('followup tasks PostgreSQL rollback-only',()=>{
   expect(await service.reschedule(sales.token,{...command(t),dueAt:'2099-01-01T00:00:00Z'})).toMatchObject({error:{code:'CONFLICT'}});
   expect(await canProjectTaskDue(c,old,{...sales,userId:sales.id})).toBe(false);
  });
+  it('cancels an open task without counting it as completed or exposing it in task lists',async()=>{
+   const t=await task(),input={...command(t),reason:'用户取消 3 天跟进任务'};
+   const cancelled=unwrap(await service.cancel(sales.token,input));
+   expect(cancelled).toMatchObject({status:'cancelled',feedback:input.reason,version:2});
+   expect(unwrap(await service.list(sales.token,{customerId:t.customerId,limit:25,offset:0})).total).toBe(0);
+   expect(await service.complete(sales.token,{...command(t),feedback:'late'})).toMatchObject({error:{code:'CONFLICT'}});
+  });
  it('applies scope before count and pagination; importer reads progress but cannot complete assigned tasks',async()=>{
   const id=await customer(sales,ops),t=await task(id);expect(unwrap(await service.detail(ops.token,t.taskId)).canManage).toBe(false);
   expect(unwrap(await service.list(ops.token,{customerId:id,limit:25,offset:0})).total).toBe(1);

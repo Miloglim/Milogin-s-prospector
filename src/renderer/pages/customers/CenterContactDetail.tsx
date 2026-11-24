@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Input, Select, Space, Spin, Tabs, Tag, Timeline, Tooltip, message } from 'antd';
 import { CloseOutlined, DeleteOutlined, EditOutlined, PartitionOutlined, SearchOutlined, ShareAltOutlined, UndoOutlined } from '@ant-design/icons';
 import { ContactDetailLayout, InfoTab, CRM_STAGES, STATUS_META } from '../../components/ContactDetail';
+import { CustomerStateChain } from './CustomerStateChain';
 import { DiamondLogo } from '../../components/DiamondLogo';
 import { CompanyBackcheck, COMPANY_BACKCHECK_UI_ENABLED, type BackcheckReport } from '../../components/CompanyBackcheck';
 import { ONLINE_CHANNELS, FOLLOWUP_METHODS, FOLLOWUP_METHOD_LABELS, CONTACT_TOUCH_STATUSES, CONTACT_TOUCH_LABELS, SALES_PERFORMANCE_LIMITS, type ContactDelete, type ContactDeleteReceipt, type CenterCompanyUpdate, type CenterContactRef, type CenterContactDetail as Detail, type ContactMonitorDetail as MonitorDetail, type CenterContactUpdate, type CenterContactFollowup, type ContactMailEvent, type FollowupMethod, type ContactTouchStatus, type CustomerStage, type ContactMailAnalysisCorrection, type ContactMailAnalysisQuery, type ContactMailAnalysisRecord, type ContactMailAnalysisView, type MailAnalysisQueueStatus, type MailPriority, type MailRelevance, type CustomerGrade, type CustomerGradeItem, type CustomerGradeOverrideClear, type CustomerGradeOverrideReceipt, type CustomerGradeOverrideSet, type CustomerGradePage } from '../../../shared/online-crm';
@@ -14,7 +15,7 @@ import { canEditContactField } from './contactRights';
 import { isPermissionDenied } from '../../lib/permissionGate';
 import { projectContactMailHistory } from './contactMailTimeline';
 import { ONLINE_LIMITS } from '../../../shared/online-crm';
-import { LeadIngressConflictDrawer, type LeadIngressConflictTarget } from './LeadIngressConflictDrawer';
+import { LeadIngressConflictDrawer, type LeadIngressConflictView } from './LeadIngressConflictDrawer';
 
 const CONTACT_DETAIL_EXIT_MS = 320;
 const MAIL_ANALYSIS_HISTORY_LIMIT = 20;
@@ -368,7 +369,7 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
   const [contactStatus, setContactStatus] = useState<ContactTouchStatus>();
   const [stage, setStage] = useState<CustomerStage>();
   const [busy, setBusy] = useState(false);
-  const [ingressConflict, setIngressConflict] = useState<LeadIngressConflictTarget | null>(null);
+  const [ingressConflict, setIngressConflict] = useState<LeadIngressConflictView | null>(null);
   const deleteRetry = useRef<ContactDelete | null>(null);
   const updateRetry = useRef<{ signature: string; payload: CenterContactUpdate } | null>(null);
   const followupRetry = useRef<{ signature: string; payload: CenterContactFollowup } | null>(null);
@@ -460,7 +461,7 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
       if (!isCurrent()) return false;
       if (result.ok) { updateRetry.current = null; changed(result.data); return true; }
       if (result.error.code === 'CONFLICT' && result.error.message.includes('冲突编号')) {
-        setIngressConflict({ source: 'api_contact_update', idempotencyKey: pending.payload.idempotencyKey, rowLabel: '修改联系人邮箱' });
+        setIngressConflict({ source: 'api_contact_update', idempotencyKey: pending.payload.idempotencyKey, rowLabel: '修改联系人邮箱', incoming: { companyName: detail.company.name, contactName: [detail.contact.firstName, detail.contact.lastName].filter(Boolean).join(' '), email: typeof pending.payload.fields.email === 'string' ? pending.payload.fields.email : detail.contact.email ?? '', country: detail.contact.country ?? '' } });
       } else {
         message.error(result.error.message);
       }
@@ -503,7 +504,7 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
     if (!hasCurrentAccess() || !current.current || currentBackcheckScope.current !== startedScope || !latestBackcheckAccess.current.canRun) return {success:false,error:'账号或页面已切换'};
     if (!saved.ok) {
       if (saved.error.code === 'CONFLICT' && saved.error.message.includes('冲突编号')) {
-        setIngressConflict({ source: 'api_contact_update', idempotencyKey: companyRetry.current.idempotencyKey, rowLabel: '修改公司资料' });
+        setIngressConflict({ source: 'api_contact_update', idempotencyKey: companyRetry.current.idempotencyKey, rowLabel: '修改公司资料', incoming: { companyName: detail.company.name, contactName: [detail.contact.firstName, detail.contact.lastName].filter(Boolean).join(' '), email: detail.contact.email ?? '', country: detail.company.country ?? detail.contact.country ?? '' } });
       }
       if (saved.error.code === 'CONFLICT') { companyRetry.current=null; void query.refetch(); }
       return {success:false,error:saved.error.message};
@@ -554,6 +555,7 @@ function CenterContactDetailContent({ reference, open, onClose, variant = 'drawe
   return <ContactDetailLayout open={open} onClose={onClose} destroyOnClose rootClassName={rootClassName} {...(variant === 'board' ? { mask: true, width: 'clamp(360px, 44vw, 620px)', rootStyle: { top: 36 }, styles: { body: { padding: 12, height: '100%', overflow: 'hidden' } } } : {})}>
     <div className="flex-shrink-0 pb-3 mb-2 border-b border-gray-100"><div className="flex items-center gap-1.5 flex-wrap"><span className="text-base font-semibold text-gray-900">{contact ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '未命名联系人' : '联系人'}</span><Tooltip title="在收件箱中搜索"><Button type="text" aria-label="在收件箱中搜索" size="small" icon={<SearchOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} disabled={!contact?.email} onClick={() => { window.location.hash = `#/inbox?search=${encodeURIComponent(contact?.email ?? '')}`; }} /></Tooltip><Tooltip title={reached ? '在CRM中查看' : '未进入CRM管线'}><Button type="text" aria-label="在CRM中查看" size="small" icon={<PartitionOutlined />} disabled={!reached} className="btn-hover-color" style={{ color: reached ? '#bbb' : '#d9d9d9', padding: 0, minWidth: 20, height: 20 }} onClick={() => { const target = new URLSearchParams({ view: 'board', centerContact: String(contact?.contactId ?? ''), centerCustomer: contact?.customerId ?? '' }); window.location.hash = '#/customers?' + target.toString(); onClose(); }} /></Tooltip><Tooltip title="带着这位联系人问 AI"><Button type="text" aria-label="带着这位联系人问 AI" size="small" disabled={!contact} onClick={() => { if (contact) askAssistant({ question: `请查询中心联系人 #${contact.contactId}（客户编号 ${contact.customerId}），分析最近情况与跟进建议。` }); }} icon={<DiamondLogo size={14} state="static" />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="共享线索"><Button type="text" aria-label="共享线索" size="small" disabled={!detail?.permissions?.canShare || busy || status === 'offline'} onClick={() => setSharing(true)} icon={<ShareAltOutlined />} className="btn-hover-color" style={{ color: '#bbb', padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Tooltip title="删除"><Button type="text" aria-label="删除联系人" size="small" disabled={busy || status === 'offline'} loading={busy} onClick={remove} icon={<DeleteOutlined />} className="btn-hover-color" style={{ padding: 0, minWidth: 20, height: 20 }} /></Tooltip><Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} className="ml-auto" /></div><div className="text-[11px] text-gray-500 font-mono mt-1">{contact?.email}</div></div>
     {query.isFetching && !detail && <Spin />}{error && <Alert type="error" message={error} />}
+    {contact && detail && <CustomerStateChain compact customerId={contact.customerId} contactId={contact.contactId} facts={{ relationshipStage: contact.relationshipStage ?? contact.stage, touchStatuses: [contact.touchStatus], aiDealPending: contact.aiDealPending }} />}
     {contact && detail && <Tabs activeKey={tab} onChange={setTab} size="small" className="contact-detail-tabs" items={[
       { key: 'info', label: '基本信息', children: <div className="customer-info-with-grade"><CustomerGradePanel customerId={reference.customerId} /><InfoTab key={backcheckScope} contact={contact} canEdit={(detail.permissions ? !!(detail.permissions.editableFields.length || detail.permissions.canFollowup || detail.permissions.canChangeStage) : detail.canEdit)} canEditField={canEditField} onSaveField={save} /></div> },
       { key: 'company', label: '公司背调', children: detail.supplementAvailable === false ? <div className="text-xs text-gray-400">联网后加载公司资料</div> : <CompanyBackcheck companyId={null} run={canBackcheck && status !== 'offline' ? backcheck : undefined} centerCompany={{ id: detail.company.companyId, name: detail.company.name, domain: detail.company.domain, backcheckData: transientReport?.scope === backcheckScope ? JSON.stringify(transientReport.report) : detail.company.backcheckData ? JSON.stringify(detail.company.backcheckData) : null }} /> },
@@ -646,13 +648,15 @@ export function ContactMonitorDetail({ reference, onClose, highlight = false }: 
     <div className="contact-monitor-detail" data-scope={scope}>
       <div className="contact-monitor-detail-header">
         <div className="contact-monitor-detail-title"><strong>{contactName}</strong><span>{contact?.email}</span></div>
-        <Tag>{contact?.touchStatus ? CONTACT_TOUCH_LABELS[contact.touchStatus] : '监督'}</Tag>
-        <Button type="text" size="small" aria-label="关闭监督详情" icon={<CloseOutlined />} onClick={onClose} />
+        {contact?.aiDealPending && <Tag color="gold">AI成交待确认</Tag>}
+        <Tag>{contact?.touchStatus ? CONTACT_TOUCH_LABELS[contact.touchStatus] : '团队查看'}</Tag>
+        <Button type="text" size="small" aria-label="关闭详情" icon={<CloseOutlined />} onClick={onClose} />
       </div>
       <div className="contact-monitor-detail-body">
         {query.isFetching && !detail && <Spin />}
         {error && <Alert type="error" message={error} />}
         {detail && <>
+          <CustomerStateChain compact customerId={contact?.customerId} contactId={contact?.contactId} facts={{ relationshipStage: contact?.relationshipStage ?? contact?.stage, touchStatuses: [contact?.touchStatus], aiDealPending: contact?.aiDealPending }} />
           {gradeCustomerId && <CustomerGradePanel customerId={gradeCustomerId} readOnly compact />}
           <dl className="contact-monitor-fields">
             <div className="contact-monitor-field"><dt>公司</dt><dd>{detail.company.name}</dd></div>

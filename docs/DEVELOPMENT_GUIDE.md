@@ -87,7 +87,7 @@ export function MyPage() {
 
 ## 开发环境搭建
 
-2026-10-13 起只保留单实例：双击 `start.bat` 或运行 `npm run dev`，使用 `scripts/dev-single.mjs`。页面服务自动选择可用端口，账号切换重启时继续运行；重复启动唤醒现有窗口。`dev:dual`、`dev:multi` 和 `start-multi.bat` 已删除；历史双开资料目录保留，不迁移、不删除账号数据。中心服务仍独立启动。
+2026-10-13 起只保留单实例：双击 `start.bat` 或运行 `npm run dev`，使用 `scripts/dev-single.mjs`。页面服务自动选择可用端口，账号切换重启时继续运行；重复启动唤醒现有窗口。`dev:dual`、`dev:multi` 和 `start-multi.bat` 已删除；历史双开资料目录保留，不迁移、不删除账号数据。`start.bat` 会先运行 `scripts/ensure-center.ps1`：检查 `http://127.0.0.1:55847/health/ready`，未就绪时启动中心 PostgreSQL 和中心服务，确认就绪后再启动开发端；中心服务仍独立运行。Windows 控制台在启动时切换到 UTF-8（`chcp 65001`），直接运行 `npm run dev` 也会由启动脚本切换。
 
 ```bash
 npm install        # 安装依赖（postinstall 自动按 Electron 版本重编 better-sqlite3）
@@ -104,14 +104,13 @@ npm run eval:agent # AI 能力回归评测（需真实端点与 API key）
 
 | 变量 | 用途 |
 |---|---|
-| `AGENT_API_BASE_URL` / `AGENT_API_KEY` / `AGENT_MODEL` / `AGENT_WIRE_API` | 对话与能力调用的生效端点与接口类型（`chat_completions` 或 `responses`；可由设置页写入） |
-| `LIGHT_API_BASE_URL` / `LIGHT_KEY_ENV` / `LIGHT_MODEL` / `LIGHT_WIRE_API` | 轻任务档（邮件总结、背调报告、会话压缩）；接口类型默认 Chat Completions，整档未配置则用主端点 |
+| 中心登录会话 | 对话、邮件分析、总结、背调和一次结构化调用统一经当前中心会话，不再读取桌面端模型端点或供应商密钥 |
 | `EXA_API_KEY` / `TAVILY_API_KEY` | 联网检索源：公司背调与航线行情调研共用（都不配则这两类能力会明确报「未配置」） |
 | `KB_BASE_URL` / `KB_TOKEN` / `KB_APPLICATION_ID` | 公司内网 KB 中转（可选） |
 | `GH_TOKEN` / `GITHUB_TOKEN` | 读取 releases 与自动更新检查用（私有仓库或限流时需要） |
 | `VITE_PROSPECTOR_EDITION` | 构建期产品入口，`contact-autodev` 只开放现有客户/联系人、发送中心和素材库；默认完整版 |
 
-数据落在 `data/`、运行设置与端点档案在 `send/config.json`、`ai/providers.json`（均不入库）。
+数据落在 `data/`、运行设置在 `send/config.json`（不入库）。模型供应商、模型名和密钥只在中心管理中心配置。
 
 网络注意：本机直连 GitHub 下载可能被 TLS 证书拦截，Electron 二进制与 electron-builder 工具下载需走国内镜像：
 

@@ -15,13 +15,14 @@ import type {
   MailPriority,
   MailRelevance,
 } from '../../core/mail-analysis';
-import { contactStateForMail, mailThreadKey, mechanicalMailAnalysis, newerAnalysisWins, taskSuggestionFor } from '../../core/mail-analysis';
+import { contactStateForMail, dealWonSignalFor, mailThreadKey, mechanicalMailAnalysis, newerAnalysisWins, taskSuggestionFor } from '../../core/mail-analysis';
 import type { ContactMailEventInput } from '../../core/contact-mail';
 import { canReadContact, contactMonitorDetailIn, loadContactIn } from './contact-assignment-repository';
 import { authorizeLeadActor, type LeadActor } from './lead-repository';
 import { ensureContactMailAnalysisSchemaIn } from './contact-mail-analysis-schema';
 import { ensureTeamAttentionSchemaIn } from './team-attention-schema';
 import { createMailAnalysisTaskIn } from './task-repository';
+import { applyDealWonProposalIn, ensureSalesCaseIn } from './sales-case-repository';
 
 const SUMMARY_MAX = 2000;
 const DIGEST_FIELDS = ['contactId','customerId','mailboxKey','messageKey','contentHash','source','inputSequence','result','classification','relevance','summary','signals','requiresAction','nextAction','priority','dueHint','confidence','evidence'] as const;
@@ -118,6 +119,14 @@ async function insertAnalysisIn(c:PoolClient,input:InsertAnalysisInput):Promise<
     if(suggestion.data){
       const created=await createMailAnalysisTaskIn(c,{actorId:record.actorId,suggestionId:suggestion.data,analysisId:record.analysisId,customerId:record.customerId,contactId:record.contactId,threadKey:record.threadKey,actionCode:record.classification==='bounced'?'fix_email':record.signals[0]?.code??'other',title:record.nextAction??'处理客户邮件',priority:record.priority,relevance:record.relevance,classification:record.classification,source:record.source,confidence:record.confidence,requiresAction:record.requiresAction,nextAction:record.nextAction,signals:record.signals});
       if(!created.ok)return created;
+    }
+    const dealWonSignal=dealWonSignalFor(record);
+    if(dealWonSignal){
+      const ensured=await ensureSalesCaseIn(c,{customerId:record.customerId,contactId:record.contactId,ownerUserId:record.actorId,source:'mail_analysis',summary:record.summary});
+      const applied=await applyDealWonProposalIn(c,{caseId:ensured.caseId,customerId:record.customerId,contactId:record.contactId,ownerUserId:record.actorId,actorUserId:record.actorId,messageKey:record.messageKey,signalCode:dealWonSignal.code,summary:record.summary,evidence:record.evidence.length?record.evidence:[dealWonSignal.evidence],confidence:dealWonSignal.confidence});
+      if(!applied.proposalId&&applied.applied===false){
+        // Existing terminal cases are outside the automatic proposal path; the analysis itself remains valid.
+      }
     }
   }
   return success(record);

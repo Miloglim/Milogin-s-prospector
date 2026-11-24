@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
-  DashboardOutlined, UserOutlined, SendOutlined,
-  InboxOutlined, FileTextOutlined,
+  UserOutlined, SendOutlined,
+  InboxOutlined,
   SettingOutlined, SearchOutlined, MoreOutlined, DollarOutlined, UpOutlined, BellOutlined, ApartmentOutlined,
-  MenuFoldOutlined, MenuUnfoldOutlined,
+  DownOutlined,
 } from "@ant-design/icons";
 import { App as AntApp, ConfigProvider, Dropdown, Input, Modal, Popover } from "antd";
 import "./SidebarFooter.css";
@@ -19,6 +19,8 @@ import { useOptionalNotifications } from '../../NotificationContext';
 import { useOptionalIdentity } from '../../IdentityContext';
 import { identityRoleLabel } from '../../../shared/online-crm';
 import { CONTACT_AUTODEV_EDITION } from '../../lib/product-edition';
+import { useAssistantPulse, useSharedAssistantPulse } from '../../hooks/useAssistantPulse';
+import { assistantCallout } from '../../../shared/assistant';
 
 interface NavItem {
   key: string;
@@ -27,32 +29,27 @@ interface NavItem {
 }
 
 const fullNavItems: NavItem[] = [
-  { key: "/assistant", icon: <DiamondLogo size={15} state="idle" />, label: "新对话" },
-  { key: "/", icon: <DashboardOutlined />, label: "仪表盘" },
+  { key: "/assistant", icon: <DiamondLogo size={15} state="idle" />, label: "任务" },
   { key: "/inbox", icon: <InboxOutlined />, label: "收件箱" },
-  { key: "/customers", icon: <UserOutlined />, label: "客户" },
-  { key: "/team", icon: <ApartmentOutlined />, label: "团队" },
+  { key: "/team", icon: <ApartmentOutlined />, label: "我的" },
 ];
 const contactAutoDevNavItems: NavItem[] = [
-  { key: "/customers", icon: <UserOutlined />, label: "客户" },
+  { key: "/customers", icon: <UserOutlined />, label: "我的客户" },
 ];
 const navItems = CONTACT_AUTODEV_EDITION ? contactAutoDevNavItems : fullNavItems;
 
 // 公司大模型正式接入前，先隐藏尚未开放的产品入口；路由和实现保留，后续只需打开开关。
-const SHOW_DASHBOARD_NAV = false;
-const SHOW_RATES_NAV = false;
-const SHOW_NEW_CONVERSATION_NAV = false;
+const SHOW_RATES_NAV = true;
+const SHOW_NEW_CONVERSATION_NAV = true;
 const SHOW_CONVERSATIONS_PANEL = false;
 
 // 豆包式空间让位：会话历史溢出时，这三行折叠进底栏图标，列表向上增高
 const fullCollapsibleItems: NavItem[] = [
   { key: "/rates", icon: <DollarOutlined />, label: "运价库" },
   { key: "/campaigns", icon: <SendOutlined />, label: "发送中心" },
-  { key: "/templates", icon: <FileTextOutlined />, label: "素材库" },
 ];
 const contactAutoDevCollapsibleItems: NavItem[] = [
   { key: "/campaigns", icon: <SendOutlined />, label: "发送中心" },
-  { key: "/templates", icon: <FileTextOutlined />, label: "素材库" },
 ];
 const collapsibleItems = CONTACT_AUTODEV_EDITION ? contactAutoDevCollapsibleItems : fullCollapsibleItems;
 const NAV_ROWS_H = 138; // 三行导航 ≈46px/行，折叠↔恢复的滞回阈值
@@ -106,7 +103,7 @@ function ConversationsPanel({ collapsed, onMetrics, onTuck }: {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastTopRef = useRef(0);
   // 当前会话由 router state 派生：navigate()（pushState）不触发 hashchange，读旧 URL 会亮错行；
-  // 这里跟随 router 状态重算，切去设置/仪表盘时 c 自然消失，高亮即灭
+  // 这里跟随 router 状态重算，切去设置等页面时 c 自然消失，高亮即灭
   const cParam = useRouterState({ select: s => (s.location.search as { c?: unknown }).c });
   const activeId = typeof cParam === "string" && cParam ? cParam : undefined;
   const [renaming, setRenaming] = useState<ConvMeta | null>(null);
@@ -270,7 +267,7 @@ export function Sidebar() {
   const notifications = useOptionalNotifications();
   const localAvailable = !session || session.localAvailable;
   const offline = session?.status === 'offline';
-  const unavailable = (key: string) => !localAvailable && !['/customers', '/team'].includes(key);
+  const unavailable = (key: string) => !localAvailable && !['/customers', '/team', '/assistant'].includes(key);
   const { sidebarCollapsed, toggleSidebar } = useAppContext();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: s => s.location.pathname });
@@ -282,11 +279,19 @@ export function Sidebar() {
   const [agentBusy, setAgentBusy] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
+  const sharedAssistant = useSharedAssistantPulse();
+  const localAssistant = useAssistantPulse(!sharedAssistant && !!session?.identity && !CONTACT_AUTODEV_EDITION);
+  const assistant = sharedAssistant ?? localAssistant;
+  const reminders = assistant.snapshot?.reminders ?? [];
+  const assistantCalloutText = assistantCallout(reminders);
+  const [myMenuOpen, setMyMenuOpen] = useState(() => pathname === '/customers');
   const indicatorRef = useRef<HTMLSpanElement>(null);
+  const navListRef = useRef<HTMLUListElement>(null);
+  const myMenuItems = [{ key: '/customers', label: '我的客户', icon: <UserOutlined /> }];
 
   useEffect(() => {
-    if (!session?.identity) setMessagesOpen(false);
-  }, [session?.identity]);
+    if (!session?.identity) { setMessagesOpen(false); setMyMenuOpen(false); }
+  }, [session?.identity?.userId]);
 
   useEffect(() => {
     const offChunk = window.api.on("agent:chunk", () => setAgentBusy(true));
@@ -308,14 +313,26 @@ export function Sidebar() {
   const isActive = (key: string) => {
     // 「新对话」只代表空态入口：已经在某个会话里就不高亮（高亮交给会话列表那一行）
     if (key === "/assistant") return pathname === "/assistant" && !activeConv;
-    return pathname === key || (key !== "/" && pathname.startsWith(key));
+    if (key === "/team") return pathname === "/customers";
+    return pathname === key || pathname.startsWith(key);
   };
 
   const width = sidebarCollapsed ? 64 : 210;
-  const visibleNavItems = navItems.filter(item => (item.key !== '/' || SHOW_DASHBOARD_NAV) && (item.key !== '/assistant' || SHOW_NEW_CONVERSATION_NAV));
+  const visibleNavItems = navItems.filter(item => item.key !== '/assistant' || SHOW_NEW_CONVERSATION_NAV);
   const visibleCollapsibleItems = collapsibleItems.filter(item => item.key !== '/rates' || SHOW_RATES_NAV);
-  const renderedNavItems = navHidden ? visibleNavItems : [...visibleNavItems, ...visibleCollapsibleItems];
+  const renderedNavItems = (navHidden ? visibleNavItems : [...visibleNavItems, ...visibleCollapsibleItems])
+    .map(item => item.key === '/assistant'
+      ? { ...item, label: assistantCalloutText, icon: <DiamondLogo size={15} state={assistant.busy ? 'running' : reminders.length ? 'idle' : 'static'} /> }
+      : item);
   const activeNavIndex = renderedNavItems.findIndex(item => isActive(item.key));
+  const activeNavKey = renderedNavItems[activeNavIndex]?.key ?? '';
+  useEffect(() => {
+    setMyMenuOpen(pathname === '/customers');
+  }, [pathname]);
+  useEffect(() => {
+    const activeRow = navListRef.current?.querySelector<HTMLElement>(`[data-nav-key="${activeNavKey}"]`);
+    indicatorRef.current?.style.setProperty('transform', `translateY(${activeRow?.offsetTop ?? activeNavIndex * 44}px)`);
+  }, [activeNavIndex, activeNavKey, renderedNavItems.length, sidebarCollapsed, myMenuOpen]);
   const checkConnection = async () => {
     if (checkingConnection || !session) return;
     setCheckingConnection(true);
@@ -328,20 +345,25 @@ export function Sidebar() {
     }
   };
 
-  const renderItem = (item: NavItem, index: number) => (
-    <li
+  const renderItem = (item: NavItem) => {
+    const row = <li
       key={item.key}
+      data-nav-key={item.key}
       onClick={() => {
         if (unavailable(item.key)) return;
+        if (item.key === '/team') {
+          if (pathname === '/customers') {
+            setMyMenuOpen(open => !open);
+            return;
+          }
+          setMyMenuOpen(true);
+          navigate({ to: '/customers' });
+          return;
+        }
         const go = () => {
-          // 「新对话」= 清掉会话参数进入空白态；已在该页时 hash 变化仍会触发页面重置
           if (item.key === "/assistant") gotoConversation(undefined);
           else navigate({ to: item.key });
         };
-        // 客户页高亮条独立于页面内容移动；路由壳体立即切换，重表格由客户页自行延后挂载。
-        if (item.key === "/customers" && !isActive(item.key) && !sidebarCollapsed) {
-          indicatorRef.current?.style.setProperty("transform", `translateY(${index * 44}px)`);
-        }
         go();
       }}
       title={unavailable(item.key) ? offline ? '离线' : '此功能暂未开放' : sidebarCollapsed ? item.label : undefined}
@@ -362,12 +384,26 @@ export function Sidebar() {
         whiteSpace: "nowrap",
         opacity: sidebarCollapsed ? 0 : 1,
         transition: "opacity 0.15s ease",
-        display: sidebarCollapsed ? "none" : "flex", alignItems: "center",
+        display: sidebarCollapsed ? "none" : "flex", alignItems: "center", flex: 1, gap: 6,
       }}>
         {item.label}
+        {item.key === '/team' && !sidebarCollapsed && <DownOutlined style={{ marginLeft: 'auto', fontSize: 10, opacity: .6, transform: myMenuOpen ? 'rotate(180deg)' : undefined, transition: 'transform .15s ease' }} />}
       </span>
-    </li>
-  );
+    </li>;
+    return row;
+  };
+
+  const renderMySubmenu = () => myMenuOpen && !sidebarCollapsed
+    ? <li className="sidebar-team-subnav-wrap">
+        <ul className="sidebar-team-subnav" aria-label="我的子页面">
+          {myMenuItems.map(item => <li key={item.key}>
+            <button type="button" className={`sidebar-team-subitem${pathname === item.key ? ' is-active' : ''}`} aria-current={pathname === item.key ? 'page' : undefined} onClick={() => navigate({ to: item.key })}>
+              <span className="sidebar-team-subitem-icon">{item.icon}</span><span>{item.label}</span>
+            </button>
+          </li>)}
+        </ul>
+      </li>
+    : null;
 
   return (
     <aside
@@ -409,14 +445,17 @@ export function Sidebar() {
 
       {/* Nav — 平铺列表；会话历史常驻导航项下方（豆包式：任何页面都可直切会话） */}
       <nav style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <ul className="sidebar-nav-list" style={{ listStyle: "none", padding: 0, margin: 0, flexShrink: 0, position: "relative" }}>
+        <ul ref={navListRef} className="sidebar-nav-list" style={{ listStyle: "none", padding: 0, margin: 0, flexShrink: 0, position: "relative" }}>
           {!sidebarCollapsed && activeNavIndex >= 0 && <span
             ref={indicatorRef}
             className="sidebar-nav-indicator"
             aria-hidden="true"
             style={{ transform: `translateY(${activeNavIndex * 44}px)` }}
           />}
-          {renderedNavItems.map(renderItem)}
+          {renderedNavItems.map(item => <Fragment key={item.key}>
+            {renderItem(item)}
+            {item.key === '/team' && renderMySubmenu()}
+          </Fragment>)}
         </ul>
 
         {SHOW_CONVERSATIONS_PANEL && <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "8px 12px 0", flexShrink: 0 }} />}

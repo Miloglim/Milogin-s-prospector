@@ -7,7 +7,11 @@ const MILLISECONDS_PER_SECOND = 1000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]+$/;
 export function createAuthService(repo: AuthRepository, passwords: PasswordPort, tokens: TokenPort, clock: ClockPort, ttlSeconds: number) {
-  const unauthorized = () => failure("UNAUTHORIZED", "登录信息无效或会话已失效");
+  const unauthorized = () => failure("UNAUTHORIZED", "会话已失效，请重新登录");
+  const accountNotFound = () => failure("ACCOUNT_NOT_FOUND", "该邮箱尚未在中心注册，请检查邮箱或创建账号");
+  const accountNotConfigured = () => failure("ACCOUNT_NOT_CONFIGURED", "该账号尚未设置中心登录密码，请联系超级管理员重置密码");
+  const accountDisabled = () => failure("ACCOUNT_DISABLED", "该账号已停用，请联系超级管理员");
+  const invalidCredentials = () => failure("INVALID_CREDENTIALS", "密码不正确，请重新输入或联系超级管理员重置密码");
   async function me(token: string,client:"api"|"browser"='api'): Promise<Result<Identity>> {
     if(token.length !== AUTH_LIMITS.tokenCharacters || !TOKEN_PATTERN.test(token)) return unauthorized();
     const result = await repo.identity(tokens.hash(token),client);
@@ -18,19 +22,21 @@ export function createAuthService(repo: AuthRepository, passwords: PasswordPort,
   return {
     ready: () => repo.ready(),
     async login(input: unknown,client:"api"|"browser"='api'): Promise<Result<LoginResponse>> {
-      if(!input || typeof input!=="object" || Array.isArray(input)) return failure("INVALID_INPUT","登录参数无效");
+      if(!input || typeof input!=="object" || Array.isArray(input)) return failure("INVALID_INPUT","登录请求格式错误");
       const value = input as Record<string,unknown>;
-      if(Object.keys(value).some(key => key!=="email" && key!=="password")
-        || typeof value.email!=="string" || typeof value.password!=="string"
-        || value.email.length>AUTH_LIMITS.emailMax || value.email!==value.email.trim()||!EMAIL_PATTERN.test(value.email.trim())
-        || value.password.length<BOOTSTRAP_LOGIN_MIN || value.password.length>AUTH_LIMITS.passwordMax) return failure("INVALID_INPUT","登录参数无效");
+      if(Object.keys(value).some(key => key!=="email" && key!=="password") || typeof value.email!=="string" || typeof value.password!=="string") return failure("INVALID_INPUT","登录请求格式错误");
+      if(!value.email.length || value.email.length>AUTH_LIMITS.emailMax || value.email!==value.email.trim() || !EMAIL_PATTERN.test(value.email.trim())) return failure("INVALID_INPUT","邮箱地址格式不正确");
+      if(value.password.length<BOOTSTRAP_LOGIN_MIN || value.password.length>AUTH_LIMITS.passwordMax) return failure("INVALID_INPUT",`密码长度应为 ${BOOTSTRAP_LOGIN_MIN}-${AUTH_LIMITS.passwordMax} 个字符`);
       const credential = await repo.credential(value.email.trim().toLowerCase());
       if(!credential.ok) return credential;
-      if(value.password.length<AUTH_LIMITS.passwordMin&&!credential.data?.mustChangePassword)return unauthorized();
+      if(!credential.data) return accountNotFound();
+      if(!credential.data.active) return accountDisabled();
+      if(!credential.data.passwordHash) return accountNotConfigured();
+      if(value.password.length<AUTH_LIMITS.passwordMin&&!credential.data.mustChangePassword)return invalidCredentials();
       let verified: boolean;
-      try { verified = await passwords.verify(value.password,credential.data?.passwordHash ?? ""); }
+      try { verified = await passwords.verify(value.password,credential.data.passwordHash); }
       catch { return failure("UNAVAILABLE","登录校验暂不可用，请稍后重试"); } // crypto capacity/errors fail closed, no input/hash in error
-      if(!verified || !credential.data?.active) return unauthorized();
+      if(!verified) return invalidCredentials();
       if(credential.data.mustChangePassword&&client==='api')return failure('PASSWORD_CHANGE_REQUIRED','请先在管理页面修改初始密码');
       const token = tokens.create(), expiresAt = new Date(clock.now()+ttlSeconds*MILLISECONDS_PER_SECOND).toISOString();
       const session = await repo.createSession({tokenHash:tokens.hash(token),userId:credential.data.userId,securityRevision:credential.data.securityRevision,expiresAt,client});
@@ -75,9 +81,11 @@ export function createAuthService(repo: AuthRepository, passwords: PasswordPort,
         ||!isNewAccountPassword(value.newPassword)||value.newPassword===value.currentPassword)return failure('INVALID_INPUT','新密码至少6位，仅允许英文字母和数字，且必须与当前密码不同');
       const credential=await repo.credential(identity.data.email);
       if(!credential.ok)return credential;
-      if(!credential.data?.active)return unauthorized();
+      if(!credential.data)return accountNotFound();
+      if(!credential.data.active)return accountDisabled();
+      if(!credential.data.passwordHash)return accountNotConfigured();
       try {
-        if(!await passwords.verify(value.currentPassword,credential.data.passwordHash))return failure('UNAUTHORIZED','当前密码不正确');
+        if(!await passwords.verify(value.currentPassword,credential.data.passwordHash))return failure('INVALID_CREDENTIALS','当前密码不正确');
         return await repo.changePassword(tokens.hash(token),credential.data.passwordHash,credential.data.securityRevision,await (passwords as PasswordPort & {hash:(password:string)=>Promise<string>}).hash(value.newPassword),'api');
       } catch { return failure('UNAVAILABLE','改密暂不可用'); } // Never expose passwords or crypto diagnostics.
     },

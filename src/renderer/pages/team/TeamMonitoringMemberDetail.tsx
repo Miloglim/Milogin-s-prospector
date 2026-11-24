@@ -32,7 +32,7 @@ export function TeamMonitoringMemberDetail({ userId, online, onClose, onOpenMail
   const loading = query.isLoading;
   const error = query.data && !query.data.ok ? query.data.error.message : query.error instanceof Error ? query.error.message : '';
 
-  return <section className={`team-monitoring-member-detail${embedded ? ' is-embedded' : ''}`} aria-label="成员监控详情">
+  return <section className={`team-monitoring-member-detail${embedded ? ' is-embedded' : ''}`} aria-label="成员情况详情">
     <header>
       <div><span>成员</span><h2>{detail?.member.displayName ?? '成员详情'}</h2><small>{detail?.member.teamName ?? '正在读取范围'}</small></div>
       {onClose && <button type="button" onClick={onClose} aria-label="关闭成员详情" title="关闭"><X aria-hidden="true" /></button>}

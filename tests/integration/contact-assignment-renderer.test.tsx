@@ -31,7 +31,7 @@ vi.mock('antd', () => ({
   Button: ({ children, onClick, disabled, ...props }: { children: ReactNode; onClick?: () => void; disabled?: boolean; [key: string]: unknown }) => <button aria-label={props['aria-label'] as string | undefined} disabled={disabled} onClick={onClick}>{children}</button>,
   Pagination: () => null,
   Input: Object.assign(({ value, onChange }: { value: string; onChange: (event: unknown) => void }) => <input value={value} onChange={onChange} />, { TextArea: ({ value, onChange }: { value: string; onChange: (event: unknown) => void }) => <textarea value={value} onChange={onChange} /> }),
-  Modal: ({ children, onOk, okText, okButtonProps }: { children: ReactNode; onOk: () => void; okText?: string; okButtonProps: { disabled: boolean } }) => <div>{children}<button disabled={okButtonProps.disabled} onClick={onOk}>{okText}</button></div>,
+  Modal: ({ children, onOk, okText, okButtonProps }: { children: ReactNode; onOk: () => void; okText?: string; okButtonProps?: { disabled?: boolean } }) => <div>{children}<button disabled={okButtonProps?.disabled} onClick={onOk}>{okText}</button></div>,
   Select: ({ options, onChange, mode, ...props }: { options: Array<{ value: string; label: string }>; onChange: (value: unknown) => void; mode?: string; [key: string]: unknown }) => <select aria-label={props['aria-label'] as string} onChange={event => onChange(mode ? [event.target.value] : event.target.value)}><option value="" />{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
   Segmented: ({ options, onChange }: { options: Array<{ value: string; label: string }>; onChange: (value: string) => void }) => <div>{options.map(option => <button key={option.value} onClick={() => onChange(option.value)}>{option.label}</button>)}</div>,
   Table: ({ dataSource, columns }: { dataSource: Array<Record<string, unknown>>; columns: Array<{ dataIndex?: string; render?: (v: unknown, row: Record<string, unknown>) => ReactNode }> }) => <div>{dataSource.map((row, index) => <div key={index}>{columns.map((column, cell) => <span key={cell}>{column.render ? column.render(undefined, row) : String(row[column.dataIndex ?? ''] ?? '')}</span>)}</div>)}</div>,
@@ -69,6 +69,13 @@ describe('contact assignment decisions and selected row identity', () => {
     const writes = invoke.mock.calls.filter(call => call[0] === C.ASSIGNMENT_GROUP_ACCEPT); expect(writes).toHaveLength(2); expect(writes[0]![1]).toEqual(writes[1]![1]); expect(writes[0]![1]).toMatchObject({ groupId: 'group-a' });
     expect(invoke.mock.calls.every(call => [C.ASSIGNMENT_GROUPS, C.ASSIGNMENT_GROUP_ACCEPT].includes(call[0]))).toBe(true);
   });
+  it('keeps accepted groups in the same list with their current status', async () => {
+    invoke.mockImplementation(async channel => channel === C.ASSIGNMENT_GROUPS ? { ok: true, data: { items: [{ groupId: 'group-accepted', total: 3, pending: 0, accepted: 3, rejected: 0, cancelled: 0, expired: 0, pendingTransfer: 0, actorName: '管理员', targetName: '用户甲', createdAt: '2026-10-14', contactNames: ['Alice','Bob'], companyNames: ['Fixture Company'], canAcceptAll: false, canRejectAll: false, canCancelAll: false }], total: 1 } } : { ok: false, error: { code: 'UNAVAILABLE', message: '响应丢失' } });
+    await mount(<ContactAssignments operations />);
+    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_GROUPS, expect.objectContaining({ view: 'outgoing', status: 'all' }));
+    expect(host.textContent).toContain('已分配 3');
+    expect(host.textContent).not.toContain('待首次跟进');
+  });
   it('opens one assignment group and keeps per-contact actions available inside', async () => {
     invoke.mockImplementation(async channel => channel === C.ASSIGNMENT_GROUPS ? { ok: true, data: { items: [{ groupId: 'group-a', total: 2, pending: 2, accepted: 0, rejected: 0, cancelled: 0, actorName: '管理员', targetName: '用户甲', createdAt: '2026-10-14', contactNames: ['Alice','Bob'], companyNames: ['Fixture Company'], canAcceptAll: true, canRejectAll: true, canCancelAll: false }], total: 1 } } : channel === C.ASSIGNMENT_LIST ? { ok: true, data: { items: [{ requestId: 'request-a', groupId: 'group-a', contactId: 9, customerId: 'customer-a', version: 1, contactName: 'Alice', companyName: 'Fixture Company', targetName: '用户甲', actorName: '管理员', createdAt: '2026-10-14', status: 'pending', canAccept: true, canReject: true, canCancel: false }], total: 1 } } : { ok: false, error: { code: 'UNAVAILABLE', message: '响应丢失' } });
     await mount(<ContactAssignments operations={false} />);
@@ -82,7 +89,7 @@ describe('contact assignment decisions and selected row identity', () => {
       ? { ok: true, data: { items: [], total: 0 } }
       : { ok: false, error: { code: 'INVALID_INPUT', message: '联系人或分配参数无效' } });
     await mount(<ContactAssignments operations={false} />);
-    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_GROUPS, expect.objectContaining({ view: 'incoming', status: 'pending', offset: 0 }));
+    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_GROUPS, expect.objectContaining({ view: 'incoming', status: 'all', offset: 0 }));
     expect(invoke.mock.calls.some(call => call[0] === C.ASSIGNMENT_LIST)).toBe(false);
     expect(host.textContent).not.toContain('联系人或分配参数无效');
   });
@@ -90,13 +97,12 @@ describe('contact assignment decisions and selected row identity', () => {
     window.location.hash = `#/customers?view=assignments&requestId=${requestA}&assignmentStatus=pending`;
     invoke.mockImplementation(async () => ({ ok: true, data: { items: [{ requestId: requestA, contactId: 9, customerId: 'customer-a', version: 5, contactName: 'Alice', companyName: 'Fixture Company', targetName: '用户甲', actorName: '管理员', createdAt: '2026-10-14', status: 'accepted', canAccept: false, canReject: false, canCancel: false }], total: 1 } }));
     await mount(<ContactAssignments operations={false} />);
-    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_LIST, { view: 'incoming', status: 'pending', search: '', limit: 1, offset: 0, requestId: requestA });
-    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_LIST, { view: 'incoming', status: 'accepted', search: '', limit: 1, offset: 0, requestId: requestA });
+    expect(invoke).toHaveBeenCalledWith(C.ASSIGNMENT_LIST, { view: 'incoming', status: 'all', search: '', limit: 1, offset: 0, requestId: requestA });
     expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent === '接受')).toBe(false);
     expect(host.textContent).toContain('跟进');
     expect(invoke.mock.calls.every(call => call[1].offset === 0 && call[1].requestId === requestA)).toBe(true);
   });
-  it('renders every lifecycle filter and keeps expired assignments read-only', async () => {
+  it('keeps expired assignments read-only in the unified list', async () => {
     window.location.hash = `#/customers?view=assignments&requestId=${expiredA}&assignmentStatus=expired`;
     invoke.mockImplementation(async channel => channel === C.ASSIGNMENT_LIST ? { ok: true, data: { items: [{
       requestId: 'expired-a', groupId: 'group-a', contactId: 9, customerId: 'customer-a', version: 3,
@@ -107,8 +113,6 @@ describe('contact assignment decisions and selected row identity', () => {
       expiresAt: '2026-10-08T00:00:00.000Z', decidedAt: null, canAccept: false, canReject: false, canCancel: false, canTransfer: false,
     }], total: 1 } } : { ok: false, error: { code: 'UNAVAILABLE', message: 'unexpected call' } });
     await mount(<ContactAssignments operations={false} />);
-    expect(host.textContent).toContain('待接受');
-    expect(host.textContent).toContain('转交待确认');
     expect(host.textContent).toContain('已过期');
     expect(host.textContent).toContain('已于');
     expect(host.textContent).toContain('只读');
@@ -178,7 +182,7 @@ describe('contact assignment decisions and selected row identity', () => {
       history: [], canCorrect: false, access: 'monitor', taskSuggestion: { key: 'task-a', actionCode: 'quote_request', nextAction: '回复报价', priority: 'important', dueHint: '24 小时内' },
     } } : channel === C.CONTACT_MAIL_ANALYSIS_QUEUE ? { ok: true, data: { enabled: true, pending: 0, running: 0, retrying: 0, completed: 1, failed: 0, lastError: null } }
       : { ok: false, error: { code: 'UNAVAILABLE', message: 'unexpected call' } });
-    window.location.hash = `#/customers?view=board&monitorContact=27&centerCustomer=${customerId}`;
+    window.location.hash = `#/customers?view=table&monitorContact=27&centerCustomer=${customerId}`;
     await mount(<LegacyCustomersPage />);
     expect(invoke).toHaveBeenCalledWith(C.CONTACT_MONITOR_DETAIL, { contactId: 27, customerId });
     expect(invoke.mock.calls.some(call => call[0] === C.CONTACT_DETAIL)).toBe(false);
@@ -189,7 +193,7 @@ describe('contact assignment decisions and selected row identity', () => {
     expect(host.textContent).toContain('报价请求');
     expect(host.querySelector('[aria-label="删除联系人"]')).toBeNull();
     expect(host.querySelector('[aria-label="共享线索"]')).toBeNull();
-    expect(host.querySelector('button[aria-label="关闭监督详情"]')).not.toBeNull();
+    expect(host.querySelector('button[aria-label="关闭详情"]')).not.toBeNull();
     const forbidden = Array.from(host.querySelectorAll('button')).map(button => button.textContent).filter(Boolean);
     expect(forbidden).not.toContain('编辑');
     expect(forbidden).not.toContain('跟进');

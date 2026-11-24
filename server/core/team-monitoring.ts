@@ -2,8 +2,10 @@ import type { CrmRole } from './auth';
 import type { Result } from './crm';
 import type { OrganizationUnitKind } from './organization';
 import type { ContactTouchStatus, CustomerStage } from './leads';
+import type { TeamMemberRole } from './teams';
 import type { MailAnalysisSource, MailBusinessSignal, MailIntentCode, MailPriority, MailRelevance } from './mail-analysis';
 import type { MailClassification } from './contact-mail';
+import type { CustomerGrade } from './sales-performance';
 
 export const TEAM_MONITORING_ROUTES = {
   overview: '/api/crm/team-monitoring',
@@ -66,6 +68,7 @@ export interface TeamMonitoringMemberSummary {
   userId: string;
   displayName: string;
   email: string | null;
+  role: TeamMemberRole;
   teamId: string;
   teamName: string;
   organizationKind: OrganizationUnitKind;
@@ -170,6 +173,22 @@ export interface TeamMonitoringMemberDetail {
   recentActions: TeamMonitoringAction[];
   attention: TeamMonitoringAttentionSummary[];
   recentMail: TeamMonitoringMailSummary[];
+  followups: TeamMonitoringFollowup[];
+}
+
+export interface TeamMonitoringFollowup {
+  customerId: string;
+  customerName: string;
+  contactId: number;
+  contactName: string | null;
+  stage: CustomerStage;
+  aiDealPending: boolean;
+  grade: CustomerGrade;
+  urgency: MailPriority;
+  lastFollowupAt: string | null;
+  daysSinceFollowup: number | null;
+  nextAction: string | null;
+  recentSummary: string | null;
 }
 
 export interface TeamMonitoringContactSummary {
@@ -184,6 +203,7 @@ export interface TeamMonitoringContactSummary {
   country: string | null;
   title: string | null;
   stage: CustomerStage;
+  aiDealPending: boolean;
   touchStatus: ContactTouchStatus;
   ownerUserId: string | null;
   ownerName: string | null;

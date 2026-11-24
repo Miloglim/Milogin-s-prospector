@@ -18,7 +18,7 @@ import { agentConversations, agentMessages, agentToolCalls } from "../db/schema/
 import { rateQuotes } from "../db/schema/rates";
 import { okResult, failResult, type Result } from "../errors";
 import { writeArtifact, type ArtifactMeta } from "./artifact.service";
-import { readActiveEndpoint } from "./endpoint.service";
+import { getCenterAiSession } from "./center-ai-session.service";
 
 /** 日志与配置共用 APP_ROOT：打包版是 userData，开发版是项目根，不需要服务层加载 Electron。 */
 export function diagnosticsLogFile(root = APP_ROOT): string {
@@ -88,12 +88,12 @@ export function exportDiagnostics(): Result<ArtifactMeta> {
     lines.push(`- 未找到日志文件（${logPath}）`);
   }
 
-  // ── 模型端点（永不含密钥） ──
-  lines.push(``, `## 模型端点`);
+  // ── 中心 AI（永不含密钥） ──
+  lines.push(``, `## 中心 AI`);
   try {
-    const ep = readActiveEndpoint();
-    lines.push(`- baseUrl: ${ep.baseUrl || "（未配置端点）"}`);
-    lines.push(`- model: ${ep.model || "-"} · 密钥: ${ep.apiKey ? "已配置（值不外泄）" : "未配置"}`);
+    const center = getCenterAiSession();
+    lines.push(`- baseUrl: ${center?.baseUrl || "（未登录中心）"}`);
+    lines.push(`- model: ${center ? "center-managed" : "-"} · 会话: ${center ? "已连接（令牌不外泄）" : "未连接"}`);
   } catch (e) {
     lines.push(`- 读取失败：${e instanceof Error ? e.message : String(e)}`);
   }

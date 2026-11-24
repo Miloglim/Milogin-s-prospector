@@ -1,7 +1,7 @@
 import { RouterProvider } from "@tanstack/react-router";
 import { ConfigProvider, App as AntApp, Modal } from "antd";
 import { AppProvider } from "./AppContext";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateDomain } from "./lib/cacheDeps";
 import { router } from "./router";
@@ -11,7 +11,11 @@ import { NotificationProvider } from './NotificationContext';
 import { ProductLogin } from './components/ProductLogin';
 import { DiamondLogo } from './components/DiamondLogo';
 import { subscribeWorkspaceDark, workspaceDarkEnabled } from './lib/workspace-preferences';
-import { PRODUCT_EDITION, productEditionOfflineEntryPath } from './lib/product-edition';
+import { CONTACT_AUTODEV_EDITION, PRODUCT_EDITION, productEditionOfflineEntryPath } from './lib/product-edition';
+import { AssistantPulseProvider } from './hooks/useAssistantPulse';
+const DevOverlay = import.meta.env.DEV
+  ? lazy(() => import('./components/DevOverlay').then(module => ({ default: module.DevOverlay })))
+  : null;
 import './components/ProductLogin.css';
 
 function AppEmptyState() {
@@ -85,7 +89,9 @@ function IdentityGate() {
     session.identity.crmCapabilities?.slice().sort() ?? [],
   ]);
   return <div className="identity-app-shell" key={`${session.identity.userId}:${permissionKey}`} style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-    <RouterProvider router={router} />
+    <AssistantPulseProvider enabled={!CONTACT_AUTODEV_EDITION}>
+      <RouterProvider router={router} />
+    </AssistantPulseProvider>
   </div>;
 }
 
@@ -110,6 +116,7 @@ function ApplicationTheme() {
       theme={brandTheme(workspaceDark)}>
       <AntApp>
         <NotificationProvider><RestartRequestDialog /><UpdateAvailableDialog /><BusinessEvents /><IdentityGate /></NotificationProvider>
+        {DevOverlay && <Suspense fallback={null}><DevOverlay /></Suspense>}
       </AntApp>
     </ConfigProvider>
   );

@@ -58,7 +58,7 @@ describe('company backcheck visibility', () => {
     await act(async () => root.render(<QueryClientProvider client={client}><CenterContactDetail reference={reference} onClose={() => {}} /></QueryClientProvider>));
     await act(flush);
     expect(host.textContent).not.toContain('代理');
-    expect(host.textContent).not.toContain('已触达');
+    expect(host.querySelector('div.flex-shrink-0.pb-3')?.textContent).not.toContain('已触达');
     for (const label of ['带着这位联系人问 AI', '共享线索']) {
       const button = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
       expect(button?.style.color).toBe('rgb(187, 187, 187)');

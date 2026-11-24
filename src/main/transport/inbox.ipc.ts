@@ -1,13 +1,19 @@
 import { ipcMain, BrowserWindow } from "electron";
-import { INBOX_EVENTS, type InboxFolderConfirmRequest, type InboxFolderSuggestionRequest, type InboxHistoryRequest, type InboxLabelDeleteRequest, type InboxLabelSaveRequest, type InboxListRequest, type InboxMessageLabelsRequest, type InboxPinMessageRequest, type InboxReadStateRequest, type InboxTodoBatchRequest, type InboxTodoStateRequest } from "../../shared/inbox";
+import { randomUUID } from "node:crypto";
+import { INBOX_EVENTS, type InboxConversationStateBatchRequest, type InboxFolderConfirmRequest, type InboxFolderSuggestionRequest, type InboxHistoryRequest, type InboxLabelDeleteRequest, type InboxLabelSaveRequest, type InboxListRequest, type InboxMessageLabelsRequest, type InboxMessagesLabelsBatchRequest, type InboxMessagesPinBatchRequest, type InboxPinMessageRequest, type InboxQuoteRequeryRequest, type InboxQuoteSelectRequest, type InboxReadStateRequest, type InboxReplyRequest, type InboxTodoBatchRequest, type InboxTodoStateRequest } from "../../shared/inbox";
 import { IPC } from "../contract";
 import * as InboxService from "../services/inbox.service";
 import { todayMailBrief } from "../services/mail-brief.service";
 import * as SendService from "../services/send.service";
+import { sendBcc } from "../adapters/smtp.adapter";
 import * as CampaignService from "../services/campaign.service";
 import { failResult, okResult } from "../errors";
 import { createInboxAnalysisService, type InboxAnalysisService } from "../services/inbox-analysis.service";
+import { createInquiryQuoteService, type InquiryQuoteService } from "../services/inquiry-quote.service";
 import { Log } from "../logger";
+import { replyAttachments } from "../core/reply-attachments";
+import { wakeAssistant } from "../services/assistant-bus";
+import { currentMailAiMode } from "../core/inbox-ai-mode";
 import {
   isPop3Port,
   doFetch,
@@ -27,6 +33,7 @@ function createRendererPush() {
 }
 
 let inboxAnalysis: InboxAnalysisService | null = null;
+let inquiryQuote: InquiryQuoteService | null = null;
 let inboxAnalysisNotifyTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
@@ -39,6 +46,11 @@ export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
   inboxAnalysis?.stop();
   inboxAnalysis = createInboxAnalysisService({
     onUpdated: messageId => {
+      // Mock/off development modes must not trigger real model work (quote drafting or reminders).
+      if (currentMailAiMode() === 'live') {
+        void inquiryQuote?.analyze(messageId);
+        wakeAssistant('inbox-analysis');
+      }
       if (inboxAnalysisNotifyTimer) clearTimeout(inboxAnalysisNotifyTimer);
       inboxAnalysisNotifyTimer = setTimeout(() => {
         inboxAnalysisNotifyTimer = null;
@@ -46,6 +58,10 @@ export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
       }, 500);
     },
   });
+  inquiryQuote = createInquiryQuoteService({ onUpdated: messageId => {
+    pushToRenderer(INBOX_EVENTS.ANALYSIS_UPDATED,{messageId});
+    if (currentMailAiMode() === 'live') wakeAssistant('inbox-quote-analysis');
+  } });
   InboxService.setInboxAfterFetchAnalysis(() => { inboxAnalysis?.enqueueRecent(200); });
   setNetPushFn(pushToRenderer);
   InboxService.startAutoFetch();
@@ -56,7 +72,10 @@ export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
   CampaignService.startCampaignScheduler();
 
   ipcMain.handle(IPC.INBOX.LIST, async (_e, request?: InboxListRequest) => {
-    return InboxService.listInbox(request);
+    return request?.limit !== undefined ? InboxService.listInboxPage(request) : InboxService.listInbox(request);
+  });
+  ipcMain.handle(IPC.INBOX.SUMMARY, async (_e, request?: { accountId?: number; startAt?: string; endAt?: string }) => {
+    return InboxService.inboxSummary(request);
   });
   ipcMain.handle(IPC.INBOX.FETCH, async (_e, accountId?: number) => {
     return InboxService.refreshInbox(accountId);
@@ -90,15 +109,45 @@ export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
     if (!Number.isInteger(id) || id <= 0) return failResult("参数错误");
     return await InboxService.getBody(id);
   });
+  ipcMain.handle(IPC.INBOX.REPLY, async (_e, input: InboxReplyRequest) => {
+    if (!networkAllowed()) return failResult('当前离线，无法发送回复');
+    const accountId = Number(input?.accountId);
+    const subject = typeof input?.subject === 'string' ? input.subject.trim() : '';
+    const body = typeof input?.body === 'string' ? input.body : '';
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const to = Array.isArray(input?.to) ? input.to.map(value => String(value).trim().toLowerCase()).filter(value => emailPattern.test(value)) : [];
+    const cc = Array.isArray(input?.cc) ? input.cc.map(value => String(value).trim().toLowerCase()).filter(value => emailPattern.test(value)) : [];
+    if (!Number.isSafeInteger(accountId) || accountId <= 0) return failResult('发信账号无效');
+    if (!to.length || to.length > 20) return failResult('收件人无效');
+    if (!subject || subject.length > 500) return failResult('主题无效');
+    if (!body.trim() || body.length > 100_000) return failResult('正文为空或过长');
+    const parsedAttachments = replyAttachments(input.attachments);
+    if (!parsedAttachments.ok) return failResult(parsedAttachments.error.message);
+    const sent = await sendBcc({
+      id: `reply-${randomUUID()}`, companyName: '', companyId: 0,
+      recipients: to.map(email => ({ contactId: 0, email, name: email })),
+      accountId, subject, tplBody: body, contactVars: {} as never,
+      status: 'pending', sendMode: 'individual', cc: cc.join(','), body, attachments: parsedAttachments.data,
+    });
+    if (!sent.success) return sent;
+    const sentAt = new Date().toISOString();
+    const messageId = sent.data.messageId || `prospector-${randomUUID()}@local`;
+    const record = await InboxService.recordSentReply({ accountId, to, cc, subject, body, messageId, occurredAt: sentAt, attachmentNames: parsedAttachments.data.map((item: { filename: string }) => item.filename) });
+    if (record.success) void InboxService.reconcileInboxCenterContacts({ afterId: record.data.id - 1, limit: 1 });
+    return okResult({ messageId, sentAt, localId: record.success ? record.data.id : null });
+  });
   ipcMain.handle(IPC.INBOX.LABELS, () => InboxService.listInboxLabels());
   ipcMain.handle(IPC.INBOX.LABEL_SAVE, async (_e, input: InboxLabelSaveRequest) => InboxService.saveInboxLabel(input));
   ipcMain.handle(IPC.INBOX.LABEL_DELETE, async (_e, input: InboxLabelDeleteRequest) => InboxService.deleteInboxLabel(input));
   ipcMain.handle(IPC.INBOX.MESSAGE_LABELS, async (_e, input: InboxMessageLabelsRequest) => InboxService.setInboxMessageLabels(input));
+  ipcMain.handle(IPC.INBOX.MESSAGE_LABELS_BATCH, async (_e, input: InboxMessagesLabelsBatchRequest) => InboxService.setInboxMessagesLabelsBatch(input));
   ipcMain.handle(IPC.INBOX.FOLDER_SUGGEST, async (_e, input: InboxFolderSuggestionRequest) => InboxService.suggestInboxFolders(input));
   ipcMain.handle(IPC.INBOX.FOLDER_CONFIRM, async (_e, input: InboxFolderConfirmRequest) => InboxService.confirmInboxFolder(input));
   ipcMain.handle(IPC.INBOX.PIN_MESSAGE, async (_e, input: InboxPinMessageRequest) => InboxService.setInboxMessagePinned(input));
+  ipcMain.handle(IPC.INBOX.PIN_MESSAGE_BATCH, async (_e, input: InboxMessagesPinBatchRequest) => InboxService.setInboxMessagesPinnedBatch(input));
   ipcMain.handle(IPC.INBOX.TODO_STATE, async (_e, input: InboxTodoStateRequest) => InboxService.setInboxTodoState(input));
   ipcMain.handle(IPC.INBOX.TODO_STATE_BATCH, async (_e, input: InboxTodoBatchRequest) => InboxService.setInboxTodoStateBatch(input));
+  ipcMain.handle(IPC.INBOX.CONVERSATION_STATE_BATCH, async (_e, input: InboxConversationStateBatchRequest) => InboxService.setInboxConversationStateBatch(input));
   ipcMain.handle(IPC.INBOX.ANALYSIS_STATUS, () => okResult(inboxAnalysis?.status() ?? { enabled: false, pending: 0, ready: 0, failed: 0 }));
   ipcMain.handle(IPC.INBOX.ANALYSIS_RUN, async (_e, messageId?: number) => {
     if (!inboxAnalysis) return failResult('收件箱分析服务未启动');
@@ -107,6 +156,24 @@ export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
       return okResult({ queued: inboxAnalysis.retry(messageId) ? 1 : 0 });
     }
     return okResult({ queued: inboxAnalysis.enqueueRecent(200) });
+  });
+  ipcMain.handle(IPC.INBOX.QUOTE_ANALYZE, async (_e, messageId:number) => {
+    if (!inquiryQuote) return failResult('报价分析服务未启动');
+    if (!Number.isSafeInteger(messageId) || messageId <= 0) return failResult('无效的邮件 ID');
+    const card = await inquiryQuote.analyze(messageId);
+    return card ? okResult(card) : failResult('这封邮件没有可准备的询价');
+  });
+  ipcMain.handle(IPC.INBOX.QUOTE_SELECT, async (_e, input:InboxQuoteSelectRequest) => {
+    if (!inquiryQuote || !input || !Number.isSafeInteger(input.messageId) || typeof input.candidateId !== 'string') return failResult('报价选择参数无效');
+    return inquiryQuote.select(input.messageId,input.candidateId);
+  });
+  ipcMain.handle(IPC.INBOX.QUOTE_REQUERY, async (_e, input:InboxQuoteRequeryRequest) => {
+    if (!inquiryQuote || !input || !Number.isSafeInteger(input.messageId) || !input.fields || typeof input.fields !== 'object') return failResult('报价修改参数无效');
+    return inquiryQuote.requery(input.messageId,input.fields);
+  });
+  ipcMain.handle(IPC.INBOX.QUOTE_DRAFT, async (_e, messageId:number) => {
+    if (!inquiryQuote || !Number.isSafeInteger(messageId) || messageId <= 0) return failResult('报价起草参数无效');
+    return inquiryQuote.draft(messageId);
   });
 
   // 首页「今日邮箱概览」：只读快照，不抓取、不改已读状态（docs/home-cards-spec.md §5）
@@ -123,6 +190,7 @@ export function cleanupInboxIPC() {
   InboxService.setInboxAfterFetchAnalysis(null);
   inboxAnalysis?.stop();
   inboxAnalysis = null;
+  inquiryQuote = null;
   if (inboxAnalysisNotifyTimer) { clearTimeout(inboxAnalysisNotifyTimer); inboxAnalysisNotifyTimer = null; }
 }
 

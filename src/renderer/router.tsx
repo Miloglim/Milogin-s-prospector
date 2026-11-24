@@ -1,16 +1,15 @@
 import { createRootRoute, createRoute, createRouter, createHashHistory, Outlet, redirect } from "@tanstack/react-router";
 import { AppLayout } from "./components/layout/AppLayout";
-import { Dashboard } from "./pages/dashboard/Dashboard";
-import { AssistantPage } from "./pages/assistant/AssistantPage";
+import { AssistantTasksPage } from "./pages/assistant/AssistantTasksPage";
 import { LegacyCustomersPage } from "./pages/customers/LegacyCustomersPage";
 import { InboxList } from "./pages/inbox/InboxList";
 import { RateBoard } from "./pages/rates/RateBoard";
 import { SendCenter } from "./pages/campaigns/SendCenter";
-import { TemplateList } from "./pages/templates/TemplateList";
 import { SettingsPage } from "./pages/settings/SettingsPage";
 import { AccountProfilePage } from './pages/settings/AccountProfilePage';
 import { TeamWorkspace } from './pages/team/TeamWorkspace';
 import { PRODUCT_EDITION, productEditionAllowsPath } from './lib/product-edition';
+import { teamSectionSearch } from '../shared/team-workspace';
 
 import { MessagesPage } from './pages/messages/MessagesPage';
 
@@ -21,16 +20,16 @@ const rootRoute = createRootRoute({
   },
 });
 
-const dashboardRoute = createRoute({
+const homeRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: Dashboard,
+  beforeLoad: () => { throw redirect({ to: '/assistant' }); },
 });
 
 const assistantRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/assistant",
-  component: AssistantPage,
+  component: AssistantTasksPage,
 });
 
 const customersRoute = createRoute({
@@ -43,8 +42,14 @@ const customersRoute = createRoute({
 const teamRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/team",
-  component: TeamWorkspace,
+  component: TeamRoutePage,
+  validateSearch: teamSectionSearch,
 });
+
+function TeamRoutePage() {
+  const search = teamRoute.useSearch();
+  return <TeamWorkspace requestedSection={search.section} />;
+}
 
 const onlineCustomersRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -73,7 +78,7 @@ const campaignsRoute = createRoute({
 const templatesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/templates",
-  component: TemplateList,
+  beforeLoad: () => { throw redirect({ to: '/campaigns', search: { tab: 'templates' } }); },
 });
 
 const settingsRoute = createRoute({
@@ -87,7 +92,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/messages', component: MessagesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountProfilePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/online', beforeLoad: () => { throw redirect({ to: '/customers-online' }); } }),
-  dashboardRoute,
+  homeRedirectRoute,
   assistantRoute,
   customersRoute,
   teamRoute,
@@ -100,7 +105,7 @@ const routeTree = rootRoute.addChildren([
 ]);
 
 /** 冷启动默认页 = 新对话：地址里没有路由（无 hash 或裸 "#/"）时，先把地址定到 /assistant 再建 router。
- *  只改首屏落地——深链（#/inbox?… 等）照旧直达，点 Logo 主动回仪表盘（navigate to:"/"）也不受影响。
+ *  只改首屏落地——深链（#/inbox?… 等）照旧直达；旧的 #/ 入口另由 homeRedirectRoute 兼容跳转。
  *  用 replaceState 而非改 location：不新增历史记录、不触发 hashchange（此刻 router 还没挂）。 */
 const bootHash = window.location.hash;
 if (bootHash === "" || bootHash === "#" || bootHash === "#/") {

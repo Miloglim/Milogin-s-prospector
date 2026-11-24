@@ -1,33 +1,53 @@
 import { invalidateDomain } from "../../lib/cacheDeps";
 import { isPermissionDenied } from "../../lib/permissionGate";
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useDeferredValue, useMemo, useRef } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Button, Input, message, Modal, Tooltip, Progress, notification, Dropdown, Select, Popover } from "antd";
+import { Button, Input, message, Modal, Tooltip, Progress, notification, Dropdown, Popover, Select, Upload, type UploadFile } from "antd";
 
 // (Button etc. used in sub-components)
 import {
   ReloadOutlined, MailOutlined, SearchOutlined,
   DeleteOutlined, InboxOutlined, EyeOutlined, PlusOutlined, MoreOutlined, CheckSquareOutlined,
   FolderOutlined, FolderOpenOutlined, PushpinOutlined,
+  BulbOutlined, PaperClipOutlined,
   CaretDownOutlined, CaretRightOutlined,
-  CheckOutlined, UndoOutlined,
+  CalendarOutlined, LeftOutlined, RightOutlined,
+  CheckOutlined, UndoOutlined, CloseOutlined,
 } from "@ant-design/icons";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { askAssistant } from "../../lib/ask-ai";
 import { DiamondLogo } from "../../components/DiamondLogo";
 import { STATUS_META, CRM_STAGES } from "../../components/ContactDetail";
 import { useOptionalIdentity } from '../../IdentityContext';
-import { ONLINE_CHANNELS, centerContactDisplayStatus, type ContactDelete, type ContactDeleteReceipt, type CenterContactRef, type CenterContactDetail, type ContactTouchStatus, type CustomerStage, type ContactMailAnalysisView, type FollowupTask } from '../../../shared/online-crm';
-import { INBOX_ANALYSIS_CATEGORY_LABELS, INBOX_EVENTS, INBOX_FETCH_PHASES, INBOX_SYNC_PHASES, normalizeInboxSubject, type InboxAnalysisView, type InboxFetchPhase, type InboxFetchProgress, type InboxLabel, type InboxSyncSnapshot, type InboxTodoState } from '../../../shared/inbox';
+import { ONLINE_CHANNELS, TASK_LIMITS, centerContactDisplayStatus, type ContactDelete, type ContactDeleteReceipt, type CenterContactRef, type CenterContactDetail, type ContactTouchStatus, type CustomerStage, type ContactMailAnalysisView, type FollowupTask, type TaskPage } from '../../../shared/online-crm';
+import { INBOX_ANALYSIS_CATEGORY_LABELS, INBOX_EVENTS, INBOX_FETCH_PHASES, INBOX_LIST_LIMITS, INBOX_SYNC_PHASES, inboxAnalysisAdmitsAttention, inboxAnalysisAdmitsTodo, normalizeInboxSubject, type InboxAnalysisView, type InboxConversationState, type InboxConversationStateBatchResult, type InboxFetchPhase, type InboxFetchProgress, type InboxLabel, type InboxListPage, type InboxSummary, type InboxSyncSnapshot, type InboxTodoBatchResult, type InboxTodoState, type InboxTodoStateResult } from '../../../shared/inbox';
+import { inboxMailNeedsReply, type InboxNeedsReplyMail } from '../../../shared/inbox-needs-reply';
+import { completeInboxTask, completeRepliedTask, openInboxTask, type InboxTaskRef } from './inbox-task-sync';
+import type { InboxQuoteCard } from '../../../shared/inbox';
+import { InboxQuoteCardView } from './InboxQuoteCard';
 import { centerInvoke } from '../customers/centerContactPort';
 import { MailAnalysisPanel, mailAnalysisListIndicator } from '../customers/CenterContactDetail';
 import { projectContactMailHistory } from '../customers/contactMailTimeline';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
+import { useTeamContext } from '../team/team-data';
+import { saveTeamEmailReference } from '../team/team-compose';
 
 interface MatchedContact { id: number; email: string; company: string; contactVersion?: number; canDelete?: boolean; centerReference?: CenterContactRef }
 interface MatchContactRow { id: number; email: string; companyName: string | null; contactVersion?: number; canDelete?: boolean; centerReference?: CenterContactRef }
 const CENTER_STATUS: Record<string, ContactTouchStatus> = { reached: 'contacted', replied: 'replied', bounced: 'bounced', autoreply: 'autoreply', '': 'uncontacted' };
 const TODO_FEEDBACK_KEY = 'inbox-todo-feedback';
+const FOLDER_COLORS = ['#2563eb', '#0f766e', '#7c3aed', '#c2413b', '#b45309', '#475569'] as const;
+const INBOX_DATE_LABEL = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+const CAMPAIGN_INBOX_STATUSES = ['sent', 'replied', 'bounced', 'autoreply'] as const;
+const BODY_CACHE_LIMIT = 80;
+/** Drop the oldest rendered bodies once the cache is full; HTML bodies are the biggest renderer allocation. */
+function rememberBody(cache: Map<number, string | null>, messageId: number, html: string | null): void {
+  cache.delete(messageId);
+  cache.set(messageId, html);
+  while (cache.size > BODY_CACHE_LIMIT) cache.delete(cache.keys().next().value as number);
+}
+type CampaignInboxStatus = typeof CAMPAIGN_INBOX_STATUSES[number];
+const CAMPAIGN_INBOX_STATUS_LABELS: Record<CampaignInboxStatus, string> = { sent: '已发出', replied: '已收到', bounced: '退信', autoreply: '自动回复' };
 const FETCH_PHASE_LABEL: Record<InboxFetchPhase, string> = {
   [INBOX_FETCH_PHASES.CONNECTING]: "连接中",
   [INBOX_FETCH_PHASES.SEARCHING]: "查找邮件",
@@ -58,6 +78,7 @@ interface InboxItem {
   subject: string | null; bodyPreview: string | null;
   classification: string | null; intent: string | null; matchedContactId: number | null;
   isRead: number; receivedAt: string;
+  myRole?: string | null;
   to?: string | null;
   cc?: string | null;
   accountId?: number; messageId?: string | null;
@@ -66,12 +87,43 @@ interface InboxItem {
   _contactTags?: string | null;
   _labelIds?: number[];
   _pinned?: boolean;
-  _centerContact?: CenterContactRef | null;
+  _centerContact?: CenterContactRef & { companyName?: string; email?: string } | null;
   _centerMessageKeys?: string[];
   _centerContacts?: Array<CenterContactRef & { role?: string; status?: string; tags?: string[]; email?: string; companyName?: string; contactVersion?: number; canDelete?: boolean }>;
   _analysis?: InboxAnalysisView | null;
+  _quoteCard?: InboxQuoteCard | null;
   _todoState?: InboxTodoState | null;
+  _conversationState?: InboxConversationState | null;
 }
+
+interface InboxListResponse {
+  success: boolean;
+  data?: InboxItem[] | InboxListPage<InboxItem>;
+  error?: string;
+}
+function inboxResponsePage(response: InboxListResponse | undefined): InboxListPage<InboxItem> {
+  if (!response?.success || !response.data) return { items: [], total: 0, nextCursor: null };
+  return Array.isArray(response.data) ? { items: response.data, total: response.data.length, nextCursor: null } : response.data;
+}
+function mapInboxResponseItems(response: InboxListResponse, mapper: (item: InboxItem) => InboxItem): InboxListResponse {
+  if (!response.success || !response.data) return response;
+  if (!Array.isArray(response.data) && !Array.isArray(response.data.items)) return response;
+  return Array.isArray(response.data)
+    ? { ...response, data: response.data.map(mapper) }
+    : { ...response, data: { ...response.data, items: response.data.items.map(mapper) } };
+}
+type InboxCache = InboxListResponse | { pages: InboxListResponse[]; pageParams: unknown[] };
+function mapInboxCacheItems(value: unknown, mapper: (item: InboxItem) => InboxItem): unknown {
+  if (!value || typeof value !== 'object') return value;
+  if ('pages' in value && Array.isArray((value as { pages?: unknown }).pages)) {
+    const cache = value as InboxCache & { pages: InboxListResponse[] };
+    return { ...cache, pages: cache.pages.map(page => mapInboxResponseItems(page, mapper)) };
+  }
+  return mapInboxResponseItems(value as InboxListResponse, mapper);
+}
+
+interface CampaignInboxTarget { contactId: number; email: string; status: string; centerReference?: CenterContactRef }
+interface CampaignInboxDetail { campaign: { id: string; name: string; status: string } | null; targets: CampaignInboxTarget[] }
 
 type MailTypeMeta = { label: string; dot: string };
 const OTHER_MAIL_TYPE: MailTypeMeta = { label: "其他", dot: "#8b8b8b" };
@@ -122,6 +174,7 @@ const TODO_GROUP_H = 31;
 const TODO_ROW_H = 74;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FOLLOWUP_SUGGESTION_DAYS = 3;
+const INBOX_DROP_CHUNK_SIZE = 200;
 const CLEAN_WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'] as const;
 
 function cleanListGroupMeta(value: string): { key: string; label: string } {
@@ -182,12 +235,14 @@ function inboxConversationKey(item: InboxItem): string {
 }
 
 function inboxNeedsReply(item: InboxItem): boolean {
-  return item.classification !== 'sent'
-    && item.classification !== 'bounce'
-    && item.classification !== 'autoreply'
-    && item._analysis?.status === 'ready'
-    && item._analysis.requiresAction
-    && item._todoState !== 'done';
+  if (item._conversationState) return item._conversationState === 'needs_reply';
+  if (item.myRole === 'cc') return false;
+  return inboxMailNeedsReply(inboxNeedsReplyMail(item));
+}
+
+function inboxWaitingOther(item: InboxItem): boolean {
+  if (item._conversationState) return item._conversationState === 'waiting_other';
+  return item.classification === 'sent';
 }
 
 function inboxWaitingDays(item: InboxItem): number {
@@ -197,8 +252,27 @@ function inboxWaitingDays(item: InboxItem): number {
   return Math.max(0, Math.floor((Date.now() - sentAt) / DAY_MS));
 }
 
+function inboxHasOpenFollowupTask(item: InboxItem, sourceMessageKeys: ReadonlySet<string>, localMailIds: ReadonlySet<number>): boolean {
+  return localMailIds.has(item.id) || Boolean(item._centerMessageKeys?.some(key => sourceMessageKeys.has(key)));
+}
+
+function inboxNeedsFollowup(item: InboxItem, sourceMessageKeys: ReadonlySet<string>, localMailIds: ReadonlySet<number>): boolean {
+  return inboxHasOpenFollowupTask(item, sourceMessageKeys, localMailIds)
+    || inboxWaitingOther(item) && inboxWaitingDays(item) >= FOLLOWUP_SUGGESTION_DAYS;
+}
+
 function inboxAccountKey(item: InboxItem): string {
   return item.accountId ? String(item.accountId) : item._accountEmail?.trim().toLocaleLowerCase() || '';
+}
+
+function inboxNeedsReplyMail(item: InboxItem): InboxNeedsReplyMail {
+  return {
+    classification: item.classification,
+    isRead: Boolean(item.isRead),
+    myRole: item.myRole,
+    todoState: item._todoState,
+    analysis: item._analysis,
+  };
 }
 
 function inboxContactName(messages: InboxItem[]): string | null {
@@ -286,16 +360,14 @@ function inboxContactInsight(messages: InboxItem[]): InboxContactInsight {
   };
 }
 
-type InboxManagementScope = "all" | "unread" | "needs_reply" | "waiting_other";
+type InboxManagementScope = "all" | "unread" | "needs_reply" | "waiting_other" | "follow_up";
 type InboxAnalysisFilter = "action" | "important";
+type InboxDropTarget =
+  | { kind: 'conversation'; key: string; state: InboxConversationState; label: string }
+  | { kind: 'pin'; key: string }
+  | { kind: 'folder'; key: string; labelId: number; name: string }
+  | { kind: 'blank-folder'; key: string };
 const INBOX_ANALYSIS_RUN_CHANNEL = 'inbox:analysisRun';
-const DIRECT_BUSINESS_ANALYSIS_CATEGORIES = new Set(['price_inquiry', 'quote_request', 'schedule_request', 'order_followup', 'complaint', 'cooperation']);
-const AI_TODO_CONFIDENCE = 0.75;
-
-function inboxAnalysisIsDirectBusiness(analysis: InboxAnalysisView): boolean {
-  return DIRECT_BUSINESS_ANALYSIS_CATEGORIES.has(analysis.category);
-}
-
 function inboxEmailDomain(value: string | null | undefined): string {
   return value?.trim().toLocaleLowerCase().split('@')[1] || '';
 }
@@ -307,21 +379,23 @@ function inboxSenderIsInternal(item: InboxItem): boolean {
 }
 
 function inboxAnalysisIsAutoTodo(item: InboxItem): boolean {
-  const analysis = item._analysis;
-  if (!analysis || analysis.status !== 'ready' || inboxSenderIsInternal(item) || !inboxAnalysisIsDirectBusiness(analysis)) return false;
-  return (analysis.requiresAction && analysis.confidence >= AI_TODO_CONFIDENCE) || analysis.priority === 'urgent';
+  return inboxAnalysisAdmitsTodo(item._analysis, { internal: inboxSenderIsInternal(item), ccOnly: item.myRole === 'cc' });
 }
 
 function inboxIsTodo(item: InboxItem): boolean {
-  if (item._todoState === 'done' || !item._analysis || item._analysis.status !== 'ready') return false;
-  return item._todoState === 'open' || inboxAnalysisIsAutoTodo(item);
+  if (item._conversationState) return item._conversationState === 'todo';
+  if (item._todoState === 'done') return false;
+  if (item._todoState === 'open') return true;
+  return Boolean(item._analysis && item._analysis.status === 'ready' && inboxAnalysisIsAutoTodo(item));
 }
 
 function matchesInboxAnalysisFilter(item: InboxItem, filter: InboxAnalysisFilter): boolean {
+  if (item._conversationState) return item._conversationState === (filter === 'action' ? 'todo' : 'important');
+  if (item.myRole === 'cc') return false;
   const analysis = item._analysis;
-  if (!analysis || analysis.status !== 'ready') return false;
   if (filter === 'action') return inboxIsTodo(item);
-  return analysis.requiresAction && item._todoState !== 'done' && item._todoState !== 'open' && !inboxAnalysisIsAutoTodo(item);
+  if (item._todoState === 'done' || item._todoState === 'open') return false;
+  return inboxAnalysisAdmitsAttention(analysis, { internal: inboxSenderIsInternal(item), ccOnly: item.myRole === 'cc' });
 }
 
 const FILTERS = [
@@ -339,6 +413,13 @@ const INTENT_LABELS: Record<string, string> = {
 };
 
 const ANALYSIS_PRIORITY_LABELS = { normal: '普通', important: '重要', urgent: '紧急' } as const;
+
+function inboxAnalysisSourceLabel(analysis: InboxAnalysisView): string {
+  if (analysis.source === 'mock' || analysis.analyzerVersion.includes('mock')) return 'MOCK';
+  if (analysis.source === 'rule') return '规则';
+  if (analysis.source === 'human') return '人工';
+  return 'AI';
+}
 
 function inboxLocalAnalysisLabel(analysis: InboxAnalysisView): string {
   if (analysis.status === 'pending') return '分析中';
@@ -420,6 +501,121 @@ function InboxDetailRow({ label, children, wide = false }: {
   </div>;
 }
 
+type FolderEditorValue = { labelId?: number; name: string; color: string };
+
+export function isoWeekNumber(value: Date): number {
+  const target = new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+  const day = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  return Math.ceil((((target.getTime() - yearStart.getTime()) / 86_400_000) + 1) / 7);
+}
+
+function localDateKey(value: Date | string): string {
+  const date = typeof value === 'string' ? new Date(value) : value;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+type InboxCalendarCount = { total: number; unread: number };
+
+function addCalendarDays(value: Date, days: number): Date {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate() + days);
+}
+
+function InboxCalendarPanel({ value, filtering, counts, onSelect, onClear }: {
+  value: Date;
+  filtering: boolean;
+  counts: ReadonlyMap<string, InboxCalendarCount>;
+  onSelect: (value: Date) => void;
+  onClear: () => void;
+}) {
+  const [month, setMonth] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1));
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const start = addCalendarDays(first, -((first.getDay() + 6) % 7));
+  const weeks = Array.from({ length: 6 }, (_, weekIndex) => {
+    const weekStart = addCalendarDays(start, weekIndex * 7);
+    return { week: isoWeekNumber(weekStart), days: Array.from({ length: 7 }, (_, dayIndex) => addCalendarDays(weekStart, dayIndex)) };
+  });
+  const monthTotal = [...counts.entries()].reduce((total, [key, count]) => key.startsWith(`${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`) ? total + count.total : total, 0);
+  const todayKey = localDateKey(new Date());
+  return <div className="inbox-calendar-panel">
+    <div className="inbox-calendar-panel-head">
+      <div><strong>{month.getFullYear()}年{month.getMonth() + 1}月</strong><span>{monthTotal} 封邮件 · 周一开始 · ISO 周</span></div>
+      <div className="inbox-calendar-nav">
+        <button type="button" aria-label="上个月" title="上个月" onClick={() => setMonth(current => new Date(current.getFullYear(), current.getMonth() - 1, 1))}><LeftOutlined /></button>
+        <button type="button" aria-label="下个月" title="下个月" onClick={() => setMonth(current => new Date(current.getFullYear(), current.getMonth() + 1, 1))}><RightOutlined /></button>
+      </div>
+    </div>
+    <div className="inbox-calendar-grid inbox-calendar-weekdays"><span>WK</span>{['一', '二', '三', '四', '五', '六', '日'].map(day => <span key={day}>{day}</span>)}</div>
+    <div className="inbox-calendar-weeks">{weeks.map(week => <div className="inbox-calendar-grid inbox-calendar-week" key={localDateKey(week.days[0]!)}>
+      <span className="inbox-calendar-week-number">WK {week.week}</span>
+      {week.days.map(day => {
+        const key = localDateKey(day);
+        const count = counts.get(key);
+        const outside = day.getMonth() !== month.getMonth();
+        const selected = filtering && localDateKey(value) === key;
+        return <button key={key} type="button" className={`inbox-calendar-day${outside ? ' is-outside' : ''}${selected ? ' is-selected' : ''}${todayKey === key ? ' is-today' : ''}${count?.total ? ' has-mail' : ''}`} aria-label={`${day.getMonth() + 1}月${day.getDate()}日，${count?.total ?? 0}封邮件`} aria-pressed={selected} onClick={() => onSelect(day)}>
+          <span>{day.getDate()}</span>
+          {!!count?.total && <em>{count.total > 99 ? '99+' : count.total}</em>}
+          {!!count?.unread && <i aria-label={`${count.unread}封未读`} />}
+        </button>;
+      })}
+    </div>)}</div>
+    <div className="inbox-calendar-legend"><span><i />未读</span><span><em>8</em>邮件量</span>{filtering && <button type="button" onClick={onClear}>全部日期</button>}</div>
+  </div>;
+}
+
+function InboxDateHeading({ value, filtering, counts, onChange, onClear }: { value: Date; filtering: boolean; counts: ReadonlyMap<string, InboxCalendarCount>; onChange: (value: Date) => void; onClear: () => void }) {
+  const [open, setOpen] = useState(false);
+  const week = isoWeekNumber(value);
+  const selectedCount = counts.get(localDateKey(value));
+  return <Popover trigger="click" placement="bottomLeft" open={open} onOpenChange={setOpen} content={<InboxCalendarPanel value={value} filtering={filtering} counts={counts} onSelect={date => { onChange(date); setOpen(false); }} onClear={() => { onClear(); setOpen(false); }} />}>
+    <button type="button" className={`inbox-calendar-trigger${filtering ? ' is-filtering' : ''}`} aria-label="选择日期筛选邮件" aria-pressed={filtering} title={`${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日 · WK ${week}${filtering ? ' · 正在筛选当天邮件' : ''}`}>
+      <CalendarOutlined />
+      <span><strong>{INBOX_DATE_LABEL.format(value)}</strong><small>{value.getFullYear()} · WK {week}{filtering ? ` · ${selectedCount?.total ?? 0} 封` : ''}</small></span>
+    </button>
+  </Popover>;
+}
+
+function FolderEditorCard({ initial, saving, onCancel, onSave }: {
+  initial: FolderEditorValue;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (value: FolderEditorValue) => void;
+}) {
+  const [draft, setDraft] = useState(initial);
+  return <div className="inbox-label-editor is-card">
+    <label><span>名称</span><Input autoFocus maxLength={24} value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} placeholder="例如：询价、重点客户" /></label>
+    <label><span>颜色</span><div className="inbox-label-color-field"><input type="color" value={draft.color} onChange={event => setDraft(current => ({ ...current, color: event.target.value }))} /><i style={{ background: draft.color }} /><strong>{draft.name.trim() || '文件夹名称'}</strong></div></label>
+    <div className="inbox-label-color-swatches" aria-label="文件夹颜色">
+      {FOLDER_COLORS.map(color => <button key={color} type="button" className={draft.color === color ? 'is-active' : ''} style={{ background: color }} aria-label={`选择颜色 ${color}`} title={color} onClick={() => setDraft(current => ({ ...current, color }))} />)}
+    </div>
+    <div className="inbox-label-editor-actions"><Button onClick={onCancel} disabled={saving}>取消</Button><Button type="primary" loading={saving} disabled={!draft.name.trim()} onClick={() => onSave({ ...draft, name: draft.name.trim() })}>保存</Button></div>
+  </div>;
+}
+
+function EmailReferenceMemberPicker({ onChoose }: { onChoose: (teamId: string, member: { userId: string; displayName: string; email: string | null; role?: string }) => void }) {
+  const query = useTeamContext(true);
+  const team = query.data?.ok ? query.data.data.team : null;
+  if (query.isLoading) return <div className="inbox-folder-empty">正在读取团队成员</div>;
+  if (query.data && !query.data.ok) return <div className="inbox-folder-empty">{query.data.error.message}</div>;
+  if (!team) return <div className="inbox-folder-empty">当前账号没有可用的团队成员</div>;
+  if (!team.members.length) return <div className="inbox-folder-empty">暂无可选成员</div>;
+  return <div className="inbox-team-member-picker">{team.members.map(member => <button key={member.userId} type="button" onClick={() => onChoose(team.teamId, member)}><span className="team-admin-member-avatar">{member.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{member.displayName}</strong><small>{member.email || (member.role === 'leader' ? '负责人' : '成员')}</small></span></button>)}</div>;
+}
+
+function fileBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.slice(result.indexOf(',') + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('读取附件失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function InboxList() {
   const identity = useOptionalIdentity();
   const offline = identity?.status === 'offline';
@@ -437,6 +633,9 @@ export function InboxList() {
   const routeCenterMail = routeParams.get("centerMail")?.trim() || null;
   const routeMailContact = Number(routeParams.get("centerContact"));
   const routeMailCustomer = routeParams.get("centerCustomer");
+  const routeCampaignId = routeParams.get("campaign")?.trim() || null;
+  const routeCampaignStatusValue = routeParams.get("campaignStatus");
+  const routeCampaignStatus = CAMPAIGN_INBOX_STATUSES.includes(routeCampaignStatusValue as CampaignInboxStatus) ? routeCampaignStatusValue as CampaignInboxStatus : null;
   const handledMailRoute = useRef<string | null>(null);
   const [includeId, setIncludeId] = useState<number | null>(null);
   const [sid, setSid] = useState<number | null>(null);
@@ -450,13 +649,20 @@ export function InboxList() {
   const [analysisDetailOpen, setAnalysisDetailOpen] = useState(true);
   const [threadStackOpen, setThreadStackOpen] = useState(true);
   const [contactMatchesOpen, setContactMatchesOpen] = useState(true);
-  const [labelEditor, setLabelEditor] = useState<{ labelId?: number; name: string; color: string } | null>(null);
+  const [contextSidebarOpen, setContextSidebarOpen] = useState(false);
+  const [labelEditor, setLabelEditor] = useState<FolderEditorValue | null>(null);
+  const [folderCreatorOpen, setFolderCreatorOpen] = useState(false);
   const [labelSaving, setLabelSaving] = useState(false);
+  const [emailReferenceOpen, setEmailReferenceOpen] = useState(false);
+  const [replyDraft, setReplyDraft] = useState<{ item: InboxItem; accountId: number; to: string; cc: string; subject: string; body: string; attachments: UploadFile[] } | null>(null);
+  const [replyBusy, setReplyBusy] = useState(false);
+  const [inboxDate, setInboxDate] = useState(() => new Date());
+  const [dateFilter, setDateFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [body, setBody] = useState<string | null>(null);
   const [bl, setBl] = useState(false);
   const [analysisRetryingId, setAnalysisRetryingId] = useState<number | null>(null);
-  const [followupTaskMessageId, setFollowupTaskMessageId] = useState<number | null>(null);
+  const [followupTasks, setFollowupTasks] = useState<Record<number, FollowupTask>>({});
   const folderSuggestionSignature = useRef('');
   const centerDeleteRequests = useRef(new Map<string, ContactDelete>());
   // 前端正文缓存：点开过的邮件切回秒开，不重复 invoke / 不闪 loading
@@ -476,6 +682,10 @@ export function InboxList() {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [last, setLast] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; item: InboxItem } | null>(null);
+  const [draggingCount, setDraggingCount] = useState<number | null>(null);
+  const [activeDropTarget, setActiveDropTarget] = useState<string | null>(null);
+  const dragMessageIds = useRef<number[]>([]);
+  const dropBusy = useRef(false);
   // 虚拟滚动：只渲染可视区，避免千余封邮件全量渲染卡顿
   const ROW_H = 66; // 固定行高：主题、发信人和匹配状态三行可读
   const SENDER_ROW_H = 72; // 联系人行高：压缩后的阶段、摘要和判断层级
@@ -490,16 +700,56 @@ export function InboxList() {
   const [collapsedCleanGroups, setCollapsedCleanGroups] = useState<Set<string>>(new Set());
   const todoView = analysisFilter === 'action' && view === 'flat';
   const mailRowHeight = todoView ? TODO_ROW_H : view === "flat" ? CLEAN_ROW_H : ROW_H;
+  const deferredSearch = useDeferredValue(search.trim());
+  const dateRange = useMemo(() => {
+    if (!dateFilter) return null;
+    const start = new Date(`${dateFilter}T00:00:00`);
+    if (!Number.isFinite(start.getTime())) return null;
+    const end = new Date(start); end.setDate(end.getDate() + 1);
+    return { startAt: start.toISOString(), endAt: end.toISOString() };
+  }, [dateFilter]);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["inbox", includeId, routeCenterMail],
-    queryFn: () => window.api.invoke("inbox:list", includeId ? { includeId } : routeCenterMail ? { centerMessageKey: routeCenterMail } : undefined) as Promise<{ success: boolean; data?: InboxItem[]; error?: string }>,
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery<InboxListResponse, Error, InfiniteData<InboxListResponse>, readonly unknown[], string | null>({
+    queryKey: ["inbox", includeId, routeCenterMail, deferredSearch, filter, accountFilter, dateFilter],
+    initialPageParam: null as string | null,
+    placeholderData: previous => previous,
+    queryFn: ({ pageParam }) => window.api.invoke("inbox:list", {
+      limit: INBOX_LIST_LIMITS.page,
+      ...(pageParam ? { cursor: pageParam } : {}),
+      ...(includeId ? { includeId } : {}),
+      ...(routeCenterMail ? { centerMessageKey: routeCenterMail } : {}),
+      ...(deferredSearch ? { search: deferredSearch } : {}),
+      ...(filter !== 'all' ? { classification: filter } : {}),
+      ...(accountFilter && /^\d+$/.test(accountFilter) ? { accountId: Number(accountFilter) } : {}),
+      ...(dateRange ?? {}),
+    }) as Promise<InboxListResponse>,
+    getNextPageParam: last => last.success ? inboxResponsePage(last).nextCursor ?? undefined : undefined,
   });
+  const latestInboxResponse = data?.pages[data.pages.length - 1];
+  const nextInboxPageCursor = latestInboxResponse ? inboxResponsePage(latestInboxResponse).nextCursor : null;
+  const inboxSummaryQuery = useQuery({
+    queryKey: ["inbox", "summary", accountFilter],
+    queryFn: () => window.api.invoke("inbox:summary", {
+      ...(accountFilter && /^\d+$/.test(accountFilter) ? { accountId: Number(accountFilter) } : {}),
+    }) as Promise<{ success: boolean; data?: InboxSummary; error?: string }>,
+    staleTime: 5_000,
+  });
+  const inboxSummary = inboxSummaryQuery.data?.success && inboxSummaryQuery.data.data && !Array.isArray(inboxSummaryQuery.data.data)
+    ? inboxSummaryQuery.data.data : undefined;
+  const campaignMailQuery = useQuery({
+    queryKey: ["inbox", "campaign-detail", identity?.baseUrl, identity?.identity?.userId, routeCampaignId],
+    enabled: !!routeCampaignId,
+    queryFn: () => window.api.invoke("send:campaignDetail", routeCampaignId) as Promise<{ success: boolean; data?: CampaignInboxDetail; error?: string }>,
+  });
+  const campaignMailDetail = campaignMailQuery.data?.success ? campaignMailQuery.data.data : undefined;
+  const campaignMailError = campaignMailQuery.data && !campaignMailQuery.data.success ? campaignMailQuery.data.error || '任务邮件读取失败' : campaignMailQuery.error instanceof Error ? campaignMailQuery.error.message : null;
   const syncStateQuery = useQuery({
     queryKey: ["inbox-sync-state"],
     queryFn: () => window.api.invoke("inbox:syncState") as Promise<InboxSyncSnapshot>,
     staleTime: 5_000,
   });
+  const replyAccounts = (syncStateQuery.data?.accounts ?? []).filter(account => account.hasImap);
+  const defaultReplyAccountId = replyAccounts[0]?.accountId ?? 0;
   const labelsQuery = useQuery({
     queryKey: ["inbox-labels"],
     queryFn: () => window.api.invoke("inbox:labels") as Promise<{ success: boolean; data?: InboxLabel[]; error?: string }>,
@@ -508,7 +758,7 @@ export function InboxList() {
   const inboxLabels = labelsQuery.data?.success ? labelsQuery.data.data || [] : [];
   const activeInboxFolders = useMemo(() => inboxLabels.filter(folder => folder.status !== 'suggested'), [inboxLabels]);
   const suggestedInboxFolders = useMemo(() => inboxLabels.filter(folder => folder.status === 'suggested'), [inboxLabels]);
-  const labelsById = new Map(inboxLabels.map(label => [label.labelId, label]));
+  const labelsById = useMemo(() => new Map(inboxLabels.map(label => [label.labelId, label])), [inboxLabels]);
 
   const [fetching, setFetching] = useState(false);
   const [fetchProgressOpen, setFetchProgressOpen] = useState(false);
@@ -632,14 +882,7 @@ export function InboxList() {
       await qc.cancelQueries({ queryKey: ['inbox'] });
       const idSet = new Set(ids);
       const snapshots = qc.getQueriesData({ queryKey: ['inbox'] });
-      for (const [key, value] of snapshots) {
-        const payload = value as { success?: boolean; data?: InboxItem[] } | undefined;
-        if (!payload?.success || !Array.isArray(payload.data)) continue;
-        qc.setQueryData(key, {
-          ...payload,
-          data: payload.data.map(item => idSet.has(item.id) ? { ...item, isRead: 1 } : item),
-        });
-      }
+      qc.setQueriesData({ queryKey: ['inbox'] }, value => mapInboxCacheItems(value, item => idSet.has(item.id) ? { ...item, isRead: 1 } : item));
       return snapshots;
     },
     onError: (_error, _ids, snapshots) => {
@@ -651,34 +894,64 @@ export function InboxList() {
     mutationFn: (ids: number[]) => Promise.all(ids.map(id => window.api.invoke("inbox:delete", id))),
     onSuccess: () => { setSid(null); setSel(new Set()); invalidateDomain(qc, "inbox"); },
   });
+  const patchTodoStateCache = (messageIds: number[], state: InboxTodoState) => {
+    const ids = new Set(messageIds);
+    qc.setQueriesData({
+      predicate: query => query.queryKey[0] === 'inbox' && typeof query.queryKey[1] !== 'string',
+    }, current => mapInboxCacheItems(current, item => ids.has(item.id) ? { ...item, _todoState: state } : item));
+  };
+  const todoTaskRef = useCallback((item: InboxItem): InboxTaskRef | null => {
+    const center = item._centerContact ?? item._centerContacts?.[0] ?? null;
+    const messageKey = item._centerMessageKeys?.[0] ?? null;
+    if (!center?.customerId || !center.contactId || !messageKey) return null;
+    return {
+      customerId: center.customerId, contactId: center.contactId, messageKey,
+      threadKey: normalizeInboxSubject(item.subject),
+      title: (item._analysis?.nextAction || `处理邮件：${item.subject || '客户邮件'}`).slice(0, 500),
+    };
+  }, []);
+  const syncTodoTask = useCallback(async (item: InboxItem, state: InboxTodoState) => {
+    const ref = todoTaskRef(item);
+    if (!ref) return;
+    const invoke = (channel: string, ...args: unknown[]) => window.api.invoke(channel, ...args);
+    const result = state === 'open' ? await openInboxTask(ref, invoke) : await completeInboxTask(ref, invoke);
+    if (result === 'failed') message.warning({ key: 'inbox-task-sync', content: '邮件待办已保存，但中心跟进任务同步失败' });
+  }, [todoTaskRef]);
   const todoMut = useMutation({
-    mutationFn: async (input: { messageId: number; state: InboxTodoState; feedback?: string }) => {
+    mutationFn: async (input: { messageId: number; state: InboxTodoState; feedback?: string; item?: InboxItem }) => {
       const result = await window.api.invoke('inbox:todoState', {
         messageId: input.messageId,
         state: input.state,
         idempotencyKey: crypto.randomUUID(),
-      }) as { success: boolean; error?: string };
+      }) as { success: boolean; data?: InboxTodoStateResult; error?: string };
       if (!result?.success) throw new Error(result?.error || '待办状态保存失败');
       return result;
     },
     onSuccess: (_result, input) => {
-      message.success({ key: TODO_FEEDBACK_KEY, content: input.feedback ?? (input.state === 'done' ? '已标记处理' : '已重新打开') });
+      patchTodoStateCache([input.messageId], input.state);
+      if (input.state === 'done') patchConversationCache([input.messageId], null);
+      message.success({ key: TODO_FEEDBACK_KEY, content: input.feedback ?? (input.state === 'done' ? '已处理，已从待办和待回复移除' : '已重新打开，已回到待办和待回复') });
+      if (input.item) void syncTodoTask(input.item, input.state);
       void invalidateDomain(qc, 'inbox');
     },
     onError: error => message.error({ key: TODO_FEEDBACK_KEY, content: error instanceof Error ? error.message : '待办状态保存失败' }),
   });
   const todoBatchMut = useMutation({
-    mutationFn: async (messageIds: number[]) => {
+    mutationFn: async (items: InboxItem[]) => {
       const result = await window.api.invoke('inbox:todoStateBatch', {
-        messageIds,
+        messageIds: items.map(item => item.id),
         state: 'done',
         idempotencyKey: crypto.randomUUID(),
-      }) as { success: boolean; data?: { updated: number; state: InboxTodoState }; error?: string };
+      }) as { success: boolean; data?: InboxTodoBatchResult; error?: string };
       if (!result?.success) throw new Error(result?.error || '待办状态保存失败');
       return result.data;
     },
-    onSuccess: result => {
-      message.success({ key: TODO_FEEDBACK_KEY, content: `已处理 ${result?.updated ?? 0} 项` });
+    onSuccess: (result, items) => {
+      if (result?.messageIds?.length) patchTodoStateCache(result.messageIds, result.state);
+      if (result?.messageIds?.length) patchConversationCache(result.messageIds, null);
+      message.success({ key: TODO_FEEDBACK_KEY, content: `已处理 ${result?.updated ?? 0} 项，已从待办和待回复移除` });
+      const done = new Set(result?.messageIds ?? []);
+      void (async () => { for (const item of items) if (done.has(item.id)) await syncTodoTask(item, 'done'); })();
       void invalidateDomain(qc, 'inbox');
     },
     onError: error => message.error({ key: TODO_FEEDBACK_KEY, content: error instanceof Error ? error.message : '待办状态保存失败' }),
@@ -795,7 +1068,18 @@ export function InboxList() {
     });
   };
 
-  const allItems = useMemo(() => data?.success ? data.data || [] : [], [data]);
+  const allItems = useMemo(() => {
+    const seen = new Set<number>();
+    const items: InboxItem[] = [];
+    for (const page of data?.pages ?? []) {
+      for (const item of inboxResponsePage(page).items) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        items.push(item);
+      }
+    }
+    return items;
+  }, [data]);
 
   const accountGroups = useMemo<InboxAccountScope[]>(() => {
     const groups = new Map<string, InboxAccountScope>();
@@ -803,16 +1087,22 @@ export function InboxList() {
       if (!account.hasImap) continue;
       groups.set(String(account.accountId), { key: String(account.accountId), email: account.email, total: 0, unread: 0, latestAt: 0 });
     }
-    for (const item of allItems) {
-      const key = inboxAccountKey(item);
-      const current = groups.get(key) ?? { key, email: item._accountEmail?.trim() || '未命名邮箱', total: 0, unread: 0, latestAt: 0 };
-      current.total += 1;
-      if (!item.isRead) current.unread += 1;
-      current.latestAt = Math.max(current.latestAt, Date.parse(item.receivedAt) || 0);
-      groups.set(key, current);
+    if (inboxSummary) {
+      for (const [key, count] of Object.entries(inboxSummary.byAccount)) {
+        groups.set(key, { key, email: count.email?.trim() || key || '未命名邮箱', total: count.total, unread: count.unread, latestAt: count.latestAt ?? 0 });
+      }
+    } else {
+      for (const item of allItems) {
+        const key = inboxAccountKey(item);
+        const current = groups.get(key) ?? { key, email: item._accountEmail?.trim() || '未命名邮箱', total: 0, unread: 0, latestAt: 0 };
+        current.total += 1;
+        if (!item.isRead) current.unread += 1;
+        current.latestAt = Math.max(current.latestAt, Date.parse(item.receivedAt) || 0);
+        groups.set(key, current);
+      }
     }
     return [...groups.values()].sort((a, b) => b.latestAt - a.latestAt || a.email.localeCompare(b.email, 'zh-CN'));
-  }, [allItems, syncStateQuery.data]);
+  }, [allItems, inboxSummary, syncStateQuery.data]);
 
   useEffect(() => {
     if (accountFilter !== null && !accountGroups.some(group => group.key === accountFilter)) setAccountFilter(null);
@@ -821,14 +1111,45 @@ export function InboxList() {
   const scopedItems = useMemo(() => accountFilter === null
     ? allItems
     : allItems.filter(item => inboxAccountKey(item) === accountFilter), [accountFilter, allItems]);
-  const pinnedCount = useMemo(() => scopedItems.filter(item => item._pinned).length, [scopedItems]);
-  const pinnedItems = useMemo(() => scopedItems.filter(item => item._pinned).sort((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt)), [scopedItems]);
-  const scopedLabelCounts = useMemo(() => {
-    const counts = new Map<number, number>();
-    for (const item of scopedItems) for (const labelId of item._labelIds ?? []) counts.set(labelId, (counts.get(labelId) ?? 0) + 1);
+  const campaignScopedItems = useMemo(() => {
+    if (!routeCampaignId) return scopedItems;
+    if (!campaignMailDetail) return [];
+    const targetIds = new Set(campaignMailDetail.targets.map(target => target.contactId));
+    const targetEmails = new Set(campaignMailDetail.targets.map(target => target.email.trim().toLocaleLowerCase()).filter(Boolean));
+    const targetRefs = new Set(campaignMailDetail.targets.flatMap(target => target.centerReference ? [`${target.centerReference.contactId}:${target.centerReference.customerId}`] : []));
+    const classification = routeCampaignStatus === 'bounced' ? 'bounce' : routeCampaignStatus;
+    return scopedItems.filter(item => {
+      if (classification && item.classification !== classification) return false;
+      if (item.matchedContactId && targetIds.has(item.matchedContactId)) return true;
+      if (targetEmails.has(item.fromEmail.trim().toLocaleLowerCase())) return true;
+      const linked = [...(item._centerContacts ?? []), ...(item._centerContact ? [item._centerContact] : [])];
+      return linked.some(reference => targetRefs.has(`${reference.contactId}:${reference.customerId}`) || !!reference.email && targetEmails.has(reference.email.trim().toLocaleLowerCase()));
+    });
+  }, [campaignMailDetail, routeCampaignId, routeCampaignStatus, scopedItems]);
+  const mailCountsByDate = useMemo(() => {
+    if (inboxSummary) return new Map(Object.entries(inboxSummary.byDate).map(([key, count]) => [key, { total: count.total, unread: count.unread }]));
+    const counts = new Map<string, InboxCalendarCount>();
+    for (const item of campaignScopedItems) {
+      const key = localDateKey(item.receivedAt);
+      const current = counts.get(key) ?? { total: 0, unread: 0 };
+      current.total += 1;
+      if (!item.isRead) current.unread += 1;
+      counts.set(key, current);
+    }
     return counts;
-  }, [scopedItems]);
-
+  }, [campaignScopedItems, inboxSummary]);
+  const dateScopedItems = useMemo(() => dateFilter ? campaignScopedItems.filter(item => localDateKey(item.receivedAt) === dateFilter) : campaignScopedItems, [campaignScopedItems, dateFilter]);
+  const pinnedItems = useMemo(() => {
+    const items = (inboxSummary?.pinnedItems as InboxItem[] | undefined) ?? dateScopedItems.filter(item => item._pinned);
+    return [...items].filter(item => !dateFilter || localDateKey(item.receivedAt) === dateFilter).sort((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt));
+  }, [dateFilter, dateScopedItems, inboxSummary]);
+  const pinnedCount = pinnedItems.length;
+  const scopedLabelCounts = useMemo(() => {
+    if (inboxSummary) return new Map(Object.entries(inboxSummary.labels).map(([key, count]) => [Number(key), count]));
+    const counts = new Map<number, number>();
+    for (const item of dateScopedItems) for (const labelId of item._labelIds ?? []) counts.set(labelId, (counts.get(labelId) ?? 0) + 1);
+    return counts;
+  }, [dateScopedItems, inboxSummary]);
   useEffect(() => {
     if (!allItems.length || labelsQuery.isLoading || !labelsQuery.data?.success) return;
     const existingNames = new Set(inboxLabels.map(folder => folder.name.trim().toLocaleLowerCase('zh-CN')));
@@ -847,35 +1168,60 @@ export function InboxList() {
   }, [allItems, inboxLabels, labelsQuery.isLoading, qc]);
   const latestByConversation = useMemo(() => {
     const latest = new Map<string, InboxItem>();
-    for (const item of scopedItems) {
+    // Summary conversations can lag behind freshly analyzed mail; counters and the
+    // list must be derived from the same live page data.
+    for (const item of dateScopedItems) {
       const key = inboxConversationKey(item);
       const current = latest.get(key);
       if (!current || Date.parse(item.receivedAt) > Date.parse(current.receivedAt)) latest.set(key, item);
     }
     return latest;
-  }, [scopedItems]);
-
+  }, [dateScopedItems]);
+  const latestConversationItems = useMemo(() => [...latestByConversation.values()], [latestByConversation]);
+  const followupTaskQuery = useQuery({
+    queryKey: ['inbox-followup-tasks', actorScope],
+    enabled: !!identity?.identity?.userId && !!identity?.baseUrl,
+    staleTime: 0,
+    queryFn: async () => {
+      const first = await centerInvoke<TaskPage>(ONLINE_CHANNELS.TASK_LIST, { status: 'open', limit: TASK_LIMITS.pageMax, offset: 0 });
+      if (!first.ok) return null;
+      const items = [...first.data.items];
+      for (let offset = first.data.items.length; offset < first.data.total && first.data.items.length > 0; offset += TASK_LIMITS.pageMax) {
+        const page = await centerInvoke<TaskPage>(ONLINE_CHANNELS.TASK_LIST, { status: 'open', limit: TASK_LIMITS.pageMax, offset });
+        if (!page.ok) return null;
+        if (!page.data.items.length) break;
+        items.push(...page.data.items);
+      }
+      return items.filter(task => task.sourceKind === 'mail_manual' && !!task.sourceMessageKey);
+    },
+  });
+  const followupTaskSourceKeys = useMemo(() => new Set([
+    ...(followupTaskQuery.data ?? []).map(task => task.sourceMessageKey).filter((key): key is string => !!key),
+    ...Object.values(followupTasks).map(task => task.sourceMessageKey).filter((key): key is string => !!key),
+  ]), [followupTaskQuery.data, followupTasks]);
+  const localFollowupMailIds = useMemo(() => new Set(Object.keys(followupTasks).map(Number)), [followupTasks]);
   const filteredItems = useMemo(() => {
-    let next = scopedItems;
+    let next = dateScopedItems;
     if (filter !== "all") next = next.filter(i => i.classification === filter);
     // 阅读中的邮件先留在未读队列，避免点开瞬间整行从当前光标下消失。
     if (managementScope === "unread") next = next.filter(i => !i.isRead || i.id === sid);
     if (managementScope === "needs_reply") next = next.filter(i => latestByConversation.get(inboxConversationKey(i))?.id === i.id && inboxNeedsReply(i));
-    if (managementScope === "waiting_other") next = next.filter(i => latestByConversation.get(inboxConversationKey(i))?.id === i.id && i.classification === 'sent');
+    if (managementScope === "waiting_other") next = next.filter(i => latestByConversation.get(inboxConversationKey(i))?.id === i.id && inboxWaitingOther(i));
+    if (managementScope === "follow_up") next = next.filter(i => latestByConversation.get(inboxConversationKey(i))?.id === i.id && inboxNeedsFollowup(i, followupTaskSourceKeys, localFollowupMailIds));
     if (analysisFilter === 'action') next = next.filter(i => matchesInboxAnalysisFilter(i, 'action'));
     else if (analysisFilter) next = next.filter(i => matchesInboxAnalysisFilter(i, 'important') || i.id === sid);
     if (labelFilter) next = next.filter(i => (i._labelIds || []).includes(labelFilter));
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    if (deferredSearch) {
+      const q = deferredSearch.toLowerCase();
       next = next.filter(i => (i.subject || "").toLowerCase().includes(q) || i.fromEmail.toLowerCase().includes(q) || (i.fromName || "").toLowerCase().includes(q));
     }
     return next;
-  }, [analysisFilter, filter, labelFilter, latestByConversation, managementScope, scopedItems, search, sid]);
-  const todoOpenIds = useMemo(
-    () => todoView ? filteredItems.filter(item => item._todoState !== 'done').map(item => item.id) : [],
+  }, [analysisFilter, dateScopedItems, deferredSearch, filter, followupTaskSourceKeys, labelFilter, latestByConversation, localFollowupMailIds, managementScope, sid]);
+  const todoOpenItems = useMemo(
+    () => todoView ? filteredItems.filter(item => item._todoState !== 'done') : [],
     [filteredItems, todoView],
   );
-
+  const todoOpenIds = useMemo(() => todoOpenItems.map(item => item.id), [todoOpenItems]);
   // 联系人往来聚合：收到的邮件按发件人，已发送邮件按首个外部收件人归入同一联系人。
   const senderGroups = useMemo<InboxContactGroup[]>(() => {
     if (view !== "sender") return [];
@@ -902,8 +1248,43 @@ export function InboxList() {
     let next = view === "sender" && senderFilter ? filteredItems.filter(i => inboxContactEmail(i) === senderFilter) : filteredItems;
     return [...next].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
   }, [analysisFilter, filteredItems, filter, senderFilter, view]);
+  const backfilledTodoKeys = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if ((!routeMailSubject && !routeCenterMail) || isLoading || !data?.success) return;
+    if (identity?.status !== 'authenticated') return;
+    const pending = items
+      .filter(item => item._todoState === 'open' && (item._centerMessageKeys?.length ?? 0) > 0)
+      .filter(item => !backfilledTodoKeys.current.has(item._centerMessageKeys![0]!))
+      .slice(0, 20);
+    if (!pending.length) return;
+    void (async () => {
+      let created = 0;
+      for (const item of pending) {
+        const ref = todoTaskRef(item);
+        if (!ref) continue;
+        backfilledTodoKeys.current.add(ref.messageKey);
+        const result = await openInboxTask(ref, (channel, ...args) => window.api.invoke(channel, ...args));
+        if (result === 'created') created += 1;
+      }
+      if (created > 0) message.success({ key: 'inbox-task-backfill', content: `已同步 ${created} 条历史邮件待办到客户跟进任务` });
+    })();
+  }, [items, identity?.status, todoTaskRef]);
+  const handledSentReplies = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (identity?.status !== 'authenticated') return;
+    const sent = items.filter(item => item.classification === 'sent' && !!item._centerContact && !handledSentReplies.current.has(item.id));
+    if (!sent.length) return;
+    void (async () => {
+      let completed = 0;
+      for (const item of sent) {
+        handledSentReplies.current.add(item.id);
+        const result = await completeRepliedTask(item._centerContact!.customerId, normalizeInboxSubject(item.subject), item.receivedAt, (channel, ...args) => window.api.invoke(channel, ...args));
+        if (result === 'completed') completed += 1;
+      }
+      if (completed > 0) message.success({ key: 'inbox-reply-task', content: `已根据已发送邮件完成 ${completed} 条跟进待办` });
+    })();
+  }, [items, identity?.status]);
+  useEffect(() => {
+    if ((!routeMailSubject && !routeCenterMail) || isLoading || !latestInboxResponse?.success) return;
     const routeKey = `${routeCenterMail || ''}:${routeMailContact}:${routeMailCustomer || ''}:${routeMailSubject}:${routeMailAt || ''}`;
     if (handledMailRoute.current === routeKey) return;
     handledMailRoute.current = routeKey;
@@ -920,6 +1301,7 @@ export function InboxList() {
       setManagementScope('all');
       setAnalysisFilter(null);
       setLabelFilter(null);
+      setDateFilter(null);
       setView('flat');
       setSenderFilter(null);
       setSearch(routeMailSubject || '');
@@ -941,6 +1323,7 @@ export function InboxList() {
     setManagementScope('all');
     setAnalysisFilter(null);
     setLabelFilter(null);
+    setDateFilter(null);
     setView('flat');
     setSenderFilter(null);
     setSearch('');
@@ -948,7 +1331,7 @@ export function InboxList() {
     setSel(new Set([target.id]));
     setLast(target.id);
     void navigate({ to: '/inbox', search: {}, replace: true });
-  }, [allItems, data?.success, isLoading, navigate, routeCenterMail, routeMailAt, routeMailContact, routeMailCustomer, routeMailSubject]);
+  }, [allItems, isLoading, latestInboxResponse?.success, navigate, routeCenterMail, routeMailAt, routeMailContact, routeMailCustomer, routeMailSubject]);
   useEffect(() => {
     if (routeMailSubject || view !== 'flat' || isLoading) return;
     if (items.length === 0) {
@@ -988,7 +1371,20 @@ export function InboxList() {
     }
     return { cleanRows: rows, cleanTotalHeight: top };
   }, [collapsedCleanGroups, items, todoView, view]);
+  useEffect(() => {
+    if (!hasNextPage || !nextInboxPageCursor || isFetchingNextPage || isLoading) return;
+    const loadedHeight = view === 'flat' ? cleanTotalHeight : items.length * SENDER_ROW_H;
+    const remaining = loadedHeight - (scrollTop + listH);
+    if (remaining <= SENDER_ROW_H * 8) void fetchNextPage();
+  }, [cleanTotalHeight, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, items.length, listH, nextInboxPageCursor, scrollTop, view]);
   const sel_ = items.find(i => i.id === sid) || null;
+  const autoOpenedQuote = useRef<number | null>(null);
+  useEffect(() => {
+    const quoteCard = sel_?._quoteCard;
+    if (!quoteCard || autoOpenedQuote.current === quoteCard.messageId) return;
+    autoOpenedQuote.current = quoteCard.messageId;
+    setContextSidebarOpen(true);
+  }, [sel_?._quoteCard]);
   const selectedItems = useMemo(() => allItems.filter(item => sel.has(item.id)), [allItems, sel]);
   const selectedAllPinned = selectedItems.length > 0 && selectedItems.every(item => item._pinned);
   const legacyBounceMatches = bounceMatchesData?.success ? bounceMatchesData.data || [] : [];
@@ -1097,6 +1493,9 @@ export function InboxList() {
     const center = senderDetail.data?.ok ? senderDetail.data.data : undefined;
     return sel_ && center ? inboxAnalysisEvent(center, sel_) : undefined;
   }, [sel_, senderDetail.data]);
+  const selectedFollowupTask = sel_ ? followupTasks[sel_.id] ?? followupTaskQuery.data?.find(task =>
+    task.sourceMessageKey === selectedMailEvent?.messageKey || Boolean(task.sourceMessageKey && sel_._centerMessageKeys?.includes(task.sourceMessageKey))
+  ) : undefined;
   const selectedAnalysisQuery = useMemo(() => selectedMailEvent?.contentHash ? {
     contactId: selectedMailEvent.contactId,
     customerId: selectedMailEvent.customerId,
@@ -1124,16 +1523,41 @@ export function InboxList() {
         title,
         dueAt,
         expectedCustomerVersion: center.contact.customerVersion,
+        ...(selectedMailEvent ? { sourceKind: 'mail_manual' as const, sourceMessageKey: selectedMailEvent.messageKey } : {}),
         idempotencyKey: crypto.randomUUID(),
       });
       if (!result.ok) throw new Error(result.error.message);
       return result.data;
     },
-    onSuccess: (_task, _input, _context) => {
-      if (sel_) setFollowupTaskMessageId(sel_.id);
+    onSuccess: task => {
+      if (sel_) setFollowupTasks(current => ({ ...current, [sel_.id]: task }));
+      void qc.invalidateQueries({ queryKey: ['inbox-followup-tasks'] });
       message.success('已创建 3 天后跟进任务');
     },
     onError: error => message.error(error instanceof Error ? error.message : '跟进任务创建失败'),
+  });
+  const cancelFollowupTask = useMutation({
+    mutationFn: async () => {
+      if (!sel_ || !selectedFollowupTask) throw new Error('跟进任务不存在');
+      const result = await centerInvoke<FollowupTask>(ONLINE_CHANNELS.TASK_CANCEL, {
+        taskId: selectedFollowupTask.taskId,
+        expectedVersion: selectedFollowupTask.version,
+        reason: '用户取消 3 天跟进任务',
+        idempotencyKey: crypto.randomUUID(),
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      return result.data;
+    },
+    onSuccess: () => {
+      if (sel_) setFollowupTasks(current => {
+        const next = { ...current };
+        delete next[sel_.id];
+        return next;
+      });
+      void qc.invalidateQueries({ queryKey: ['inbox-followup-tasks'] });
+      message.success('已取消跟进任务');
+    },
+    onError: error => message.error(error instanceof Error ? error.message : '取消跟进失败'),
   });
   const rememberSelectedAnalysis = useCallback((view: ContactMailAnalysisView) => {
     if (sel_) setAnalysisByMessage(current => ({ ...current, [sel_.id]: view }));
@@ -1190,7 +1614,7 @@ export function InboxList() {
     window.api.invoke("inbox:getBody", sid).then((r: unknown) => {
       const rr = r as { success: boolean; data?: string };
       const html = rr?.success ? rr.data || null : null;
-      bodyCache.current.set(sid, html);
+      rememberBody(bodyCache.current, sid, html);
       if (active) setBody(html);
     }).catch(() => { if (active) setBody(null); }).finally(() => { if (active) setBl(false); });
     return () => { active = false; };
@@ -1268,8 +1692,8 @@ export function InboxList() {
   }, [location.pathname, location.searchStr, navigate]);
 
   useEffect(() => {
-    if (!routeDetail || includeId !== routeDetail || isLoading || !data) return;
-    if (!data.success) { message.error(data.error || "邮件加载失败"); return; }
+    if (!routeDetail || includeId !== routeDetail || isLoading || !latestInboxResponse) return;
+    if (!latestInboxResponse.success) { message.error(latestInboxResponse.error || "邮件加载失败"); return; }
     if (filter !== "all" || managementScope !== "all" || analysisFilter !== null || labelFilter !== null || view !== "flat" || search || senderFilter) return;
     const index = items.findIndex(i => i.id === routeDetail);
     if (index < 0) {
@@ -1280,12 +1704,46 @@ export function InboxList() {
       setScrollTop(top);
     }
     void navigate({ to: "/inbox", search: {}, replace: true });
-  }, [routeDetail, includeId, isLoading, data, filter, managementScope, analysisFilter, labelFilter, view, search, senderFilter, navigate]);
+  }, [routeDetail, includeId, isLoading, latestInboxResponse, filter, managementScope, analysisFilter, labelFilter, view, search, senderFilter, navigate]);
 
   const replyToMessage = useCallback((item: InboxItem) => {
+    if (!item.accountId && !defaultReplyAccountId) { message.warning('请先在设置中配置发信账号'); return; }
     const subject = item.subject?.match(/^Re:\s*/i) ? item.subject : `Re: ${item.subject || ''}`;
-    window.open(`mailto:${item.fromEmail}?subject=${encodeURIComponent(subject)}`, '_blank');
-  }, []);
+    setReplyDraft({ item, accountId: item.accountId || defaultReplyAccountId, to: item.fromEmail, cc: '', subject, body: '', attachments: [] });
+  }, [defaultReplyAccountId]);
+  const sendReply = async () => {
+    if (!replyDraft || replyBusy) return;
+    setReplyBusy(true);
+    try {
+      const files = replyDraft.attachments.map(file => file.originFileObj).filter((file): file is NonNullable<typeof file> => !!file);
+      if (files.length > 10) throw new Error('附件最多 10 个');
+      if (files.reduce((sum, file) => sum + file.size, 0) > 25 * 1024 * 1024) throw new Error('附件总大小超过 25MB');
+      const attachments = await Promise.all(files.map(async file => ({ filename: file.name, contentType: file.type || undefined, dataBase64: await fileBase64(file) })));
+      const result = await window.api.invoke('inbox:reply', {
+        accountId: replyDraft.accountId,
+        to: replyDraft.to.split(/[,;]/).map(value => value.trim()).filter(Boolean),
+        cc: replyDraft.cc.split(/[,;]/).map(value => value.trim()).filter(Boolean),
+        subject: replyDraft.subject,
+        body: replyDraft.body,
+        attachments,
+      }) as { success: boolean; data?: { messageId: string; sentAt: string; localId: number | null }; error?: string };
+      if (!result?.success) throw new Error(result?.error || '发送失败');
+      const item = replyDraft.item;
+      const sentAt = result.data?.sentAt ?? new Date().toISOString();
+      if (item._todoState === 'open') {
+        const done = await window.api.invoke('inbox:todoState', { messageId: item.id, state: 'done', idempotencyKey: crypto.randomUUID() }) as { success?: boolean };
+        if (done?.success) { patchTodoStateCache([item.id], 'done'); patchConversationCache([item.id], null); }
+      }
+      const ref = todoTaskRef(item);
+      if (ref) await completeRepliedTask(ref.customerId, ref.threadKey, sentAt, (channel, ...args) => window.api.invoke(channel, ...args));
+      if (result.data && result.data.localId === null) message.warning('邮件已发送，但本地记录未保存');
+      message.success('已发送');
+      setReplyDraft(null);
+      void invalidateDomain(qc, 'inbox');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '发送失败');
+    } finally { setReplyBusy(false); }
+  };
 
   const click = useCallback((e: React.MouseEvent, item: InboxItem) => {
     const id = item.id;
@@ -1373,6 +1831,251 @@ export function InboxList() {
     }
   };
 
+  const inboxSnapshots = () => qc.getQueriesData({
+    predicate: query => query.queryKey[0] === 'inbox' && typeof query.queryKey[1] !== 'string',
+  });
+  const restoreInboxSnapshots = (snapshots: ReturnType<typeof inboxSnapshots>) => {
+    for (const [key, value] of snapshots) qc.setQueryData(key, value);
+  };
+  const patchConversationCache = (messageIds: number[], state: InboxConversationState | null) => {
+    const ids = new Set(messageIds);
+    const keys = new Set(allItems.filter(item => ids.has(item.id)).map(inboxConversationKey));
+    const snapshots = inboxSnapshots();
+    const latest = new Map<string, { id: number; at: number }>();
+    for (const item of allItems) {
+      const conversationKey = inboxConversationKey(item);
+      const at = Date.parse(item.receivedAt) || 0;
+      const current = latest.get(conversationKey);
+      if (!current || at > current.at) latest.set(conversationKey, { id: item.id, at });
+    }
+    qc.setQueriesData({ predicate: query => query.queryKey[0] === 'inbox' && typeof query.queryKey[1] !== 'string' }, value => mapInboxCacheItems(value, item => {
+      const conversationKey = inboxConversationKey(item);
+      if (!keys.has(conversationKey)) return item;
+      return { ...item, _conversationState: latest.get(conversationKey)?.id === item.id ? state : null };
+    }));
+    return snapshots;
+  };
+  const patchPinnedCache = (messageIds: number[], pinned: boolean) => {
+    const ids = new Set(messageIds);
+    const snapshots = inboxSnapshots();
+    qc.setQueriesData({ predicate: query => query.queryKey[0] === 'inbox' && typeof query.queryKey[1] !== 'string' }, value => mapInboxCacheItems(value, item => ids.has(item.id) ? { ...item, _pinned: pinned } : item));
+    return snapshots;
+  };
+  const patchFolderCache = (messageIds: number[], labelId: number) => {
+    const ids = new Set(messageIds);
+    const snapshots = inboxSnapshots();
+    qc.setQueriesData({ predicate: query => query.queryKey[0] === 'inbox' && typeof query.queryKey[1] !== 'string' }, value => mapInboxCacheItems(value, item => ids.has(item.id) ? { ...item, _labelIds: [labelId] } : item));
+    return snapshots;
+  };
+  const chunkIds = (ids: number[]) => {
+    const chunks: number[][] = [];
+    for (let index = 0; index < ids.length; index += INBOX_DROP_CHUNK_SIZE) chunks.push(ids.slice(index, index + INBOX_DROP_CHUNK_SIZE));
+    return chunks;
+  };
+  const applyConversationDrop = async (target: Extract<InboxDropTarget, { kind: 'conversation' }>, messageIds: number[]) => {
+    if (dropBusy.current || !messageIds.length) return;
+    dropBusy.current = true;
+    const startedScope = actorScope;
+    const snapshots = patchConversationCache(messageIds, target.state);
+    try {
+      for (const chunk of chunkIds(messageIds)) {
+        if (currentActorScope.current !== startedScope) return;
+        const response = await window.api.invoke('inbox:conversationStateBatch', {
+          messageIds: chunk,
+          state: target.state,
+          idempotencyKey: crypto.randomUUID(),
+        }) as { success: boolean; data?: InboxConversationStateBatchResult; error?: string };
+        if (!response?.success) throw new Error(response?.error || '会话分类保存失败');
+      }
+      if (currentActorScope.current === startedScope) {
+        message.success(`已移入${target.label}`);
+        void invalidateDomain(qc, 'inbox');
+      }
+    } catch (error) {
+      restoreInboxSnapshots(snapshots);
+      if (currentActorScope.current === startedScope) message.error(error instanceof Error ? error.message : '会话分类保存失败');
+    } finally {
+      dropBusy.current = false;
+    }
+  };
+  const clearConversationState = async (messageIds: number[]) => {
+    if (dropBusy.current || !messageIds.length) return;
+    dropBusy.current = true;
+    const snapshots = patchConversationCache(messageIds, null);
+    try {
+      for (const chunk of chunkIds(messageIds)) {
+        const response = await window.api.invoke('inbox:conversationStateBatch', {
+          messageIds: chunk,
+          state: null,
+          idempotencyKey: crypto.randomUUID(),
+        }) as { success: boolean; error?: string };
+        if (!response?.success) throw new Error(response?.error || '移出分类失败');
+      }
+      message.success('已移出当前分类');
+      void invalidateDomain(qc, 'inbox');
+    } catch (error) {
+      restoreInboxSnapshots(snapshots);
+      message.error(error instanceof Error ? error.message : '移出分类失败');
+    } finally {
+      dropBusy.current = false;
+    }
+  };
+  const applyPinDrop = async (messageIds: number[]) => {
+    if (dropBusy.current || !messageIds.length) return;
+    dropBusy.current = true;
+    const snapshots = patchPinnedCache(messageIds, true);
+    try {
+      for (const chunk of chunkIds(messageIds)) {
+        const response = await window.api.invoke('inbox:messagesPinBatch', {
+          messageIds: chunk,
+          pinned: true,
+          idempotencyKey: crypto.randomUUID(),
+        }) as { success: boolean; error?: string };
+        if (!response?.success) throw new Error(response?.error || '置顶保存失败');
+      }
+      message.success('已置顶');
+      refreshLabels();
+      void invalidateDomain(qc, 'inbox');
+    } catch (error) {
+      restoreInboxSnapshots(snapshots);
+      message.error(error instanceof Error ? error.message : '置顶保存失败');
+    } finally {
+      dropBusy.current = false;
+    }
+  };
+  const applyFolderDrop = async (target: Extract<InboxDropTarget, { kind: 'folder' }>, messageIds: number[]) => {
+    if (dropBusy.current || !messageIds.length) return;
+    dropBusy.current = true;
+    const snapshots = patchFolderCache(messageIds, target.labelId);
+    try {
+      for (const chunk of chunkIds(messageIds)) {
+        const response = await window.api.invoke('inbox:messageLabelsBatch', {
+          messageIds: chunk,
+          labelIds: [target.labelId],
+          idempotencyKey: crypto.randomUUID(),
+        }) as { success: boolean; error?: string };
+        if (!response?.success) throw new Error(response?.error || '移动文件夹失败');
+      }
+      message.success(`已移动到${target.name}`);
+      refreshLabels();
+      void invalidateDomain(qc, 'inbox');
+    } catch (error) {
+      restoreInboxSnapshots(snapshots);
+      message.error(error instanceof Error ? error.message : '移动文件夹失败');
+    } finally {
+      dropBusy.current = false;
+    }
+  };
+  const autoFolderName = (item: InboxItem): string => {
+    const legacyCompany = item.matchedContactId ? contactsData?.data?.find(row => row.id === item.matchedContactId)?.companyName : null;
+    const centerCompany = item._centerContacts?.find(link => link.role === 'primary')?.companyName || item._centerContacts?.find(link => link.companyName)?.companyName || null;
+    const company = (legacyCompany || centerCompany || '').trim();
+    if (company) return company.slice(0, 24);
+    if (item.classification !== 'sent' && item.fromName?.trim()) return item.fromName.trim().slice(0, 24);
+    const email = inboxContactEmail(item);
+    return (email.split('@')[0] || email).slice(0, 24);
+  };
+  const applyBlankFolderDrop = async (messageIds: number[]) => {
+    if (dropBusy.current || !messageIds.length) return;
+    const ids = new Set(messageIds);
+    const groups = new Map<string, { name: string; messageIds: number[] }>();
+    for (const item of allItems) {
+      if (!ids.has(item.id)) continue;
+      const name = autoFolderName(item) || '未命名';
+      const key = name.toLocaleLowerCase();
+      const group = groups.get(key) || { name, messageIds: [] };
+      group.messageIds.push(item.id);
+      groups.set(key, group);
+    }
+    if (!groups.size) return;
+    dropBusy.current = true;
+    try {
+      for (const group of groups.values()) {
+        const existing = activeInboxFolders.find(folder => folder.name.trim().toLocaleLowerCase() === group.name.toLocaleLowerCase());
+        let labelId = existing?.labelId;
+        if (!labelId) {
+          const created = await window.api.invoke('inbox:labelSave', {
+            name: group.name,
+            color: '#0f766e',
+            idempotencyKey: crypto.randomUUID(),
+          }) as { success: boolean; data?: InboxLabel; error?: string };
+          if (!created?.success || !created.data?.labelId) throw new Error(created?.error || '文件夹创建失败');
+          labelId = created.data.labelId;
+        }
+        for (const chunk of chunkIds(group.messageIds)) {
+          const moved = await window.api.invoke('inbox:messageLabelsBatch', {
+            messageIds: chunk,
+            labelIds: [labelId],
+            idempotencyKey: crypto.randomUUID(),
+          }) as { success: boolean; error?: string };
+          if (!moved?.success) throw new Error(moved?.error || '移动文件夹失败');
+        }
+      }
+      refreshLabels();
+      void invalidateDomain(qc, 'inbox');
+      message.success(groups.size > 1 ? `已建立并放入 ${groups.size} 个文件夹` : '已建立文件夹并放入');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '文件夹创建失败');
+    } finally {
+      dropBusy.current = false;
+    }
+  };
+  const runDropTarget = (target: InboxDropTarget, messageIds: number[]) => {
+    if (target.kind === 'conversation') return applyConversationDrop(target, messageIds);
+    if (target.kind === 'pin') return applyPinDrop(messageIds);
+    if (target.kind === 'blank-folder') return applyBlankFolderDrop(messageIds);
+    return applyFolderDrop(target, messageIds);
+  };
+  const beginMailDrag = (event: React.DragEvent, item: InboxItem) => {
+    const ids = sel.has(item.id) && sel.size > 0 ? [...sel] : [item.id];
+    if (!sel.has(item.id)) {
+      setSel(new Set([item.id]));
+      setSid(item.id);
+      setLast(item.id);
+    }
+    dragMessageIds.current = ids;
+    setDraggingCount(ids.length);
+    setActiveDropTarget(null);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', ids.join(','));
+    const frame = document.createElement('div');
+    frame.className = 'inbox-drag-frame';
+    frame.textContent = ids.length > 1 ? String(ids.length) : '';
+    document.body.appendChild(frame);
+    event.dataTransfer.setDragImage(frame, 9, 9);
+    window.setTimeout(() => frame.remove(), 0);
+  };
+  const endMailDrag = () => {
+    dragMessageIds.current = [];
+    setDraggingCount(null);
+    setActiveDropTarget(null);
+  };
+  const dropTargetProps = (target: InboxDropTarget) => ({
+    onDragOver: (event: React.DragEvent) => {
+      if (!dragMessageIds.current.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = 'move';
+      if (activeDropTarget !== target.key) setActiveDropTarget(target.key);
+    },
+    onDragLeave: (event: React.DragEvent) => {
+      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+      setActiveDropTarget(current => current === target.key ? null : current);
+    },
+    onDrop: (event: React.DragEvent) => {
+      if (!dragMessageIds.current.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const ids = [...dragMessageIds.current];
+      endMailDrag();
+      void runDropTarget(target, ids);
+    },
+  });
+  const dropClass = (target: InboxDropTarget) => `inbox-drop-target${activeDropTarget === target.key ? ' is-drop-active' : ''}`;
+  const conversationDropTarget = (state: InboxConversationState, label: string): InboxDropTarget => ({ kind: 'conversation', key: `state:${state}`, state, label });
+  const pinDropTarget: InboxDropTarget = { kind: 'pin', key: 'pin' };
+  const blankFolderDropTarget: InboxDropTarget = { kind: 'blank-folder', key: 'folder:blank' };
+
   // ── 键盘选择层（实测缺口：选择只有鼠标三件套，Ctrl+A 被浏览器抢去「全选文字」，看着像坏了）──
   // Ctrl/Cmd+A 全选（虚拟列表按全量选，不只看得见的那几行）· Esc 清空 · ↑/↓ 移动并打开
   // （Shift 扩选）· Space 切换选中 · Delete 删除所选（走既有确认弹窗）。输入框/弹层内一律不劫持。
@@ -1446,18 +2149,20 @@ export function InboxList() {
     return () => window.removeEventListener("keydown", onKey);
   }, [replyToMessage, scrollRowIntoView]);
 
-  // 统计基于全量数据，未读只看有分类的
+  // 左栏计数来自独立的全量汇总，不随当前分类、搜索或日期过滤缩水。
   const counts: Record<string, number> = { bounce: 0, replied: 0, autoreply: 0, sent: 0, other: 0 };
-  scopedItems.forEach(i => { const t = i.classification || "other"; if (counts[t] !== undefined) counts[t]++; });
-  const nCounts: Record<string, number> = { bounce: 0, replied: 0, autoreply: 0, other: 0 };
-  scopedItems.forEach(i => { if (!i.isRead) { const t = i.classification || "other"; if (nCounts[t] !== undefined) nCounts[t]++; } });
-  const unreadCount = scopedItems.filter(i => !i.isRead).length;
-  const latestConversationItems = [...latestByConversation.values()];
+  if (inboxSummary) for (const key of Object.keys(counts)) counts[key] = inboxSummary.byClassification[key]?.total ?? 0;
+  else dateScopedItems.forEach(i => { const t = i.classification || "other"; if (counts[t] !== undefined) counts[t]++; });
+  const unreadCount = inboxSummary?.unread ?? dateScopedItems.filter(i => !i.isRead).length;
   const needsReplyCount = latestConversationItems.filter(inboxNeedsReply).length;
-  const waitingOtherCount = latestConversationItems.filter(item => item.classification === 'sent').length;
+  const waitingOtherCount = latestConversationItems.filter(inboxWaitingOther).length;
+  const followUpCount = latestConversationItems.filter(item => inboxNeedsFollowup(item, followupTaskSourceKeys, localFollowupMailIds)).length;
+  // The analysis filters operate on every message (see matchesInboxAnalysisFilter),
+  // so their counters must use the same set instead of latest-per-conversation.
+  const analysisSource = dateScopedItems;
   const analysisCounts: Record<InboxAnalysisFilter, number> = {
-    action: scopedItems.filter(item => matchesInboxAnalysisFilter(item, 'action')).length,
-    important: scopedItems.filter(item => matchesInboxAnalysisFilter(item, 'important')).length,
+    action: analysisSource.filter(item => matchesInboxAnalysisFilter(item, 'action')).length,
+    important: analysisSource.filter(item => matchesInboxAnalysisFilter(item, 'important')).length,
   };
   const managementActive = analysisFilter ? `analysis:${analysisFilter}` : labelFilter !== null ? `label:${labelFilter}` : managementScope !== 'all' ? `scope:${managementScope}` : `filter:${filter}`;
   const applyAccount = (key: string | null) => {
@@ -1502,18 +2207,19 @@ export function InboxList() {
     void qc.invalidateQueries({ queryKey: ['inbox-labels'] });
     void invalidateDomain(qc, 'inbox');
   };
-  const saveLabel = async () => {
-    if (!labelEditor || !labelEditor.name.trim()) return;
+  const saveFolder = async (value: FolderEditorValue) => {
+    if (!value.name.trim()) return;
     setLabelSaving(true);
     try {
       const response = await window.api.invoke('inbox:labelSave', {
-        labelId: labelEditor.labelId,
-        name: labelEditor.name.trim(),
-        color: labelEditor.color,
+        labelId: value.labelId,
+        name: value.name.trim(),
+        color: value.color,
         idempotencyKey: crypto.randomUUID(),
       }) as { success: boolean; error?: string };
       if (!response?.success) throw new Error(response?.error || '文件夹保存失败');
       setLabelEditor(null);
+      setFolderCreatorOpen(false);
       refreshLabels();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '文件夹保存失败');
@@ -1568,15 +2274,24 @@ export function InboxList() {
   // ── 渲染 ──
 
   return (
-    <div className="inbox-workspace prospector-inbox-page flex h-full" data-fetch-progress-open={fetchProgressOpen ? "true" : "false"} style={{ height: "100%", minHeight: 0, overflow: "hidden" }} onClick={() => setMenu(null)}>
+    <div className={`inbox-workspace prospector-inbox-page flex h-full${draggingCount !== null ? ' is-mail-dragging' : ''}`} data-fetch-progress-open={fetchProgressOpen ? "true" : "false"} style={{ height: "100%", minHeight: 0, overflow: "hidden" }} onClick={() => setMenu(null)}>
 
       <aside className="inbox-management-pane" aria-label="邮件管理">
-        <div className="inbox-management-heading"><span>邮件管理</span><strong>收件箱</strong></div>
-        <div className="inbox-management-scroll">
+        <div className="inbox-management-heading is-date"><InboxDateHeading value={inboxDate} filtering={!!dateFilter} counts={mailCountsByDate} onChange={value => { setInboxDate(value); setDateFilter(localDateKey(value)); }} onClear={() => setDateFilter(null)} /></div>
+        <div className="inbox-management-scroll"
+          onDragOver={event => {
+            if (!dragMessageIds.current.length) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+          }}
+          onDrop={event => {
+            if (!dragMessageIds.current.length) return;
+            event.preventDefault();
+          }}>
           {accountGroups.length > 1 && <section className="inbox-management-section inbox-management-accounts">
             <h3><MailOutlined />收信账号</h3>
             <button type="button" title="全部账号" className={`inbox-management-item${accountFilter === null ? ' is-active' : ''}`} onClick={() => applyAccount(null)}>
-              <InboxOutlined /><span>全部账号</span><em>{allItems.length}</em>
+              <InboxOutlined /><span>全部账号</span><em>{inboxSummary?.allTotal ?? allItems.length}</em>
             </button>
             {accountGroups.map(group => <button key={group.key || 'unnamed'} type="button" title={group.email} className={`inbox-management-item inbox-management-account${accountFilter === group.key ? ' is-active' : ''}`} onClick={() => applyAccount(group.key)}>
               <MailOutlined /><span>{group.email}</span><em title={`${group.unread} 封未读 · 共 ${group.total} 封`}>{group.unread > 0 ? `${group.unread}/${group.total}` : group.total}</em>
@@ -1585,7 +2300,7 @@ export function InboxList() {
 
           <section className="inbox-management-section">
             <button type="button" title="全部邮件" className={`inbox-management-item${managementActive === 'filter:all' ? ' is-active' : ''}`} onClick={() => { applyScope('all'); setFilter('all'); }}>
-              <InboxOutlined /><span>全部邮件</span><em>{scopedItems.length}</em>
+              <InboxOutlined /><span>全部邮件</span><em>{inboxSummary?.total ?? scopedItems.length}</em>
             </button>
             <button type="button" title="未读" className={`inbox-management-item${managementScope === 'unread' ? ' is-active' : ''}`} onClick={() => applyScope('unread')}>
               <EyeOutlined /><span>未读</span><em>{unreadCount}</em>
@@ -1596,21 +2311,24 @@ export function InboxList() {
           </section>
 
           <section className="inbox-management-section">
-            <button type="button" title="待办" className={`inbox-management-item${analysisFilter === 'action' ? ' is-active' : ''}`} onClick={() => applyAnalysis('action')}>
+            <button type="button" title="待办" className={`inbox-management-item ${dropClass(conversationDropTarget('todo', '待办'))}${analysisFilter === 'action' ? ' is-active' : ''}`} onClick={() => applyAnalysis('action')} {...dropTargetProps(conversationDropTarget('todo', '待办'))}>
               <CheckSquareOutlined /><span>待办</span><em>{analysisCounts.action}</em>
             </button>
-            <button type="button" title="待我回复" className={`inbox-management-item${managementScope === 'needs_reply' ? ' is-active' : ''}`} onClick={() => applyScope('needs_reply')}>
+            <button type="button" title="待我回复" className={`inbox-management-item ${dropClass(conversationDropTarget('needs_reply', '待我回复'))}${managementScope === 'needs_reply' ? ' is-active' : ''}`} onClick={() => applyScope('needs_reply')} {...dropTargetProps(conversationDropTarget('needs_reply', '待我回复'))}>
               <i className="inbox-management-dot" style={{ background: '#9a6700' }} /><span>待我回复</span><em>{needsReplyCount}</em>
             </button>
-            <button type="button" title="等待对方" className={`inbox-management-item${managementScope === 'waiting_other' ? ' is-active' : ''}`} onClick={() => applyScope('waiting_other')}>
+            <button type="button" title="等待对方" className={`inbox-management-item ${dropClass(conversationDropTarget('waiting_other', '等待对方'))}${managementScope === 'waiting_other' ? ' is-active' : ''}`} onClick={() => applyScope('waiting_other')} {...dropTargetProps(conversationDropTarget('waiting_other', '等待对方'))}>
               <i className="inbox-management-dot" style={{ background: '#2563eb' }} /><span>等待对方</span><em>{waitingOtherCount}</em>
             </button>
-            <button type="button" title="需关注" className={`inbox-management-item${analysisFilter === 'important' ? ' is-active' : ''}`} onClick={() => applyAnalysis('important')}>
+            <button type="button" title="待跟进" className={`inbox-management-item${managementScope === 'follow_up' ? ' is-active' : ''}`} onClick={() => applyScope('follow_up')}>
+              <i className="inbox-management-dot" style={{ background: '#0f766e' }} /><span>待跟进</span><em>{followUpCount}</em>
+            </button>
+            <button type="button" title="需关注" className={`inbox-management-item ${dropClass(conversationDropTarget('important', '需关注'))}${analysisFilter === 'important' ? ' is-active' : ''}`} onClick={() => applyAnalysis('important')} {...dropTargetProps(conversationDropTarget('important', '需关注'))}>
               <i className="inbox-management-dot" style={{ background: '#c2413b' }} /><span>需关注</span><em>{analysisCounts.important}</em>
             </button>
           </section>
 
-          <section className="inbox-management-section inbox-folder-section">
+          <section className={`inbox-management-section inbox-folder-section ${dropClass(pinDropTarget)}`} {...dropTargetProps(pinDropTarget)}>
             <div className="inbox-folder-group-row">
               <button type="button" title="置顶邮件" className="inbox-folder-group-main" aria-expanded={pinnedFolderOpen} onClick={() => setPinnedFolderOpen(open => !open)}>
                 <PushpinOutlined /><span>置顶邮件</span><em>{pinnedCount}</em>
@@ -1635,36 +2353,75 @@ export function InboxList() {
             </div>}
           </section>
 
-          <section className="inbox-management-section inbox-folder-section">
+          <section
+            className={`inbox-management-section inbox-folder-section ${activeDropTarget === blankFolderDropTarget.key ? 'is-blank-drop-active' : ''}`}
+            onDragOver={event => {
+              if (!dragMessageIds.current.length) return;
+              const target = event.target as Element;
+              if (!(target instanceof Element) || target.closest('.inbox-folder-row, .inbox-ai-folder-suggestions, .inbox-folder-group-row, .inbox-folder-add')) return;
+              event.preventDefault();
+              event.stopPropagation();
+              event.dataTransfer.dropEffect = 'move';
+              if (activeDropTarget !== blankFolderDropTarget.key) setActiveDropTarget(blankFolderDropTarget.key);
+            }}
+            onDragLeave={event => {
+              if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+              setActiveDropTarget(current => current === blankFolderDropTarget.key ? null : current);
+            }}
+            onDrop={event => {
+              if (!dragMessageIds.current.length) return;
+              const target = event.target as Element;
+              if (!(target instanceof Element) || target.closest('.inbox-folder-row, .inbox-ai-folder-suggestions, .inbox-folder-group-row, .inbox-folder-add')) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const ids = [...dragMessageIds.current];
+              endMailDrag();
+              void applyBlankFolderDrop(ids);
+            }}>
             <div className="inbox-folder-group-row">
               <button type="button" title="文件夹" className="inbox-folder-group-main" aria-expanded={foldersOpen} onClick={() => setFoldersOpen(open => !open)}>
                 <FolderOpenOutlined /><span>文件夹</span><em>{activeInboxFolders.length}</em>
               </button>
-              <button type="button" className="inbox-folder-add" title="新建文件夹" aria-label="新建文件夹" onClick={() => setLabelEditor({ name: '', color: '#2563eb' })}><PlusOutlined /></button>
+              <Popover trigger="click" placement="rightTop" open={folderCreatorOpen} onOpenChange={open => { if (!labelSaving) setFolderCreatorOpen(open); }} content={<FolderEditorCard initial={{ name: '', color: '#2563eb' }} saving={labelSaving} onCancel={() => setFolderCreatorOpen(false)} onSave={value => void saveFolder(value)} />}>
+                <button type="button" className="inbox-folder-add" title="新建文件夹" aria-label="新建文件夹"><PlusOutlined /></button>
+              </Popover>
             </div>
             {foldersOpen && <div className="inbox-folder-children">
-              {inboxLabels.length === 0 ? <div className="inbox-folder-empty">暂无文件夹</div> : [...activeInboxFolders, ...suggestedInboxFolders].map(label => {
-                const suggested = label.status === 'suggested';
-                const count = suggested ? label.candidateCount ?? label.count : scopedLabelCounts.get(label.labelId) ?? label.count;
-                return <div key={label.labelId} className={`inbox-folder-row${labelFilter === label.labelId ? ' is-active' : ''}`}>
-                  <button type="button" title={label.name} className="inbox-folder-main" onClick={() => !suggested && applyLabel(label.labelId)} disabled={suggested}>
-                    <FolderOutlined /><span>{label.name}</span><em>{count}</em>
+              {suggestedInboxFolders.length > 0 && <div className="inbox-ai-folder-suggestions">
+                <div className="inbox-ai-folder-heading"><BulbOutlined /><strong>AI建议</strong><em>{suggestedInboxFolders.length}</em></div>
+                {suggestedInboxFolders.map(label => {
+                  const count = label.candidateCount ?? label.count;
+                  return <div key={label.labelId} className="inbox-folder-row is-suggested">
+                    <button type="button" title={label.name} className="inbox-folder-main" disabled>
+                      <FolderOutlined style={{ color: label.color }} /><span>{label.name}</span><em>{count}</em>
+                    </button>
+                    <div className="inbox-folder-actions">
+                      <button type="button" className="is-confirm" title="确认文件夹" aria-label={`确认文件夹 ${label.name}`} onClick={() => void confirmFolder(label)}><CheckOutlined /></button>
+                      <button type="button" className="is-delete" title="删除建议" aria-label={`删除文件夹建议 ${label.name}`} onClick={() => deleteLabel(label)}><DeleteOutlined /></button>
+                    </div>
+                  </div>;
+                })}
+              </div>}
+              {activeInboxFolders.length === 0 ? <div className="inbox-folder-empty">暂无文件夹</div> : activeInboxFolders.map(label => {
+                const count = scopedLabelCounts.get(label.labelId) ?? label.count;
+                const folderTarget: InboxDropTarget = { kind: 'folder', key: `folder:${label.labelId}`, labelId: label.labelId, name: label.name };
+                return <div key={label.labelId} className={`inbox-folder-row ${dropClass(folderTarget)}${labelFilter === label.labelId ? ' is-active' : ''}`} {...dropTargetProps(folderTarget)}>
+                  <button type="button" title={label.name} className="inbox-folder-main" onClick={() => applyLabel(label.labelId)}>
+                    <FolderOutlined style={{ color: label.color }} /><span>{label.name}</span><em>{count}</em>
                   </button>
-                  {suggested ? <div className="inbox-folder-actions">
-                    <button type="button" title="确认文件夹" aria-label={`确认文件夹 ${label.name}`} onClick={() => void confirmFolder(label)}><CheckOutlined /></button>
-                    <button type="button" title="删除建议" aria-label={`删除文件夹建议 ${label.name}`} onClick={() => deleteLabel(label)}><DeleteOutlined /></button>
-                  </div> : <Dropdown trigger={['click']} menu={{ items: [{ key: 'edit', label: '编辑' }, { key: 'delete', label: '删除', danger: true }], onClick: ({ key }) => key === 'edit' ? setLabelEditor({ labelId: label.labelId, name: label.name, color: label.color }) : deleteLabel(label) }}>
+                  <Dropdown trigger={['click']} menu={{ items: [{ key: 'edit', label: '编辑' }, { key: 'delete', label: '删除', danger: true }], onClick: ({ key }) => key === 'edit' ? setLabelEditor({ labelId: label.labelId, name: label.name, color: label.color }) : deleteLabel(label) }}>
                     <button type="button" className="inbox-folder-menu" title="文件夹操作" aria-label={`${label.name} 操作`}><MoreOutlined /></button>
-                  </Dropdown>}
+                  </Dropdown>
                 </div>;
               })}
+              <div className="inbox-folder-blank-drop" aria-hidden="true" />
             </div>}
           </section>
         </div>
       </aside>
 
       {/* ══ 左侧 ══ */}
-      <div className="inbox-list-pane flex flex-col flex-shrink-0" style={{ width: "38%", minWidth: 400, maxWidth: 680, minHeight: 0, userSelect: "none", borderRight: "1px solid var(--workspace-line)" }}>
+      <div className="inbox-list-pane flex flex-col flex-shrink-0" style={{ width: "34%", minWidth: 380, maxWidth: 620, minHeight: 0, userSelect: "none", borderRight: "1px solid var(--workspace-line)" }}>
 
         {/* 顶部 */}
         <div className="inbox-action-bar">
@@ -1681,6 +2438,11 @@ export function InboxList() {
           {sel.size > 1 && <Button size="small" onClick={batchRead} title="Ctrl+A 全选 · ↑↓ 移动（Shift 扩选）· Space 切换选中">已读</Button>}
           {sel.size > 1 && <Button size="small" danger onClick={batchDel} title="已选 {n} 封 · Delete 键同样可删（有确认）· Esc 取消选择">删({sel.size})</Button>}
         </div>
+        {routeCampaignId && <div className={`inbox-campaign-filter${campaignMailError ? ' is-error' : ''}`} role="status">
+          <MailOutlined aria-hidden="true" />
+          <span><strong>{campaignMailDetail?.campaign?.name || (campaignMailQuery.isLoading ? '正在读取任务邮件' : campaignMailError ? '任务邮件读取失败' : '任务邮件')}</strong>{routeCampaignStatus && <small>{CAMPAIGN_INBOX_STATUS_LABELS[routeCampaignStatus]}</small>}</span>
+          <button type="button" onClick={() => { window.location.hash = '#/inbox'; }} aria-label="清除任务邮件筛选" title="清除任务邮件筛选"><CloseOutlined /></button>
+        </div>}
         {/* 拉取进度弹窗 — 分账号详细显示 */}
         <Modal title="收取邮件" open={fetchProgressOpen} width={520} destroyOnHidden
           onCancel={() => setFetchProgressOpen(false)}
@@ -1734,13 +2496,35 @@ export function InboxList() {
           })()}
         </Modal>
 
-        <Modal title={labelEditor?.labelId ? '编辑文件夹' : '新建文件夹'} open={!!labelEditor} width={360}
+        <Modal title={labelEditor?.labelId ? '编辑文件夹' : '新建文件夹'} open={!!labelEditor} width={360} footer={null}
           onCancel={() => { if (!labelSaving) setLabelEditor(null); }}
-          footer={<div className="inbox-label-editor-actions"><Button onClick={() => setLabelEditor(null)} disabled={labelSaving}>取消</Button><Button type="primary" loading={labelSaving} disabled={!labelEditor?.name.trim()} onClick={() => void saveLabel()}>保存</Button></div>}>
-          {labelEditor && <div className="inbox-label-editor">
-            <label><span>名称</span><Input autoFocus maxLength={24} value={labelEditor.name} onChange={event => setLabelEditor({ ...labelEditor, name: event.target.value })} placeholder="例如：询价、重点客户" /></label>
-            <label><span>颜色</span><div className="inbox-label-color-field"><input type="color" value={labelEditor.color} onChange={event => setLabelEditor({ ...labelEditor, color: event.target.value })} /><i style={{ background: labelEditor.color }} /><strong>{labelEditor.name.trim() || '文件夹名称'}</strong></div></label>
-          </div>}
+          >
+          {labelEditor && <FolderEditorCard key={labelEditor.labelId ?? 'new-modal'} initial={labelEditor} saving={labelSaving} onCancel={() => setLabelEditor(null)} onSave={value => void saveFolder(value)} />}
+        </Modal>
+
+        <Modal title="引用邮件给成员" open={emailReferenceOpen} width={420} footer={null} onCancel={() => setEmailReferenceOpen(false)}>
+          {!selectedMailEvent ? <div className="inbox-folder-empty">该邮件尚未形成中心同步记录</div>
+            : <EmailReferenceMemberPicker onChoose={(teamId, member) => {
+              const referenceId = crypto.randomUUID();
+              saveTeamEmailReference({
+                teamId,
+                memberUserId: member.userId,
+                referenceId,
+                createdAt: new Date().toISOString(),
+                payload: {
+                  messageKey: selectedMailEvent.messageKey,
+                  subject: selectedMailEvent.subject || sel_?.subject || '无主题',
+                  from: selectedMailEvent.fromEmail || sel_?.fromEmail || '',
+                  to: selectedMailEvent.toEmails,
+                  occurredAt: selectedMailEvent.occurredAt,
+                  summary: selectedMailEvent.preview || sel_?.bodyPreview || undefined,
+                  customerId: senderReference?.customerId ?? selectedMailEvent.customerId,
+                  contactId: senderReference?.contactId ?? selectedMailEvent.contactId,
+                },
+              });
+              setEmailReferenceOpen(false);
+              window.location.hash = '#/team?section=overview';
+            }} />}
         </Modal>
 
         {/* 待办使用专用队列，不显示邮件/联系人视图切换。 */}
@@ -1819,7 +2603,7 @@ export function InboxList() {
         {todoView && <div className="inbox-todo-overview">
           <span><strong>{todoOpenIds.length}</strong> 项待处理</span>
           <button type="button" disabled={todoBatchMut.isPending || todoOpenIds.length === 0}
-            onClick={() => todoBatchMut.mutate(todoOpenIds)}>
+            onClick={() => todoBatchMut.mutate(todoOpenItems)}>
             <CheckOutlined />一键已处理
           </button>
         </div>}
@@ -1910,7 +2694,7 @@ export function InboxList() {
                       <button type="button" className="inbox-todo-state" disabled={todoMut.isPending}
                         title={done ? '重新打开' : '标记已处理'}
                         aria-label={done ? '重新打开' : '标记已处理'}
-                        onClick={event => { event.stopPropagation(); todoMut.mutate({ messageId: i.id, state: done ? 'open' : 'done', ...(done ? { feedback: '已重新打开' } : {}) }); }}>
+                        onClick={event => { event.stopPropagation(); todoMut.mutate({ messageId: i.id, item: i, state: done ? 'open' : 'done', ...(done ? { feedback: '已重新打开' } : {}) }); }}>
                         {done ? <UndoOutlined /> : <CheckOutlined />}
                       </button>
                     </div>;
@@ -1923,6 +2707,9 @@ export function InboxList() {
                     return <div key={row.key}
                       onClick={e => click(e, i)}
                       onContextMenu={e => ctxMenu(e, i)}
+                      draggable
+                      onDragStart={event => beginMailDrag(event, i)}
+                      onDragEnd={endMailDrag}
                       className={`inbox-clean-row${isNew ? " is-unread" : ""}${isAct ? " is-active" : ""}${isSel ? " is-selected" : ""}`}
                       style={{ position: "absolute", top: row.top, left: 0, right: 0, height: row.height }}
                       title={`${i.fromEmail} · ${i.subject || ''}`}
@@ -1937,14 +2724,14 @@ export function InboxList() {
                       {analysisFilter === 'action' && i._analysis?.requiresAction && i._todoState !== 'done' && (
                         <button type="button" className="inbox-clean-row-action" title="标记已处理"
                           disabled={todoMut.isPending}
-                          onClick={event => { event.stopPropagation(); todoMut.mutate({ messageId: i.id, state: 'done' }); }}>
+                          onClick={event => { event.stopPropagation(); todoMut.mutate({ messageId: i.id, item: i, state: 'done' }); }}>
                           <CheckOutlined />
                         </button>
                       )}
                       {analysisFilter === 'important' && matchesInboxAnalysisFilter(i, 'important') && (
                         <button type="button" className="inbox-clean-row-action" title="加入待办" aria-label="加入待办"
                           disabled={todoMut.isPending}
-                          onClick={event => { event.stopPropagation(); todoMut.mutate({ messageId: i.id, state: 'open', feedback: '已加入待办' }); }}>
+                          onClick={event => { event.stopPropagation(); todoMut.mutate({ messageId: i.id, item: i, state: 'open', feedback: '已加入待办' }); }}>
                           <PlusOutlined />
                         </button>
                       )}
@@ -1969,6 +2756,9 @@ export function InboxList() {
                   <div key={i.id}
                     onClick={e => click(e, i)}
                     onContextMenu={e => ctxMenu(e, i)}
+                    draggable
+                    onDragStart={event => beginMailDrag(event, i)}
+                    onDragEnd={endMailDrag}
                     className={`inbox-mail-row${isNew ? " is-unread" : " is-read"}${isAct ? " is-active" : ""}${isSel ? " is-selected" : ""}`}
                     style={{ position: "absolute", top: realIdx * mailRowHeight, left: 0, right: 0, height: mailRowHeight }}
                   >
@@ -1992,7 +2782,7 @@ export function InboxList() {
                           const parts = inboxAnalysisTagParts(inboxLocalAnalysisLabel(localAnalysis));
                           return <div className="inbox-mail-analysis-row" title={`${inboxLocalAnalysisLabel(localAnalysis)} · ${ANALYSIS_PRIORITY_LABELS[localAnalysis.priority]}`}>
                             <span className="inbox-mail-analysis-tag" style={{ borderLeftColor: color }}>
-                              <i className="inbox-mail-analysis-ai">AI</i>
+                              <i className="inbox-mail-analysis-ai">{inboxAnalysisSourceLabel(localAnalysis)}</i>
                               <strong>{parts.verdict}</strong>
                               {parts.category && <em>{parts.category}</em>}
                               {localAnalysis.status === 'ready' && localAnalysis.priority !== 'normal' && <b>{ANALYSIS_PRIORITY_LABELS[localAnalysis.priority]}</b>}
@@ -2037,9 +2827,8 @@ export function InboxList() {
         </div>
       </div>
 
-      {/* ══ 右侧 ══ */}
-      <div className="inbox-reader-pane flex-1 flex flex-col overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
-        {!sel_ ? (
+      {!sel_ ? (
+        <div className="inbox-reader-pane flex-1 flex flex-col overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
           <div className="inbox-reader-empty flex-1 flex flex-col items-center justify-center">
             <MailOutlined style={{ fontSize: 32, marginBottom: 10 }} />
             {/* 原先左侧列表顶部那行计数条迁到这里：左栏少一行、多出一屏邮件 */}
@@ -2051,8 +2840,10 @@ export function InboxList() {
               <span>其他 {counts.other ?? 0}</span>
             </div>
           </div>
-        ) : (
-          <>
+        </div>
+      ) : (
+        <>
+          <div className="inbox-reader-main flex-1 flex flex-col overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
             {/* 邮件详情头部 */}
             <div className="inbox-detail-header selectable">
               <div className="inbox-detail-subject-row">
@@ -2060,10 +2851,14 @@ export function InboxList() {
                 <div className="inbox-detail-subject-actions">
                   <span className="inbox-detail-classification"><span style={{ background: selectedType.dot }} />{selectedType.label}</span>
                   {selectedLabels.map(label => <span key={label.labelId} className="inbox-detail-label-chip" style={{ color: label.color, background: `${label.color}16`, borderColor: `${label.color}35` }}>{label.name}</span>)}
-                  {followupReference && sel_.classification === 'sent' && <button type="button" className="inbox-detail-followup" disabled={createFollowupTask.isPending || followupTaskMessageId === sel_.id} onClick={() => createFollowupTask.mutate()} title="在现有跟进任务中创建跟进提醒">
-                    {followupTaskMessageId === sel_.id ? '已建跟进' : createFollowupTask.isPending ? '创建中…' : inboxWaitingDays(sel_) >= FOLLOWUP_SUGGESTION_DAYS ? `等待 ${inboxWaitingDays(sel_)} 天 · 跟进` : '3天后跟进'}
-                  </button>}
+                  {followupReference && sel_.classification === 'sent' && (selectedFollowupTask
+                    ? <button type="button" className="inbox-detail-followup is-created" disabled={cancelFollowupTask.isPending} onClick={() => cancelFollowupTask.mutate()} title="取消已创建的 3 天跟进任务">{cancelFollowupTask.isPending ? '取消中…' : '取消跟进'}</button>
+                    : <button type="button" className="inbox-detail-followup" disabled={createFollowupTask.isPending} onClick={() => createFollowupTask.mutate()} title="在现有跟进任务中创建跟进提醒">{createFollowupTask.isPending ? '创建中…' : inboxWaitingDays(sel_) >= FOLLOWUP_SUGGESTION_DAYS ? `等待 ${inboxWaitingDays(sel_)} 天 · 跟进` : '3天后跟进'}</button>)}
+                  {inboxIsTodo(sel_) && sel_._todoState !== 'done' && <button type="button" className="inbox-detail-todo is-handled" disabled={todoMut.isPending} onClick={() => todoMut.mutate({ messageId: sel_.id, item: sel_, state: 'done' })}><CheckOutlined />已处理</button>}
+                  {sel_._todoState === 'done' && <button type="button" className="inbox-detail-todo" disabled={todoMut.isPending} onClick={() => todoMut.mutate({ messageId: sel_.id, item: sel_, state: 'open', feedback: '已重新打开' })}><UndoOutlined />重新打开</button>}
+                  {sel_._todoState !== 'open' && sel_._todoState !== 'done' && <button type="button" className="inbox-detail-todo" disabled={todoMut.isPending} onClick={() => todoMut.mutate({ messageId: sel_.id, item: sel_, state: 'open', feedback: '已加入待办' })}><PlusOutlined />加入待办</button>}
                   <button type="button" className={`inbox-detail-pin${sel_._pinned ? ' is-active' : ''}`} onClick={() => void togglePinned()} title={sel_._pinned ? '取消置顶' : '置顶邮件'}><PushpinOutlined />{sel_._pinned ? '已置顶' : '置顶'}</button>
+                  <button type="button" className="inbox-detail-reply" disabled={!selectedMailEvent} onClick={() => setEmailReferenceOpen(true)} title={selectedMailEvent ? '引用这封邮件给团队成员' : '该邮件尚未形成中心同步记录'}><MailOutlined />引用</button>
                   <button type="button" className="inbox-detail-reply" onClick={() => replyToMessage(sel_)} title="回复邮件（R）"><MailOutlined />回复</button>
                   <Popover trigger="click" placement="bottomRight" content={<div className="inbox-label-picker">
                     {activeInboxFolders.length === 0 ? <div className="inbox-label-picker-empty">暂无文件夹</div> : activeInboxFolders.map(label => <label key={label.labelId}>
@@ -2151,7 +2946,10 @@ export function InboxList() {
               {sel_._analysis && <section className="inbox-detail-collapsible inbox-analysis-section">
                 <button type="button" className="inbox-detail-collapsible-heading" aria-expanded={analysisDetailOpen} onClick={() => setAnalysisDetailOpen(open => !open)}>
                   <strong style={{ color: '#27313b' }}>业务判断</strong>
-                  <span style={{ color: inboxLocalAnalysisColor(sel_._analysis) }}>{inboxLocalAnalysisLabel(sel_._analysis)}</span>
+                  <span style={{ color: inboxLocalAnalysisColor(sel_._analysis) }}>
+                    {inboxAnalysisSourceLabel(sel_._analysis) !== 'AI' ? `${inboxAnalysisSourceLabel(sel_._analysis)} · ` : ''}
+                    {inboxLocalAnalysisLabel(sel_._analysis)}
+                  </span>
                   {sel_._analysis.status === 'ready' && <span style={{ marginLeft: 'auto', color: '#7d8790', fontSize: 10 }}>{inboxConfidenceLabel(sel_._analysis.confidence)}</span>}
                   {analysisDetailOpen ? <CaretDownOutlined className="inbox-detail-collapsible-caret" /> : <CaretRightOutlined className="inbox-detail-collapsible-caret" />}
                 </button>
@@ -2169,22 +2967,6 @@ export function InboxList() {
                   {sel_._analysis.nextAction
                     ? <div><strong>待办：</strong>{sel_._analysis.nextAction}{sel_._analysis.dueHint ? ` · ${sel_._analysis.dueHint}` : ''}</div>
                     : <div style={{ color: '#7d8790' }}>参考邮件，暂不生成待办。</div>}
-                  {(matchesInboxAnalysisFilter(sel_, 'action') || matchesInboxAnalysisFilter(sel_, 'important') || sel_._todoState === 'done') && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                    {sel_._todoState === 'done'
-                      ? <button type="button" className="inbox-detail-inline-action" disabled={todoMut.isPending}
-                          onClick={() => todoMut.mutate({ messageId: sel_.id, state: 'open', feedback: '已重新打开' })}>
-                          <UndoOutlined /> 重新打开
-                        </button>
-                      : matchesInboxAnalysisFilter(sel_, 'action')
-                        ? <button type="button" className="inbox-detail-inline-action" disabled={todoMut.isPending}
-                            onClick={() => todoMut.mutate({ messageId: sel_.id, state: 'done' })}>
-                            <CheckOutlined /> 标记已处理
-                          </button>
-                        : <button type="button" className="inbox-detail-inline-action" disabled={todoMut.isPending}
-                            onClick={() => todoMut.mutate({ messageId: sel_.id, state: 'open', feedback: '已加入待办' })}>
-                            <PlusOutlined /> 加入待办
-                          </button>}
-                  </div>}
                   {sel_._analysis.confidence < 0.65 && <div style={{ color: '#a15c16' }}>依据不足，请打开原文核对后再处理。</div>}
                   {sel_._analysis.evidence.length > 0 && <div style={{ color: '#7d8790' }}>
                     依据：{sel_._analysis.evidence.slice(0, 2).map(item => `“${item}”`).join('；')}
@@ -2192,15 +2974,30 @@ export function InboxList() {
                 </>}
                 </div>}
               </section>}
-              {selectedAnalysisQuery && <MailAnalysisPanel
-                key={selectedMailEvent?.eventId}
-                queryInput={selectedAnalysisQuery}
-                onCurrent={rememberSelectedAnalysis}
-              />}
             </div>
-            {selectedThreadItems.length > 1 && <section className="inbox-thread-stack" aria-label="会话邮件">
+            <div className="detail-body" style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
+              <div className="body-pane" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                {bl ? (
+                  <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc", fontSize: 13 }}>加载正文中...</div>
+                ) : body ? (
+                  <iframe className="body-iframe" style={{ flex: 1, minHeight: 0, width: "100%" }}
+                    scrolling="auto" sandbox="allow-scripts"
+                    srcDoc={bodyDoc}
+                  />
+                ) : (
+                  <div className="body-preview selectable">{sel_.bodyPreview || "(无法加载正文)"}</div>
+                )}
+              </div>
+            </div>
+          </div>
+          <aside className={`inbox-detail-context-sidebar${contextSidebarOpen && selectedThreadItems.length > 1 ? ' has-thread-stack' : ''}${contextSidebarOpen ? '' : ' is-collapsed'}`} aria-label="邮件上下文">
+            <button type="button" className="inbox-context-collapse" aria-label={contextSidebarOpen ? '收起邮件上下文' : '展开邮件上下文'} aria-expanded={contextSidebarOpen} title={contextSidebarOpen ? '收起' : '展开'} onClick={() => setContextSidebarOpen(open => !open)}>
+              <span className="inbox-context-collapse-glyph" aria-hidden="true">{contextSidebarOpen ? '›' : '‹'}</span>
+            </button>
+            {contextSidebarOpen && <>
+            {selectedThreadItems.length > 1 && <section className="inbox-thread-stack" aria-label="切换会话">
               <button type="button" className="inbox-thread-heading inbox-detail-collapsible-heading" aria-expanded={threadStackOpen} onClick={() => setThreadStackOpen(open => !open)}>
-                <strong>会话</strong><span>{selectedThreadItems.length} 封</span>
+                <strong>切换会话</strong><span>{selectedThreadItems.length} 封</span>
                 {threadStackOpen ? <CaretDownOutlined className="inbox-detail-collapsible-caret" /> : <CaretRightOutlined className="inbox-detail-collapsible-caret" />}
               </button>
               {threadStackOpen && <div className="inbox-thread-list">
@@ -2215,7 +3012,9 @@ export function InboxList() {
                 })}
               </div>}
             </section>}
+            {sel_._quoteCard && <div className="inbox-quote-dock"><InboxQuoteCardView card={sel_._quoteCard} onUpdated={() => { void qc.invalidateQueries({ queryKey: ['inbox'] }); void qc.invalidateQueries({ queryKey: ['inbox-analysis'] }); }} /></div>}
             {/* 联系人匹配栏 — 始终显示 */}
+
             {sid && (
               <div className="inbox-match-bar">
                 <button type="button" className="inbox-match-heading inbox-detail-collapsible-heading" aria-expanded={contactMatchesOpen} onClick={() => setContactMatchesOpen(open => !open)}>
@@ -2330,25 +3129,17 @@ export function InboxList() {
                 </div>}
               </div>
             )}
-
-            {/* 正文 */}
-            <div className="detail-body" style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
-              <div className="body-pane" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                {bl ? (
-                  <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc", fontSize: 13 }}>加载正文中...</div>
-                ) : body ? (
-                  <iframe className="body-iframe" style={{ flex: 1, minHeight: 0, width: "100%" }}
-                    scrolling="auto" sandbox="allow-scripts"
-                    srcDoc={bodyDoc}
-                  />
-                ) : (
-                  <div className="body-preview selectable">{sel_.bodyPreview || "(无法加载正文)"}</div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+            {selectedAnalysisQuery && <section className="inbox-analysis-dock" aria-label="邮件分析">
+              <MailAnalysisPanel
+                key={selectedMailEvent?.eventId}
+                queryInput={selectedAnalysisQuery}
+                onCurrent={rememberSelectedAnalysis}
+              />
+            </section>}
+            </>}
+              </aside>
+        </>
+      )}
 
       {/* 右键菜单 */}
       {menu && (
@@ -2357,6 +3148,9 @@ export function InboxList() {
           <div className="ctx-item" onClick={() => { void batchRead(); setMenu(null); }}>{sel.size > 1 ? `标为已读 (${sel.size})` : '标为已读'}</div>
           <div className="ctx-item" onClick={() => { void batchUnread(); setMenu(null); }}>{sel.size > 1 ? `标为未读 (${sel.size})` : '标为未读'}</div>
           <div className="ctx-item" onClick={() => { void batchPinSelected(!selectedAllPinned); setMenu(null); }}>{selectedAllPinned ? '取消置顶' : '置顶邮件'}</div>
+          {sel.size === 1 && !inboxIsTodo(menu.item) && menu.item._todoState !== 'done' && <div className="ctx-item" onClick={() => { todoMut.mutate({ messageId: menu.item.id, item: menu.item, state: 'open', feedback: '已加入待办' }); setMenu(null); }}>加入待办</div>}
+          {menu.item._conversationState && <div className="ctx-item" onClick={() => { void clearConversationState([menu.item.id]); setMenu(null); }}>移出当前分类</div>}
+          {sel.size === 1 && inboxIsTodo(menu.item) && <div className="ctx-item" onClick={() => { todoMut.mutate({ messageId: menu.item.id, item: menu.item, state: 'done', feedback: '已处理，已从待办和待回复移除' }); setMenu(null); }}>标记待办已处理</div>}
           <div style={{ borderTop: "1px solid #eee", margin: "2px 0" }} />
           <div className="ctx-section-title">移动到文件夹</div>
           {activeInboxFolders.length === 0 ? <div className="ctx-empty">暂无文件夹</div> : activeInboxFolders.map(folder => (
@@ -2379,6 +3173,33 @@ export function InboxList() {
         </div>
       )}
 
+      <Modal title="回复邮件" open={!!replyDraft} width={680} okText="发送" cancelText="取消" confirmLoading={replyBusy}
+        onOk={() => void sendReply()} onCancel={() => { if (!replyBusy) setReplyDraft(null); }}>
+        {replyDraft && <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-[12px] text-gray-600">发件账号
+              <Select value={replyDraft.accountId} options={replyAccounts.map(account => ({ value: account.accountId, label: account.email }))} onChange={value => setReplyDraft(current => current && { ...current, accountId: Number(value) })} />
+            </label>
+            <label className="flex flex-col gap-1 text-[12px] text-gray-600">收件人
+              <Input value={replyDraft.to} onChange={event => setReplyDraft(current => current && { ...current, to: event.target.value })} />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-[12px] text-gray-600">抄送
+              <Input value={replyDraft.cc} placeholder="可选，逗号分隔" onChange={event => setReplyDraft(current => current && { ...current, cc: event.target.value })} />
+            </label>
+            <label className="flex flex-col gap-1 text-[12px] text-gray-600">主题
+              <Input value={replyDraft.subject} onChange={event => setReplyDraft(current => current && { ...current, subject: event.target.value })} />
+            </label>
+          </div>
+          <Input.TextArea value={replyDraft.body} autoSize={{ minRows: 10, maxRows: 22 }} placeholder="输入回复内容" onChange={event => setReplyDraft(current => current && { ...current, body: event.target.value })} />
+          <Upload multiple beforeUpload={() => false} fileList={replyDraft.attachments}
+            onChange={({ fileList }) => setReplyDraft(current => current && { ...current, attachments: fileList.slice(0, 10) })}>
+            <Button size="small" icon={<PaperClipOutlined />}>添加附件</Button>
+          </Upload>
+        </div>}
+      </Modal>
+
       {/* 右键菜单 hover 样式 */}
       <style>{`
         .ctx-item{padding:6px 12px;cursor:pointer;transition:background .1s}.ctx-item:hover{background:#f5f5f5}
@@ -2388,7 +3209,7 @@ export function InboxList() {
         .btn:hover{background:#f5f5f5;border-color:#d5d5d5}
         .btn:active{background:#eee}
         .detail-body .ant-tabs-tabpane{overflow:visible!important}
-        .body-pane{overflow:hidden!important}
+        .body-pane{min-width:0;overflow:hidden!important}
         .body-iframe{width:100%!important;border:0!important;display:block!important}
         .body-preview{flex:1!important;padding:20px!important;font-size:14px!important;color:#555!important;white-space:pre-wrap!important;line-height:1.9!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;overflow-y:auto!important}
       `}</style>

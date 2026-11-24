@@ -16,7 +16,11 @@ const DEVICE_TEXT_MAX = 120;
 const APP_VERSION_MAX = 64;
 const HANDOFF_REQUEST_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const HANDOFF_COUNT_MAX = 1_000_000_000;
-const unauthorized = () => failure('UNAUTHORIZED', '登录信息无效或会话已失效');
+const unauthorized = () => failure('UNAUTHORIZED', '会话已失效，请重新登录');
+const accountNotFound = () => failure('ACCOUNT_NOT_FOUND', '该邮箱尚未在中心注册，请检查邮箱或创建账号');
+const accountNotConfigured = () => failure('ACCOUNT_NOT_CONFIGURED', '该账号尚未设置中心登录密码，请联系超级管理员重置密码');
+const accountDisabled = () => failure('ACCOUNT_DISABLED', '该账号已停用，请联系超级管理员');
+const invalidCredentials = () => failure('INVALID_CREDENTIALS', '密码不正确，请重新输入或联系超级管理员重置密码');
 const validToken = (token: unknown): token is string => typeof token === 'string' && token.length === AUTH_LIMITS.tokenCharacters && TOKEN_PATTERN.test(token);
 function object(input: unknown, keys: string[]): Record<string, unknown> | null {
   return input && typeof input === 'object' && !Array.isArray(input) && !Object.keys(input).some(key => !keys.includes(key)) ? input as Record<string, unknown> : null;
@@ -66,7 +70,11 @@ export function createDesktopSessionService(repo: DesktopSessionRepository, pass
   async function me(token: string) {
     if (!validToken(token)) return unauthorized();
     const identity = await repo.desktopIdentity(tokens.hash(token));
-    return !identity.ok ? identity : identity.data ? success(identity.data) : unauthorized();
+    if (!identity.ok || !identity.data) return !identity.ok ? identity : unauthorized();
+    const presence = await repo.touchPresence?.(tokens.hash(token));
+    // Presence only feeds team online badges; a heartbeat failure must not revoke a valid desktop session.
+    void presence;
+    return success(identity.data);
   }
   function handoffSessionDraft() {
     const token = tokens.create(), refreshToken = tokens.create(), expiresAt = date(ttlSeconds);
@@ -95,14 +103,19 @@ export function createDesktopSessionService(repo: DesktopSessionRepository, pass
     },
     async login(input: unknown): Promise<Result<DesktopLoginResponse>> {
       const value = object(input, ['email', 'password', 'desktop']);
-      if (!value || typeof value.email !== 'string' || value.email!==value.email.trim() || !EMAIL_PATTERN.test(value.email.trim()) || value.email.length > AUTH_LIMITS.emailMax || typeof value.password !== 'string' || value.password.length < BOOTSTRAP_LOGIN_MIN || value.password.length > AUTH_LIMITS.passwordMax) return failure('INVALID_INPUT', '登录参数无效');
+      if (!value || typeof value.email !== 'string' || typeof value.password !== 'string') return failure('INVALID_INPUT', '登录请求格式错误');
+      if (!value.email.length || value.email!==value.email.trim() || !EMAIL_PATTERN.test(value.email.trim()) || value.email.length > AUTH_LIMITS.emailMax) return failure('INVALID_INPUT', '邮箱地址格式不正确');
+      if (value.password.length < BOOTSTRAP_LOGIN_MIN || value.password.length > AUTH_LIMITS.passwordMax) return failure('INVALID_INPUT', `密码长度应为 ${BOOTSTRAP_LOGIN_MIN}-${AUTH_LIMITS.passwordMax} 个字符`);
       const desktop = desktopContext(value.desktop);
       if (desktop === null) return failure('INVALID_INPUT', '设备信息无效');
       const credential = await repo.credential(value.email.trim().toLowerCase());
       if (!credential.ok) return credential;
+      if (!credential.data) return accountNotFound();
+      if (!credential.data.active) return accountDisabled();
+      if (!credential.data.passwordHash) return accountNotConfigured();
       try {
-        const verified = await passwords.verify(value.password, credential.data?.passwordHash ?? '');
-        if (!verified || !credential.data?.active || (value.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)) return unauthorized();
+        const verified = await passwords.verify(value.password, credential.data.passwordHash);
+        if (!verified || (value.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)) return invalidCredentials();
       } catch { return failure('UNAVAILABLE', '登录校验暂不可用'); } // Fail closed; crypto errors may contain secrets.
       const token = tokens.create(), refreshToken = tokens.create(), expiresAt = date(ttlSeconds);
       const absoluteExpiresAt = date(DESKTOP_SESSION_LIMITS.absolute_seconds);
@@ -129,9 +142,12 @@ export function createDesktopSessionService(repo: DesktopSessionRepository, pass
       if (!desktop) return failure('INVALID_INPUT', '设备信息无效');
       const credential = await repo.credential(value.email.toLowerCase());
       if (!credential.ok) return credential;
+      if (!credential.data) return accountNotFound();
+      if (!credential.data.active) return accountDisabled();
+      if (!credential.data.passwordHash) return accountNotConfigured();
       try {
-        const verified = await passwords.verify(value.password, credential.data?.passwordHash ?? '');
-        if (!verified || !credential.data?.active || (value.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)) return unauthorized();
+        const verified = await passwords.verify(value.password, credential.data.passwordHash);
+        if (!verified || (value.password.length < AUTH_LIMITS.passwordMin && !credential.data.mustChangePassword)) return invalidCredentials();
       } catch { return failure('UNAVAILABLE', '登录校验暂不可用'); } // Keep crypto diagnostics and credentials out of responses.
       const handoffToken = tokens.create();
       const started = await repo.beginDesktopHandoff({
@@ -170,9 +186,11 @@ export function createDesktopSessionService(repo: DesktopSessionRepository, pass
       if (!identity.ok) return identity;
       const credential = await repo.credential(identity.data.email);
       if (!credential.ok) return credential;
-      if (!credential.data?.active) return unauthorized();
+      if (!credential.data) return accountNotFound();
+      if (!credential.data.active) return accountDisabled();
+      if (!credential.data.passwordHash) return accountNotConfigured();
       try {
-        if (!await passwords.verify(value.currentPassword, credential.data.passwordHash)) return unauthorized();
+        if (!await passwords.verify(value.currentPassword, credential.data.passwordHash)) return invalidCredentials();
         return await repo.changePassword(tokens.hash(token), credential.data.passwordHash, credential.data.securityRevision, await passwords.hash(value.newPassword), 'api');
       } catch { return failure('UNAVAILABLE', '改密暂不可用'); } // Never log passwords or crypto errors.
     },

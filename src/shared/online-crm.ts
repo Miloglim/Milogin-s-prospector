@@ -4,12 +4,28 @@ import type { LeadDetail, ImportReceipt } from '../../server/core/leads';
 import type { WorkbookImportReceipt as CoreWorkbookImportReceipt, WorkbookReceiptRow } from '../../server/core/customer-import';
 import type { LeadConflictLevel } from '../../server/core/lead-conflict';
 import type { DesktopHandoffBeginResult, DeviceHandoffState } from '../../server/core/device-handoff';
-export { hasContactedCustomer, customerBoardStage } from '../../server/core/leads';
+import { attentionDueDayOffset } from '../../server/core/leads';
+export { hasContactedCustomer, customerBoardStage, BOARD_ACTIVE_RELATIONSHIP_STAGES, CUSTOMER_ATTENTION_URGENCY_PRIORITY, attentionDueDayOffset, customerAttentionUrgency, customerBoardAttentionReason, customerNeedsAttention, isBoardActiveRelationshipStage } from '../../server/core/leads';
 export type { Result, CrmStage } from '../../server/core/crm';
 export { importRowIssue, LEAD_LIMITS } from '../../server/core/leads';
 export { IMPORT_REMARK_MAX, unmatchedImportRemark } from '../../server/core/lead-import-fields';
 export { FOLLOWUP_METHODS, FOLLOWUP_METHOD_LABELS, CONTACT_TOUCH_STATUSES, CONTACT_TOUCH_LABELS } from '../../server/core/leads';
-export type { FollowupMethod, ContactTouchStatus, CustomerStage } from '../../server/core/leads';
+export type { FollowupMethod, ContactTouchStatus, CustomerStage, CustomerAttentionUrgency, CustomerAttentionUrgencyInput, CustomerBoardAttentionInput, CustomerBoardAttentionReason, BoardActiveRelationshipStage } from '../../server/core/leads';
+export type { CustomerStatus, CustomerStatusEvent, CustomerStatusState, CustomerStatusView, CustomerStatusCorrection, CustomerStatusResume } from '../../server/core/customer-status';
+const attentionWeekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' });
+const attentionMonthDay = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' });
+/** Compact task-due text; all day boundaries and labels use the renderer's local timezone. */
+export function attentionDueLabel(value: string | null | undefined, now: Date = new Date()): string | null {
+  if (!value) return null;
+  const due = new Date(value);
+  if (!Number.isFinite(due.getTime())) return null;
+  const offset = attentionDueDayOffset(value, now);
+  if (offset === null) return null;
+  if (offset < 0) return `逾期 ${Math.abs(offset)} 天`;
+  if (offset === 0) return '今天到期';
+  if (offset <= 6) return `${attentionWeekday.format(due)}跟进`;
+  return `${attentionMonthDay.format(due)} 跟进`;
+}
 export type { Identity } from '../../server/core/auth';
 export type { AccountProfile } from '../../server/core/account-profile';
 export { CRM_ROLE_LABELS, identityRoleLabel } from '../../server/core/auth';
@@ -31,13 +47,13 @@ export function centerContactDisplayStatus(row: { status?: string | null; touchS
 export type { ContactMailEvent, ContactMailEventInput, ContactMailEventReceipt } from '../../server/core/contact-mail';
 export { CENTER_CONTACT_ROUTE, CENTER_CONTACT_GROUP_ROUTE, CENTER_CONTACT_LIMITS, CENTER_CONTACT_GROUP_LIMITS, CENTER_CONTACT_GROUP_DIMENSIONS, CENTER_CONTACT_FILTERS, centerContactQuery, centerContactGroupQuery, centerContactPath, centerContactRemark } from '../../server/core/center-contacts';
 export type { CenterContactGroup, CenterContactGroupDimension, CenterContactGroupPage, CenterContactGroupQuery } from '../../server/core/center-contacts';
-export type { ContactAssignment, ContactAssignmentStatus, ContactAssignmentLifecycleStatus, ContactAssignmentPage, ContactAssignmentQuery, ContactAssignmentCreate, ContactAssignmentDecision, ContactAssignmentTransfer, ContactAssignmentExpiryInput, ContactAssignmentExpiryReceipt, ContactAssignmentGroup, ContactAssignmentGroupDecision, ContactAssignmentGroupPage, ContactAssignmentGroupQuery, ContactAssignmentReceipt, ContactMonitorContact, ContactMonitorDetail, CenterCompanyUpdate, CenterContactRef, CenterContactDetail, CenterContactUpdate, CenterContactFollowup } from '../../server/core/contact-assignments';
+export type { ContactAssignment, ContactAssignmentStatus, ContactAssignmentStatusFilter, ContactAssignmentLifecycleStatus, ContactAssignmentPage, ContactAssignmentQuery, ContactAssignmentCreate, ContactAssignmentDecision, ContactAssignmentTransfer, ContactAssignmentExpiryInput, ContactAssignmentExpiryReceipt, ContactAssignmentGroup, ContactAssignmentGroupDecision, ContactAssignmentGroupPage, ContactAssignmentGroupQuery, ContactAssignmentReceipt, ContactMonitorContact, ContactMonitorDetail, CenterCompanyUpdate, CenterContactRef, CenterContactDetail, CenterContactUpdate, CenterContactFollowup } from '../../server/core/contact-assignments';
 export { CONTACT_ASSIGNMENT_ROUTES, CONTACT_ASSIGNMENT_LIMITS } from '../../server/core/contact-assignments';
 export type { ContactPermissions, ContactShareGrant, ContactShareStatus, ContactShare, ContactShareCreate, ContactShareDecision, ContactShareUpdate, ContactShareQuery, ContactSharePage, ContactShareMember, ContactTeamShareCreate, ContactTeamShareReceipt } from '../../server/core/contact-sharing';
 export { CONTACT_SHARING_ROUTES, CONTACT_SHARING_EVENTS, CONTACT_SHARED_FIELDS } from '../../server/core/contact-sharing';
 export type ContactShareDecisionInput = import('../../server/core/contact-sharing').ContactShareDecision & { action: 'accept' | 'reject' | 'revoke' };
 export type { AssignRequest, CrmMember, MemberQuery, MemberPage } from '../../server/core/leads';
-export type { TeamAdminSummary, TeamCandidateRole, TeamContext, TeamCreateInput, TeamCreateReceipt, TeamDetail, TeamDissolveInput, TeamInvitation, TeamInvitationDecision, TeamInviteInput, TeamLeaderInput, TeamMember, TeamMemberAdjustmentInput, TeamMemberCandidate, TeamMemberCandidatePage, TeamMemberCandidateQuery, TeamMemberGroup, TeamMemberGroupDeleteInput, TeamMemberGroupInput, TeamMemberRole, TeamMoveInput, TeamSnapshot, TeamUnitType } from '../../server/core/teams';
+export type { TeamAdminSummary, TeamArchiveMeta, TeamCandidateRole, TeamContext, TeamConversationArchiveInput, TeamCreateInput, TeamCreateReceipt, TeamDetail, TeamDirectoryEntry, TeamDirectoryPage, TeamDirectoryQuery, TeamDirectConversation, TeamDirectConversationPage, TeamDirectConversationQuery, TeamDirectMessage, TeamDirectMessageKind, TeamDirectMessagePage, TeamDirectMessageQuery, TeamDirectMessageSend, TeamDissolveInput, TeamEmailReferencePayload, TeamEvent, TeamEventType, TeamFileMeta, TeamFilePayload, TeamFileUpload, TeamInvitation, TeamInvitationDecision, TeamInviteInput, TeamLeaderInput, TeamMember, TeamMemberAdjustmentInput, TeamMemberCandidate, TeamMemberCandidatePage, TeamMemberCandidateQuery, TeamMemberGroup, TeamMemberGroupDeleteInput, TeamMemberGroupInput, TeamMemberRole, TeamMessageReadCommand, TeamMessageReadReceipt, TeamMessageUnreadCommand, TeamMoveInput, TeamPresenceQuery, TeamPresenceState, TeamPresenceView, TeamSnapshot, TeamUnitType } from '../../server/core/teams';
 export type { OrganizationContext, OrganizationUnitSummary } from '../../server/core/teams';
 export { TEAM_LIMITS, TEAM_ROUTES } from '../../server/core/teams';
 export interface OnlineLogin { baseUrl: string; email: string; password: string; remember?: boolean; autoLogin?: boolean; replaceActiveDevice?: boolean; }
@@ -56,6 +72,7 @@ export interface OnlineHandoffToken { handoffToken: string; }
 export interface OnlineHandoffComplete extends OnlineHandoffToken { remember?: boolean; autoLogin?: boolean; }
 export interface OnlineHandoffTakeover extends OnlineHandoffComplete { reason: string; }
 export interface OnlineSessionSnapshot { identity: Identity | null; remembered: boolean; baseUrl: string; localAvailable?: boolean; connection?: 'online' | 'offline'; offlineExpiresAt?: string; }
+export interface TeamFileOpenResult { filename: string; mimeType: string; bytes: number; dataBase64: string; }
 export interface OnlinePasswordChange { currentPassword: string; newPassword: string; }
 export interface ImportPreview { headers: string[]; rows: Record<string, string>[]; fileName: string; rowNumbers?: number[]; sheets?: import('../../server/core/customer-import').ImportSheetPreview[]; }
 export type { ImportSheetPreview, WorkbookImportRow, WorkbookImportRequest, WorkbookReceiptRow, WorkbookMapping, WorkbookPlanRow, WorkbookImportPlan } from '../../server/core/customer-import';
@@ -94,7 +111,7 @@ export const ONLINE_CHANNELS = {
   MEMBERS:'online:members',
   FEED:'online:feed', READ:'online:read', READ_ALL:'online:read-all',
   TASK_LIST:'online:task-list', TASK_CREATE:'online:task-create',
-  TASK_RESCHEDULE:'online:task-reschedule', TASK_COMPLETE:'online:task-complete',
+  TASK_RESCHEDULE:'online:task-reschedule', TASK_COMPLETE:'online:task-complete', TASK_CANCEL:'online:task-cancel',
   TEAM_ATTENTION_LIST:'online:team-attention-list', TEAM_ATTENTION_CREATE:'online:team-attention-create',
   TEAM_ATTENTION_ACKNOWLEDGE:'online:team-attention-acknowledge', TEAM_ATTENTION_DISMISS:'online:team-attention-dismiss', TEAM_ATTENTION_RESOLVE:'online:team-attention-resolve',
   TEAM_MONITORING:'online:team-monitoring', TEAM_MONITORING_MEMBER:'online:team-monitoring-member',
@@ -104,15 +121,25 @@ export const ONLINE_CHANNELS = {
   CONTACT_MAIL_ANALYSIS:'online:contact-mail-analysis', CONTACT_MAIL_ANALYSIS_AI:'online:contact-mail-analysis-ai',
   CONTACT_MAIL_ANALYSIS_CORRECT:'online:contact-mail-analysis-correct', CONTACT_MAIL_ANALYSIS_QUEUE:'online:contact-mail-analysis-queue',
   TEAM_CONTEXT:'online:team-context', TEAM_DETAIL:'online:team-detail', TEAM_CANDIDATES:'online:team-candidates', TEAM_CREATE:'online:team-create', TEAM_INVITE:'online:team-invite',
+  TEAM_MESSAGES:'online:team-messages', TEAM_MESSAGE_SEND:'online:team-message-send', TEAM_MESSAGE_READ:'online:team-message-read', TEAM_MESSAGE_UNREAD:'online:team-message-unread', TEAM_CONVERSATIONS:'online:team-conversations', TEAM_DIRECTORY:'online:team-directory', TEAM_PRESENCE:'online:team-presence', TEAM_FILE_UPLOAD:'online:team-file-upload', TEAM_FILE_OPEN:'online:team-file-open', TEAM_ARCHIVE:'online:team-archive', TEAM_EVENTS_START:'online:team-events-start', TEAM_EVENTS_STOP:'online:team-events-stop',
   TEAM_INVITATION_ACCEPT:'online:team-invitation-accept', TEAM_INVITATION_DECLINE:'online:team-invitation-decline', TEAM_INVITATION_CANCEL:'online:team-invitation-cancel',
   TEAM_MOVE:'online:team-move', TEAM_DISSOLVE:'online:team-dissolve', TEAM_LEADER:'online:team-leader', TEAM_MEMBER:'online:team-member', TEAM_GROUP_SAVE:'online:team-group-save', TEAM_GROUP_DELETE:'online:team-group-delete',
   OPPORTUNITY_LIST:'online:opportunity-list', OPPORTUNITY_CREATE:'online:opportunity-create',
   OPPORTUNITY_DETAIL:'online:opportunity-detail', OPPORTUNITY_STAGE:'online:opportunity-stage',
+  SALES_CASE_LIST:'online:sales-case-list', SALES_CASE_DETAIL:'online:sales-case-detail',
+  SALES_CASE_OVERVIEW:'online:sales-case-overview', SALES_CASE_ENSURE:'online:sales-case-ensure', SALES_CASE_TRANSITION:'online:sales-case-transition',
+  SALES_CASE_PROPOSAL_LIST:'online:sales-case-proposal-list', SALES_CASE_PROPOSAL_CREATE:'online:sales-case-proposal-create',
+  SALES_CASE_PROPOSAL_ACT:'online:sales-case-proposal-act',
+  QUOTE_CASE_LIST:'online:quote-case-list', QUOTE_CASE_DETAIL:'online:quote-case-detail', QUOTE_CASE_UPSERT:'online:quote-case-upsert',
+  QUOTE_CASE_SELECT:'online:quote-case-select', QUOTE_CASE_REQUERY:'online:quote-case-requery', QUOTE_CASE_REVIEW:'online:quote-case-review',
+  QUOTE_REVIEW_LIST:'online:quote-review-list', QUOTE_REVIEW_DECIDE:'online:quote-review-decide',
+  CUSTOMER_STATUS:'online:customer-status', CUSTOMER_STATUS_CORRECT:'online:customer-status-correct', CUSTOMER_STATUS_RESUME:'online:customer-status-resume',
+  PREPARE_IMPORTED_LEADS:'online:prepare-imported-leads',
 } as const;
 export const ONLINE_LIMITS = { timeoutMs:10000, responseBytes:1048576, fileRows:100000, batchRows:200, feedPage:100, pollMs:5000, defaultUrl:'http://127.0.0.1:55844' } as const;
 
 export interface ImportFileContent { type: "csv" | "xlsx" | "tsv"; data: string; encoding?:'base64'; }
-export type { FollowupTask, TaskQuery, TaskPage, TaskCreate, TaskReschedule, TaskComplete } from '../../server/core/tasks';
+export type { FollowupTask, TaskQuery, TaskPage, TaskCreate, TaskReschedule, TaskComplete, TaskCancel } from '../../server/core/tasks';
 export { TASK_LIMITS, TASK_DUE_EVENT } from '../../server/core/tasks';
 export type { TeamAttentionCounts, TeamAttentionCreate, TeamAttentionItem, TeamAttentionPage, TeamAttentionQuery, TeamAttentionReason, TeamAttentionScope, TeamAttentionStatus, TeamAttentionTransition, TeamAttentionTransitionAction } from '../../server/core/team-attention';
 export { TEAM_ATTENTION_EVENTS, TEAM_ATTENTION_LIMITS, TEAM_ATTENTION_REASONS, TEAM_ATTENTION_ROUTES, TEAM_ATTENTION_STATUSES, canTransitionTeamAttention, mailTaskAdmissionFor } from '../../server/core/team-attention';
@@ -122,3 +149,14 @@ export type { CustomerGrade, CustomerGradeItem, CustomerGradeOverride, CustomerG
 export { CUSTOMER_GRADES, CUSTOMER_GRADE_THRESHOLDS, SALES_PERFORMANCE_LIMITS, SALES_PERFORMANCE_MIN_SAMPLES, SALES_PERFORMANCE_ROUTES, SALES_PERFORMANCE_STRATA, customerGradeFor, durationMetric, salesPerformanceScopeFor, salesRateMetric } from '../../server/core/sales-performance';
 export type { Opportunity, OpportunityStage, OpportunityHistory, OpportunityPage, OpportunityCreate, OpportunityUpdateStage, OpportunityQuery } from '../../server/core/opportunities';
 export { OPPORTUNITY_ROUTES, OPPORTUNITY_LIMITS, OPPORTUNITY_STAGES, OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_EVENTS } from '../../server/core/opportunities';
+export type { AiProposal, CreateAiProposalInput, SalesCase, SalesCaseDetail, SalesCaseEvent, SalesCaseState, AiProposalType, AiProposalState, AiProposalAction } from '../../server/core/sales-case';
+export type { QuoteCandidate, QuoteCase, QuoteCaseDetail, QuoteCaseState, QuoteDraft, QuoteFieldKey, QuoteFieldValue, QuoteFields, QuoteReviewRequest, QuoteReviewListItem, QuoteReviewPage, UpsertQuoteCaseInput } from '../../server/core/quote-case';
+
+export interface SalesCaseQuery { limit: number; offset: number }
+export type QuoteCaseListQuery = { caseId?: string; messageKey?: string; limit: number; offset: number };
+export type QuoteReviewQuery = { status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; limit: number; offset: number };
+export interface QuoteReviewDecision { action: 'approve' | 'reject'; note?: string }
+export interface EnsureSalesCaseInput { contactId: number; customerId: string; source?: string }
+export interface ActSalesCaseProposalInput { caseId: string; proposalId: string; action: 'accept' | 'edit' | 'ignore' | 'cancel'; payload?: Record<string, unknown> }
+export interface PrepareImportedLeadsInput { refs: Array<{contactId:number;customerId:string}>; caseIds:string[]; name:string; groupKey:string }
+export interface PreparedCampaignNextStep { campaignId:string; name:string; eligible:number }

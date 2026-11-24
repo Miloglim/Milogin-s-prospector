@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Segmented, Select, Tag, message } from 'antd';
-import { BankOutlined, BarChartOutlined, LeftOutlined, ShareAltOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { Button, Select, Tag, message } from 'antd';
+import { LeftOutlined } from '@ant-design/icons';
 import { ContactList } from '../contacts/ContactList';
 import { useQueryClient } from '@tanstack/react-query';
 import { useIdentity } from '../../IdentityContext';
@@ -15,9 +15,19 @@ import { ContactAssignments, AssignmentModal } from './ContactAssignments';
 import { ContactGroups, type ContactGroupSelection } from './ContactGroups';
 import './customers.css';
 
-type LegacyView = 'groups' | 'table' | 'board' | 'company' | 'assignments';
+type LegacyView = 'groups' | 'table' | 'company' | 'assignments';
 const CUSTOMER_TABLE_DEFER_MS = 180;
 const CUSTOMER_TABLE_SKELETON_ROWS = 8;
+const CONTACT_GROUPS_COLLAPSED_KEY = 'prospector-contact-groups-collapsed';
+
+function readContactGroupsCollapsed(): boolean {
+  try {
+    return localStorage.getItem(CONTACT_GROUPS_COLLAPSED_KEY) === '1';
+  } catch {
+    // Isolated renderer contexts may not expose storage.
+    return false;
+  }
+}
 
 function MonitorDetailSlot({ reference, onClose, highlight }: { reference: CenterContactRef; onClose: () => void; highlight?: boolean }) {
   const MonitorDetail = ContactDetailViews.ContactMonitorDetail;
@@ -51,12 +61,11 @@ function ContactTableSkeleton() {
 
 function readView(): LegacyView {
   const value = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('view');
-  if (value === 'board') return 'board';
   if (value === 'groups') return 'groups';
   if (value === 'table') return 'table';
   if (value === 'company') return 'company';
   if (value === 'assignments') return 'assignments';
-  return 'board';
+  return 'groups';
 }
 function readContactGroup():ContactGroupSelection|null {
   const params=new URLSearchParams(window.location.hash.split('?')[1]??'');
@@ -80,6 +89,7 @@ export function LegacyCustomersPage() {
   const qc = useQueryClient();
   const [view, setView] = useState<LegacyView>(readView);
   const [contactGroup,setContactGroup]=useState<ContactGroupSelection|null>(readContactGroup);
+  const [contactGroupsCollapsed,setContactGroupsCollapsed]=useState(readContactGroupsCollapsed);
   // 客户页壳体和骨架先独立绘制，联系人大表格在高亮动画和首屏布局稳定后再挂载。
   const [tableReady, setTableReady] = useState(false);
   const operations = identity?.identityAdmin || identity?.crmRoles.some(role => ['operations', 'admin'].includes(role)) || false;
@@ -169,36 +179,36 @@ export function LegacyCustomersPage() {
   };
   const selectGroup=(selection:ContactGroupSelection|null)=>{setContactGroup(selection);if(view!=='groups')setView('table')};
   const openGroups=()=>{setContactGroup(null);setView('groups')};
+  const setGroupsCollapsed=(collapsed:boolean)=>{setContactGroupsCollapsed(collapsed);try{localStorage.setItem(CONTACT_GROUPS_COLLAPSED_KEY,collapsed?'1':'0');}catch{/* Storage can be unavailable in isolated renderer contexts. */}};
   const changeView=(next:LegacyView)=>{if(next==='table'){openGroups();return;}setContactGroup(null);setView(next)};
-  const groupMetrics=[
-    {label:'待触达',value:contactGroup?.count===undefined?'—':Math.max(0,contactGroup.count-(contactGroup.touchedCount??0)),note:'尚未形成有效触达'},
-    {label:'已触达',value:contactGroup?.touchedCount??'—',note:'已联系、回复或退信'},
-    {label:'覆盖公司',value:contactGroup?.companyCount??'—',note:'当前分组内公司数'},
-    {label:'覆盖国家',value:contactGroup?.countryCount??'—',note:'当前分组国家范围'},
+  const activeTab: LegacyView = view === 'table' ? 'groups' : view;
+  const tabs: { value: LegacyView; label: string }[] = [
+    { value: 'groups', label: '联系人' },
+    { value: 'company', label: '公司' },
+    { value: 'assignments', label: operations ? '分配管理' : '分配线索' },
   ];
   return <div className="prospector-table-page customer-legacy-page">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <Segmented<LegacyView> className="customer-legacy-viewbar" value={view==='table'?'groups':view} onChange={changeView} options={[
-        { value: 'board', label: '跟进看板', icon: <BarChartOutlined /> },
-        { value: 'groups', label: '联系人', icon: <UnorderedListOutlined /> },
-        { value: 'assignments', label: operations ? '分配管理' : '分配线索', icon: <ShareAltOutlined /> },
-        { value: 'company', label: '公司', icon: <BankOutlined /> },
-      ]} />
-      {(view === 'table' || view === 'groups') && <div ref={setHeaderActionsTarget} className="flex flex-1 min-w-[350px] items-center justify-end" />}
-    </div>
+    <header className="customer-page-head">
+      <div className="customer-page-tabs" role="tablist" aria-label="客户视图">
+        {tabs.map(tab => <button key={tab.value} type="button" role="tab" aria-selected={tab.value === activeTab}
+          className={`customer-page-tab${tab.value === activeTab ? ' is-active' : ''}`} onClick={() => changeView(tab.value)}>{tab.label}</button>)}
+      </div>
+      <div className="customer-page-tools">
+        {(view === 'table' || view === 'groups') && <div ref={setHeaderActionsTarget} className="customer-page-actions" />}
+      </div>
+    </header>
     {view==='table'&&contactGroup&&<div className="contact-group-context"><Button size="small" type="link" icon={<LeftOutlined/>} onClick={openGroups}>联系人分组</Button><Tag>{contactGroup.label}</Tag></div>}
     {view === 'table' && (tableReady ? <ContactList key={key} dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} /> : <ContactTableSkeleton />)}
     {view === 'groups' && <div className="contact-group-workspace">
-      <div className="contact-group-metrics">{groupMetrics.map(metric=><div className="contact-group-metric" key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.note}</small></div>)}</div>
-      <div className="contact-group-split">
-        <ContactGroups scope="all" canAssign={operations} selectedGroup={contactGroup} onSelect={selectGroup} onAssign={selection=>assignGroups(selection.dimension,selection.groups)} />
+      <div className={`contact-group-split${contactGroupsCollapsed?' is-groups-collapsed':''}`}>
         <div className="contact-group-members">
           {tableReady ? <ContactList dataPort={port} importPort={importPort} online={status !== 'offline'} headerActionsTarget={headerActionsTarget} onAssign={operations ? assign : undefined} renderDetail={(contact, close) => <CenterContactDetail reference={contact?.contactId && contact.customerId ? { contactId: contact.contactId, customerId: contact.customerId } : null} onClose={close} />} /> : <ContactTableSkeleton />}
         </div>
+        <ContactGroups scope="all" canAssign={operations} selectedGroup={contactGroup} collapsed={contactGroupsCollapsed} onCollapsedChange={setGroupsCollapsed} onSelect={selectGroup} onAssign={selection=>assignGroups(selection.dimension,selection.groups)} />
       </div>
     </div>}
-    {(view === 'board' || view === 'company') && <div className="space-y-3">{sourceFilter}<CenterContactViews key={key} port={port} view={view} /></div>}
-    {view === 'assignments' && <ContactAssignments key={`${baseUrl}:${identity?.userId}`} operations={operations} />}
+    {view === 'company' && <div className="customer-legacy-scroll">{sourceFilter}<CenterContactViews key={key} port={port} /></div>}
+    {view === 'assignments' && <div className="customer-legacy-scroll"><ContactAssignments key={`${baseUrl}:${identity?.userId}`} operations={operations} /></div>}
     {assigning.length > 0 && <AssignmentModal key={assigning.map(row => row.contactId).join(',')} contacts={assigning} close={() => setAssigning([])} />}
     <CenterContactDetail key={notificationHighlight ?? 'contact-detail'} reference={deepReference} highlight={!!notificationHighlight} onClose={() => { setDeepReference(null); setNotificationHighlight(null); }} />
     {monitorReference && <MonitorDetailSlot reference={monitorReference} highlight={!!notificationHighlight} onClose={() => setMonitorReference(null)} />}

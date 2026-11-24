@@ -3,13 +3,14 @@ import type { Pool, PoolClient } from 'pg';
 import { failure, success, type LogSink, type Result } from '../../core/crm';
 import { effectiveCapabilitiesFor, type DataScope } from '../../core/admin';
 import type { CrmRole } from '../../core/auth';
-import type { FollowupTask, TaskComplete, TaskCreate, TaskPage, TaskQuery, TaskRepository, TaskReschedule } from '../../core/tasks';
+import type { FollowupTask, TaskCancel, TaskComplete, TaskCreate, TaskPage, TaskQuery, TaskRepository, TaskReschedule } from '../../core/tasks';
 import { TASK_DUE_EVENT, TASK_LIMITS } from '../../core/tasks';
 import type { MailPriority } from '../../core/mail-analysis';
 import { mailTaskAdmissionFor, type MailTaskAdmissionInput } from '../../core/team-attention';
 import { ADMIN_LOCK } from './admin-schema';
 import { assertCenterDatabasePool } from './config';
 import { TASK_LOCK, TASK_SQL, TASK_VERSION } from './task-schema';
+import { migrateTaskCancellationSchema } from './task-cancellation-schema';
 
 interface Actor { userId:string; roles:CrmRole[]; capabilities:string[]; scope:DataScope; }
 type Customer={customer_id:string;created_by:string;owner_user_id:string|null;origin:string;state:string;version:number};
@@ -61,7 +62,7 @@ export async function canProjectTaskDue(db:PoolClient,event:{customer_id?:string
  const row=r.rows[0];if(!row||row.status!=='open'||row.task_version!==p.taskVersion||new Date(row.due_at).toISOString()!==p.dueAt||row.responsible_user_id!==p.responsibleUserId||row.responsible_user_id!==a.userId)return false;
  const current=await access(db,a.userId);return !!current&&canManage(current,row);
 }
-const COLUMNS=`t.opportunity_id AS "opportunityId",(SELECT op.title FROM crm_opportunities op WHERE op.opportunity_id=t.opportunity_id AND op.customer_id=t.customer_id) AS "opportunityTitle",t.task_id AS "taskId",t.customer_id AS "customerId",t.title,t.due_at AS "dueAt",t.status,t.version,t.created_by AS "createdBy",t.created_at AS "createdAt",t.updated_at AS "updatedAt",t.completed_at AS "completedAt",t.completed_by AS "completedBy",t.feedback,to_jsonb(t)->>'source_kind' AS "sourceKind",to_jsonb(t)->>'source_suggestion_id' AS "sourceSuggestionId",to_jsonb(t)->>'source_analysis_id' AS "sourceAnalysisId",(to_jsonb(t)->>'source_contact_id')::int AS "sourceContactId",to_jsonb(t)->>'source_thread_key' AS "sourceThreadKey",to_jsonb(t)->>'source_action_code' AS "sourceActionCode",COALESCE(c.owner_user_id,c.created_by) AS "responsibleUserId",u.display_name AS "responsibleName"`;
+const COLUMNS=`t.opportunity_id AS "opportunityId",(SELECT op.title FROM crm_opportunities op WHERE op.opportunity_id=t.opportunity_id AND op.customer_id=t.customer_id) AS "opportunityTitle",t.task_id AS "taskId",t.customer_id AS "customerId",t.title,t.due_at AS "dueAt",t.status,t.version,t.created_by AS "createdBy",t.created_at AS "createdAt",t.updated_at AS "updatedAt",t.completed_at AS "completedAt",t.completed_by AS "completedBy",t.feedback,to_jsonb(t)->>'source_kind' AS "sourceKind",to_jsonb(t)->>'source_suggestion_id' AS "sourceSuggestionId",to_jsonb(t)->>'source_analysis_id' AS "sourceAnalysisId",(to_jsonb(t)->>'source_contact_id')::int AS "sourceContactId",to_jsonb(t)->>'source_message_key' AS "sourceMessageKey",to_jsonb(t)->>'source_thread_key' AS "sourceThreadKey",to_jsonb(t)->>'source_action_code' AS "sourceActionCode",COALESCE(c.owner_user_id,c.created_by) AS "responsibleUserId",u.display_name AS "responsibleName"`;
 function taskRow(r:Record<string,unknown>,manage:boolean):FollowupTask {
  return {...r,dueAt:(r.dueAt as Date).toISOString(),createdAt:(r.createdAt as Date).toISOString(),updatedAt:(r.updatedAt as Date).toISOString(),completedAt:r.completedAt instanceof Date?r.completedAt.toISOString():null,canManage:manage} as FollowupTask;
 }
@@ -89,7 +90,7 @@ export class PostgresTaskRepository implements TaskRepository {
   if(old.rows.length){if(old.rows[0].digest!==digest)return failure('CONFLICT','幂等键已用于不同请求');return this.one(db,old.rows[0].response.taskId,a);}
   const result=await fn();if(result.ok)await db.query('INSERT INTO crm_lead_idempotency(actor_id,operation,key,digest,response) VALUES($1,$2,$3,$4,$5)',[a.userId,operation,input.idempotencyKey,digest,JSON.stringify({taskId:result.data.taskId})]);return result;
  }
- async migrate(){return this.tx(async db=>{const old=await db.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1',[TASK_VERSION]);const hash=createHash('sha256').update(TASK_SQL).digest('hex');if(old.rows.length&&old.rows[0].checksum!==hash)return failure('CONFLICT','任务迁移校验不一致');if(!old.rows.length){await db.query(TASK_SQL);await db.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)',[TASK_VERSION,hash]);}return success(undefined);});}
+  async migrate(){return this.tx(async db=>{const old=await db.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1',[TASK_VERSION]);const hash=createHash('sha256').update(TASK_SQL).digest('hex');if(old.rows.length&&old.rows[0].checksum!==hash)return failure('CONFLICT','任务迁移校验不一致');if(!old.rows.length){await db.query(TASK_SQL);await db.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)',[TASK_VERSION,hash]);}return migrateTaskCancellationSchema(db);});}
  create(hash:string,input:TaskCreate){return this.authorized(hash,async(db,a)=>{
   const c=await this.customer(db,input.customerId);if(!c||!canSee(a,c))return failure('NOT_FOUND','客户不存在');if(!canManage(a,c))return failure('FORBIDDEN','只能处理自身任务');
   return this.cached(db,a,`task:create:${input.customerId}`,input,async()=>{
@@ -102,14 +103,18 @@ export class PostgresTaskRepository implements TaskRepository {
    }
    if(input.opportunityId){const opportunity=await db.query('SELECT opportunity_id FROM crm_opportunities WHERE opportunity_id=$1 AND customer_id=$2',[input.opportunityId,input.customerId]);if(!opportunity.rows.length)return failure('INVALID_INPUT','商机不属于当前客户');}
    const responsible=c.owner_user_id??c.created_by,member=await access(db,responsible);if(!member||!canManage(member,c))return failure('CONFLICT','任务负责人已停用或无开发权限');
-   const r=await db.query(`INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,opportunity_id) VALUES($1,$2,$3,$4,$5) RETURNING task_id`,[input.customerId,input.title.trim(),input.dueAt,a.userId,input.opportunityId??null]);return this.one(db,r.rows[0].task_id,a);
+   if(input.sourceMessageKey){
+    const existing=await db.query(`SELECT task_id FROM crm_followup_tasks WHERE customer_id=$1 AND source_message_key=$2 AND source_kind='mail_manual' AND status='open' ORDER BY created_at,task_id LIMIT 1`,[input.customerId,input.sourceMessageKey]);
+    if(existing.rows[0])return this.one(db,existing.rows[0].task_id,a);
+   }
+   const r=await db.query(`INSERT INTO crm_followup_tasks(customer_id,title,due_at,created_by,opportunity_id,source_kind,source_message_key,source_thread_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING task_id`,[input.customerId,input.title.trim(),input.dueAt,a.userId,input.opportunityId??null,input.sourceMessageKey?'mail_manual':null,input.sourceMessageKey??null,input.sourceThreadKey??null]);return this.one(db,r.rows[0].task_id,a);
   });
  });}
  list(hash:string,input:TaskQuery){return this.authorized(hash,async(db,a)=>{
   const owner=a.capabilities.includes('leads.develop'),ops=operations(a);
   const scopeVisibility=administrator(a)?'($1::uuid IS NOT NULL)':ops?`(c.origin='operations'${owner?' OR c.owner_user_id=$1':''})`:owner?'c.owner_user_id=$1':'FALSE AND $1::uuid IS NOT NULL';
   const visibility=input.mine?`(${scopeVisibility}) AND COALESCE(c.owner_user_id,c.created_by)=$1`:scopeVisibility;
-  const filter=`WHERE (${visibility}) AND ($2::uuid IS NULL OR c.customer_id=$2) AND ($3::text IS NULL OR t.status=$3)`;
+   const filter=`WHERE (${visibility}) AND t.status<>'cancelled' AND ($2::uuid IS NULL OR c.customer_id=$2) AND ($3::text IS NULL OR t.status=$3)`;
   const params=[a.userId,input.customerId??null,input.status??null];
   const count=await db.query(`SELECT count(*)::int AS n FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) ${filter}`,params);
   const rows=await db.query(`SELECT ${COLUMNS},c.created_by,c.owner_user_id,c.origin,c.state FROM crm_followup_tasks t JOIN crm_customers c USING(customer_id) JOIN public.identity_users u ON u.user_id=COALESCE(c.owner_user_id,c.created_by) ${filter} ORDER BY CASE WHEN t.status='open' THEN 0 ELSE 1 END,t.due_at,t.task_id LIMIT $4 OFFSET $5`,[...params,input.limit,input.offset]);
@@ -126,6 +131,12 @@ export class PostgresTaskRepository implements TaskRepository {
   const existing=await this.one(db,input.taskId,a,true);if(!existing.ok)return existing;if(!existing.data.canManage)return failure('FORBIDDEN','只能处理自身任务');
   return this.cached(db,a,`task:complete:${input.taskId}`,input,async()=>{
    const r=await db.query(`UPDATE crm_followup_tasks SET status='completed',feedback=$2,completed_at=clock_timestamp(),completed_by=$3,version=version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND status='open' AND version=$4 RETURNING task_id`,[input.taskId,input.feedback.trim(),a.userId,input.expectedVersion]);if(!r.rows.length)return failure('CONFLICT','任务已完成或版本已变化');return this.one(db,input.taskId,a);
+  });
+ });}
+ cancel(hash:string,input:TaskCancel){return this.authorized(hash,async(db,a)=>{
+  const existing=await this.one(db,input.taskId,a,true);if(!existing.ok)return existing;if(!existing.data.canManage)return failure('FORBIDDEN','只能处理自身任务');
+  return this.cached(db,a,`task:cancel:${input.taskId}`,input,async()=>{
+   const r=await db.query(`UPDATE crm_followup_tasks SET status='cancelled',feedback=$2,completed_at=clock_timestamp(),completed_by=$3,version=version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND status='open' AND version=$4 RETURNING task_id`,[input.taskId,input.reason.trim(),a.userId,input.expectedVersion]);if(!r.rows.length)return failure('CONFLICT','任务已完成、已取消或版本已变化');return this.one(db,input.taskId,a);
   });
  });}
  async processDue(limit:number){return this.tx(async db=>{

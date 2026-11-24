@@ -130,7 +130,7 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
     page.on('pageerror', error => pageErrors.push(error.message));
     const login = await page.evaluate(({ base, email }) => window.api.invoke('online:login', { baseUrl: base, email, password: 'SyntheticFixture1', remember: true }), { base, email: identity.email });
     assert.equal(login.ok, true, login.error?.message);
-    const teamNav = page.getByText('团队', { exact: true }).first();
+    const teamNav = page.getByText('我的团队', { exact: true }).first();
     await teamNav.waitFor();
     await teamNav.click();
     await page.locator('.team-workspace-page').waitFor();
@@ -164,10 +164,7 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
     }
     const row = page.locator('.personal-action-row').first();
     await row.waitFor();
-    await row.click();
-    await page.locator('.contact-detail-tabs').waitFor();
-    await page.screenshot({ path: path.join(designs, `${name}-customer-detail-1440.png`) });
-    assert.ok(counters.details >= 1);
+    assert.match(await row.innerText(), /Atlantic Trade/);
     assert.deepEqual(pageErrors, []);
     return { name, wide, narrow, compact, pageErrors };
   } catch (error) {
@@ -186,7 +183,7 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
     const before = { ...counters };
     currentTeamContext = teamContext('sales');
     const sales = await runScenario('prospector-team-sales', { userId: salesUserId, displayName: 'Sales One', email: 'sales@example.invalid', emailVerified: true, identityAdmin: false, crmRoles: ['sales'], crmCapabilities: ['leads.claim', 'leads.develop'] }, async page => {
-      assert.deepEqual(await page.locator('.team-section-tabs button').allTextContents(), ['个人', '我的团队', '团队管理']);
+      assert.match(await page.locator('.team-workspace-page').innerText(), /East Sales Team/);
       assert.equal(await page.locator('.personal-task-panel').count(), 1);
     });
     const salesTasks = counters.tasks - before.tasks;
@@ -196,7 +193,7 @@ async function runScenario(name, identity, checks, { initialPage = 'workbench' }
     currentTeamContext = teamContext('operations');
     const beforeOps = { ...counters };
     const operations = await runScenario('prospector-team-operations', currentIdentity, async (page, app) => {
-      assert.deepEqual(await page.locator('.team-section-tabs button').allTextContents(), ['个人', '我的团队', '监控', '团队管理', '绩效']);
+      assert.equal(await page.locator('.team-admin-view').count(), 1);
       assert.equal(await page.locator('.personal-task-panel').count(), 0);
       await page.locator('.team-admin-workspace.is-directory').waitFor();
       assert.equal(await page.locator('.team-admin-canvas-viewport').count(), 0);

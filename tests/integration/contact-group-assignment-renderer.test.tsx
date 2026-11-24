@@ -23,6 +23,9 @@ describe('contact group card assignment', () => {
   const flush = () => new Promise(resolve => setTimeout(resolve, 40));
   beforeEach(() => {
     window.location.hash = '#/customers?view=groups';
+    localStorage.removeItem('contacts-cols-lead-fields');
+    localStorage.removeItem('contacts-cols');
+    localStorage.removeItem('prospector-contact-groups-collapsed');
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
     host = document.createElement('div'); document.body.append(host); root = createRoot(host); queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -56,7 +59,8 @@ describe('contact group card assignment', () => {
     await mount(); await selectAllCards();
     expect(host.querySelector<HTMLInputElement>('input[placeholder="搜索邮箱、姓名、公司..."]')).not.toBeNull();
     expect(host.querySelector('.customer-contacts-page')).not.toBeNull();
-    expect(host.querySelectorAll('.contact-group-metric')).toHaveLength(4);
+    expect(host.querySelector('.contact-group-panel-count')?.textContent).toBe('2 组');
+    expect(host.querySelector('.contact-group-panel-name b')?.textContent).toBe('2');
     expect(host.querySelector('.contact-group-panel-row')?.textContent).toContain('Batch A');
     expect(host.querySelector('.contact-group-panel-row')?.textContent).toContain('阿里国际站');
     const assign = host.querySelector<HTMLButtonElement>('[aria-label="分配所选分组"]')!;
@@ -83,6 +87,23 @@ describe('contact group card assignment', () => {
     const ownership = Array.from(host.querySelectorAll('.contact-ownership-tag')).map(tag => tag.textContent);
     expect(ownership).toContain('Operator');
     expect(ownership).toContain('未分配');
+  });
+
+  it('orders center contact columns by current customer context', async () => {
+    await mount();
+    await vi.waitFor(() => expect(host.querySelector('.ant-table-thead')).not.toBeNull(), { timeout: 2000 });
+    const headers = Array.from(host.querySelectorAll<HTMLElement>('.ant-table-thead th')).map(cell => cell.textContent?.trim()).filter(Boolean);
+    expect(headers.slice(0, 14)).toEqual(['公司名', '国家', '客户类型', '联系人姓名', '邮箱', '职位 / Title', '电话', 'WhatsApp', '联系状态', '客户阶段', '发送阶段', '归属', '一级来源', '二级来源']);
+  });
+
+  it('collapses the contact-group rail and remembers the choice', async () => {
+    localStorage.setItem('prospector-contact-groups-collapsed', '1');
+    await mount();
+    expect(host.querySelector('.contact-group-split')?.classList.contains('is-groups-collapsed')).toBe(true);
+    const expand = host.querySelector<HTMLButtonElement>('button[aria-label="展开联系人分组"]')!;
+    await act(async () => { expand.click(); await flush(); });
+    expect(host.querySelector('.contact-group-split')?.classList.contains('is-groups-collapsed')).toBe(false);
+    expect(localStorage.getItem('prospector-contact-groups-collapsed')).toBe('0');
   });
 
   it('keeps the panel header and previous rows fixed while switching dimensions', async () => {

@@ -41,7 +41,10 @@ export function AssignmentGroupOverview({ groups, total, page, loading, busy, of
           </Space>}
         </article>;
       })}
-      {!loading && groups.length === 0 && <div className="assignment-group-empty">暂无分配组</div>}
+      {!loading && groups.length === 0 && <div className="assignment-group-empty">
+        <strong>{operations ? '还没有分配组' : '暂无分配线索'}</strong>
+        <span>{operations ? '在联系人列表选择联系人后，点击“分配线索”创建。' : '管理员分配联系人后，待接收的线索会出现在这里。'}</span>
+      </div>}
     </div>
     {total > CONTACT_ASSIGNMENT_LIMITS.page && <Pagination size="small" current={page} pageSize={CONTACT_ASSIGNMENT_LIMITS.page} total={total} showSizeChanger={false} onChange={onPage} />}
   </>;

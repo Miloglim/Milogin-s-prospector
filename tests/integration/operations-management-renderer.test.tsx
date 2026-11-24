@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { api, ApiError } from '../../admin-web/api';
+import { api } from '../../admin-web/api';
 import { OperationsManagement } from '../../admin-web/operations-management';
 import type { Identity } from '../../server/core/auth';
 import type { OperationsSummary } from '../../server/core/management-dashboard';
@@ -31,8 +31,6 @@ describe('system operations dashboard', () => {
     expect(host.textContent).toContain('中心服务'); expect(host.textContent).toContain('PostgreSQL');
     expect(host.textContent).toContain('Navigator'); expect(host.textContent).toContain('自动备份');
     expect(host.textContent).toContain('1小时 1分钟');
-    vi.mocked(api.operations).mockRejectedValue(new ApiError('系统运行暂不可用', 503));
-    await act(async () => { (Array.from(host.querySelectorAll('button')).find(button => button.textContent?.replace(/\s/g, '') === '刷新') as HTMLButtonElement).click(); });
-    expect(host.textContent).toContain('刷新失败，当前显示上次数据');
+    expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.replace(/\s/g, '') === '刷新')).toBe(false);
   });
 });

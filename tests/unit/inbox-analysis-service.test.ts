@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   aiConfigured: false,
@@ -33,7 +33,7 @@ vi.mock('../../src/main/db', () => ({
           }),
         };
       }
-      return { run: () => undefined };
+      return { run: () => undefined, all: () => [] };
     },
   }),
   getDb: () => null,
@@ -65,6 +65,7 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     subject: 'Delivery failed',
     bodyPreview: 'The recipient address was rejected.',
     classification: 'bounce',
+    myRole: 'to',
     receivedAt: '2026-11-10T00:00:00Z',
     ...overrides,
   };
@@ -77,6 +78,10 @@ describe('local inbox analysis routing', () => {
     state.rows.clear();
     state.analyses.clear();
     state.contextRows = [];
+  });
+
+  afterEach(() => {
+    delete process.env.PROSPECTOR_MAIL_AI_MODE;
   });
 
   it('processes high-confidence rules without a configured model', async () => {
@@ -147,6 +152,64 @@ describe('local inbox analysis routing', () => {
     await vi.waitFor(() => expect(state.analyses.get(3)?.status).toBe('ready'));
 
     expect(state.analyses.get(3)).toMatchObject({ source: 'rule', category: 'rate_update', requires_action: 0 });
+    expect(state.modelCalls).toBe(0);
+    service.stop();
+  });
+
+  it('routes cc-only copies without calling AI or requesting action', async () => {
+    state.aiConfigured = true;
+    state.rows.set(4, row({
+      id: 4,
+      fromEmail: 'buyer@example.test',
+      subject: 'Please quote Shanghai to Rotterdam',
+      bodyPreview: '2x40HQ urgently.',
+      classification: 'other',
+      myRole: 'cc',
+    }));
+    const service = createInboxAnalysisService();
+
+    expect(service.enqueueRecent()).toBe(1);
+    await vi.waitFor(() => expect(state.analyses.get(4)?.status).toBe('ready'));
+
+    expect(state.analyses.get(4)).toMatchObject({ source: 'rule', category: 'other', requires_action: 0 });
+    expect(state.modelCalls).toBe(0);
+    service.stop();
+  });
+
+  it('leaves AI-only mail unqueued when the development AI mode is off', () => {
+    process.env.PROSPECTOR_MAIL_AI_MODE = 'off';
+    state.aiConfigured = true;
+    state.rows.set(5, row({
+      id: 5,
+      fromEmail: 'buyer@example.test',
+      subject: 'Please quote Shanghai to Rotterdam',
+      bodyPreview: '2x40HQ urgently.',
+      classification: 'replied',
+    }));
+    const service = createInboxAnalysisService();
+
+    expect(service.enqueueRecent()).toBe(0);
+    expect(service.status().enabled).toBe(false);
+    service.stop();
+  });
+
+  it('uses deterministic mock analysis without a configured model', async () => {
+    process.env.PROSPECTOR_MAIL_AI_MODE = 'mock';
+    state.aiConfigured = false;
+    state.rows.set(6, row({
+      id: 6,
+      fromEmail: 'buyer@example.test',
+      subject: '[MOCK:quote_request] RFQ Shanghai to Rotterdam',
+      bodyPreview: 'Please quote 2x40HQ.',
+      classification: 'replied',
+    }));
+    const service = createInboxAnalysisService();
+
+    expect(service.enqueueRecent()).toBe(1);
+    await vi.waitFor(() => expect(state.analyses.get(6)?.status).toBe('ready'));
+
+    expect(state.analyses.get(6)).toMatchObject({ source: 'mock', category: 'quote_request', requires_action: 1 });
+    expect(state.analyses.get(6)?.analyzer_version).toBe('inbox-ai-v4-mock');
     expect(state.modelCalls).toBe(0);
     service.stop();
   });

@@ -4,6 +4,9 @@ import { resolve } from "path";
 
 export default defineConfig({
   main: {
+    define: {
+      __PROSPECTOR_SAMPLE_MAIL__: JSON.stringify(process.env.VITE_PROSPECTOR_EDITION === "sample-mail"),
+    },
     plugins: [externalizeDepsPlugin()],
     resolve: {
       alias: { "@main": resolve("src/main") },

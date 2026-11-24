@@ -56,9 +56,9 @@ export function TeamAdminOverview({ teams, organization, onSelect }: { teams: re
   const knownTeamIds = new Set(teams.map(team => team.teamId));
   const roots = teams.filter(team => effectiveTeamParentId(team, knownTeamIds) === null).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
   const pendingInvitations = teams.reduce((total, team) => total + team.pendingInvitationCount, 0);
-  const memberSeats = sales.reduce((total, team) => total + team.memberCount, 0);
+  const memberSeats = teams.reduce((total, team) => total + team.memberCount, 0);
   return <div className="team-admin-overview">
-    <div className="team-admin-inspector-title"><div><span>团队</span><h2>团队概览</h2></div></div>
+    <div className="team-admin-inspector-title"><div><span>团队</span><h2>我的团队</h2></div></div>
     <div className="team-admin-stat-grid">
       <div><span>运营组</span><strong>{operations.length}</strong></div>
       <div><span>销售团队</span><strong>{sales.length}</strong></div>
@@ -69,7 +69,7 @@ export function TeamAdminOverview({ teams, organization, onSelect }: { teams: re
       <div className="team-section-heading"><div><h3>团队</h3><span>{roots.length} 个</span></div></div>
       <div className="team-admin-overview-list">{roots.map(team => <button key={team.teamId} type="button" onClick={() => onSelect(team.teamId)}>
         <span className="team-admin-org-icon">{teamType(team) === 'operations' ? <Building2 aria-hidden="true" /> : <GitBranch aria-hidden="true" />}</span>
-        <span><strong>{team.name}</strong><small>{team.leaderName} · {teamType(team) === 'operations' ? `${sales.filter(candidate => effectiveTeamParentId(candidate, knownTeamIds) === team.teamId).length} 个销售团队` : `${team.memberCount} 人`}</small></span>
+        <span><strong>{team.name}</strong><small>{team.leaderName} · {teamType(team) === 'operations' ? `${team.memberCount} 人 · ${sales.filter(candidate => effectiveTeamParentId(candidate, knownTeamIds) === team.teamId).length} 个销售团队` : `${team.memberCount} 人`}</small></span>
         <ChevronRight aria-hidden="true" />
       </button>)}</div>
     </section>
@@ -152,17 +152,17 @@ export function TeamAdminInspector({ canManage, detail, loading, error, onBack, 
     <div className="team-admin-team-head">
       <div><span>{type === 'operations' ? '运营组' : '销售团队'}</span><h2>{team.name}</h2><small>{team.parentTeamName || '顶层团队'}</small></div>
       <div><span>负责人</span><strong>{team.leaderName}</strong></div>
-      <div><span>{type === 'operations' ? '销售团队' : '成员'}</span><strong>{type === 'operations' ? detail.children.length : team.members.length}{type === 'operations' ? ' 个' : ' 人'}</strong></div>
+      <div><span>成员</span><strong>{team.members.length} 人</strong></div>
     </div>
 
     {actionError && <div className="team-form-error">{actionError}</div>}
 
-    {type === 'sales_team' && <>
+    <>
       <section className="team-admin-section">
         <div className="team-section-heading"><div><h3>组员</h3><span>{members.length} 人</span></div>{canManage && <div className="team-admin-section-actions"><button type="button" className="team-inline-action" onClick={() => { setMemberManagementOpen(value => !value); setAddingMembers(false); }}>{memberManagementOpen ? '收起' : '管理'}</button><button type="button" className="team-inline-action" onClick={() => { setMemberManagementOpen(true); setAddingMembers(value => !value); }}><UserPlus aria-hidden="true" />邀请</button><button type="button" className="team-inline-action" onClick={() => setGroupDraft({ groupId: null, name: '', memberIds: [], version: 0 })}><FolderPlus aria-hidden="true" />分组</button></div>}</div>
         {!canManage && (members.length === 0 ? <div className="team-admin-inline-empty">暂无组员</div> : <div className="team-admin-member-list">{members.map(member => <article key={member.userId} className="team-admin-member-row"><span className="team-admin-member-avatar">{memberInitial(member.displayName)}</span><div><strong>{member.displayName}</strong><small>{member.email || '中心账号'}</small></div></article>)}</div>)}
         {canManage && memberManagementOpen && <>
-          {addingMembers && <div className="team-admin-member-add"><TeamCandidatePicker selected={memberSelection} onChange={setMemberSelection} enabled /> <button type="button" className="team-action-primary" disabled={busy || !memberSelection.length} onClick={async () => { const signature = `member-invite:${team.teamId}:${team.version}:${memberSelection.slice().sort().join(',')}`; if (await apply(signature, () => teamActions.invite(team.teamId, { userIds: memberSelection, idempotencyKey: commandKey(signature) }))) { setMemberSelection([]); setAddingMembers(false); } }}>发送邀请</button></div>}
+          {addingMembers && <div className="team-admin-member-add"><TeamCandidatePicker selected={memberSelection} onChange={setMemberSelection} enabled unitType={type} /> <button type="button" className="team-action-primary" disabled={busy || !memberSelection.length} onClick={async () => { const signature = `member-invite:${team.teamId}:${team.version}:${memberSelection.slice().sort().join(',')}`; if (await apply(signature, () => teamActions.invite(team.teamId, { userIds: memberSelection, idempotencyKey: commandKey(signature) }))) { setMemberSelection([]); setAddingMembers(false); } }}>发送邀请</button></div>}
           {members.length === 0 ? <div className="team-admin-inline-empty">暂无组员</div> : <div className="team-admin-member-list">{members.map(member => <article key={member.userId} className="team-admin-member-row"><span className="team-admin-member-avatar">{memberInitial(member.displayName)}</span><div><strong>{member.displayName}</strong><small>{member.email || '中心账号'}</small></div><button type="button" title="移出团队" aria-label={`移出 ${member.displayName}`} disabled={busy} onClick={() => { const signature = `member-remove:${team.teamId}:${team.version}:${member.userId}`; void apply(signature, () => teamActions.adjustMember(team.teamId, { userId: member.userId, action: 'remove', expectedVersion: team.version, idempotencyKey: commandKey(signature) })); }}><UserMinus aria-hidden="true" /></button></article>)}</div>}
         </>}
       </section>
@@ -171,7 +171,7 @@ export function TeamAdminInspector({ canManage, detail, loading, error, onBack, 
         {!!team.memberGroups?.length && <div className="team-group-list">{team.memberGroups.map(group => <div key={group.groupId} className="team-group-row"><button type="button" onClick={() => setGroupDraft({ groupId: group.groupId, name: group.name, memberIds: group.memberIds, version: group.version })}><Pencil aria-hidden="true" /><span><strong>{group.name}</strong><small>{group.memberIds.length} 人</small></span></button><button type="button" aria-label={`删除 ${group.name}`} title="删除分组" disabled={busy} onClick={() => { const signature = `group-delete:${team.teamId}:${team.version}:${group.groupId}:${group.version}`; void apply(signature, () => teamActions.deleteMemberGroup(team.teamId, group.groupId, { groupId: group.groupId, expectedVersion: group.version, idempotencyKey: commandKey(signature) })); }}><Trash2 aria-hidden="true" /></button></div>)}</div>}
         {groupDraft && <div className="team-group-editor"><input value={groupDraft.name} maxLength={40} onChange={event => setGroupDraft({ ...groupDraft, name: event.target.value })} placeholder="分组名称" /><div className="team-group-members">{members.map(member => <label key={member.userId}><input type="checkbox" checked={groupDraft.memberIds.includes(member.userId)} onChange={() => setGroupDraft({ ...groupDraft, memberIds: groupDraft.memberIds.includes(member.userId) ? groupDraft.memberIds.filter(id => id !== member.userId) : [...groupDraft.memberIds, member.userId] })} />{member.displayName}</label>)}</div><div className="team-form-footer"><button type="button" onClick={() => setGroupDraft(null)}>取消</button><button type="button" className="team-action-primary" disabled={busy || !groupDraft.name.trim()} onClick={async () => { const signature = `group-save:${team.teamId}:${team.version}:${groupDraft.groupId ?? 'new'}:${groupDraft.version}:${groupDraft.name.trim()}:${groupDraft.memberIds.slice().sort().join(',')}`; if (await apply(signature, () => teamActions.saveMemberGroup(team.teamId, { groupId: groupDraft.groupId, name: groupDraft.name.trim(), memberIds: groupDraft.memberIds, expectedVersion: groupDraft.version, idempotencyKey: commandKey(signature) }))) setGroupDraft(null); }}>保存</button></div></div>}
       </section>}
-    </>}
+    </>
     {canManage && detail.outgoingInvitations.length > 0 && <section className="team-admin-section">
       <div className="team-section-heading"><div><h3>成员邀请</h3><span>{detail.outgoingInvitations.filter(item => item.status === 'pending').length} 个待接受</span></div></div>
       <InvitationRows invitations={detail.outgoingInvitations} busy={busy} onCancel={invitation => { const signature = `invite-cancel:${invitation.invitationId}:${invitation.version}`; void apply(signature, () => teamActions.cancel(invitation.invitationId, { expectedVersion: invitation.version, idempotencyKey: commandKey(signature) })); }} />

@@ -39,13 +39,13 @@ describe('original contact detail status contract', () => {
     expect(invoke).toHaveBeenCalledWith(ONLINE_CHANNELS.CONTACT_FOLLOWUP, expect.objectContaining({ ...reference, expectedVersion: 7, method: 'other', contactStatus, idempotencyKey: expect.any(String) }));
     expect(invoke.mock.calls.some(([channel]) => channel === ONLINE_CHANNELS.CONTACT_UPDATE)).toBe(false);
   });
-  it('opens the board with an explicit center contact reference', async () => {
+  it('opens the contact table with an explicit center contact reference', async () => {
     invoke.mockResolvedValue({ ok: true, data: { ...detail, contact: { ...detail.contact, touchStatus: 'contacted' } } });
     await act(async () => { root.render(<QueryClientProvider client={client}><CenterContactDetail reference={reference} onClose={() => {}} /></QueryClientProvider>); });
     await act(flush);
     const button=host.querySelector<HTMLButtonElement>('[aria-label="在CRM中查看"]')!;
     expect(button.disabled).toBe(false);
     await act(async () => { button.click(); await flush(); });
-    expect(window.location.hash).toBe(`#/customers?view=board&centerContact=42&centerCustomer=${encodeURIComponent(reference.customerId)}`);
+    expect(window.location.hash).toBe(`#/customers?view=table&centerContact=42&centerCustomer=${encodeURIComponent(reference.customerId)}`);
   });
 });

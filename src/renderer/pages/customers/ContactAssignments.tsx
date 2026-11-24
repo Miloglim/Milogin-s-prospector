@@ -1,16 +1,17 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Input, Modal, Segmented, Select, Space, Table, Tag, message } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
-import { ONLINE_CHANNELS, ONLINE_LIMITS, LEAD_LIMITS, CONTACT_ASSIGNMENT_LIMITS, type ContactAssignment, type ContactAssignmentCreate, type ContactAssignmentDecision, type ContactAssignmentGroup, type ContactAssignmentGroupDecision, type ContactAssignmentGroupPage, type ContactAssignmentLifecycleStatus, type ContactAssignmentPage, type ContactAssignmentTransfer, type MemberPage, type CenterContact } from '../../../shared/online-crm';
+import { ONLINE_CHANNELS, LEAD_LIMITS, CONTACT_ASSIGNMENT_LIMITS, type ContactAssignment, type ContactAssignmentCreate, type ContactAssignmentDecision, type ContactAssignmentGroup, type ContactAssignmentGroupDecision, type ContactAssignmentGroupPage, type ContactAssignmentLifecycleStatus, type ContactAssignmentPage, type ContactAssignmentReceipt, type ContactAssignmentTransfer, type MemberPage, type CenterContact, type PreparedCampaignNextStep } from '../../../shared/online-crm';
 import { useIdentity } from '../../IdentityContext';
-import { centerInvoke, createCenterContactPort } from './centerContactPort';
+import { centerInvoke } from './centerContactPort';
 import { CenterContactDetail } from './CenterContactDetail';
 import { ContactShares } from './ContactSharing';
 import { AssignmentGroupOverview } from './AssignmentGroupOverview';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+const ASSIGNMENT_REFRESH_MS = 15_000;
 const ASSIGNMENT_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const ASSIGNMENT_STATUSES: readonly ContactAssignmentLifecycleStatus[] = ['pending', 'accepted', 'rejected', 'cancelled', 'expired', 'pending_transfer'];
 export const ASSIGNMENT_STATUS_LABELS: Record<ContactAssignmentLifecycleStatus, string> = {
@@ -22,17 +23,18 @@ export const ASSIGNMENT_STATUS_LABELS: Record<ContactAssignmentLifecycleStatus, 
   pending_transfer: '转交待确认',
 };
 
-function lifecycleStatus(value: string): ContactAssignmentLifecycleStatus {
-  return ASSIGNMENT_STATUSES.includes(value as ContactAssignmentLifecycleStatus) ? value as ContactAssignmentLifecycleStatus : 'cancelled';
+function showPreparedCampaign(step: PreparedCampaignNextStep | undefined): void {
+  if (!step) return;
+  Modal.confirm({
+    title: `已准备开发任务：${step.eligible} 位联系人`,
+    content: `任务「${step.name}」已保存为草稿，还没有发送。进入发送中心核对名单、内容和发送节奏后再启动。`,
+    okText: '去发送中心', cancelText: '稍后处理',
+    onOk: () => { window.location.hash = '#/campaigns'; },
+  });
 }
 
-function statusOptions(operations: boolean) {
-  return ASSIGNMENT_STATUSES.map(value => ({
-    value,
-    label: value === 'pending'
-      ? operations ? '待分配' : '待接受'
-      : value === 'accepted' && operations ? '已分配' : ASSIGNMENT_STATUS_LABELS[value],
-  }));
+function lifecycleStatus(value: string): ContactAssignmentLifecycleStatus {
+  return ASSIGNMENT_STATUSES.includes(value as ContactAssignmentLifecycleStatus) ? value as ContactAssignmentLifecycleStatus : 'cancelled';
 }
 
 function statusColor(status: ContactAssignmentLifecycleStatus) {
@@ -171,7 +173,6 @@ export function ContactAssignments({ operations }: { operations: boolean }) {
   const qc = useQueryClient();
   const [shareView, setShareView] = useState<'incoming' | 'outgoing'>(() => new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('shareView') === 'outgoing' ? 'outgoing' : 'incoming');
   const [mode, setMode] = useState<'assignments' | 'shares'>(() => operations ? 'assignments' : (new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('sharing') === 'true' ? 'shares' : 'assignments'));
-  const [status, setStatus] = useState<ContactAssignmentLifecycleStatus>(() => { const value = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('assignmentStatus'); return value && ASSIGNMENT_STATUSES.includes(value as ContactAssignmentLifecycleStatus) ? value as ContactAssignmentLifecycleStatus : 'pending'; });
   const [requestId, setRequestId] = useState<string | null>(() => assignmentHashId('requestId'));
   const [groupId,setGroupId]=useState<string|null>(()=>assignmentHashId('groupId'));
   const [page, setPage] = useState(1);
@@ -182,24 +183,20 @@ export function ContactAssignments({ operations }: { operations: boolean }) {
   const [selectedContact, setSelectedContact] = useState<{ customerId: string; contactId: number } | null>(null);
   const commands = useRef(new Map<string, ContactAssignmentDecision>());
   const groupCommands=useRef(new Map<string,ContactAssignmentGroupDecision>());
-  useEffect(() => { const changed = () => { const params = new URLSearchParams(window.location.hash.split('?')[1] ?? ''); if (!operations && params.get('sharing') === 'true') { setMode('shares'); setShareView(params.get('shareView') === 'outgoing' ? 'outgoing' : 'incoming'); } setRequestId(assignmentHashId('requestId')); setGroupId(assignmentHashId('groupId')); const value = params.get('assignmentStatus'); if (value && ASSIGNMENT_STATUSES.includes(value as ContactAssignmentLifecycleStatus)) setStatus(value as ContactAssignmentLifecycleStatus); }; window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed); }, [operations]);
-  const acceptedPort = useMemo(() => createCenterContactPort({ key: `${baseUrl}:${identity?.userId}:accepted`, assignment: 'accepted' }), [baseUrl, identity?.userId]);
-  const groupsQuery=useQuery({queryKey:['center-assignment-groups',baseUrl,identity?.userId,operations,status,search,page],enabled:mode==='assignments'&&!requestId&&!groupId&&!(operations&&status==='accepted'),queryFn:()=>centerInvoke<ContactAssignmentGroupPage>(ONLINE_CHANNELS.ASSIGNMENT_GROUPS,{view:operations?'outgoing':'incoming',status,search,limit:CONTACT_ASSIGNMENT_LIMITS.page,offset:(page-1)*CONTACT_ASSIGNMENT_LIMITS.page}),refetchInterval:ONLINE_LIMITS.pollMs,placeholderData:previous=>previous});
-  const query = useQuery({ queryKey: ['center-assignment', baseUrl, identity?.userId, operations, status, search, page, requestId, groupId], enabled: mode === 'assignments' && (!!requestId||!!groupId), queryFn: () => centerInvoke<ContactAssignmentPage>(ONLINE_CHANNELS.ASSIGNMENT_LIST, { view: operations ? 'outgoing' : 'incoming', status, search:'', limit:requestId?1:200, offset:0, ...(requestId ? { requestId } : {}), ...(groupId ? { groupId } : {}) }), refetchInterval: ONLINE_LIMITS.pollMs, placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === baseUrl && previousQuery.queryKey[2] === identity?.userId ? previous : undefined });
-  const acceptedContacts = useQuery({ queryKey: ['center-contacts', acceptedPort.key, 'awaiting-first-followup'], enabled: mode === 'assignments' && operations && status === 'accepted' && !requestId && !groupId, queryFn: () => acceptedPort.readAll(), refetchInterval: ONLINE_LIMITS.pollMs });
+  useEffect(() => { const changed = () => { const params = new URLSearchParams(window.location.hash.split('?')[1] ?? ''); if (!operations && params.get('sharing') === 'true') { setMode('shares'); setShareView(params.get('shareView') === 'outgoing' ? 'outgoing' : 'incoming'); } setRequestId(assignmentHashId('requestId')); setGroupId(assignmentHashId('groupId')); }; window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed); }, [operations]);
+  const groupsQuery=useQuery({queryKey:['center-assignment-groups',baseUrl,identity?.userId,operations,search,page],enabled:mode==='assignments'&&!requestId&&!groupId,queryFn:()=>centerInvoke<ContactAssignmentGroupPage>(ONLINE_CHANNELS.ASSIGNMENT_GROUPS,{view:operations?'outgoing':'incoming',status:'all',search,limit:CONTACT_ASSIGNMENT_LIMITS.page,offset:(page-1)*CONTACT_ASSIGNMENT_LIMITS.page}),refetchInterval:ASSIGNMENT_REFRESH_MS,placeholderData:previous=>previous});
+  const query = useQuery({ queryKey: ['center-assignment', baseUrl, identity?.userId, operations, search, page, requestId, groupId], enabled: mode === 'assignments' && (!!requestId||!!groupId), queryFn: () => centerInvoke<ContactAssignmentPage>(ONLINE_CHANNELS.ASSIGNMENT_LIST, { view: operations ? 'outgoing' : 'incoming', status:'all', search:'', limit:requestId?1:200, offset:0, ...(requestId ? { requestId } : {}), ...(groupId ? { groupId } : {}) }), refetchInterval: ASSIGNMENT_REFRESH_MS, placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === baseUrl && previousQuery.queryKey[2] === identity?.userId ? previous : undefined });
   const data = query.data?.ok ? query.data.data : undefined;
   const groupData=groupsQuery.data?.ok?groupsQuery.data.data:undefined;
   const assignmentRows = data?.items ?? [];
   const assignmentGroups=groupData?.items??[];
-  const acceptedRows = (acceptedContacts.data?.data ?? []).filter(row => !['contacted','replied'].includes(row.touchStatus));
-  useEffect(() => { const found = requestId && data?.items.find(row => row.requestId === requestId); if (found) { const next = lifecycleStatus(found.status); if (next !== status) setStatus(next); } }, [requestId, data, status]);
   const error = (groupsQuery.data&&!groupsQuery.data.ok?groupsQuery.data.error.message:groupsQuery.error?.message)||(query.data&&!query.data.ok?query.data.error.message:query.error?.message);
   async function decide(row: ContactAssignment, action: 'accept' | 'reject' | 'cancel') {
     if (busy || connection === 'offline') return;
     const commandKey = `${row.requestId}:${row.version}:${action}`;
     if (!commands.current.has(commandKey)) commands.current.set(commandKey, { requestId: row.requestId, expectedVersion: row.version, idempotencyKey: crypto.randomUUID() });
     setBusy(row.requestId);
-    try { const channel = { accept: ONLINE_CHANNELS.ASSIGNMENT_ACCEPT, reject: ONLINE_CHANNELS.ASSIGNMENT_REJECT, cancel: ONLINE_CHANNELS.ASSIGNMENT_CANCEL }[action]; const result = await centerInvoke(channel, commands.current.get(commandKey)); if (result.ok) { commands.current.delete(commandKey); void qc.invalidateQueries({ queryKey: ['center-assignment'] }); void qc.invalidateQueries({ queryKey: ['center-assignment-groups'] }); void qc.invalidateQueries({ queryKey: ['center-contacts'] }); void qc.invalidateQueries({ queryKey: ['center-contact-detail'] }); message.success({ accept: '已接受', reject: '已拒绝', cancel: '已撤回' }[action]); } else { message.error(result.error.message); void query.refetch(); } }
+    try { const channel = { accept: ONLINE_CHANNELS.ASSIGNMENT_ACCEPT, reject: ONLINE_CHANNELS.ASSIGNMENT_REJECT, cancel: ONLINE_CHANNELS.ASSIGNMENT_CANCEL }[action]; const result = await centerInvoke(channel, commands.current.get(commandKey)); if (result.ok) { commands.current.delete(commandKey); await Promise.all([qc.invalidateQueries({ queryKey: ['center-assignment'] }), qc.invalidateQueries({ queryKey: ['center-assignment-groups'] }), qc.invalidateQueries({ queryKey: ['center-contacts'] }), qc.invalidateQueries({ queryKey: ['center-contact-detail'] })]); if (requestId || groupId) await query.refetch(); else await groupsQuery.refetch(); message.success({ accept: '已接受', reject: '已拒绝', cancel: '已撤回' }[action]); if (action === 'accept') showPreparedCampaign((result.data as ContactAssignment & {nextStep?:PreparedCampaignNextStep}).nextStep); } else { message.error(result.error.message); void query.refetch(); } }
     catch (error) { message.error(error instanceof Error ? error.message : '操作失败'); }
     finally { setBusy(undefined); }
   }
@@ -211,24 +208,24 @@ export function ContactAssignments({ operations }: { operations: boolean }) {
     try{
       const channel={accept:ONLINE_CHANNELS.ASSIGNMENT_GROUP_ACCEPT,reject:ONLINE_CHANNELS.ASSIGNMENT_GROUP_REJECT,cancel:ONLINE_CHANNELS.ASSIGNMENT_GROUP_CANCEL}[action];
       const result=await centerInvoke(channel,groupCommands.current.get(commandKey));
-      if(result.ok){groupCommands.current.delete(commandKey);void qc.invalidateQueries({queryKey:['center-assignment']});void qc.invalidateQueries({queryKey:['center-assignment-groups']});void qc.invalidateQueries({queryKey:['center-contacts']});message.success({accept:'已接受整组',reject:'已拒绝整组',cancel:'已撤回整组'}[action]);}
+      if(result.ok){groupCommands.current.delete(commandKey);await Promise.all([qc.invalidateQueries({queryKey:['center-assignment']}),qc.invalidateQueries({queryKey:['center-assignment-groups']}),qc.invalidateQueries({queryKey:['center-contacts']})]);await groupsQuery.refetch();message.success({accept:'已接受整组',reject:'已拒绝整组',cancel:'已撤回整组'}[action]);if(action==='accept')showPreparedCampaign(((result.data as ContactAssignmentReceipt).items[0] as (ContactAssignment & {nextStep?:PreparedCampaignNextStep}) | undefined)?.nextStep);}
       else{message.error(result.error.message);void groupsQuery.refetch();if(groupId)void query.refetch();}
     }catch(error){message.error(error instanceof Error?error.message:'操作失败');}
     finally{setBusy(undefined);}
   }
   if (mode === 'shares' && !operations) return <div className="prospector-table-page customer-sharing-page"><Segmented value={mode} onChange={() => setMode('assignments')} options={[{value:'assignments',label:'分配'},{value:'shares',label:'共享'}]} /><ContactShares key={shareView} initialView={shareView} onOpen={setSelectedContact} /><CenterContactDetail reference={selectedContact} onClose={() => setSelectedContact(null)} /></div>;
-  if (mode === 'assignments' && !requestId && !groupId && !(operations && status === 'accepted')) return <div className="prospector-table-page customer-assignment-page">
+  if (mode === 'assignments' && !requestId && !groupId) return <div className="prospector-table-page customer-assignment-page">
     {!operations&&<Segmented value={mode} onChange={()=>setMode('shares')} options={[{value:'assignments',label:'分配'},{value:'shares',label:'共享'}]}/>}
-    <div className="customer-assignment-toolbar"><Segmented value={status} onChange={value=>{setStatus(value as ContactAssignmentLifecycleStatus);setPage(1);setRequestId(null);setGroupId(null);}} options={statusOptions(operations)}/><Input className="customer-assignment-search" size="small" placeholder="搜索联系人、公司..." value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}} allowClear/></div>
+    <div className="customer-assignment-toolbar"><Input className="customer-assignment-search" size="small" placeholder="搜索联系人、公司..." value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}} allowClear/></div>
     {error&&<Alert type="error" message={error}/>}
     <AssignmentGroupOverview groups={assignmentGroups} total={groupData?.total??0} page={page} loading={groupsQuery.isFetching} busy={busy} offline={connection==='offline'} operations={operations} onOpen={group=>{setRequestId(null);setGroupId(group.groupId);}} onAction={decideGroup} onPage={setPage}/>
   </div>;
-  return <div className="prospector-table-page customer-assignment-page">{!operations && <Segmented value={mode} onChange={() => setMode('shares')} options={[{value:'assignments',label:'分配'},{value:'shares',label:'共享'}]} />}<div className="customer-assignment-toolbar"><Segmented value={status} onChange={value => { setStatus(value as ContactAssignmentLifecycleStatus); setPage(1); setRequestId(null); setGroupId(null); }} options={statusOptions(operations)} />{requestId||groupId ? <Button size="small" onClick={() => { setRequestId(null); setGroupId(null); }}>{groupId?'返回分组':'查看全部'}</Button> : !(operations && status === 'accepted') && <Input className="customer-assignment-search" size="small" placeholder="搜索联系人、公司..." value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} allowClear />}</div>{error && <Alert type="error" message={error} />}
-    {operations && status === 'accepted' && !requestId ? <div className="customer-assignment-table-wrap">{acceptedContacts.data?.error && <Alert type="error" message={acceptedContacts.data.error} />}<div className="customer-assignment-section-label">待首次跟进</div><Table<CenterContact> className={`prospector-page-table customer-assignment-table${!acceptedContacts.isFetching && acceptedRows.length === 0 ? ' is-empty' : ''}`} size="small" rowKey={row => `${row.customerId}:${row.contactId}`} dataSource={acceptedRows} loading={acceptedContacts.isFetching} pagination={false} columns={[{ title: '联系人', render: (_, row) => [row.firstName,row.lastName].filter(Boolean).join(' ') || row.email }, { title: '公司', dataIndex: 'companyName' }, { title: '负责人', dataIndex: 'ownerName' }, { title: '', render: (_, row) => <Button size="small" type="link" onClick={() => setSelectedContact({ contactId: row.contactId, customerId: row.customerId })}>跟进</Button> }]} /></div> : <Table<ContactAssignment> className={`prospector-page-table customer-assignment-table${!query.isFetching && assignmentRows.length === 0 ? ' is-empty' : ''}`} size="small" rowKey="requestId" dataSource={assignmentRows} loading={query.isFetching} scroll={{ x: 1040 }} pagination={{ current: page, pageSize: CONTACT_ASSIGNMENT_LIMITS.page, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }} columns={[
+  return <div className="prospector-table-page customer-assignment-page">{!operations && <Segmented value={mode} onChange={() => setMode('shares')} options={[{value:'assignments',label:'分配'},{value:'shares',label:'共享'}]} />}<div className="customer-assignment-toolbar">{requestId||groupId ? <Button size="small" onClick={() => { setRequestId(null); setGroupId(null); }}>{groupId?'返回分组':'查看全部'}</Button> : <Input className="customer-assignment-search" size="small" placeholder="搜索联系人、公司..." value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} allowClear />}</div>{error && <Alert type="error" message={error} />}
+    <Table<ContactAssignment> className={`prospector-page-table customer-assignment-table${!query.isFetching && assignmentRows.length === 0 ? ' is-empty' : ''}`} size="small" rowKey="requestId" dataSource={assignmentRows} loading={query.isFetching} scroll={{ x: 1040 }} pagination={{ current: page, pageSize: CONTACT_ASSIGNMENT_LIMITS.page, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }} columns={[
       { title: '联系人', width: 130, render: (_, row) => <span className="text-xs font-medium">{row.contactName || row.email || '-'}</span> }, { title: '公司', dataIndex: 'companyName', width: 160 }, { title: '发起人', dataIndex: 'actorName', width: 100 }, { title: '接收人', dataIndex: 'targetName', width: 100 }, { title: '时间', width: 150, render: (_, row) => new Date(row.createdAt).toLocaleString('zh-CN') },
       { title: '状态', width: 140, render: (_, row) => { const current = lifecycleStatus(row.status); const expiry = expiryText(row); return <div className="customer-assignment-status"><Tag color={statusColor(current)}>{ASSIGNMENT_STATUS_LABELS[current]}</Tag>{expiry && <small title={new Date(row.expiresAt).toLocaleString('zh-CN')}>{expiry}</small>}</div>; } },
       { title: '', width: 210, render: (_, row) => { const current = lifecycleStatus(row.status); if (current === 'expired') return <span className="customer-assignment-readonly">只读</span>; return <Space size={0}>{row.canAccept && <Button type="link" size="small" disabled={connection === 'offline' || !!busy} loading={busy === row.requestId} onClick={() => decide(row, 'accept')}>接受</Button>}{row.canReject && <Button type="link" size="small" disabled={connection === 'offline' || !!busy} onClick={() => decide(row, 'reject')}>拒绝</Button>}{row.canCancel && <Button type="link" size="small" disabled={connection === 'offline' || !!busy} onClick={() => decide(row, 'cancel')}>撤回</Button>}{current === 'accepted' && row.canTransfer && <Button type="link" size="small" disabled={connection === 'offline' || !!busy} onClick={() => setTransferring(row)}>转交</Button>}{current === 'accepted' && <Button type="link" size="small" onClick={() => setSelected(row)}>跟进</Button>}</Space>; } },
-    ]} />}
+    ]} />
     <CenterContactDetail reference={selected ? { contactId: selected.contactId, customerId: selected.customerId } : null} onClose={() => setSelected(null)} />
     <CenterContactDetail reference={selectedContact} onClose={() => setSelectedContact(null)} />
     <AssignmentTransferModal assignment={transferring} close={() => setTransferring(null)} />

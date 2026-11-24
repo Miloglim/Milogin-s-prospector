@@ -25,6 +25,21 @@ describe('desktop center isolation',()=>{
     expect(validateCenterBase('https://crm.company.internal')).toBe('https://crm.company.internal');
     for(const url of ['http://localhost:55844','http://example.invalid','http://user@127.0.0.1','https://crm.company.internal/api','https://crm.company.internal?x=1'])expect(validateCenterBase(url)).toBeNull();
   });
+  it('keeps the session online when a team endpoint alone returns a database error',async()=>{
+    const token=randomBytes(32).toString('base64url');
+    const fetcher=vi.fn(async(url:string,init:RequestInit)=>{
+      if(url.endsWith('/login'))return json({token,identity});
+      if(url.endsWith('/me'))return json(identity);
+      if(url.endsWith('/api/crm/team-context'))return new Response(JSON.stringify(failure('DATABASE_ERROR','组织鉴权失败')),{status:503});
+      return json({items:[],total:0});
+    });
+    const adapter=new OnlineCrmAdapter(fetcher as unknown as typeof fetch);
+    expect((await adapter.login({baseUrl:'http://127.0.0.1:55844',email:identity.email,password:'synthetic-password'})).ok).toBe(true);
+    const team=await adapter.request('GET','/api/crm/team-context');
+    expect(team.ok).toBe(false);
+    expect(adapter.isOnline()).toBe(true);
+    expect((await adapter.request('GET','/api/crm/bootstrap')).ok).toBe(true);
+  });
   it('binds desktop login to a stable device and clears the workspace when another device replaces it',async()=>{
     let meCalls=0;const clear=vi.fn(async()=>{});
     const fetcher=vi.fn(async(url:string,init:RequestInit)=>{

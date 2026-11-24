@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>团队工作区交互原型</title>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --ink: #18232b;
+      --muted: #6b7780;
+      --line: #dfe5e8;
+      --surface: #ffffff;
+      --surface-soft: #f6f8f8;
+      --canvas: #edf1f2;
+      --sidebar: #171b1d;
+      --sidebar-muted: #a6adb0;
+      --accent: #0f766e;
+      --accent-soft: #e5f3f1;
+      --blue: #2563eb;
+      --amber: #b45309;
+      --red: #c2413b;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      overflow: hidden;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: "Noto Sans SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+      font-size: 13px;
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .icon { width: 15px; height: 15px; stroke-width: 1.8; }
+
+    .app { height: 100%; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+    .rail {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      color: #fff;
+      background: var(--sidebar);
+    }
+    .brand { padding: 28px 22px 22px; }
+    .brand strong { display: block; font-size: 20px; font-weight: 700; letter-spacing: 0; }
+    .brand span { display: block; margin-top: 4px; color: var(--sidebar-muted); font-size: 11px; }
+    .rail-nav { padding: 8px 10px; display: grid; gap: 3px; }
+    .rail-item {
+      width: 100%;
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 6px;
+      color: rgba(255,255,255,.72);
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+    .rail-item:hover { color: #fff; background: rgba(255,255,255,.055); }
+    .rail-item.active { color: #fff; background: rgba(255,255,255,.1); }
+    .rail-spacer { flex: 1; }
+    .rail-account {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 18px;
+      border-top: 1px solid rgba(255,255,255,.08);
+      color: var(--sidebar-muted);
+      font-size: 11px;
+    }
+
+    .shell { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .topbar {
+      flex: 0 0 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .topbar-left { min-width: 0; display: flex; align-items: center; gap: 18px; }
+    .workspace-title { display: flex; align-items: baseline; gap: 9px; white-space: nowrap; }
+    .workspace-title strong { font-size: 15px; font-weight: 650; }
+    .workspace-title span { color: var(--muted); font-size: 11px; }
+    .view-switch {
+      display: inline-flex;
+      padding: 2px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface-soft);
+    }
+    .view-switch button {
+      min-height: 28px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 4px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+    }
+    .view-switch button.active { color: var(--ink); background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.1); }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .search {
+      width: 220px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+    }
+    .search input { width: 100%; border: 0; outline: 0; background: transparent; font-size: 12px; }
+    .icon-button, .primary-button {
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .icon-button { width: 32px; border: 1px solid var(--line); background: #fff; }
+    .primary-button { padding: 0 12px; border: 1px solid var(--accent); color: #fff; background: var(--accent); }
+
+    .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 264px minmax(0, 1fr) 330px; }
+    .tree-panel, .detail-panel { min-height: 0; background: var(--surface); }
+    .tree-panel { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+    .panel-toolbar {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-toolbar strong { font-size: 12px; font-weight: 650; }
+    .tree-scroll { flex: 1; overflow: auto; padding: 10px 8px 18px; }
+    .tree { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; }
+    .tree li { position: relative; }
+    .tree li.depth-1::before,
+    .tree li.depth-2::before {
+      content: "";
+      position: absolute;
+      top: -3px;
+      bottom: -3px;
+      left: 18px;
+      border-left: 1px solid #dfe6e8;
+      pointer-events: none;
+    }
+    .tree li.depth-2::before { left: 39px; }
+    .tree button {
+      width: 100%;
+      min-height: 34px;
+      display: grid;
+      grid-template-columns: 16px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 7px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 5px;
+      color: #35434c;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+    .tree button:hover { background: var(--surface-soft); }
+    .tree button.active { color: var(--accent); background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); font-weight: 600; }
+    .tree button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree button em { color: var(--muted); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
+    .tree button em .icon { width: 12px; height: 12px; margin-left: 3px; vertical-align: -2px; opacity: .55; }
+    .tree .level-1 { margin-top: 10px; padding-left: 20px; }
+    .tree .level-2 { padding-left: 42px; }
+
+    .main-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
+    .breadcrumb {
+      flex: 0 0 44px;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      padding: 0 16px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .crumb-node { min-height: 25px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid transparent; border-radius: 5px; color: var(--muted); background: transparent; cursor: pointer; }
+    .crumb-node:hover { color: var(--ink); border-color: var(--line); background: #fff; }
+    .crumb-node.current { color: var(--accent); border-color: #b9d9d4; background: var(--accent-soft); font-weight: 650; }
+    .crumb-node .icon { width: 12px; height: 12px; }
+    .crumb-sep { width: 22px; height: 1px; position: relative; background: #cbd5d9; }
+    .crumb-sep::after { content: ""; position: absolute; right: -1px; top: -3px; width: 5px; height: 5px; border-top: 1px solid #9aa8ae; border-right: 1px solid #9aa8ae; transform: rotate(45deg); }
+    .main-scroll { flex: 1; min-height: 0; overflow: auto; padding: 0 16px 18px; }
+    .hero-line {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 12px;
+    }
+    .hero-line h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0; }
+    .hero-line p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+    .hero-actions { display: flex; gap: 7px; }
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      margin-bottom: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .metric { min-width: 0; padding: 13px 14px; border-right: 1px solid var(--line); }
+    .metric:last-child { border-right: 0; }
+    .metric:nth-child(1) { box-shadow: inset 0 2px #77919b; }
+    .metric:nth-child(2) { box-shadow: inset 0 2px #0f766e; }
+    .metric:nth-child(3) { box-shadow: inset 0 2px #2563eb; }
+    .metric:nth-child(4) { box-shadow: inset 0 2px #b45309; }
+    .metric:nth-child(5) { box-shadow: inset 0 2px #c2413b; }
+    .metric span { display: block; color: var(--muted); font-size: 10px; }
+    .metric strong { display: block; margin-top: 5px; font-size: 20px; font-variant-numeric: tabular-nums; }
+    .metric em { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; font-style: normal; }
+
+    .content-panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+    .content-head {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .content-head strong { font-size: 12px; font-weight: 650; }
+    .content-head span { color: var(--muted); font-size: 10px; }
+    .team-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; }
+    .team-card {
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      text-align: left;
+      cursor: pointer;
+    }
+    .team-card:hover { border-color: #8da7b0; background: #fbfdfd; transform: translateY(-1px); box-shadow: 0 5px 16px rgba(15,23,42,.07); }
+    .team-card-top { display: flex; justify-content: space-between; gap: 8px; }
+    .team-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .team-card span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .team-card p { margin: 10px 0 12px; color: var(--muted); font-size: 11px; }
+    .team-card-foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; }
+    .team-progress { height: 5px; overflow: hidden; margin: 0 0 11px; border-radius: 3px; background: #edf1f2; }
+    .team-progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+    .enter-cue { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 600; }
+    .enter-cue .icon { width: 12px; height: 12px; }
+
+    .member-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .member-table th {
+      height: 34px;
+      padding: 0 12px;
+      color: var(--muted);
+      background: #f8f9f9;
+      font-size: 9px;
+      font-weight: 600;
+      text-align: left;
+    }
+    .member-table td { height: 58px; padding: 0 12px; border-top: 1px solid #edf0f1; font-size: 11px; }
+    .member-table tbody tr { cursor: pointer; transition: background .12s ease; }
+    .member-table tbody tr:hover { background: #f7fbfa; }
+    .member-table tbody tr.selected { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
+    .row-cue { color: #9aa7ad; text-align: right; }
+    .row-cue .icon { width: 14px; height: 14px; transition: transform .12s ease, color .12s ease; }
+    .member-table tbody tr:hover .row-cue .icon, .member-table tbody tr.selected .row-cue .icon { color: var(--accent); transform: translateX(2px); }
+    .person-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .avatar {
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      background: #52707e;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .person-copy { min-width: 0; }
+    .person-copy strong, .person-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .person-copy strong { font-size: 12px; }
+    .person-copy small { margin-top: 3px; color: var(--muted); font-size: 9px; }
+    .role-pill, .risk-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 21px;
+      padding: 0 7px;
+      border-radius: 4px;
+      font-size: 9px;
+      white-space: nowrap;
+    }
+    .role-pill { color: #43525a; background: #eef2f3; }
+    .risk-pill.ok { color: #08745b; background: #e9f7f1; }
+    .risk-pill.warn { color: #985a08; background: #fff5df; }
+    .risk-pill.bad { color: #ae332e; background: #fff0ef; }
+    .load { min-width: 100px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+    .load-track { height: 5px; overflow: hidden; border-radius: 3px; background: #e9edef; }
+    .load-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+    .load.warn .load-track i { background: #d68a1f; }
+    .load.bad .load-track i { background: var(--red); }
+    .load em { color: var(--muted); font-size: 9px; font-style: normal; font-variant-numeric: tabular-nums; }
+
+    .work-list { padding: 10px 12px 14px; display: grid; gap: 8px; }
+    .work-row {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr) 92px;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .work-row { position: relative; }
+    .work-row::before { content: ""; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: #9aa8ae; }
+    .work-row:nth-child(1)::before { background: var(--red); }
+    .work-row:nth-child(2)::before { background: var(--amber); }
+    .work-row:nth-child(3)::before { background: var(--accent); }
+    .work-row:hover, .work-row.selected { border-color: #8da7b0; background: #f8fcfb; box-shadow: 0 3px 12px rgba(15,23,42,.05); }
+    .work-stack { display: flex; height: 8px; overflow: hidden; border-radius: 4px; background: #edf0f1; }
+    .work-stack i { height: 100%; }
+    .work-stack .reply { background: var(--amber); }
+    .work-stack .follow { background: var(--accent); }
+    .work-stack .risk { background: var(--red); }
+    .work-legend { margin-top: 6px; display: flex; gap: 12px; color: var(--muted); font-size: 9px; }
+    .next-action { color: var(--muted); font-size: 10px; text-align: right; }
+    .next-action .icon { width: 12px; height: 12px; margin-left: 4px; vertical-align: -2px; color: var(--accent); }
+
+    .detail-panel { border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+    .detail-body { min-height: 0; flex: 1; overflow: auto; }
+    .profile-space { padding: 18px 16px 14px; border-bottom: 1px solid var(--line); background: #f5faf9; }
+    .profile-top { display: flex; align-items: center; gap: 11px; }
+    .profile-top .avatar { width: 42px; height: 42px; flex-basis: 42px; font-size: 13px; background: #0f766e; }
+    .profile-name strong { display: block; font-size: 16px; }
+    .profile-name span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .profile-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+    .profile-tags span { padding: 4px 7px; border-radius: 4px; color: #52616a; background: #f1f4f5; font-size: 9px; }
+    .detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
+    .detail-actions button { min-height: 32px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+    .detail-actions button:first-child { border-color: var(--accent); color: #fff; background: var(--accent); }
+    .detail-section { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .detail-section h3 { margin: 0 0 10px; font-size: 10px; font-weight: 650; color: var(--muted); }
+    .mini-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .mini-metrics div { padding: 10px; border: 1px solid var(--line); border-radius: 6px; }
+    .mini-metrics strong { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+    .mini-metrics span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+    .assignment { padding: 9px 0; border-top: 1px solid #edf0f1; }
+    .assignment:first-of-type { padding-top: 0; border-top: 0; }
+    .assignment strong { display: block; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .assignment span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+    .detail-empty { padding: 26px 16px; color: var(--muted); font-size: 11px; }
+
+    @media (max-width: 1120px) {
+      .app { grid-template-columns: 188px minmax(0, 1fr); }
+      .workspace { grid-template-columns: 228px minmax(0, 1fr); }
+      .detail-panel { display: none; }
+      .team-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 980px) {
+      body { overflow: auto; }
+      .app { min-height: 100%; height: auto; grid-template-columns: 1fr; }
+      .rail { display: none; }
+      .topbar { flex: 0 0 auto; height: auto; min-height: 58px; flex-wrap: wrap; align-items: center; padding: 10px 12px; }
+      .topbar-left { width: 100%; justify-content: space-between; }
+      .top-actions { width: 100%; }
+      .search { width: auto; flex: 1; }
+      .workspace { min-height: 720px; grid-template-columns: 1fr; }
+      .tree-panel { display: none; }
+      .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metric { border-bottom: 1px solid var(--line); }
+      .team-grid { grid-template-columns: 1fr; }
+      .member-table th:nth-child(4), .member-table td:nth-child(4),
+      .member-table th:nth-child(7), .member-table td:nth-child(7) { display: none; }
+      .work-row { grid-template-columns: 1fr; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="rail">
+      <div class="brand"><strong>Prospector.</strong><span>Milogin's workspace</span></div>
+      <nav class="rail-nav">
+        <button class="rail-item"><i data-lucide="inbox" class="icon"></i>收件箱</button>
+        <button class="rail-item"><i data-lucide="users" class="icon"></i>客户</button>
+        <button class="rail-item active"><i data-lucide="network" class="icon"></i>团队</button>
+        <button class="rail-item"><i data-lucide="send" class="icon"></i>发送中心</button>
+        <button class="rail-item"><i data-lucide="files" class="icon"></i>素材库</button>
+      </nav>
+      <div class="rail-spacer"></div>
+      <div class="rail-account"><i data-lucide="user-round" class="icon"></i><span>你好，管理员</span></div>
+    </aside>
+
+    <main class="shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="workspace-title"><strong>团队工作区</strong><span id="top-team-name">华东销售一组</span></div>
+          <div class="view-switch" role="group" aria-label="团队视角">
+            <button id="mode-org" class="active" data-mode="org">组织视角</button>
+            <button id="mode-work" data-mode="work">工作视角</button>
+          </div>
+        </div>
+        <div class="top-actions">
+          <label class="search"><i data-lucide="search" class="icon"></i><input id="search-input" placeholder="搜索成员或职责" /></label>
+          <button class="icon-button" title="刷新"><i data-lucide="refresh-cw" class="icon"></i></button>
+          <button class="primary-button"><i data-lucide="plus" class="icon"></i>新建团队</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="tree-panel">
+          <div class="panel-toolbar"><strong>组织结构</strong><button class="icon-button" title="展开全部"><i data-lucide="chevrons-down" class="icon"></i></button></div>
+          <div class="tree-scroll">
+            <ul class="tree" id="team-tree"></ul>
+          </div>
+        </aside>
+
+        <section class="main-panel">
+          <div class="breadcrumb" id="breadcrumb"></div>
+          <div class="main-scroll">
+            <div class="hero-line">
+              <div><h1 id="team-title">华东销售一组</h1><p id="team-subtitle"></p></div>
+              <div class="hero-actions">
+                <button class="icon-button" title="筛选"><i data-lucide="sliders-horizontal" class="icon"></i></button>
+                <button class="icon-button" title="导出"><i data-lucide="download" class="icon"></i></button>
+              </div>
+            </div>
+            <div class="metric-strip" id="metrics"></div>
+            <section class="content-panel">
+              <div class="content-head"><strong id="content-title">团队成员</strong><span id="content-count"></span></div>
+              <div id="content-body"></div>
+            </section>
+          </div>
+        </section>
+
+        <aside class="detail-panel">
+          <div class="panel-toolbar"><strong>成员详情</strong><button class="icon-button" title="关闭"><i data-lucide="x" class="icon"></i></button></div>
+          <div class="detail-body" id="detail-body"></div>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const teams = {
+      company: { id: 'company', name: 'Milogin Logistics', type: '公司', parent: null, level: 0 },
+      eastOps: { id: 'eastOps', name: '华东运营组', type: '运营组', parent: 'company', level: 1 },
+      eastA: { id: 'eastA', name: '华东销售一组', type: '销售团队', parent: 'eastOps', level: 2, leader: 'Daisy Zhou' },
+      eastB: { id: 'eastB', name: '华东销售二组', type: '销售团队', parent: 'eastOps', level: 2, leader: 'Leo Chen' },
+      southOps: { id: 'southOps', name: '华南运营组', type: '运营组', parent: 'company', level: 1 },
+      southA: { id: 'southA', name: '华南销售一组', type: '销售团队', parent: 'southOps', level: 2, leader: 'Mia Lin' },
+      direct: { id: 'direct', name: '大客户直属团队', type: '销售团队', parent: 'company', level: 1, leader: 'Jason Wu' }
+    };
+
+    const members = {
+      eastA: [
+        { id: 'daisy', name: 'Daisy Zhou', role: '主管', title: '华东一组负责人', load: 31, capacity: 40, reply: 92, follow: 18, risk: 2, unassigned: 5, touched: 38, deals: 6, activity: '8 分钟前', state: 'ok', action: '重点客户报价复核', color: '#0f766e' },
+        { id: 'yvonne', name: 'Yvonne Xu', role: '销售', title: '欧洲航线', load: 38, capacity: 40, reply: 88, follow: 21, risk: 4, unassigned: 3, touched: 44, deals: 5, activity: '21 分钟前', state: 'warn', action: '6 封客户邮件待回复', color: '#52707e' },
+        { id: 'zayne', name: 'Zayne Lin', role: '销售', title: '美线客户开发', load: 24, capacity: 40, reply: 96, follow: 11, risk: 0, unassigned: 2, touched: 25, deals: 4, activity: '1 小时前', state: 'ok', action: '保持当前节奏', color: '#496579' },
+        { id: 'felix', name: 'Felix You', role: '销售', title: '东南亚市场', load: 42, capacity: 40, reply: 73, follow: 27, risk: 7, unassigned: 8, touched: 51, deals: 3, activity: '2 小时前', state: 'bad', action: '负载过高，建议分配', color: '#875c3c' },
+        { id: 'jade', name: 'Jade Zhou', role: '销售', title: '北美航线', load: 29, capacity: 40, reply: 90, follow: 15, risk: 1, unassigned: 4, touched: 31, deals: 4, activity: '3 小时前', state: 'ok', action: '有 2 个报价待跟进', color: '#5f6f87' },
+        { id: 'mia', name: 'Mia Chen', role: '销售', title: '拉美市场', load: 35, capacity: 40, reply: 81, follow: 19, risk: 3, unassigned: 6, touched: 37, deals: 4, activity: '昨天', state: 'warn', action: '回复积压 5 封', color: '#80665a' },
+        { id: 'alex', name: 'Alex Zhang', role: '销售', title: '澳新市场', load: 18, capacity: 40, reply: 94, follow: 8, risk: 0, unassigned: 1, touched: 19, deals: 3, activity: '昨天', state: 'ok', action: '可承接更多线索', color: '#4f6b66' }
+      ],
+      eastB: [
+        { id: 'leo', name: 'Leo Chen', role: '主管', title: '华东二组负责人', load: 27, capacity: 40, reply: 89, follow: 15, risk: 1, unassigned: 3, touched: 31, deals: 5, activity: '12 分钟前', state: 'ok', action: '团队节奏正常', color: '#0f766e' },
+        { id: 'nora', name: 'Nora Wei', role: '销售', title: '日韩市场', load: 39, capacity: 40, reply: 78, follow: 24, risk: 5, unassigned: 7, touched: 46, deals: 3, activity: '40 分钟前', state: 'warn', action: '处理报价审批', color: '#5f6f87' }
+      ],
+      southA: [
+        { id: 'mialin', name: 'Mia Lin', role: '主管', title: '华南一组负责人', load: 22, capacity: 40, reply: 91, follow: 12, risk: 0, unassigned: 2, touched: 26, deals: 4, activity: '30 分钟前', state: 'ok', action: '关注 2 个重点客户', color: '#0f766e' },
+        { id: 'owen', name: 'Owen Huang', role: '销售', title: '中东市场', load: 36, capacity: 40, reply: 84, follow: 20, risk: 3, unassigned: 5, touched: 41, deals: 3, activity: '昨天', state: 'warn', action: '待回复 6 封', color: '#4f6b66' }
+      ],
+      direct: [
+        { id: 'jason', name: 'Jason Wu', role: '主管', title: '大客户负责人', load: 33, capacity: 40, reply: 93, follow: 18, risk: 1, unassigned: 1, touched: 25, deals: 7, activity: '16 分钟前', state: 'ok', action: '续约报价待确认', color: '#0f766e' }
+      ]
+    };
+
+    let currentTeam = 'eastA';
+    let selectedMember = 'daisy';
+    let mode = 'org';
+    let query = '';
+
+    const childrenOf = id => Object.values(teams).filter(team => team.parent === id);
+    const descendants = id => {
+      const direct = members[id] || [];
+      return [...direct, ...childrenOf(id).flatMap(team => descendants(team.id))];
+    };
+    const initials = name => name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
+    const riskClass = member => member.state;
+    const riskText = member => member.state === 'bad' ? '需支援' : member.state === 'warn' ? '需关注' : '正常';
+
+    function renderTree() {
+      const root = teams.company;
+      const children = childrenOf(root.id);
+      document.getElementById('team-tree').innerHTML = `
+        <li class="depth-0"><button data-team="${root.id}" class="${currentTeam === root.id ? 'active' : ''}"><i data-lucide="building-2" class="icon"></i><span>${root.name}</span><em>${descendants(root.id).length}<i data-lucide="chevron-right" class="icon"></i></em></button></li>
+        ${children.map(group => `
+          <li class="depth-1"><button class="level-1" data-team="${group.id}" class="${currentTeam === group.id ? 'active' : ''}"><i data-lucide="briefcase-business" class="icon"></i><span>${group.name}</span><em>${descendants(group.id).length}<i data-lucide="chevron-right" class="icon"></i></em></button></li>
+          ${childrenOf(group.id).map(team => `<li class="depth-2"><button class="level-2" data-team="${team.id}" class="${currentTeam === team.id ? 'active' : ''}"><i data-lucide="users-round" class="icon"></i><span>${team.name}</span><em>${descendants(team.id).length}<i data-lucide="chevron-right" class="icon"></i></em></button></li>`).join('')}
+        `).join('')}
+      `;
+      document.querySelectorAll('[data-team]').forEach(button => button.addEventListener('click', () => selectTeam(button.dataset.team)));
+      lucide.createIcons();
+    }
+
+    function chainFor(id) {
+      const chain = [];
+      let cursor = teams[id];
+      while (cursor) { chain.unshift(cursor); cursor = cursor.parent ? teams[cursor.parent] : null; }
+      return chain;
+    }
+
+    function renderBreadcrumb() {
+      const chain = chainFor(currentTeam);
+      document.getElementById('breadcrumb').innerHTML = chain.map((team, index) => {
+        const last = index === chain.length - 1;
+        const icon = team.id === 'company' ? 'building-2' : team.type === '运营组' ? 'briefcase-business' : 'users-round';
+        return `${last ? '<span class="crumb-node current"><i data-lucide="' + icon + '" class="icon"></i>' + team.name + '</span>' : '<button class="crumb-node" data-crumb="' + team.id + '"><i data-lucide="' + icon + '" class="icon"></i>' + team.name + '</button>'}<span class="crumb-sep"></span>`;
+      }).join('').replace(/<span class="crumb-sep"><\/span>$/, '');
+      document.querySelectorAll('[data-crumb]').forEach(button => button.addEventListener('click', () => selectTeam(button.dataset.crumb)));
+    }
+
+    function renderMetrics(people) {
+      const totalLoad = people.reduce((sum, member) => sum + member.load, 0);
+      const activeLoad = people.filter(member => member.load > 0).length || 1;
+      const avgLoad = Math.round(totalLoad / activeLoad);
+      const reply = people.length ? Math.round(people.reduce((sum, member) => sum + member.reply, 0) / people.length) : 0;
+      const open = people.reduce((sum, member) => sum + member.follow, 0);
+      const risk = people.reduce((sum, member) => sum + member.risk, 0);
+      document.getElementById('metrics').innerHTML = `
+        <div class="metric"><span>成员</span><strong>${people.length}</strong><em>当前范围</em></div>
+        <div class="metric"><span>平均负载</span><strong>${avgLoad}%</strong><em>${avgLoad > 85 ? '需要调整' : '处于合理区间'}</em></div>
+        <div class="metric"><span>回复率</span><strong>${reply}%</strong><em>近 30 天</em></div>
+        <div class="metric"><span>跟进中</span><strong>${open}</strong><em>开放事项</em></div>
+        <div class="metric"><span>需支援</span><strong>${risk}</strong><em>优先处理</em></div>
+      `;
+    }
+
+    function filteredPeople() {
+      const needle = query.trim().toLowerCase();
+      const people = descendants(currentTeam);
+      if (!needle) return people;
+      return people.filter(member => [member.name, member.role, member.title, member.action].some(value => value.toLowerCase().includes(needle)));
+    }
+
+    function renderOrg(people) {
+      const children = childrenOf(currentTeam);
+      if (children.length) {
+        document.getElementById('content-title').textContent = '下级团队';
+        document.getElementById('content-count').textContent = `${children.length} 个团队`;
+        document.getElementById('content-body').innerHTML = `<div class="team-grid">${children.map(team => {
+          const teamPeople = descendants(team.id);
+          const lead = team.leader || '未设置';
+          const avg = Math.round(teamPeople.reduce((sum, member) => sum + member.load, 0) / Math.max(1, teamPeople.length));
+          return `<button class="team-card" data-team-card="${team.id}">
+            <div class="team-card-top"><strong>${team.name}</strong><span>${team.type}</span></div>
+            <p>${lead} · ${teamPeople.length} 位成员</p>
+            <div class="team-progress"><i style="width:${Math.min(100, avg)}%"></i></div>
+            <div class="team-card-foot"><span>平均负载 ${avg}%</span><span class="enter-cue">${teamPeople.reduce((sum, member) => sum + member.risk, 0)} 项需支援<i data-lucide="arrow-up-right" class="icon"></i></span></div>
+          </button>`;
+        }).join('')}</div>`;
+        document.querySelectorAll('[data-team-card]').forEach(button => button.addEventListener('click', () => selectTeam(button.dataset.teamCard)));
+        return;
+      }
+      document.getElementById('content-title').textContent = '团队成员';
+      document.getElementById('content-count').textContent = `${people.length} 人`;
+      document.getElementById('content-body').innerHTML = `<table class="member-table">
+        <thead><tr><th style="width:28%">成员</th><th style="width:12%">角色</th><th style="width:22%">工作负载</th><th style="width:11%">回复率</th><th style="width:10%">跟进中</th><th style="width:13%">状态</th><th style="width:28px"></th></tr></thead>
+        <tbody>${people.map(member => `<tr data-member="${member.id}" class="${selectedMember === member.id ? 'selected' : ''}">
+          <td><div class="person-cell"><span class="avatar" style="background:${member.color}">${initials(member.name)}</span><span class="person-copy"><strong>${member.name}</strong><small>${member.title}</small></span></div></td>
+          <td><span class="role-pill">${member.role}</span></td>
+          <td><div class="load ${riskClass(member)}"><div class="load-track"><i style="width:${Math.min(100, Math.round(member.load / member.capacity * 100))}%"></i></div><em>${member.load}/${member.capacity}</em></div></td>
+          <td>${member.reply}%</td><td>${member.follow}</td>
+          <td><span class="risk-pill ${riskClass(member)}">${riskText(member)}</span></td><td class="row-cue"><i data-lucide="chevron-right" class="icon"></i></td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+      document.querySelectorAll('[data-member]').forEach(row => row.addEventListener('click', () => selectMember(row.dataset.member)));
+    }
+
+    function renderWork(people) {
+      document.getElementById('content-title').textContent = '成员工作负载';
+      document.getElementById('content-count').textContent = `${people.length} 人`;
+      const sorted = [...people].sort((a, b) => (b.load / b.capacity) - (a.load / a.capacity));
+      document.getElementById('content-body').innerHTML = `<div class="work-list">${sorted.map(member => {
+        const backlog = Math.max(0, Math.round((100 - member.reply) / 3));
+        const total = Math.max(1, backlog + member.follow + member.unassigned);
+        const reply = Math.round(backlog / total * 100);
+        const follow = Math.round(member.follow / total * 100);
+        const assign = Math.max(0, 100 - reply - follow);
+        return `<div class="work-row ${selectedMember === member.id ? 'selected' : ''}" data-member="${member.id}">
+          <div class="person-cell"><span class="avatar" style="background:${member.color}">${initials(member.name)}</span><span class="person-copy"><strong>${member.name}</strong><small>${member.title}</small></span></div>
+          <div><div class="work-stack"><i class="reply" style="width:${reply}%"></i><i class="follow" style="width:${follow}%"></i><i class="risk" style="width:${assign}%"></i></div><div class="work-legend"><span>回复积压 ${backlog}</span><span>跟进 ${member.follow}</span><span>待分配 ${member.unassigned}</span></div></div>
+          <div class="next-action">${member.action}<i data-lucide="arrow-up-right" class="icon"></i></div>
+        </div>`;
+      }).join('')}</div>`;
+      document.querySelectorAll('[data-member]').forEach(row => row.addEventListener('click', () => selectMember(row.dataset.member)));
+    }
+
+    function renderDetail() {
+      const people = descendants(currentTeam);
+      const member = people.find(item => item.id === selectedMember) || null;
+      const team = teams[currentTeam];
+      if (!member) {
+        document.getElementById('detail-body').innerHTML = `<div class="profile-space"><div class="profile-top"><span class="avatar">${initials(team.name)}</span><div class="profile-name"><strong>${team.name}</strong><span>${team.type}</span></div></div></div><div class="detail-empty">选择成员查看详情</div>`;
+        return;
+      }
+      const assignments = [
+        { title: 'Three Logistics · 欧洲线报价', meta: '今天到期 · 报价请求' },
+        { title: 'Gerardo Cota · 美线订舱', meta: '明天到期 · 订单跟进' },
+        { title: 'Zenith International · 新客户首次跟进', meta: '2 天后 · 自动开发' }
+      ];
+      document.getElementById('detail-body').innerHTML = `
+        <div class="profile-space">
+          <div class="profile-top"><span class="avatar" style="background:${member.color}">${initials(member.name)}</span><div class="profile-name"><strong>${member.name}</strong><span>${member.role} · ${team.name}</span></div></div>
+          <div class="profile-tags"><span>${member.title}</span><span>${member.state === 'bad' ? '需要支援' : member.state === 'warn' ? '需要关注' : '状态正常'}</span></div>
+          <div class="detail-actions"><button>分派线索</button><button>查看工作台</button></div>
+        </div>
+        <section class="detail-section"><h3>当前概况</h3><div class="mini-metrics">
+          <div><strong>${member.load}%</strong><span>工作负载</span></div><div><strong>${member.reply}%</strong><span>回复率</span></div>
+          <div><strong>${member.follow}</strong><span>跟进中</span></div><div><strong>${member.risk}</strong><span>需支援</span></div>
+        </div></section>
+        <section class="detail-section"><h3>优先事项</h3>${assignments.map(item => `<div class="assignment"><strong>${item.title}</strong><span>${item.meta}</span></div>`).join('')}</section>
+        <section class="detail-section"><h3>能力与负荷</h3><div class="assignment"><strong>${member.action}</strong><span>建议主管在今日完成检查</span></div><div class="assignment"><strong>已触达 ${member.touched} · 成交 ${member.deals}</strong><span>近 30 天</span></div></section>
+      `;
+    }
+
+    function render() {
+      const team = teams[currentTeam];
+      const people = filteredPeople();
+      document.getElementById('top-team-name').textContent = team.name;
+      document.getElementById('team-title').textContent = team.name;
+      document.getElementById('team-subtitle').textContent = `${team.type} · 当前范围 ${descendants(currentTeam).length} 位成员`;
+      renderTree();
+      renderBreadcrumb();
+      renderMetrics(people);
+      if (mode === 'org') renderOrg(people); else renderWork(people);
+      renderDetail();
+      lucide.createIcons();
+    }
+
+    function selectTeam(id) {
+      currentTeam = id;
+      const first = descendants(id)[0];
+      selectedMember = first ? first.id : null;
+      render();
+    }
+
+    function selectMember(id) {
+      selectedMember = id;
+      render();
+    }
+
+    document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => {
+      mode = button.dataset.mode;
+      document.querySelectorAll('[data-mode]').forEach(item => item.classList.toggle('active', item === button));
+      render();
+    }));
+
+    document.getElementById('search-input').addEventListener('input', event => {
+      query = event.target.value;
+      render();
+    });
+
+    document.querySelectorAll('.rail-item').forEach(button => button.addEventListener('click', () => {
+      document.querySelectorAll('.rail-item').forEach(item => item.classList.toggle('active', item === button));
+    }));
+
+    render();
+  </script>
+</body>
+</html>

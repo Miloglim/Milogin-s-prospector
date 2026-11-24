@@ -11,6 +11,8 @@ import { INBOX_LABEL_DDL } from '../core/inbox-label-storage';
 import { INBOX_ANALYSIS_DDL } from '../core/inbox-analysis-storage';
 import { MAIL_ANALYSIS_QUEUE_DDL } from '../core/mail-analysis-queue-storage';
 import { INBOX_TODO_DDL } from '../core/inbox-todo-storage';
+import { ASSISTANT_DDL } from '../core/assistant-storage';
+import { INBOX_CONVERSATION_STATE_DDL } from '../core/inbox-conversation-state-storage';
 import { INBOX_SEEN_OUTBOX_DDL } from '../core/inbox-seen-outbox-storage';
 import { installSearchIndex, searchLatin } from "./search-index";
 import * as path from "path";
@@ -378,7 +380,15 @@ export function runMigrations(): void {
   step('v0.72-inbox-mail-analyses', () => raw.exec(INBOX_ANALYSIS_DDL));
   step('v0.72-mail-analysis-queue', () => raw.exec(MAIL_ANALYSIS_QUEUE_DDL));
   step('v0.72-inbox-todo-states', () => raw.exec(INBOX_TODO_DDL));
+  step('v0.75-assistant-reminders', () => raw.exec(ASSISTANT_DDL));
+  step('v0.76-assistant-card-facts', () => {
+    const columns = tableCols('assistant_reminders');
+    if (!columns.includes('kind')) raw.exec('ALTER TABLE assistant_reminders ADD COLUMN kind TEXT');
+    if (!columns.includes('facts_json')) raw.exec("ALTER TABLE assistant_reminders ADD COLUMN facts_json TEXT NOT NULL DEFAULT '{}'");
+  });
+  step('v0.74-inbox-conversation-states', () => raw.exec(INBOX_CONVERSATION_STATE_DDL));
   step('v0.72-inbox-seen-outbox', () => raw.exec(INBOX_SEEN_OUTBOX_DDL));
+  step('v0.75-drop-inbox-functional-folders', () => raw.exec('DROP TABLE IF EXISTS inbox_functional_folders; DROP TABLE IF EXISTS inbox_functional_folder_operations;'));
   step('v0.72-inbox-initial-2000', () => {
     raw.prepare("DELETE FROM email_sync_state WHERE folder='inbox' AND (target_count < 2000 OR first_completed_at IS NULL)").run();
   });

@@ -2,7 +2,7 @@ import type { ContactMailKind, MailClassification } from './contact-mail';
 
 export const MAIL_RELEVANCE_VALUES = ['customer_business', 'internal', 'notification', 'vendor', 'spam', 'unknown'] as const;
 export type MailRelevance = typeof MAIL_RELEVANCE_VALUES[number];
-export const MAIL_INTENT_CODES = ['price_inquiry', 'quote_request', 'schedule_request', 'order_followup', 'complaint', 'cooperation', 'no_action', 'other'] as const;
+export const MAIL_INTENT_CODES = ['price_inquiry', 'quote_request', 'schedule_request', 'order_followup', 'contract_signed', 'booking_confirmed', 'deal_won', 'complaint', 'cooperation', 'no_action', 'other'] as const;
 export type MailIntentCode = typeof MAIL_INTENT_CODES[number];
 export const MAIL_PRIORITIES = ['normal', 'important', 'urgent'] as const;
 export type MailPriority = typeof MAIL_PRIORITIES[number];
@@ -42,6 +42,12 @@ export interface MailActionability {
   priority: MailPriority;
   dueHint: string | null;
 }
+
+const DEAL_WON_EVIDENCE = [
+  { code: 'contract_signed' as const, label: '合同已签署', words: ['contract signed', 'signed contract', '合同已签', '合同签署'] },
+  { code: 'booking_confirmed' as const, label: '订舱已确认', words: ['booking confirmed', 'booking number', '订舱确认', '订舱号', '订舱编号'] },
+  { code: 'deal_won' as const, label: '确认成交', words: ['deal won', 'order confirmed', '成交确认', '已成交', '确认成交'] },
+] as const;
 
 export interface MailAnalysisResult {
   classification: MailClassification;
@@ -165,6 +171,9 @@ const INTERNAL_WORDS = ['internal', '内部', '同事', '员工'] as const;
 const VENDOR_WORDS = ['invoice', 'receipt', 'subscription', 'newsletter', '广告', '供应商', '账单'] as const;
 const SPAM_WORDS = ['unsubscribe', 'promotion', 'marketing', '促销', '营销', '退订'] as const;
 const INTENT_RULES: ReadonlyArray<{ code: MailIntentCode; label: string; words: readonly string[] }> = [
+  { code: 'contract_signed', label: '合同已签署', words: ['contract signed', 'signed contract', '合同已签', '合同签署'] },
+  { code: 'booking_confirmed', label: '订舱已确认', words: ['booking confirmed', 'booking number', '订舱确认', '订舱号', '订舱编号'] },
+  { code: 'deal_won', label: '确认成交', words: ['deal won', 'order confirmed', '成交确认', '已成交', '确认成交'] },
   { code: 'complaint', label: '客户投诉', words: ['complaint', 'claim', 'damaged', '投诉', '索赔', '破损', '延误'] },
   { code: 'quote_request', label: '报价请求', words: ['quotation', 'quote', 'rfq', '报价', '询价'] },
   { code: 'price_inquiry', label: '价格咨询', words: ['price', 'rate', 'cost', '价格', '运费'] },
@@ -185,6 +194,7 @@ export function actionabilityFor(input: { relevance: MailRelevance; classificati
   if (input.classification === 'bounced') return { requiresAction: true, nextAction: '核对并修正联系人邮箱', priority: 'important', dueHint: '同日内' };
   if (input.classification === 'autoreply' || input.intent === null || input.intent === 'no_action' || input.intent === 'other') return { requiresAction: false, nextAction: null, priority: 'normal', dueHint: null };
   if (input.intent === 'complaint') return { requiresAction: true, nextAction: '优先处理客户问题', priority: 'urgent', dueHint: '24 小时内' };
+  if (input.intent === 'contract_signed' || input.intent === 'booking_confirmed' || input.intent === 'deal_won') return { requiresAction: true, nextAction: '核对成交信息；不符合请取消记录', priority: 'important', dueHint: '24 小时内' };
   if (input.intent === 'price_inquiry' || input.intent === 'quote_request') return { requiresAction: true, nextAction: '回复客户询价', priority: input.confidence >= 0.85 ? 'important' : 'normal', dueHint: '24 小时内' };
   if (input.intent === 'schedule_request') return { requiresAction: true, nextAction: '确认船期或交货安排', priority: 'important', dueHint: '24 小时内' };
   if (input.intent === 'order_followup') return { requiresAction: true, nextAction: '继续跟进订单进度', priority: 'normal', dueHint: '48 小时内' };
@@ -194,6 +204,20 @@ export function actionabilityFor(input: { relevance: MailRelevance; classificati
 
 export function isCustomerBusinessMail(analysis: Pick<MailAnalysisResult, 'relevance'>): boolean {
   return analysis.relevance === 'customer_business';
+}
+
+/** Explicit model code first; otherwise only promote when the source evidence contains a concrete deal phrase. */
+export function dealWonSignalFor(record: Pick<MailAnalysisResult, 'classification' | 'relevance' | 'signals' | 'evidence'>): MailBusinessSignal | undefined {
+  if (record.classification !== 'replied' || record.relevance !== 'customer_business') return undefined;
+  const explicit = record.signals.find(signal => (['contract_signed', 'booking_confirmed', 'deal_won'] as readonly string[]).includes(signal.code) && signal.confidence >= 0.85);
+  if (explicit) return explicit;
+  const evidenceText = record.evidence.join('\n').toLocaleLowerCase();
+  if (!evidenceText) return undefined;
+  for (const rule of DEAL_WON_EVIDENCE) {
+    const evidence = rule.words.find(word => evidenceText.includes(word.toLocaleLowerCase()));
+    if (evidence) return { code: rule.code, label: rule.label, confidence: 0.86, evidence };
+  }
+  return undefined;
 }
 
 export function shouldCreateTaskSuggestion(

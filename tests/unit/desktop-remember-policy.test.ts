@@ -1,9 +1,20 @@
 import {describe,it,expect,vi} from 'vitest';
 import {createDesktopSessionService} from '../../server/services/desktop-session';
 import type {DesktopSessionRepository} from '../../server/core/desktop-session';
-import {success} from '../../server/core/crm';
+import {failure,success} from '../../server/core/crm';
+
+function loginService(credential: Awaited<ReturnType<DesktopSessionRepository['credential']>>, verified=true) {
+  const repo={credential:async()=>credential} as unknown as DesktopSessionRepository;
+  return createDesktopSessionService(repo,{verify:async()=>verified,hash:async()=> 'hash'},{create:()=> 'a'.repeat(43),hash:x=>x},{now:()=>0},3600);
+}
 
 describe('desktop remembered credential lifetime',()=>{
+ it('keeps a valid session usable when the optional presence heartbeat fails',async()=>{
+  const identity={userId:'a',email:'a@example.invalid',displayName:'A',emailVerified:true,identityAdmin:false,crmRoles:['sales' as const]};
+  const repo={desktopIdentity:async()=>success(identity),touchPresence:async()=>failure('DATABASE_ERROR','presence unavailable')} as unknown as DesktopSessionRepository;
+  const service=createDesktopSessionService(repo,{verify:async()=>true,hash:async()=> 'hash'},{create:()=> 'a'.repeat(43),hash:x=>x},{now:()=>0},3600);
+  expect(await service.me('a'.repeat(43))).toEqual(success(identity));
+ });
  it('rejects malformed desktop metadata before accessing credentials',async()=>{
   const credential=vi.fn(async()=>success(null));
   const repo={credential} as unknown as DesktopSessionRepository;
@@ -28,4 +39,13 @@ describe('desktop remembered credential lifetime',()=>{
   expect(rotation[1].idleExpiresAt).toBe(new Date(now+15*day).toISOString());
   expect(rotation[1]).not.toHaveProperty('absoluteExpiresAt');
  });
+  it.each([
+    ['unknown account', success(null), true, 'ACCOUNT_NOT_FOUND'],
+    ['missing center password', success({userId:'a',passwordHash:null,active:true,securityRevision:1}), true, 'ACCOUNT_NOT_CONFIGURED'],
+    ['disabled account', success({userId:'a',passwordHash:'hash',active:false,securityRevision:1}), true, 'ACCOUNT_DISABLED'],
+    ['wrong password', success({userId:'a',passwordHash:'hash',active:true,securityRevision:1}), false, 'INVALID_CREDENTIALS'],
+  ])('returns an actionable %s login result',async(_label,credential,verified,code)=>{
+    const result=await loginService(credential as never,verified as boolean).login({email:'a@example.invalid',password:'fixture123'});
+    expect(result).toMatchObject({ok:false,error:{code}});
+  });
 });

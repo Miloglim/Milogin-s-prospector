@@ -25,13 +25,13 @@ describe('original customer route',()=>{
  it('keeps customer navigation free of manual sync controls',async()=>{
   const invalidate=vi.spyOn(client,'invalidateQueries');
   await act(async()=>root.render(<QueryClientProvider client={client}><LegacyCustomersPage/></QueryClientProvider>));await act(flush);
-  expect(host.textContent).toContain('跟进看板');
   expect(host.textContent).toContain('联系人');
   expect(host.textContent).toContain('分配线索');
   expect(host.textContent).toContain('公司');
   expect(host.querySelector('.crm-sync-bar')).toBeNull();
   const header=host.firstElementChild!.firstElementChild!;
-  expect(header.querySelector('.ant-segmented')).not.toBeNull();
+  expect(header.querySelector('.customer-page-tabs')).not.toBeNull();
+  expect(Array.from(header.querySelectorAll('.customer-page-tab')).map(x=>x.textContent)).toEqual(['联系人','公司','分配线索']);
   expect(Array.from(header.querySelectorAll('button')).some(x=>x.textContent?.replace(/\s/g,'').includes('同步'))).toBe(false);
   expect(document.body.textContent).not.toContain('客户同步');
   expect(document.body.textContent).not.toContain('立即同步');

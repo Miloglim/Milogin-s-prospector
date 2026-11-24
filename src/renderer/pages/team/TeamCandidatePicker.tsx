@@ -1,5 +1,6 @@
 import { useDeferredValue, useState } from 'react';
 import { Search } from 'lucide-react';
+import type { TeamUnitType } from '../../../shared/online-crm';
 import { useTeamCandidates } from './team-data';
 
 function candidateScore(row: { displayName: string; email?: string | null }, search: string): number {
@@ -17,10 +18,10 @@ export function rankTeamCandidates<T extends { displayName: string; email?: stri
   return [...rows].sort((left, right) => candidateScore(left, query) - candidateScore(right, query) || left.displayName.localeCompare(right.displayName, 'zh-CN'));
 }
 
-export function TeamCandidatePicker({ selected, onChange, enabled, purpose = 'invite' }: { selected: readonly string[]; onChange: (ids: string[]) => void; enabled: boolean; purpose?: 'invite' | 'create' }) {
+export function TeamCandidatePicker({ selected, onChange, enabled, unitType, purpose = 'invite' }: { selected: readonly string[]; onChange: (ids: string[]) => void; enabled: boolean; unitType: TeamUnitType; purpose?: 'invite' | 'create' }) {
   const [search, setSearch] = useState('');
   const deferred = useDeferredValue(search.trim());
-  const query = useTeamCandidates(deferred, enabled && deferred.length > 0, 'member', 'sales_team', purpose);
+  const query = useTeamCandidates(deferred, enabled && deferred.length > 0, 'member', unitType, purpose);
   const result = query.data;
   const rows = result?.ok ? rankTeamCandidates(result.data.items, deferred) : [];
   const toggle = (userId: string) => onChange(selected.includes(userId) ? selected.filter(id => id !== userId) : [...selected, userId]);

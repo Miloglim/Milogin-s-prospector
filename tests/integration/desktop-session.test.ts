@@ -22,7 +22,7 @@ const logs: string[] = [];
 const log = { write: (_level: string, _context: string, message: string) => { logs.push(message); } };
 const password = randomBytes(24).toString('hex');
 const clock = { now: () => Date.now() };
-const users = { a: randomUUID(), b: randomUUID(), restricted: randomUUID(), admin: randomUUID(), handoff: randomUUID(), handoff_ready: randomUUID() };
+const users = { a: randomUUID(), b: randomUUID(), restricted: randomUUID(), admin: randomUUID(), handoff: randomUUID(), handoff_ready: randomUUID(), credentialless: randomUUID() };
 const prefix = `desktop-${Date.now()}`;
 const email = (key: keyof typeof users) => `${prefix}-${key}@example.invalid`;
 let pool: Pool, repo: PostgresAuthRepository, passwords: PasswordAdapter;
@@ -73,6 +73,11 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
     await passwords.initialize();
     const hash = await passwords.hash(password);
     for (const key of Object.keys(users) as (keyof typeof users)[]) {
+      if (key === 'credentialless') {
+        await pool.query("INSERT INTO public.identity_users(user_id,display_name,active,identity_admin,must_change_password) VALUES($1,'credentialless',true,false,false)", [users[key]]);
+        await pool.query('INSERT INTO public.identity_login_emails(user_id,email,verified_at) VALUES($1,$2,now())', [users[key], email(key)]);
+        continue;
+      }
       const fixture = await repo.ensureFixture({ userId: users[key], email: email(key), displayName: key, identityAdmin: key === 'admin', crmRoles: [key === 'admin' ? 'admin' : 'sales'], passwordHash: hash, mustChangePassword: key === 'restricted' });
       if (!fixture.ok) throw new Error(`${key}: ${fixture.error.code} ${fixture.error.message}`);
     }
@@ -97,6 +102,17 @@ describe.runIf(process.env.PROSPECTOR_PG_INTEGRATION === '1')('desktop sessions 
     expect(await passwords.verify(password, saved.rows[0].password_hash)).toBe(true);
     const audit = await pool.query("SELECT action FROM public.identity_management_audit WHERE target_id=$1 AND action='identity.register'", [account.body.data.identity.userId]);
     expect(audit.rows).toHaveLength(1);
+  });
+
+  it('distinguishes an existing account with no center password from a wrong password', async () => {
+    expect(await request(ROUTES.login, { email: email('credentialless'), password })).toMatchObject({
+      status: 409,
+      body: { ok: false, error: { code: 'ACCOUNT_NOT_CONFIGURED', message: '该账号尚未设置中心登录密码，请联系超级管理员重置密码' } },
+    });
+    expect(await request(ROUTES.login, { email: email('a'), password: `${password}wrong` })).toMatchObject({
+      status: 401,
+      body: { ok: false, error: { code: 'INVALID_CREDENTIALS', message: '密码不正确，请重新输入或联系超级管理员重置密码' } },
+    });
   });
 
   it('persists only hashes, restores after server restart and rotates with one concurrent winner', async () => {

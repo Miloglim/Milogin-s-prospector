@@ -14,16 +14,18 @@ describe('formal customer page reuses original presentation with center identity
   beforeEach(() => { window.location.hash = '#/customers'; (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) }); invoke = vi.fn(async (channel, input) => channel === ONLINE_CHANNELS.CONTACT_DETAIL ? { ok: true, data: { contact: fixture, company: { companyId: 1, name: fixture.companyName, domain: null, backcheckData: null }, activities: [], canEdit: true, canFollowup: true, canAssign: false, mailAvailable: false } } : channel === ONLINE_CHANNELS.CONTACT_GROUPS ? { ok: true, data: { items: [{ key: 'fixture-batch', label: 'Fixture batch', count: 51, companyCount: 12, countryCount: 3, touchedCount: 7, companies: ['Acme', 'Northwind'], countries: ['Brazil', 'Chile'], clientTypes: ['代理'], sourceLevel1: ['阿里国际站'], latestImportedAt: '2026-10-27T10:00:00.000Z' }], total: 1 } } : { ok: true, data: { items: [fixture], total: (input as { limit?: number } | undefined)?.limit === 100 ? 1 : 51 } }); Object.defineProperty(window, 'api', { configurable: true, value: { invoke } }); queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }); host = document.createElement('div'); document.body.append(host); root = createRoot(host); });
   afterEach(async () => { await act(async () => root.unmount()); queryClient.clear(); host.remove(); localStorage.removeItem('contacts-cols'); localStorage.removeItem('contacts-cols-lead-fields'); });
   const mount = async () => { await act(async () => { root.render(<QueryClientProvider client={queryClient}><LegacyCustomersPage /></QueryClientProvider>); }); await act(flush); };
-  const showTable = async () => { await act(async () => { Array.from(host.querySelectorAll('.ant-segmented-item')).find(item => item.textContent === '联系人')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); await vi.waitFor(() => expect(host.querySelector('.contact-group-panel-row')).not.toBeNull(), { timeout: 2000 }); await act(async () => { host.querySelector<HTMLButtonElement>('.contact-group-panel-open')!.click(); }); await act(() => new Promise(resolve => setTimeout(resolve, 250))); };
+  const showTable = async () => { await act(async () => { Array.from(host.querySelectorAll('.customer-page-tab')).find(item => item.textContent === '联系人')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); await vi.waitFor(() => expect(host.querySelector('.contact-group-panel-row')).not.toBeNull(), { timeout: 2000 }); await act(async () => { host.querySelector<HTMLButtonElement>('.contact-group-panel-open')!.click(); }); await act(() => new Promise(resolve => setTimeout(resolve, 250))); };
   const openTable = async () => { await showTable(); await vi.waitFor(() => expect(host.querySelector('.ant-table-row')).not.toBeNull(), { timeout: 2000 }); };
   it('shows contact groups first and opens the existing table as the second level', async () => {
     await mount();
-    await act(async () => { Array.from(host.querySelectorAll('.ant-segmented-item')).find(item => item.textContent === '联系人')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    await act(async () => { Array.from(host.querySelectorAll('.customer-page-tab')).find(item => item.textContent === '联系人')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
     await vi.waitFor(() => expect(host.querySelector('.contact-group-panel-row')).not.toBeNull(), { timeout: 2000 });
     expect(host.textContent).toContain('Fixture batch');
     expect(host.querySelector('.contact-group-panel-row')?.textContent).toContain('51');
     expect(host.querySelector('.contact-group-panel-row')?.textContent).toContain('阿里国际站');
-    expect(host.textContent).toContain('覆盖公司12'); expect(host.textContent).toContain('覆盖国家3'); expect(host.textContent).toContain('已触达7');
+    const split = host.querySelector('.contact-group-split')!;
+    expect(split.firstElementChild?.classList.contains('contact-group-members')).toBe(true);
+    expect(split.children[1]?.classList.contains('contact-group-panel')).toBe(true);
     await act(async () => { host.querySelector<HTMLButtonElement>('.contact-group-panel-open')!.click(); });
     await vi.waitFor(() => expect(host.querySelector('.ant-table-row')).not.toBeNull(), { timeout: 2000 });
     expect(host.querySelector('.contact-group-panel-row.is-active')?.textContent).toContain('Fixture batch');
@@ -46,7 +48,7 @@ describe('formal customer page reuses original presentation with center identity
     expect(invoke.mock.calls.every(call => String(call[0]).startsWith('online:') || call[0] === 'system:getConfig')).toBe(true);
   });
   it('shows center errors rather than treating an unavailable endpoint as a successful empty list', async () => {
-    invoke.mockResolvedValue({ ok: false, error: { code: 'UNAVAILABLE', message: '中心暂不可用' } }); await mount(); await act(async () => { Array.from(host.querySelectorAll('.ant-segmented-item')).find(item => item.textContent === '联系人')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); await vi.waitFor(() => expect(host.querySelector('[role="alert"]')).not.toBeNull(), { timeout: 2000 });
+    invoke.mockResolvedValue({ ok: false, error: { code: 'UNAVAILABLE', message: '中心暂不可用' } }); await mount(); await act(async () => { Array.from(host.querySelectorAll('.customer-page-tab')).find(item => item.textContent === '联系人')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); await vi.waitFor(() => expect(host.querySelector('[role="alert"]')).not.toBeNull(), { timeout: 2000 });
     expect(host.querySelector('[role="alert"]')!.textContent).toContain('中心暂不可用');
   });
   it.each([false,true])('migrates old source preferences once and preserves explicit batch-source choices (new=%s)',async(current)=>{
@@ -113,13 +115,10 @@ describe('formal customer page reuses original presentation with center identity
     await vi.waitFor(() => expect(host.textContent).toContain('Acme'));
     expect(host.textContent).toContain('1人');
   });
-  it('keeps original board and company presentation while all queries remain center scoped', async () => {
+  it('keeps the original company presentation while all queries remain center scoped', async () => {
     invoke.mockImplementation(async (channel, input) => channel === ONLINE_CHANNELS.COMPANY_LIST ? {ok:true,data:{items:[{companyId:1,name:fixture.companyName,domain:null,industry:null,country:null,size:null,createdAt:fixture.createdAt,updatedAt:fixture.updatedAt,contactCount:1,canDelete:false,revision:'revision'}],total:1}} : channel === 'system:getConfig' ? {success:true,data:{crm:{}}} : channel === ONLINE_CHANNELS.CONTACT_DETAIL ? { ok: true, data: { contact: fixture, company: { companyId: 1, name: fixture.companyName, domain: null, backcheckData: null }, activities: [], canEdit: true, canFollowup: true, canAssign: false, mailAvailable: false } } : { ok: true, data: { items: [fixture], total: (input as { limit?: number } | undefined)?.limit === 100 ? 1 : 51 } });
     await mount();
-    await act(async () => { Array.from(host.querySelectorAll('.ant-segmented-item')).find(item => item.textContent === '跟进看板')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); await act(flush);
-    expect(host.textContent).toContain('全部国家'); expect(host.textContent).toContain('触达中'); expect(host.textContent).toContain('Alice');
-    expect(Array.from(host.querySelectorAll('button')).find(button => button.textContent === '运价更新')?.disabled).toBe(false);
-    await act(async () => { Array.from(host.querySelectorAll('.ant-segmented-item')).find(item => item.textContent === '公司')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); await act(flush);
+    await act(async () => { Array.from(host.querySelectorAll('.customer-page-tab')).find(item => item.textContent === '公司')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); await act(flush);
     expect(host.querySelector('[style*="width: 280px"]')).toBeTruthy(); expect(host.textContent).toContain('Preview Company'); expect(host.textContent).toContain('发 —');
     expect(invoke.mock.calls.every(call => String(call[0]).startsWith('online:') || call[0] === 'system:getConfig')).toBe(true);
   });

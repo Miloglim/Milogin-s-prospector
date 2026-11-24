@@ -34,11 +34,12 @@ describe('canonical organization rules', () => {
     expect(createsOrganizationCycle('team-a', null, [])).toBe(false);
   });
 
-  it('limits ordinary members but allows multi-team leaders', () => {
+  it('limits ordinary members to one team but allows multi-team leaders', () => {
     expect(canCreateOrganizationAssignment('sales_team', 'member', [], 'team-a')).toEqual({ allowed: true });
     expect(canCreateOrganizationAssignment('sales_team', 'member', [{ unitId: 'team-a', role: 'member' }], 'team-a')).toEqual({ allowed: true });
     expect(canCreateOrganizationAssignment('sales_team', 'member', [{ unitId: 'team-a', role: 'member' }], 'team-b').allowed).toBe(false);
-    expect(canCreateOrganizationAssignment('operations_group', 'member', [], 'ops-a').allowed).toBe(false);
+    expect(canCreateOrganizationAssignment('operations_group', 'member', [], 'ops-a')).toEqual({ allowed: true });
+    expect(canCreateOrganizationAssignment('operations_group', 'member', [{ unitId: 'ops-a', role: 'member' }], 'ops-b').allowed).toBe(false);
     expect(canCreateOrganizationAssignment('sales_team', 'leader', [{ unitId: 'team-a', role: 'member' }], 'team-b')).toEqual({ allowed: false, reason: '普通成员不能同时担任负责人' });
     expect(canCreateOrganizationAssignment('sales_team', 'member', [{ unitId: 'team-a', role: 'leader' }], 'team-b').allowed).toBe(false);
     expect(canCreateOrganizationAssignment('sales_team', 'leader', [{ unitId: 'team-a', role: 'leader' }], 'team-b').allowed).toBe(true);

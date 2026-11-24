@@ -1,5 +1,85 @@
 # IPC 契约
 
+## 2026-11-24 样例邮件（临时，无 IPC）
+
+不新增任何 IPC 或页面入口。`sample-mail` 定向版本登录后由主进程后台一次性上传最多 1000 封未传邮件（每批 100 封、单封正文 64 KB、单包 20 MB），完成后在 `sample-mail-sync.json` 写 `done=true`，不再执行。中心接口为 `POST /api/crm/sample-mail/upload`（另有只读列表/下载/删除供人工取回）；每个账号保留最近 10 包，30 天过期。
+
+## 2026-11-18 收件箱左栏汇总
+
+| 通道 | 入参 | 输出 | 说明 |
+|---|---|---|---|
+| `inbox:summary` | `InboxSummaryRequest { accountId?, startAt?, endAt? }` | `InboxSummary` | 只读汇总全部邮件、未读、分类、日期、账号、文件夹、置顶和会话级指标；不受当前分类或搜索影响 |
+
+`InboxSummary` 同时返回 `allTotal` 作为「全部账号」总数；`conversations` 只含每个会话的最新邮件，并沿用 `_analysis`、`_todoState`、`_conversationState` 和中心联系人链接。左栏计数、日历和账号总数读取该通道，邮件列表仍使用 `inbox:list` 的游标分页；汇总只读当前账号本地 SQLite，不写入中心或邮件事实。
+
+## 2026-11-18 客户状态命令
+
+| 通道 | 入参 | HTTP 路由 | 返回/边界 |
+|---|---|---|---|
+| `online:customer-status` | `customerId` | `GET /api/crm/customer-status/:customerId` | `CustomerStatusView`，包含当前投影和最多 50 条状态事件 |
+| `online:customer-status-correct` | `{ customerId, contactId?, expectedVersion, status, reason, idempotencyKey }` | `POST /api/crm/customer-status/:customerId/correct` | `CustomerStatusState`；必须填写原因，成功后锁定自动来源 |
+| `online:customer-status-resume` | `{ customerId, expectedVersion, idempotencyKey }` | `POST /api/crm/customer-status/:customerId/resume-ai` | `CustomerStatusState`；解除人工锁定并记录 `ai_resume` |
+
+三个通道都返回统一 `Result`。`expectedVersion` 使用当前投影版本；无投影首次纠正传 `0`。人工锁定只阻止 `ai/system/import` 自动覆盖，不隐藏历史事件，也不删除邮件、商机或销售 Case。
+
+## 2026-11-18 助理提醒整理（本地 IPC）
+
+- `assistant:snapshot`：返回当前提醒、整理设置、上次完整整理时间、AI 是否可用和是否到期；不触发模型调用。
+- `assistant:queue`：返回任务工作台的全量源队列，不调用模型、不受“最多 4 条”限制；顺序为报价、需回复邮件、收件箱待办、中心到期待办、停滞跟进，每项带 `kind/facts`。收件箱待办与左侧「待办」使用同一准入规则，`my_role=cc`、同域内部邮件和已处理项不计入。
+- `assistant:run`：参数 `force?: boolean`。未到期且非强制时不调用模型；到期后汇总本地待回复邮件、今天到期待办、待确认报价和停滞线索，最多选 3 条。模型不可用或返回不可解析时退回规则排序，不影响提醒展示。
+- `assistant:dismiss`：按 `reminderId` 忽略一条提醒，72 小时内同一签名不再重新出现。
+- `assistant:settingsUpdate`：更新启用开关、模型整理间隔（5–1440 分钟，界面提供 30/60/120/240）和四类提醒来源。
+- 主进程推送 `assistant:updated` 全量快照；除运行、忽略和设置变化外，收件、邮件分析、待办及中心任务/报价/Case 写入也会经 `assistant-bus` 去抖后触发刷新。通道必须同时存在于 `src/main/events.ts` 白名单，否则渲染端订阅会被拒绝。
+- 来源事件刷新先使用规则候选，模型只按设置的间隔或手动强制运行参与改写；渲染端 60 秒 snapshot 仅作漏事件和离线恢复兜底。
+
+## 2026-11-16 团队负责人字段与顺序
+
+`online:team-monitoring` 返回的 `TeamMonitoringMemberSummary` 新增 `role: 'leader' | 'member'`。中心成员聚合同时包含负责人和普通成员；成员查询先按负责人优先，再按最近活动、姓名和账号 ID 排序。团队画布、组织视角、工作视角和团队分析共同消费 `compareTeamMemberOrder` / `orderTeamMembers`，负责人必须稳定出现在账号列表第一位。
+
+本变化只扩展现有团队分析返回字段，不新增 IPC、HTTP 路由、数据库表或写权限。用户可见的“群主”和团队内“主管”角色文案统一为“负责人”；持久化角色值仍为 `leader`。
+
+## 2026-11-16 团队页面导航查询
+
+团队路由 `#/team` 新增本地导航查询参数 `section`，用于侧栏团队内嵌子菜单与页面状态同步。合法值由 `src/shared/team-workspace.ts` 的 `TEAM_SECTIONS` 单一来源定义：
+
+| section | 页面 |
+|---|---|
+| `workspace` | 我的 |
+| `overview` | 团队 |
+| `monitoring` | 团队管理（团队分析页） |
+| `team` | 团队详情（由团队分析页按钮进入） |
+| `performance` | 绩效 |
+| `setup` | 创建 / 加入 |
+
+`teamSectionSearch` 只保留合法值，未知值从路由搜索参数中剔除。侧栏菜单、`TeamWorkspace` 和路由校验共同消费该契约；不在组件里另写字符串白名单。该查询只控制本地页面，不改变 IPC、HTTP、权限或持久化数据。
+
+## 2026-11-13 团队一对一私聊
+
+团队协作新增成员私聊，不提供团队群聊。三个通道统一返回 `Result`，团队、成员、消息正文和分页上限由服务层再次校验：
+
+| 通道 | 输入 | HTTP 路由 | 输出/边界 |
+|---|---|---|---|
+| `online:team-conversations` | `{ teamId, limit }` | `GET /api/crm/team-conversations?teamId&limit` | `TeamDirectConversationPage`；返回对端、最后消息、`lastMessageId`、`lastReadAt`、`unreadCount` 和 `presence`，由当前账号视角计算 |
+| `online:team-messages` | `{ teamId, memberUserId, limit, beforeMessageId? }` | `GET /api/crm/team-messages?teamId&memberUserId&limit&beforeMessageId` | `TeamDirectMessagePage`；只返回一对一会话，按 `created_at+message_id` 游标向更早分页，返回 `hasMore/nextCursor`，GET 不修改已读状态 |
+| `online:team-message-send` | `TeamDirectMessageSend` | `POST /api/crm/team-messages` | 支持 `text/attachment/email_ref`；`email_ref` 只接收主题、发件人、收件人、时间和摘要快照，不接收完整邮件正文或附件 |
+| `online:team-message-read` | `TeamMessageReadCommand` | `POST /api/crm/team-messages/read` | `TeamMessageReadReceipt`；显式标记到指定消息已读，返回 `lastReadAt/unreadCount` |
+| `online:team-message-unread` | `TeamMessageUnreadCommand` | `POST /api/crm/team-messages/unread` | `TeamMessageReadReceipt`；把指定消息重新标为未读，游标回退到它之前 |
+| `online:team-file-upload` | `TeamFileUpload` | `POST /api/crm/team-files` | `TeamFileMeta`；单文件 8 MiB 内，中心鉴权、MIME 白名单、SHA-256 去重 |
+| `online:team-file-open` | `fileId` | `GET /api/crm/team-files/:fileId` | 主进程下载到临时目录并打开系统默认程序；不向 renderer 暴露服务器路径 |
+| `online:team-archive` | `TeamConversationArchiveInput` | `POST /api/crm/team-conversations/archive` | 读取双方聊天记录，按时间范围生成 gzip JSONL 归档文件；返回 `TeamArchiveMeta`，不改写消息事实 |
+| `online:team-events-start` | 无 | `GET /api/crm/team-events` | 主进程建立单条 SSE，推送 `message.created/read/unread` 轻量事件；断线由 renderer 回退到可见轮询 |
+| `online:team-events-stop` | 无 | 无 | 关闭当前团队事件连接，不改变消息事实 |
+| `online:team-presence` | `{ teamId, memberUserId }` | `POST /api/crm/team-presence` | `TeamPresenceView`；返回 `online/unread/offline`、最近在线时间和本会话是否有未读消息。客户端 `online:status` 轮询刷新当前账号在线心跳。 |
+| `online:team-message-send` | `{ teamId, recipientUserId, body, idempotencyKey }` | `POST /api/crm/team-messages` | `TeamDirectMessage`；正文最多 2000 字符，`operation_key` 幂等重放，不提供群聊广播 |
+
+运营管理员和超级管理员可从组织树向任意团队成员发起私聊；普通成员可与同团队成员私聊。管理员通常不属于销售团队名册，因此成员只能基于已有的一对一会话回复这类管理账号；服务端同时校验团队成员关系、管理身份和历史会话，不能借私聊向任意管理员发送新消息。界面每 5 秒仅在团队页可见时刷新会话与当前对话，发送成功后立即刷新，不等待用户再次交互。
+
+## 2026-11-13 分配查询统一状态
+
+`ContactAssignmentQuery.status` 与 `ContactAssignmentGroupQuery.status` 扩展为六个生命周期状态或 `all`。`online:assignment-groups` 使用 `status=all` 一次返回包含待接受、已接受、已拒绝、已撤回、已过期和转交待确认的分配组；每个组仍返回各状态计数。`online:assignment-list` 保留同一契约，使用 `requestId/groupId` 定位时继续返回记录当前状态，不受历史通知中的旧状态限制。
+
+分配界面不再用生命周期状态页签拆分多套页面；状态只在组和联系人条目上展示。该变化只扩展现有查询值，不新增 IPC 通道或写接口。
+
 ## 2026-11-12 收件箱置顶与文件夹
 
 收件箱把用户可见的“标签”统一改为“文件夹”，内部继续复用本地标签关联，避免两套数据重复。新增通道统一返回 `{ success, data?, error? }`：
@@ -65,6 +145,11 @@
 | `inbox:labelSave` | `InboxLabelSaveRequest` | 新建或更新后的 `InboxLabel` |
 | `inbox:labelDelete` | `InboxLabelDeleteRequest` | `{ deleted: boolean }` |
 | `inbox:messageLabels` | `InboxMessageLabelsRequest` | 保存后的 `{ labelIds: number[] }` |
+| `inbox:functionalFolders` | 无 | `InboxFunctionalFolder[]`：只含查询定义、分组方式、排序和时间戳 |
+| `inbox:functionalFolderSave` | `InboxFunctionalFolderSaveRequest` | 新建或更新后的功能文件夹定义 |
+| `inbox:functionalFolderDelete` | `InboxFunctionalFolderDeleteRequest` | `{ deleted: boolean }` |
+
+功能文件夹不写 `inbox_message_labels`，不保存邮件成员索引；`conditions`、`matchMode`、`groupBy` 只定义实时查询。默认提供“待回复 / 异常 / 今天到期 / 报价中”，其判断复用收件箱分析和待办状态。按邮箱地址聚合只改变展示分组，不复制邮件或建立静态目录。
 
 写请求必须携带 `idempotencyKey`。`inbox:list` 的邮件附加字段新增 `_labelIds: number[]`；标签只用于本地邮件分类，不修改联系人标签、邮件分类、已读状态或中心 CRM 事实。
 
@@ -72,10 +157,15 @@
 
 | 通道 | 输入 | 输出 |
 |---|---|---|
-| `inbox:todoState` | `InboxTodoStateRequest`：`messageId`、`state=open/done`、`idempotencyKey` | `{ messageId, state }` |
-| `inbox:todoStateBatch` | `InboxTodoBatchRequest`：`messageIds`、`state=open/done`、`idempotencyKey` | `{ updated, state }` |
+| `inbox:todoState` | `InboxTodoStateRequest`：`messageId`、`state=open/done`、`idempotencyKey` | `InboxTodoStateResult`：`messageId`、`state`、`changed` |
+| `inbox:todoStateBatch` | `InboxTodoBatchRequest`：`messageIds`、`state=open/done`、`idempotencyKey` | `InboxTodoBatchResult`：`messageIds`、`updated`、`state` |
+| `inbox:conversationStateBatch` | `InboxConversationStateBatchRequest`：`messageIds`、`state=todo/needs_reply/waiting_other/important/null`、`idempotencyKey` | `InboxConversationStateBatchResult`：`messageIds`、`updated`、`state` |
+| `inbox:messageLabelsBatch` | `InboxMessagesLabelsBatchRequest`：`messageIds`、`labelIds`、`idempotencyKey` | `{ messageIds, updated, labelIds }` |
+| `inbox:pinMessageBatch` | `InboxMessagesPinBatchRequest`：`messageIds`、`pinned`、`idempotencyKey` | `{ messageIds, updated, pinned }` |
 
-`inbox:list` 的邮件附加字段新增 `_todoState: 'open'|'done'|null`。待办状态与 `isRead` 独立；`done` 只让邮件从待办队列中消失，不删除邮件、不修改 AI 分析，也不修改中心 CRM 事实。批量通道去重后最多接收 5000 个邮件 ID，在一个本地 SQLite 事务内写入；每个 ID 从批次幂等键派生独立 `operation_key`，重复请求不会重复改写。待办反馈在 renderer 复用同一 message key，快速连续操作只更新当前提示，不纵向堆叠。
+`inbox:list` 的邮件附加字段新增 `_todoState: 'open'|'done'|null` 和会话级 `_conversationState: 'todo'|'needs_reply'|'waiting_other'|'important'|null`。会话状态按“联系人邮箱+规范化主题”保存，只挂在该会话最新邮件；拖拽写入的四种分类优先于 AI 派生判断，`null` 表示清除手动分类。`inbox:conversationStateBatch`、`inbox:messageLabelsBatch` 和 `inbox:pinMessageBatch` 去重后最多接收 5000 个邮件 ID，renderer 按 200 封分片调用，每个主进程请求在一个本地 SQLite 事务内写入。文件夹批量写入保留既有“移动到文件夹”语义，AI 建议文件夹 (`status=suggested`) 不可作为目标。待办状态与 `isRead` 独立；`done` 会让邮件同时退出待办队列和派生“待回复”文件夹，但仍保留在全部邮件、不删除邮件、不修改 AI 分析，也不修改中心 CRM 事实。`open` 表示用户手动把邮件加入待办，不需要 AI 分析、业务分类、置信度或 `requiresAction`；它只影响待办，待回复仍要求 AI 分析为 `ready`、`requiresAction=true` 且状态不是 `done`。重复批次请求使用幂等键或最终状态合并，不重复改写；renderer 先乐观更新当前 inbox 缓存，失败回滚，成功后失效刷新事实源。
+
+拖到文件夹区空白处时复用 `inbox:functionalFolderSave` 创建功能文件夹：联系人类文件夹使用 `senderEmail` 条件显示该联系人的全部邮件；会话增量文件夹使用 `conversationKey` 与 `receivedAfter` 条件，只显示创建时点之后的新邮件。功能文件夹不写 `inbox_message_labels`，不会复制或搬移邮件。
 
 ## 2026-11-03 联系人导入大文件与稀疏 Excel（0.71.0-alpha.16）
 
@@ -125,13 +215,13 @@
 | `online:team-member` | `teamId,{userId,action:add/remove,expectedVersion,idempotencyKey}` | `POST /api/crm/teams/:teamId/members` | 普通成员全公司最多一个团队；成员不能同时是其他团队负责人 |
 | `online:team-group-save` / `team-group-delete` | 组名、成员、版本、幂等键 | `POST /api/crm/teams/:teamId/groups[/:groupId/delete]` | 仅展示分组，不改变归属、监督或数据权限 |
 
-普通销售看不到同组成员名单；负责人只看到所管理团队；运营管理员共享运营组织治理；超级管理员看公司全树但不成为组织成员。`TeamSnapshot.memberCount` 是完整人数，服务端裁剪后的 `members` 不代表团队规模。
+普通销售可看到当前团队完整在职成员并用于协作，但不能枚举其他团队或执行管理动作；负责人只看到所管理团队；运营管理员共享运营组织治理；超级管理员看公司全树但不成为组织成员。`TeamSnapshot.memberCount` 是完整人数，服务端裁剪后的 `members` 不代表团队规模。已有跨团队管理私聊通过 `online:team-conversations` 单独投影，不把管理员伪装成销售团队成员。
 
 ### 分配与监督
 
 | IPC | HTTP | 说明 |
 |---|---|---|
-| `online:assignment-list` / `assignment-groups` | `GET /api/crm/contact-assignments[/groups]` | 六状态 `pending/accepted/rejected/cancelled/expired/pending_transfer`，支持请求或组定位 |
+| `online:assignment-list` / `assignment-groups` | `GET /api/crm/contact-assignments[/groups]` | 六状态或 `all`，支持请求或组定位 |
 | `online:assignment-create` | `POST /api/crm/contact-assignments` | `ContactAssignmentCreate` 不含任意通知人；服务端从 canonical 直属关系派生接收人和主管 |
 | `online:assignment-accept` / `reject` / `cancel` | `POST /api/crm/contact-assignments/:requestId/{action}` | `expectedVersion + idempotencyKey`；接受后写 ownership 历史 |
 | `online:assignment-transfer` | `POST /api/crm/contact-assignments/:requestId/transfer` | 原负责人立即失去写权，新接收人接受前保持 `pending_transfer` |
@@ -158,7 +248,7 @@
 | IPC | HTTP | 说明 |
 |---|---|---|
 | `online:team-monitoring` | `GET /api/crm/team-monitoring?teamId&memberUserId&limit&offset&unitLimit&unitOffset` | 负责人看所管子树；运营看全部运营池；超管看全局；普通销售拒绝 |
-| `online:team-monitoring-member` | `GET /api/crm/team-monitoring/members/:memberUserId` | 分页读取成员近期动作、关注项和邮件摘要 |
+| `online:team-monitoring-member` | `GET /api/crm/team-monitoring/members/:memberUserId` | 分页读取成员近期动作、关注项、邮件摘要和最多 4 条客户跟进；客户跟进带 `customerId/contactId`，只读打开客户摘要 |
 | `online:team-monitoring-contact` | `GET /api/crm/team-monitoring/contacts/:contactId?customerId=...` | 先写监控审计再返回联系人摘要 |
 | `online:team-monitoring-mail` | `GET /api/crm/team-monitoring/mail/:eventId?contactId=...&customerId=...` | 只返回结构化邮件摘要和信号，不返回正文/附件 |
 | `online:sales-performance` | `GET /api/crm/sales-performance` | 实时查询首动作、有效回复、成交耗时、复购等分位指标；初期仅管理员、超管可读，销售本人和销售负责人返回无权限 |
@@ -500,6 +590,7 @@ ONLINE仍22个常量/处理器/preload白名单，无新通道或HTTP路由。On
 | online:task-create | TaskCreate → FollowupTask | POST /api/crm/tasks |
 | online:task-reschedule | TaskReschedule → FollowupTask | POST /api/crm/tasks/:taskId/reschedule |
 | online:task-complete | TaskComplete → FollowupTask | POST /api/crm/tasks/:taskId/complete |
+| online:task-cancel | `{ taskId, expectedVersion, idempotencyKey, reason }` → FollowupTask | POST /api/crm/tasks/:taskId/cancel |
 
 在线通道由22增至26，contract → transport → preload → adapter → HTTP逐层复用同一常量和 Result。任务写入以任务版本、客户版本和幂等键保护；管理员可查看其范围内任务，负责人可完成/延期；任务到期由中心受限批次扫描写入持久 outbox，通知按当前负责人、任务版本、状态和能力再次校验，完成/延期/转交后的旧提醒不再展示。
 
@@ -549,6 +640,12 @@ HTTP复用POST /api/crm/contact-mail-events：ContactMailEventInput新增可选a
 常量由`ONLINE_CHANNELS.COMPANY_UPDATE`定义，preload沿用统一白名单。HTTP映射为`POST /api/crm/contacts/:contactId/company`。公司版本独立于联系人版本；详情返回company.revision/canEdit及真实country/industry/size。背调生成报告与中心保存分开，AI不可直接写旧本地公司资料。未增加其他IPC，联系人新增/导出/阶段修改复用现有通道。
 # 变更记录
 
+## 2026-11-17 收件箱游标分页（0.74.0-alpha.1）
+
+`IPC.INBOX.LIST` 原通道不变。请求增加可选 `limit`、`cursor`、`search`、`classification`、`accountId`、`startAt`、`endAt`，返回 `Result<InboxListPage>`：`items`、授权范围内的筛选后 `total`、不透明 `nextCursor`。`limit` 默认 200、上限 500；搜索最长 200 字符。SQLite 先按筛选条件计数和排序，再以 `(received_at,id)` 游标取下一页，最后只给当前页补账号、联系人、标签、分析、待办和中心邮件关联。
+
+不传 `limit` 的旧 `inbox:list` 调用暂时返回原数组，供未迁移内部入口兼容；正式收件箱界面始终使用分页。深链 `includeId`/`centerMessageKey` 可把目标邮件附加到当前页，不扩大列表。没有新增 IPC/HTTP 路由；新增收到时间与分类索引。
+
 ## 2026-10-25 未匹配导入列自动备注（0.58.0-alpha.1）
 
 `online:preview`、`online:import` 与 `POST /api/crm/imports` 的现有结构和通道不变。服务端按最终 `mapping` 找出 `rawRow` 中未映射的非空列，按 `字段名：内容` 逐行生成备注并写入 `contacts.extra.note`；占位值和空值忽略。备注最长 20,000 字符，超限返回单行 `invalid` 回执，不截断。`CenterContact.extra` 继续原样返回备注；联系人搜索可匹配 `extra.note`，联系人导出增加“备注”列。没有新增或删除 IPC/HTTP 路由，没有新增数据库字段或依赖。
@@ -579,3 +676,41 @@ HTTP复用POST /api/crm/contact-mail-events：ContactMailEventInput新增可选a
 新增 `online:account-profile`，无业务参数，统一返回 `Result<AccountProfile>`。类型唯一来源为 `server/core/account-profile.ts`，经 `src/shared/online-crm.ts` 重导出；账号页只读取当前登录会话的资料，服务端按会话用户约束，不接受 renderer 指定其他 userId。中心 HTTP 对应 `GET /api/account/profile`，Bearer 仍只在主进程。头像只接受中心保存的 ID，界面资源随客户端打包；成长缺失返回 null。
 
 本次 ONLINE 通道增加 1 项，旧字段无改名、无删除。`ONLINE_CHANNELS`、`IPC.ONLINE`、preload 白名单和处理器注册继续共用同一常量源。
+
+## 2026-11-17 跨团队私聊与联系人目录（0.74.0-alpha.6，开发端）
+
+新增 `ONLINE_CHANNELS.TEAM_DIRECTORY`（`online:team-directory`），入参 `{ limit }`，返回 `Result<TeamDirectoryPage>`；中心对应 `GET /api/crm/team-directory?limit=`。目录只返回启用中的 CRM 账号，含昵称、邮箱、主要团队、在线状态和未读消息数，不返回密码、会话或成长资料。
+
+私聊不再要求双方属于同一团队：`POST /api/crm/team-messages` 允许任意两个启用 CRM 账号互发，`teamId` 改为可选；缺省时由服务端复用已有会话容器，或依次取对方主要团队、发起人主要团队。会话列表 `GET /api/crm/team-conversations` 的 `teamId` 同为可选，返回当前账号参与的全部会话，并带实际会话容器 `teamId`；消息分页、已读/未读、在线状态按联系人双方校验，不再按团队名册拦截。旧同团队调用保持兼容，未改名、未删除字段。
+
+附件上传仍绑定团队容器，跨团队首次发送附件暂未开放；文本、邮件引用与已读游标已支持跨团队。
+
+## 2026-11-17 AI 销售工作流与报价卡
+
+新增 ONLINE 通道：
+
+- `online:sales-case-list` / `online:sales-case-detail` / `online:sales-case-overview` / `online:sales-case-ensure`
+- `online:sales-case-proposal-list` / `online:sales-case-proposal-create` / `online:sales-case-proposal-act`
+- `online:quote-case-list` / `online:quote-case-detail` / `online:quote-case-upsert` / `online:quote-case-select` / `online:quote-case-requery` / `online:quote-case-review`
+- `online:quote-review-list` / `online:quote-review-decide`：按指定审核人列出待审/已审报价，并通过或退回；退回必须带核对意见时不超过 500 字
+- `inbox:quoteAnalyze` / `inbox:quoteSelect` / `inbox:quoteRequery` / `inbox:quoteDraft`
+- `online:prepare-imported-leads`：导入全部批次完成后，一次提交新增联系人引用，返回可选的 Campaign 草稿摘要，不启动发送
+
+中心 HTTP 继续使用统一 `{ ok, data?, error? }`：
+
+- `GET /api/crm/sales-cases`、`GET /api/crm/sales-cases/:id`、`GET /api/crm/sales-cases/:id/overview`
+- `POST /api/crm/sales-cases/ensure`、`POST /api/crm/sales-cases/:id/transition`
+- `GET|POST /api/crm/sales-cases/:id/proposals`、`GET|POST /api/crm/sales-cases/:id/proposals/:proposalId`
+- `GET /api/crm/quote-cases`、`GET /api/crm/quote-cases/:id`、`POST /api/crm/quote-cases/upsert`
+- `POST /api/crm/quote-cases/:id/select`、`POST /api/crm/quote-cases/:id/requery`、`POST /api/crm/quote-cases/:id/review`
+- `GET /api/crm/quote-cases/reviews?status=pending&limit=&offset=`、`POST /api/crm/quote-cases/reviews/:reviewId/decision`
+
+同一份报价已有 `pending` 审核时再次发起返回 `CONFLICT`；通过后报价草稿与 Case 变为 `approved`、销售 Case 下一步改为“发送报价”，退回则变为 `review_rejected` 并提示修改后重新提交。
+
+`inbox:quote*` 是本地主进程到渲染端的业务入口，只接受当前收件箱邮件 ID；报价卡关闭后仍从本地持久缓存恢复，中心报价事实不因界面关闭而丢失。
+
+## 2026-11-19 助手卡片结构化字段（0.74.0-alpha.6，开发端）
+
+`AssistantReminder` 增加可选 `kind: 'mail' | 'quote' | 'task' | 'followup'` 和 `facts`。`facts` 按类型携带：邮件发件邮箱、主题、等待小时、最后动作、AI 分析、邮件摘要；报价客户、航线、船司、柜型、价格、有效期、详情参数、候选条目、选中条目和邮件摘要；待办/跟进聚合条目列表、总数、最早已逾期/停滞天数。`assistant:snapshot` 返回同一结构，`assistant:run` 重新生成。
+
+没有新增 IPC 通道；数据写入当前账号本地 SQLite `assistant_reminders.kind/facts_json`，由 `v0.76-assistant-card-facts` 为旧库补列。报价候选来自本地 `inbox_quote_cards`（Navigator 查询结果已写入）和中心待审核报价；待办与停滞跟进各聚合成一条提醒。卡片“选这条”复用既有 `inbox:quoteSelect`，主按钮跳转既有收件箱详情。

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { ProductManagement } from '../../admin-web/product-management';
-import { api, ApiError } from '../../admin-web/api';
+import { api } from '../../admin-web/api';
 import type { Identity } from '../../server/core/auth';
 
 const identity: Identity = { userId: 'admin', email: 'admin@example.invalid', displayName: '管理员', emailVerified: true, identityAdmin: true, mustChangePassword: false, crmRoles: ['admin'] };
@@ -29,8 +29,6 @@ describe('Prospector management dashboard', () => {
     expect(host.textContent).toContain('运行总览');
     await act(async () => { (Array.from(host.querySelectorAll('button')).find(button => button.textContent === '数据流') as HTMLButtonElement).click(); });
     expect(host.textContent).toContain('文件解析'); expect(host.textContent).toContain('字段校验'); expect(host.textContent).toContain('客户邮件 → AI 分析 → 待办建议'); expect(host.textContent).toContain('人工修正');
-    vi.mocked(api.dashboard).mockRejectedValue(new ApiError('无数据看板权限',403));
-    await act(async () => { (Array.from(host.querySelectorAll('button')).find(button => button.textContent?.replace(/\s/g,'') === '刷新') as HTMLButtonElement).click(); });
-    expect(host.textContent).toContain('无数据看板权限'); expect(host.textContent).not.toContain('文件解析');
+    expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.replace(/\s/g,'') === '刷新')).toBe(false);
   });
 });

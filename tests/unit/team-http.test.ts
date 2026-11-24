@@ -5,12 +5,21 @@ import { createTeamHandler } from '../../server/transport/team-http';
 import type { TeamService } from '../../server/services/teams';
 import { createTeamService } from '../../server/services/teams';
 import type { TeamRepository } from '../../server/core/teams';
+import { isTeamRoute } from '../../server/core/teams';
 
 const TOKEN = 'a'.repeat(43);
 const TEAM_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const INVITATION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 describe('team HTTP contract', () => {
+  it('routes every team endpoint family through the team handler', () => {
+    expect(isTeamRoute('/api/crm/team-messages')).toBe(true);
+    expect(isTeamRoute('/api/crm/team-presence')).toBe(true);
+    expect(isTeamRoute('/api/crm/team-conversations/archive')).toBe(true);
+    expect(isTeamRoute('/api/crm/team-events')).toBe(true);
+    expect(isTeamRoute('/api/crm/team-files/00000000-0000-0000-0000-000000000000')).toBe(true);
+    expect(isTeamRoute('/api/crm/team-monitoring')).toBe(false);
+  });
   let server: Server;
   let base: string;
   let service: {
@@ -26,6 +35,13 @@ describe('team HTTP contract', () => {
     adjustMember: ReturnType<typeof vi.fn>;
     saveMemberGroup: ReturnType<typeof vi.fn>;
     deleteMemberGroup: ReturnType<typeof vi.fn>;
+    conversations: ReturnType<typeof vi.fn>;
+    messages: ReturnType<typeof vi.fn>;
+    presence: ReturnType<typeof vi.fn>;
+    uploadFile: ReturnType<typeof vi.fn>;
+    readFile: ReturnType<typeof vi.fn>;
+    archiveConversation: ReturnType<typeof vi.fn>;
+    sendMessage: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -42,6 +58,13 @@ describe('team HTTP contract', () => {
       adjustMember: vi.fn(async () => ({ ok: true, data: {} })),
       saveMemberGroup: vi.fn(async () => ({ ok: true, data: {} })),
       deleteMemberGroup: vi.fn(async () => ({ ok: true, data: {} })),
+      conversations: vi.fn(async () => ({ ok: true, data: { items: [] } })),
+      messages: vi.fn(async () => ({ ok: true, data: { items: [] } })),
+      presence: vi.fn(async () => ({ ok: true, data: { state: 'online', lastSeenAt: null, unread: false } })),
+      uploadFile: vi.fn(async () => ({ ok: true, data: { fileId: INVITATION_ID, teamId: TEAM_ID, filename: 'quote.pdf', mimeType: 'application/pdf', bytes: 3, sha256: 'a'.repeat(64), createdAt: '2026-11-17T00:00:00Z' } })),
+      readFile: vi.fn(async () => ({ ok: true, data: { meta: { fileId: INVITATION_ID, teamId: TEAM_ID, filename: 'quote.pdf', mimeType: 'application/pdf', bytes: 3, sha256: 'a'.repeat(64), createdAt: '2026-11-17T00:00:00Z' }, data: new Uint8Array([1, 2, 3]) } })),
+      archiveConversation: vi.fn(async () => ({ ok: true, data: { fileId: INVITATION_ID, teamId: TEAM_ID, filename: 'archive.jsonl.gz', mimeType: 'application/gzip', bytes: 3, sha256: 'b'.repeat(64), createdAt: '2026-11-17T00:00:00Z', messageCount: 1 } })),
+      sendMessage: vi.fn(async () => ({ ok: true, data: {} })),
     };
     const handler = createTeamHandler(service as unknown as TeamService);
     server = createServer((request, response) => { void handler(request, response); });
@@ -110,12 +133,48 @@ describe('team HTTP contract', () => {
     const headers = { Authorization: `Bearer ${TOKEN}` };
     try {
       const memberOperations = await fetch(`${strictBase}/api/crm/team-invite-candidates?role=member&unitType=operations`, { headers });
-      expect(await memberOperations.json()).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+      expect(await memberOperations.json()).toMatchObject({ ok: true });
+      expect(candidates).toHaveBeenCalledWith('hashed-token', expect.objectContaining({ role: 'member', unitType: 'operations' }));
       const unknownRole = await fetch(`${strictBase}/api/crm/team-invite-candidates?role=boss&unitType=sales_team`, { headers });
       expect(await unknownRole.json()).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
       const createPurpose = await fetch(`${strictBase}/api/crm/team-invite-candidates?search=first&limit=20&offset=0&role=member&unitType=sales_team&purpose=create`, { headers });
       expect(await createPurpose.json()).toMatchObject({ ok: true });
       expect(candidates).toHaveBeenCalledWith('hashed-token', { search: 'first', limit: 20, offset: 0, role: 'member', unitType: 'sales_team', purpose: 'create' });
+    } finally {
+      strictServer.closeAllConnections();
+      await new Promise<void>(resolve => strictServer.close(() => resolve()));
+    }
+  });
+
+  it('validates private-message identifiers, page size and body before touching the repository', async () => {
+    const conversations = vi.fn(async () => ({ ok: true, data: { items: [] } }));
+    const messages = vi.fn(async () => ({ ok: true, data: { items: [] } }));
+    const sendMessage = vi.fn(async () => ({ ok: true, data: {} }));
+    const repo = { currentUser: async () => ({ ok: true, data: 'user-1' }), conversations, messages, sendMessage } as unknown as TeamRepository;
+    const strictHandler = createTeamHandler(createTeamService(repo, { hash: () => 'hashed-token' }));
+    const strictServer = createServer((request, response) => { void strictHandler(request, response); });
+    strictServer.listen(0, '127.0.0.1');
+    await once(strictServer, 'listening');
+    const strictBase = `http://127.0.0.1:${(strictServer.address() as { port: number }).port}`;
+    const headers = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
+    try {
+      const invalidConversations = await fetch(`${strictBase}/api/crm/team-conversations?teamId=${TEAM_ID}&limit=101`, { headers });
+      expect(await invalidConversations.json()).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+      const validConversations = await fetch(`${strictBase}/api/crm/team-conversations?teamId=${TEAM_ID}&limit=100`, { headers });
+      expect(await validConversations.json()).toMatchObject({ ok: true });
+      expect(conversations).toHaveBeenCalledWith('hashed-token', { teamId: TEAM_ID, limit: 100 });
+      const invalidQuery = await fetch(`${strictBase}/api/crm/team-messages?teamId=${TEAM_ID}&memberUserId=bad&limit=100`, { headers });
+      expect(await invalidQuery.json()).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+      const validQuery = await fetch(`${strictBase}/api/crm/team-messages?teamId=${TEAM_ID}&memberUserId=${INVITATION_ID}&limit=100`, { headers });
+      expect(await validQuery.json()).toMatchObject({ ok: true });
+      expect(messages).toHaveBeenCalledWith('hashed-token', { teamId: TEAM_ID, memberUserId: INVITATION_ID, limit: 100 });
+
+      const invalidSend = await fetch(`${strictBase}/api/crm/team-messages`, { method: 'POST', headers, body: JSON.stringify({ teamId: TEAM_ID, recipientUserId: INVITATION_ID, body: ' ', idempotencyKey: 'message-key' }) });
+      expect(await invalidSend.json()).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+      expect(sendMessage).not.toHaveBeenCalled();
+      const validSend = await fetch(`${strictBase}/api/crm/team-messages`, { method: 'POST', headers, body: JSON.stringify({ teamId: TEAM_ID, recipientUserId: INVITATION_ID, body: '请处理', idempotencyKey: 'message-key' }) });
+      expect(await validSend.json()).toMatchObject({ ok: true });
+      expect(sendMessage).toHaveBeenCalledWith('hashed-token', { teamId: TEAM_ID, recipientUserId: INVITATION_ID, body: '请处理', idempotencyKey: 'message-key' });
     } finally {
       strictServer.closeAllConnections();
       await new Promise<void>(resolve => strictServer.close(() => resolve()));
@@ -147,6 +206,49 @@ describe('team HTTP contract', () => {
     const removal = { groupId: INVITATION_ID, expectedVersion: 1, idempotencyKey: 'group-delete-key' };
     await fetch(`${base}/api/crm/teams/${TEAM_ID}/groups/${INVITATION_ID}/delete`, { method: 'POST', headers, body: JSON.stringify(removal) });
     expect(service.deleteMemberGroup).toHaveBeenCalledWith(TOKEN, TEAM_ID, INVITATION_ID, removal);
+  });
+
+  it('routes the selected member private conversation through its own bounded contract', async () => {
+    const headers = { Authorization: `Bearer ${TOKEN}` };
+    await fetch(`${base}/api/crm/team-conversations?teamId=${TEAM_ID}&limit=100`, { headers });
+    expect(service.conversations).toHaveBeenCalledWith(TOKEN, { teamId: TEAM_ID, limit: 100 });
+    await fetch(`${base}/api/crm/team-messages?teamId=${TEAM_ID}&memberUserId=${INVITATION_ID}&limit=100`, { headers });
+    expect(service.messages).toHaveBeenCalledWith(TOKEN, { teamId: TEAM_ID, memberUserId: INVITATION_ID, limit: 100 });
+
+    const message = { teamId: TEAM_ID, recipientUserId: INVITATION_ID, body: '请跟进这个客户', idempotencyKey: 'message-key' };
+    await fetch(`${base}/api/crm/team-messages`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(message),
+    });
+    expect(service.sendMessage).toHaveBeenCalledWith(TOKEN, message);
+  });
+
+  it('routes member presence through the private team contract', async () => {
+    const presence = { teamId: TEAM_ID, memberUserId: INVITATION_ID };
+    await fetch(`${base}/api/crm/team-presence`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(presence),
+    });
+    expect(service.presence).toHaveBeenCalledWith(TOKEN, presence);
+  });
+
+  it('routes team file upload and authenticated binary download', async () => {
+    const upload = { teamId: TEAM_ID, filename: 'quote.pdf', mimeType: 'application/pdf', base64: 'AQID', idempotencyKey: 'file-key' };
+    await fetch(`${base}/api/crm/team-files`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(upload),
+    });
+    expect(service.uploadFile).toHaveBeenCalledWith(TOKEN, upload);
+    const response = await fetch(`${base}/api/crm/team-files/${INVITATION_ID}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    expect(response.status).toBe(200);
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.from([1, 2, 3]));
+    expect(service.readFile).toHaveBeenCalledWith(TOKEN, INVITATION_ID);
+    const archive = { teamId: TEAM_ID, memberUserId: INVITATION_ID, idempotencyKey: 'archive-key' };
+    await fetch(`${base}/api/crm/team-conversations/archive`, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(archive) });
+    expect(service.archiveConversation).toHaveBeenCalledWith(TOKEN, archive);
   });
 
   it('preserves the repository conflict for an illegal member-to-leader assignment', async () => {

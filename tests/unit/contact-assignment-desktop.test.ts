@@ -7,14 +7,17 @@ import { success, failure } from '../../server/core/crm';
 
 describe('contact assignment desktop boundary', () => {
   it('roundtrips source, acceptance and board filters without accepting an actor override', () => {
-    const input = { search: '', limit: 50, offset: 0, scope: 'assigned', assignment: 'accepted', followupOnly: true, crmStage: 'quoting' };
+    const input = { search: '', limit: 50, offset: 0, scope: 'assigned', assignment: 'accepted', attentionOnly: true, crmStage: 'quoting' };
     const result = centerContactQuery(input);
     expect(result).toEqual(success(input));
     if (result.ok) {
       const params = new URL(centerContactPath(result.data), 'http://fixture').searchParams;
       for (const [key, value] of Object.entries(input)) expect(params.get(key)).toBe(String(value));
     }
-    for (const invalid of [{ ...input, scope: 'another-user' }, { ...input, followupOnly: 'true' }, { ...input, crmStage: 'made-up' }, { ...input, ownerUserId: 'another-user' }]) expect(centerContactQuery(invalid).ok).toBe(false);
+    for (const invalid of [{ ...input, scope: 'another-user' }, { ...input, attentionOnly: 'true' }, { ...input, followupOnly: 'true' }, { ...input, crmStage: 'made-up' }, { ...input, ownerUserId: 'another-user' }]) expect(centerContactQuery(invalid).ok).toBe(false);
+    const legacy = centerContactQuery({ ...input, attentionOnly: undefined, followupOnly: true });
+    expect(legacy).toMatchObject({ ok: true, data: { attentionOnly: true } });
+    if (legacy.ok) expect(new URL(centerContactPath(legacy.data), 'http://fixture').searchParams.get('attentionOnly')).toBe('true');
   });
 
   it('uses contact request routes and never the legacy SQLite transport', async () => {

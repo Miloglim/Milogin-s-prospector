@@ -23,6 +23,7 @@
 .message-center-panel.is-dropdown .messages-body { padding-bottom: 5px; }
 .messages-body.is-empty { display: flex; align-items: center; justify-content: center; overflow: hidden; scrollbar-gutter: auto; }
 .messages-body.is-empty .messages-list { width: 100%; }
+
 .messages-list { margin: 0; }
 .message-date-group { display: flex; align-items: center; gap: 9px; margin: 0; padding: 12px 14px 6px; font-size: 12px; font-weight: 500; color: var(--message-muted); background: var(--message-bg); }
 .message-center-panel.is-dropdown .message-date-group { padding: 10px 12px 5px; font-size: 11px; }
@@ -46,5 +47,6 @@ button.message-main { cursor: pointer; }
 .message-meta time { color: var(--message-subtle); font-size: 11px; white-space: nowrap; }
 .message-status { position: relative; display: flex; align-items: center; justify-content: center; width: 32px; flex: 0 0 32px; align-self: stretch; }
 .message-center-panel.is-dropdown .message-status { width: 26px; flex-basis: 26px; }
+.message-deal-action { align-self: center; flex: 0 0 auto; margin-right: 2px; font-size: 12px; }
 .message-unread-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--message-unread); }
 .message-main:focus-visible { outline: 2px solid var(--message-focus); outline-offset: -2px; }

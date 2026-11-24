@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Spin } from 'antd';
-import { ChevronRight, Maximize2, Minus, Plus, UsersRound, ZoomIn, ZoomOut } from 'lucide-react';
-import type { TeamAdminSummary, TeamDetail } from '../../../shared/online-crm';
+import { Building2, ChevronRight, Maximize2, Minus, Plus, UsersRound, ZoomIn, ZoomOut } from 'lucide-react';
+import type { OrganizationContext, TeamAdminSummary, TeamDetail } from '../../../shared/online-crm';
 import { effectiveTeamParentId, layoutTeamTree, pathToTeam, TEAM_NODE_HEIGHT, TEAM_NODE_WIDTH } from './team-admin-layout';
+import { orderTeamMembers } from './team-data';
 
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2.2;
@@ -27,8 +28,9 @@ function initial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?';
 }
 
-export function TeamOrgCanvas({ teams, detail, detailLoading, selectedTeamId, search, onSelect }: {
+export function TeamOrgCanvas({ teams, organization, detail, detailLoading, selectedTeamId, search, onSelect }: {
   teams: readonly TeamAdminSummary[];
+  organization?: OrganizationContext;
   detail?: TeamDetail;
   detailLoading: boolean;
   selectedTeamId: string | null;
@@ -46,7 +48,21 @@ export function TeamOrgCanvas({ teams, detail, detailLoading, selectedTeamId, se
   const fittedRef = useRef(false);
   const [collapsedTeamIds, setCollapsedTeamIds] = useState<Set<string>>(() => new Set());
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(selectedTeamId);
-  const displayTeams = teams;
+  const displayTeams = useMemo(() => organization ? [{
+    teamId: organization.company.unitId,
+    name: organization.company.name,
+    unitType: undefined,
+    parentTeamId: null,
+    parentTeamName: null,
+    depth: 0,
+    childCount: teams.filter(team => team.parentTeamId === organization.company.unitId).length,
+    leaderName: organization.company.leaderName || 'admin',
+    memberCount: 0,
+    pendingInvitationCount: 0,
+    organizationKind: 'company' as const,
+    version: organization.company.version,
+    createdAt: new Date(0).toISOString(),
+  }, ...teams] : teams, [organization, teams]);
   const displayTeamIds = useMemo(() => new Set(displayTeams.map(team => team.teamId)), [displayTeams]);
 
   const expandedDetail = detail?.team.teamId === expandedTeamId ? detail : undefined;
@@ -199,7 +215,8 @@ export function TeamOrgCanvas({ teams, detail, detailLoading, selectedTeamId, se
           })}
         </svg>
         {layout.nodes.map(team => {
-          const hasChildren = displayTeams.some(candidate => effectiveTeamParentId(candidate, displayTeamIds) === team.teamId);
+          const isCompany = team.organizationKind === 'company';
+          const hasChildren = !isCompany && displayTeams.some(candidate => effectiveTeamParentId(candidate, displayTeamIds) === team.teamId);
           const childCount = displayTeams.filter(candidate => effectiveTeamParentId(candidate, displayTeamIds) === team.teamId).length;
           const isCollapsed = collapsedTeamIds.has(team.teamId);
           const isExpanded = expandedTeamId === team.teamId;
@@ -207,15 +224,15 @@ export function TeamOrgCanvas({ teams, detail, detailLoading, selectedTeamId, se
           const members = expandedDetail?.team.members ?? [];
           return <article
             key={team.teamId}
-            className={`team-admin-org-node${selectedTeamId === team.teamId || isExpanded ? ' is-selected' : ''}${matches ? ' is-match' : ''}${selectedPath.has(team.teamId) ? ' is-path' : ''}${isExpanded ? ' is-expanded' : ''}`}
+            className={`team-admin-org-node${isCompany ? ' is-company' : ''}${selectedTeamId === team.teamId || isExpanded ? ' is-selected' : ''}${matches ? ' is-match' : ''}${selectedPath.has(team.teamId) ? ' is-path' : ''}${isExpanded ? ' is-expanded' : ''}`}
             style={{ left: team.x, top: team.y, width: TEAM_NODE_WIDTH, height: team.height }}
           >
-            <button type="button" className="team-admin-org-node-main" aria-expanded={isExpanded} onClick={() => selectNode(team)}>
-              <span className="team-admin-org-icon"><UsersRound aria-hidden="true" /></span>
-              <span className="team-admin-org-node-copy"><strong>{team.name}</strong><span className="team-admin-org-leader"><em>群主</em><span>{team.leaderName}</span></span></span>
+            <button type="button" className="team-admin-org-node-main" aria-expanded={isCompany ? undefined : isExpanded} onClick={() => isCompany ? onSelect(null) : selectNode(team)}>
+              <span className="team-admin-org-icon">{isCompany ? <Building2 aria-hidden="true" /> : <UsersRound aria-hidden="true" />}</span>
+              <span className="team-admin-org-node-copy"><strong>{team.name}</strong><span className="team-admin-org-leader"><em>{isCompany ? '管理员' : '负责人'}</em><span>{team.leaderName}</span></span></span>
               <ChevronRight aria-hidden="true" />
             </button>
-            <div className="team-admin-org-node-meta"><span>{team.memberCount} 人</span>{team.unitType === 'sales_team' && (team.assignedLeadCount ?? 0) === 0 && <span className="is-warning">未分配线索</span>}{childCount > 0 && <span>{childCount} 个下级</span>}{team.pendingInvitationCount > 0 && <span>{team.pendingInvitationCount} 待接受</span>}</div>
+            <div className="team-admin-org-node-meta">{!isCompany && <span>{team.memberCount} 人</span>}{team.unitType === 'sales_team' && (team.assignedLeadCount ?? 0) === 0 && <span className="is-warning">未分配线索</span>}{childCount > 0 && <span>{childCount} 个下级</span>}{team.pendingInvitationCount > 0 && <span>{team.pendingInvitationCount} 待接受</span>}</div>
             {isExpanded && <div className="team-admin-org-expanded">
               <div className="team-admin-org-expanded-heading"><span>成员</span><small>{team.memberCount}</small></div>
               {detailLoading && expandedDetail?.team.teamId !== team.teamId
@@ -224,8 +241,8 @@ export function TeamOrgCanvas({ teams, detail, detailLoading, selectedTeamId, se
                   ? <div className="team-admin-org-expanded-state">成员不可用</div>
                   : members.length === 0
                     ? <div className="team-admin-org-expanded-state">暂无成员</div>
-                    : <div className="team-admin-org-member-scroll">{members.map(member => <div key={member.userId} className="team-admin-org-member-row">
-                      <span className="team-admin-org-member-avatar">{initial(member.displayName)}</span><span><strong>{member.displayName}</strong><small>{member.role === 'leader' ? '群主' : '成员'}</small></span>
+                    : <div className="team-admin-org-member-scroll">{orderTeamMembers(members).map(member => <div key={member.userId} className="team-admin-org-member-row">
+                      <span className="team-admin-org-member-avatar">{initial(member.displayName)}</span><span><strong>{member.displayName}</strong><small>{member.role === 'leader' ? '负责人' : '成员'}</small></span>
                     </div>)}</div>}
             </div>}
             {hasChildren && <button type="button" className="team-admin-org-node-toggle" onClick={() => toggleCollapsed(team.teamId)} aria-label={isCollapsed ? `展开 ${team.name}` : `收起 ${team.name}`} title={isCollapsed ? '展开下级' : '收起下级'}>{isCollapsed ? <Plus aria-hidden="true" /> : <Minus aria-hidden="true" />}</button>}

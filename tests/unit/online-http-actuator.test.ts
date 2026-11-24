@@ -1,4 +1,5 @@
 import type { Server } from "node:http";
+import { request as httpRequest } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { API_ROUTES, ONLINE_DEFAULTS, type LoginGate } from "../../server/core/auth";
 import { failure, success } from "../../server/core/crm";
@@ -28,6 +29,19 @@ async function response(base: string, path: string, method = "GET") {
   };
 }
 
+async function responseWithHost(base: string, path: string, host: string) {
+  const target = new URL(base + path);
+  return new Promise<{ status: number; text: string }>((resolve, reject) => {
+    const call = httpRequest({ hostname: target.hostname, port: target.port, path: target.pathname, method: "GET", headers: { host } }, result => {
+      const chunks: Buffer[] = [];
+      result.on("data", chunk => chunks.push(chunk as Buffer));
+      result.on("end", () => resolve({ status: result.statusCode ?? 0, text: Buffer.concat(chunks).toString("utf8") }));
+    });
+    call.on("error", reject);
+    call.end();
+  });
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map(server => new Promise<void>((resolve, reject) => {
     server.closeAllConnections();
@@ -44,17 +58,17 @@ describe("ACK operational HTTP compatibility", () => {
       status: 200,
       contentType: "application/json; charset=utf-8",
     });
-    expect(JSON.parse(get.text)).toEqual({ status: "UP" });
+    expect(JSON.parse(get.text)).toMatchObject({ status: "UP" });
 
     const head = await response(base, "/actuator/info", "HEAD");
     expect(head).toMatchObject({ status: 200, text: "" });
   });
 
-  it("fails actuator info closed when the center is not ready", async () => {
+  it("keeps HEAD actuator as a process heartbeat without readiness", async () => {
     const base = await start(async () => failure("UNAVAILABLE", "not ready"));
 
     expect(await response(base, "/actuator/info")).toMatchObject({ status: 503 });
-    expect(await response(base, "/actuator/info", "HEAD")).toMatchObject({ status: 503, text: "" });
+    expect(await response(base, "/actuator/info", "HEAD")).toMatchObject({ status: 200, text: "" });
   });
 
   it("serves a valid minimal Prometheus exposition", async () => {
@@ -73,6 +87,21 @@ describe("ACK operational HTTP compatibility", () => {
     const base = await start(async () => success(undefined));
 
     expect(await response(base, API_ROUTES.live)).toMatchObject({ status: 200 });
+    expect(await response(base, API_ROUTES.live, "HEAD")).toMatchObject({ status: 200, text: "" });
     expect(await response(base, API_ROUTES.ready)).toMatchObject({ status: 200 });
+    expect(await response(base, API_ROUTES.ready, "HEAD")).toMatchObject({ status: 200, text: "" });
+  });
+
+  it("rejects a foreign Host by default but allows it when explicitly configured", async () => {
+    const strict = await start(async () => success(undefined));
+    expect(await responseWithHost(strict, "/actuator/prometheus", "foreign.example")).toMatchObject({ status: 403 });
+
+    const service = { ready: async () => success(undefined) } as AuthService;
+    const relaxed = createOnlineServer(service, gate, { ...ONLINE_DEFAULTS, allow_any_host: true }, logger);
+    servers.push(relaxed);
+    await new Promise<void>(resolve => relaxed.listen(0, "127.0.0.1", resolve));
+    const address = relaxed.address();
+    if (!address || typeof address === "string") throw new Error("missing TCP address");
+    expect(await responseWithHost(`http://127.0.0.1:${address.port}`, "/actuator/prometheus", "foreign.example")).toMatchObject({ status: 200 });
   });
 });

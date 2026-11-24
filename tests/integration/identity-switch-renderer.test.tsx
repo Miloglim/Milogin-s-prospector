@@ -17,6 +17,7 @@ function Probe() {
   return <>
     <div id="state">{session.ready ? 'ready' : 'restoring'}:{session.identity?.userId ?? 'none'}</div>
     <button onClick={() => { void session.logout({ switchAccount: true }); }}>switch</button>
+    <button id="login-stale" onClick={() => { void session.loginAccount({ accountId: 'stale-account', autoLogin: false }); }}>login</button>
   </>;
 }
 
@@ -59,5 +60,19 @@ describe('account switching boundary', () => {
     expect(host.querySelector('#state')?.textContent).toBe('ready:synthetic-a');
     await act(async () => { finishSwitch({ ok: true, data: undefined }); await Promise.resolve(); });
     expect(host.querySelector('#state')?.textContent).toBe('ready:synthetic-a');
+  });
+
+  it('drops a saved account the center no longer has instead of retrying it', async () => {
+    const calls: string[] = [];
+    Object.defineProperty(window, 'api', { configurable: true, value: { invoke: vi.fn(async (channel: string) => {
+      calls.push(channel);
+      if (channel === ONLINE_CHANNELS.ACCOUNT_LOGIN) return { ok: false, error: { code: 'ACCOUNT_NOT_FOUND', message: '该邮箱尚未在中心注册' } };
+      if (channel === ONLINE_CHANNELS.ACCOUNT_REMOVE) return { ok: true, data: undefined };
+      if (channel === ONLINE_CHANNELS.ACCOUNT_LIST) return { ok: true, data: { accounts: [] } };
+      return { ok: true, data: undefined };
+    }) } });
+    await act(async () => { host.querySelector<HTMLButtonElement>('#login-stale')!.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
+    expect(calls).toContain(ONLINE_CHANNELS.ACCOUNT_LOGIN);
+    expect(calls).toContain(ONLINE_CHANNELS.ACCOUNT_REMOVE);
   });
 });

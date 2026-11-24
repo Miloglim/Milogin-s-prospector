@@ -9,6 +9,12 @@ export const ADMIN_ROUTES = {
   operations: "/admin-api/operations",
   data: "/admin-api/data",
   navigatorDashboard: "/admin-api/navigator/dashboard",
+  aiPolicies: "/admin-api/ai/policies",
+  aiPolicy: "/admin-api/ai/policy",
+  aiUsage: "/admin-api/ai/usage",
+  aiModels: "/admin-api/ai/models",
+  aiModel: "/admin-api/ai/model",
+  aiUsageEvents: "/admin-api/ai/usage-events",
 } as const;
 export const ADMIN_LIMITS = { page:25, pageMax:100, searchMax:254, reasonMax:500, displayNameMax:80, challenge_ttl_seconds:900 } as const;
 export const PRODUCT_ID = { prospector:"crm", navigator:"navigator" } as const;
