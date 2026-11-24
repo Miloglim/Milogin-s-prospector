@@ -266,12 +266,12 @@ var require_postgres_interval = __commonJS({
       }
       if (filtered.length === 0)
         return "0";
-      return filtered.map(function(property) {
-        var value2 = this[property] || 0;
-        if (property === "seconds" && this.milliseconds) {
+      return filtered.map(function(property2) {
+        var value2 = this[property2] || 0;
+        if (property2 === "seconds" && this.milliseconds) {
           value2 = (value2 + this.milliseconds / 1e3).toFixed(6).replace(/\.?0+$/, "");
         }
-        return value2 + " " + property;
+        return value2 + " " + property2;
       }, this).join(" ");
     };
     var propertiesISOEquivalent = {
@@ -288,12 +288,12 @@ var require_postgres_interval = __commonJS({
       var datePart = dateProperties.map(buildProperty, this).join("");
       var timePart = timeProperties.map(buildProperty, this).join("");
       return "P" + datePart + "T" + timePart;
-      function buildProperty(property) {
-        var value2 = this[property] || 0;
-        if (property === "seconds" && this.milliseconds) {
+      function buildProperty(property2) {
+        var value2 = this[property2] || 0;
+        if (property2 === "seconds" && this.milliseconds) {
           value2 = (value2 + this.milliseconds / 1e3).toFixed(6).replace(/0+$/, "");
         }
-        return value2 + propertiesISOEquivalent[property];
+        return value2 + propertiesISOEquivalent[property2];
       }
     };
     var NUMBER = "([+-]?\\d+)";
@@ -323,18 +323,18 @@ var require_postgres_interval = __commonJS({
         return {};
       var matches = INTERVAL.exec(interval);
       var isNegative = matches[8] === "-";
-      return Object.keys(positions).reduce(function(parsed, property) {
-        var position = positions[property];
+      return Object.keys(positions).reduce(function(parsed, property2) {
+        var position = positions[property2];
         var value2 = matches[position];
         if (!value2)
           return parsed;
-        value2 = property === "milliseconds" ? parseMilliseconds(value2) : parseInt(value2, 10);
+        value2 = property2 === "milliseconds" ? parseMilliseconds(value2) : parseInt(value2, 10);
         if (!value2)
           return parsed;
-        if (isNegative && ~negatives.indexOf(property)) {
+        if (isNegative && ~negatives.indexOf(property2)) {
           value2 *= -1;
         }
-        parsed[property] = value2;
+        parsed[property2] = value2;
         return parsed;
       }, {});
     }
@@ -5791,12 +5791,14 @@ async function body(request2, maximum) {
 function createOnlineServer(service, gate, config, log, instanceId = "integration", browser, crm, desktop) {
   const dispatch = async (request2, response) => {
     const path4 = request2.url ?? "", method = request2.method;
+    if (process.env.PROSPECTOR_CENTER_HTTP_LOG === "1")
+      log.write("INFO", "identity.http", `\u8BF7\u6C42 ${loggable(method)} ${loggable(path4)} host=${loggable(request2.headers.host)} remote=${loggable(request2.socket.remoteAddress)} ua=${loggable(request2.headers["user-agent"])} version=${centerVersion()}`);
     if ((method === "GET" || method === "HEAD") && path4 === ACTUATOR_INFO_PATH) {
       await sendActuatorInfo(response, service, method === "HEAD");
       return;
     }
     if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.live) {
-      send(response, success({ status: "live", instanceId, pid: process.pid }));
+      send(response, success({ status: "live", instanceId, pid: process.pid, version: centerVersion() }));
       return;
     }
     if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.ready) {
@@ -5805,7 +5807,7 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
     }
     const localHost = `${request2.socket.localAddress}:${request2.socket.localPort}`;
     const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
-    if (request2.headers.host !== localHost && (!publicHost || request2.headers.host !== publicHost)) {
+    if (!config.allow_any_host && request2.headers.host !== localHost && (!publicHost || request2.headers.host !== publicHost)) {
       log.write("WARN", "identity.http", `\u62D2\u7EDD Host host=${loggable(request2.headers.host)} url=${loggable(path4)} remote=${loggable(request2.socket.remoteAddress)} expected=${loggable(publicHost || localHost)} version=${centerVersion()}`);
       send(response, failure("FORBIDDEN", "\u670D\u52A1 Host \u65E0\u6548"));
       return;
@@ -6163,6 +6165,19 @@ function productionPool(host, port, user, password, database) {
     ssl: false
   };
 }
+function describePostgresConnection(config) {
+  const options = typeof config.options === "string" ? config.options : "";
+  const searchPath = /(?:^|\s)-c\s+search_path=([^\s]+)/.exec(options)?.[1] || "default";
+  return [
+    `host=${String(config.host || "default")}`,
+    `port=${String(config.port || DEFAULT_PRODUCTION_PORT)}`,
+    `database=${String(config.database || "default")}`,
+    `timeout_ms=${String(config.connectionTimeoutMillis || 0)}`,
+    `application=${String(config.application_name || "default")}`,
+    `search_path=${searchPath}`,
+    `ssl=${config.ssl ? "true" : "false"}`
+  ].join(" ");
+}
 function readTestDatabaseConfig() {
   const value2 = JSON.parse((0, import_node_fs.readFileSync)(import_node_path.default.resolve(CRM_CONFIG_RELATIVE_PATH), "utf8"));
   if (value2.marker !== CRM_RUNTIME_MARKER || value2.database !== CRM_TEST_DATABASE || value2.user !== CRM_TEST_DATABASE || value2.host !== CRM_TEST_HOST || value2.port !== CRM_TEST_PORT || typeof value2.password !== "string" || !value2.password || value2.connection_timeout_seconds !== postgres_test_settings_default.connection_timeout_seconds) {
@@ -6286,6 +6301,27 @@ CREATE TABLE crm_relations (
 );
 `;
 
+// server/adapters/postgres/diagnostics.ts
+var MAX_DIAGNOSTIC_LENGTH = 500;
+function clean(value2, fallback) {
+  if (typeof value2 !== "string" || !value2.trim())
+    return fallback;
+  return value2.replace(/\b(postgres(?:ql)?:\/\/)[^@\s]+@/gi, "$1[redacted]@").replace(/\b(password|passwd|pwd|secret|token)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]").replace(/\bfor user\s+(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "for user [redacted]").replace(/\b(user|username)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, MAX_DIAGNOSTIC_LENGTH);
+}
+function property(error, key2) {
+  return error && typeof error === "object" && key2 in error ? error[key2] : void 0;
+}
+function postgresErrorDiagnostic(error) {
+  const cause = property(error, "cause");
+  return [
+    `code=${clean(property(error, "code"), "UNKNOWN")}`,
+    `name=${clean(property(error, "name"), "UNKNOWN")}`,
+    `message=${clean(property(error, "message"), "unknown")}`,
+    `cause_code=${clean(property(cause, "code"), "UNKNOWN")}`,
+    `cause_message=${clean(property(cause, "message"), "unknown")}`
+  ].join(" ");
+}
+
 // server/adapters/postgres/repository.ts
 var COMPANY_COLUMNS = `id, name, domain, industry, country, size, backcheck_data AS "backcheckData",
   created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -6317,12 +6353,14 @@ var PostgresCrmRepository = class {
       this.log.write("ERROR", "crm.pg.pool", `\u95F2\u7F6E\u8FDE\u63A5\u9519\u8BEF code=${sqlCode(error)}`);
     });
   }
-  async execute(context, action) {
+  async execute(context, action, detail) {
     try {
       return await action();
     } catch (error) {
       const code2 = sqlCode(error);
-      this.log.write("ERROR", context, `\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25 code=${code2} message=${error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500)}`);
+      const diagnosticDetail = detail?.();
+      const diagnostic = detail ? ` ${postgresErrorDiagnostic(error)}` : ` code=${code2}`;
+      this.log.write("ERROR", context, `\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25${diagnosticDetail ? ` ${diagnosticDetail}` : ""}${diagnostic}`);
       if (code2 === EMAIL_CONFLICT)
         return failure("CONFLICT", "\u8D44\u6599\u5DF2\u5B58\u5728\uFF0C\u672A\u8986\u76D6\u73B0\u6709\u8BB0\u5F55");
       if (code2 === FOREIGN_KEY_ERROR || code2 === CHECK_ERROR)
@@ -6330,11 +6368,15 @@ var PostgresCrmRepository = class {
       return failure("DATABASE_ERROR", "\u6570\u636E\u5E93\u64CD\u4F5C\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u6D4B\u8BD5\u670D\u52A1\u72B6\u6001");
     }
   }
-  async transaction(action) {
+  async transaction(action, phase) {
+    phase?.("connect");
     const client = await this.pool.connect();
     try {
+      phase?.("begin");
       await client.query("BEGIN");
       const result2 = await action(client);
+      if (result2.ok)
+        phase?.("commit");
       await client.query(result2.ok ? "COMMIT" : "ROLLBACK");
       return result2;
     } catch (error) {
@@ -6349,22 +6391,37 @@ var PostgresCrmRepository = class {
     }
   }
   migrate() {
+    const startedAt = Date.now();
+    let currentPhase = "connect";
+    const detail = () => `phase=${currentPhase} elapsed_ms=${Date.now() - startedAt}`;
     return this.execute("crm.pg.migrate", () => this.transaction(async (client) => {
+      currentPhase = "advisory_lock";
       await client.query("SELECT pg_advisory_xact_lock($1)", [CRM_SCHEMA_LOCK]);
+      currentPhase = "ensure_migration_table";
       await client.query(`CREATE TABLE IF NOT EXISTS crm_schema_migrations (
         version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
       const checksum4 = (0, import_node_crypto2.createHash)("sha256").update(CRM_SCHEMA_SQL).digest("hex");
+      currentPhase = "checksum";
       const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CRM_SCHEMA_VERSION]);
       if (existing.rows.length) {
         if (existing.rows[0].checksum !== checksum4)
           return failure("CONFLICT", "\u5DF2\u5E94\u7528\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4\uFF0C\u62D2\u7EDD\u8986\u76D6");
       } else {
+        currentPhase = "apply_schema";
         await client.query(CRM_SCHEMA_SQL);
+        currentPhase = "record_version";
         await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES ($1,$2)", [CRM_SCHEMA_VERSION, checksum4]);
         this.log.write("INFO", "crm.pg.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${CRM_SCHEMA_VERSION}`);
       }
       return success(void 0);
-    }));
+    }, (value2) => {
+      currentPhase = value2;
+    }), detail).then((result2) => {
+      if (!result2.ok && result2.error.code !== "DATABASE_ERROR") {
+        this.log.write("ERROR", "crm.pg.migrate", `\u8FC1\u79FB\u88AB\u62D2\u7EDD ${detail()} code=${result2.error.code} message=${result2.error.message}`);
+      }
+      return result2;
+    });
   }
   createCompany(input) {
     return this.execute("crm.pg.company", async () => {
@@ -8415,7 +8472,8 @@ function readOnlineConfig(env = process.env) {
       test_mode: false,
       public_origin: origin,
       ...localHttp ? { local_http: true } : {},
-      ...localHttp || internalHttp ? { insecure_http: true } : {}
+      ...localHttp || internalHttp ? { insecure_http: true } : {},
+      ...env.PROSPECTOR_CENTER_ALLOW_ANY_HOST === "1" ? { allow_any_host: true } : {}
     };
   }
   if (env.PROSPECTOR_CENTER_MODE && env.PROSPECTOR_CENTER_MODE !== "test")
@@ -9208,10 +9266,16 @@ function inside(root, path4) {
   const part = (0, import_node_path4.relative)(root, path4);
   return part !== "" && !part.startsWith("..") && !(0, import_node_path4.isAbsolute)(part);
 }
-function createAdminStatic(root = (0, import_node_path4.resolve)(__dirname, "../../dist-admin")) {
+function createAdminStatic(root = (0, import_node_path4.resolve)(__dirname, "../../dist-admin"), links = {}) {
   return async (request2, response) => {
     try {
       const pathname = new URL(request2.url ?? "/", `http://${request2.headers.host}`).pathname;
+      if (pathname === "/assets/runtime-links.js") {
+        const body2 = Buffer.from(`window.__MILOGIN_LINKS__=${JSON.stringify(links).replace(/</g, "\\u003c")};`, "utf8");
+        response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Content-Length": body2.length, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+        response.end(request2.method === "HEAD" ? void 0 : body2);
+        return;
+      }
       const asset = pathname === "/" ? "index.html" : decodeURIComponent(pathname.slice(1));
       if (asset !== "index.html" && !/^assets\/[A-Za-z0-9_.-]+$/.test(asset)) {
         send(response, failure("NOT_FOUND", "\u9875\u9762\u4E0D\u5B58\u5728"));
@@ -9223,13 +9287,18 @@ function createAdminStatic(root = (0, import_node_path4.resolve)(__dirname, "../
         send(response, failure("NOT_FOUND", "\u9875\u9762\u4E0D\u5B58\u5728"));
         return;
       }
-      const content = await (0, import_promises2.readFile)(file);
+      const content = asset === "index.html" ? Buffer.from(injectLinks(await (0, import_promises2.readFile)(file, "utf8"), links), "utf8") : await (0, import_promises2.readFile)(file);
       response.writeHead(200, { "Content-Type": contentType, "Content-Length": content.length, "X-Content-Type-Options": "nosniff", "Cache-Control": asset === "index.html" ? "no-store" : "public, max-age=31536000, immutable" });
       response.end(request2.method === "HEAD" ? void 0 : content);
     } catch {
       send(response, failure("NOT_FOUND", "\u7BA1\u7406\u9875\u9762\u5C1A\u672A\u6784\u5EFA\u6216\u8D44\u6E90\u4E0D\u5B58\u5728"));
     }
   };
+}
+function injectLinks(html, links) {
+  if (!Object.keys(links).length)
+    return html;
+  return html.replace("</head>", '<script src="/assets/runtime-links.js"></script></head>');
 }
 
 // server/services/password-change.ts
@@ -12138,7 +12207,7 @@ var OPEN_TASK_FOR_CONTACT_SQL = `EXISTS(SELECT 1 FROM crm_followup_tasks ft WHER
 var ATTENTION_DUE_AT_SQL = `(SELECT min(ft.due_at) FROM crm_followup_tasks ft WHERE ${OPEN_TASK_MATCH_SQL})`;
 var ACTIVE_RELATIONSHIP_STAGE_SQL = `ct.id=${PRIMARY_CONTACT_ID_SQL} AND c.relationship_stage IN ('quoting','trial','cooperating')`;
 var BOARD_ATTENTION_SQL = `ct.crm_touch_status='replied' OR ${OPEN_TASK_FOR_CONTACT_SQL} OR (${ACTIVE_RELATIONSHIP_STAGE_SQL})`;
-var PROJECTION = `ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",EXISTS(SELECT 1 FROM crm_ai_proposals ap JOIN crm_sales_cases sc ON sc.case_id=ap.case_id WHERE sc.customer_id=c.customer_id AND ap.proposal_type='deal_won' AND ap.status='applied_pending_confirmation') AS "aiDealPending",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT COALESCE(array_agg(DISTINCT sid),'{}'::uuid[]) FROM crm_contact_assignment_requests sar CROSS JOIN LATERAL unnest(sar.supervisor_user_ids) sid WHERE sar.contact_id=ct.id AND sar.customer_id=c.customer_id AND sar.status='accepted') AS supervisor_user_ids,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted','pending_transfer')) AS active_assignment_status,COALESCE((SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1),CASE WHEN ct.id=${PRIMARY_CONTACT_ID_SQL} THEN c.relationship_stage END) AS "relationshipStage",CASE WHEN ct.crm_touch_status='replied' THEN 'reply' WHEN ${OPEN_TASK_FOR_CONTACT_SQL} THEN 'task' WHEN ${ACTIVE_RELATIONSHIP_STAGE_SQL} THEN 'stage' END AS "attentionReason",${ATTENTION_DUE_AT_SQL} AS "attentionDueAt",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
+var PROJECTION = `ct.id AS "contactId",c.customer_id AS "customerId",c.version AS "customerVersion",ct.crm_contact_version AS "contactVersion",co.id AS "companyId",co.name AS "companyName",co.industry AS "businessType",co.domain AS website,ct.email,ct.first_name AS "firstName",ct.last_name AS "lastName",ct.title,ct.phone,ct.whatsapp,ct.linkedin AS "linkedinUrl",COALESCE(co.country,ct.country) AS country,COALESCE(CASE co.customer_type WHEN '\u4EE3\u7406' THEN 'agent' WHEN '\u76F4\u5BA2' THEN 'direct' END,ct.client_type) AS "clientType",ct.language,ct.stage,ct.status,ct.tags,ct.extra,ct.crm_touch_status AS "touchStatus",EXISTS(SELECT 1 FROM crm_ai_proposals ap JOIN crm_sales_cases sc ON sc.case_id=ap.case_id WHERE sc.customer_id=c.customer_id AND ap.proposal_type='deal_won' AND ap.status='applied_pending_confirmation') AS "aiDealPending",ct.assignee,ct.source,ct.source_detail AS "sourceDetail",ct.source_level1 AS "sourceLevel1",ct.source_level2 AS "sourceLevel2",ct.created_at AS "createdAt",ct.updated_at AS "updatedAt",${CONTACT_OWNER_SQL} AS "ownerUserId",(SELECT u.display_name FROM public.identity_users u WHERE u.user_id=${CONTACT_OWNER_SQL}) AS "ownerName",c.origin,c.state,c.created_by,c.development_restriction,(SELECT COALESCE(jsonb_agg(jsonb_build_object('targetUserId',sh.target_user_id,'editableFields',sh.editable_fields,'canFollowup',sh.can_followup,'canChangeStage',sh.can_change_stage)),'[]'::jsonb) FROM crm_contact_shares sh WHERE sh.contact_id=ct.id AND sh.customer_id=c.customer_id AND sh.status='accepted' AND EXISTS(SELECT 1 FROM public.identity_product_grants tg WHERE tg.user_id=sh.target_user_id AND tg.product_id='crm' AND tg.role='sales' AND tg.active) AND ${validShareSql(CONTACT_OWNER_SQL)}) AS shared_grants,(SELECT ar.status FROM crm_contact_assignment_requests ar WHERE ar.contact_id=ct.id AND ar.status IN ('pending','accepted','pending_transfer')) AS active_assignment_status,COALESCE((SELECT act.stage FROM crm_shared_activities act WHERE act.contact_id=ct.id AND act.customer_id=c.customer_id AND act.stage IS NOT NULL ORDER BY act.occurred_at DESC,act.id DESC LIMIT 1),CASE WHEN ct.id=${PRIMARY_CONTACT_ID_SQL} THEN c.relationship_stage END) AS "relationshipStage",CASE WHEN ct.crm_touch_status='replied' THEN 'reply' WHEN ${OPEN_TASK_FOR_CONTACT_SQL} THEN 'task' WHEN ${ACTIVE_RELATIONSHIP_STAGE_SQL} THEN 'stage' END AS "attentionReason",${ATTENTION_DUE_AT_SQL} AS "attentionDueAt",${LAST_FOLLOWUP_AT} AS "lastFollowupAt",${LAST_FOLLOWUP_NOTE} AS "lastFollowupNote"`;
 var NOTIFICATION_VALUE_MAX = 240;
 function notificationValue(value2) {
   if (value2 === void 0 || value2 === null || value2 === "")
@@ -12185,7 +12254,7 @@ function canDeleteContact(a, row2) {
   return ownManager(a, row2) || row2.origin === "personal" && row2.ownerUserId === a.userId && a.capabilities.includes("leads.develop");
 }
 function mapped3(a, row2) {
-  const { created_by: _, development_restriction: __, active_assignment_status: ___, supervisor_user_ids: _____, shared_grants: ______, ...ct } = row2, permissions = contactPermissionsFor(a, row2), assignmentStatus = row2.active_assignment_status === "pending_transfer" ? "accepted" : row2.active_assignment_status;
+  const { created_by: _, development_restriction: __, active_assignment_status: ___, shared_grants: _____, ...ct } = row2, permissions = contactPermissionsFor(a, row2), assignmentStatus = row2.active_assignment_status === "pending_transfer" ? "accepted" : row2.active_assignment_status;
   return { ...ct, assignmentStatus, relationshipStage: ct.relationshipStage ?? (["contacted", "replied", "bounced", "autoreply"].includes(ct.touchStatus) ? "reaching" : "cold"), attentionDueAt: ct.attentionDueAt ? new Date(ct.attentionDueAt).toISOString() : null, lastFollowupAt: ct.lastFollowupAt ? new Date(ct.lastFollowupAt).toISOString() : null, lastFollowupNote: ct.lastFollowupNote ?? null, createdAt: new Date(ct.createdAt).toISOString(), updatedAt: new Date(ct.updatedAt).toISOString(), canDelete: canDeleteContact(a, row2), permissions, isShared: !!row2.shared_grants?.some((g) => g.targetUserId === a.userId) && row2.ownerUserId !== a.userId, canSendMail: permissions.canSendMail, canEdit: edit(a, row2), canFollowup: permissions.canFollowup, canAssign: assign(a, row2) };
 }
 async function contact(c, input, lock = false, includeDeleted = false) {
@@ -12267,7 +12336,7 @@ async function listContactGroupsIn(c, a, q) {
    count(DISTINCT co.id)::int AS company_count,
    count(DISTINCT COALESCE(NULLIF(co.country,''),NULLIF(ct.country,'')))::int AS country_count,
    count(*) FILTER(WHERE ct.crm_touch_status IN ('contacted','replied','bounced','autoreply'))::int AS touched_count,
-   bool_or(concat_ws(' ',ct.email,ct.first_name,ct.last_name,co.name,ct.title,ct.phone) ILIKE $6 ESCAPE '!') AS member_match,
+   (bool_or(concat_ws(' ',ct.email,ct.first_name,ct.last_name,co.name,ct.title,ct.phone) ILIKE $6 ESCAPE '!') FILTER (WHERE $6::text <> '')) AS member_match,
    max(ct.created_at) AS latest_imported_at,
    max(ct.updated_at) AS latest_updated_at,
    (array_agg(DISTINCT co.name ORDER BY co.name) FILTER(WHERE co.name IS NOT NULL))[1:3] AS companies,
@@ -21410,8 +21479,276 @@ function createTeamHandler(service) {
   };
 }
 
+// server/adapters/postgres/sample-mail-repository.ts
+var import_node_crypto38 = require("node:crypto");
+var import_promises4 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
+
+// server/core/sample-mail.ts
+var SAMPLE_MAIL_ROUTES = {
+  packages: "/api/crm/sample-mail",
+  upload: "/api/crm/sample-mail/upload"
+};
+var SAMPLE_MAIL_LIMITS = {
+  packageBytes: 24 * 1024 * 1024,
+  messageCount: 500,
+  filename: 160,
+  accountEmail: 320,
+  note: 200,
+  retention_days: 30,
+  // The center keeps only the newest packages per account; older ones are removed on upload.
+  max_packages_per_owner: 10
+};
+function validSampleMailUpload(value2) {
+  if (!value2 || typeof value2 !== "object")
+    return false;
+  const input = value2;
+  const text18 = (key2, max) => typeof input[key2] === "string" && input[key2].trim().length > 0 && input[key2].length <= max;
+  return text18("filename", SAMPLE_MAIL_LIMITS.filename) && typeof input.accountEmail === "string" && /^[^\s@]+@[^\s@]+$/.test(input.accountEmail) && input.accountEmail.length <= SAMPLE_MAIL_LIMITS.accountEmail && Number.isSafeInteger(input.messageCount) && input.messageCount > 0 && input.messageCount <= SAMPLE_MAIL_LIMITS.messageCount && (input.rangeFrom === void 0 || input.rangeFrom === null || typeof input.rangeFrom === "string" && input.rangeFrom.length <= 40) && (input.rangeTo === void 0 || input.rangeTo === null || typeof input.rangeTo === "string" && input.rangeTo.length <= 40) && (input.note === void 0 || typeof input.note === "string" && input.note.length <= SAMPLE_MAIL_LIMITS.note) && typeof input.base64 === "string" && input.base64.length > 0 && input.base64.length <= Math.ceil(SAMPLE_MAIL_LIMITS.packageBytes / 3) * 4 + 4;
+}
+
+// server/adapters/postgres/sample-mail-schema.ts
+var SAMPLE_MAIL_SCHEMA_VERSION = "075-sample-mail";
+var SAMPLE_MAIL_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS crm_sample_mail_packages (
+  package_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id uuid NOT NULL REFERENCES public.identity_users(user_id),
+  account_email text NOT NULL CHECK (btrim(account_email) <> '' AND char_length(account_email) <= 320),
+  filename text NOT NULL CHECK (btrim(filename) <> '' AND char_length(filename) <= 160),
+  message_count integer NOT NULL CHECK (message_count > 0 AND message_count <= 500),
+  bytes bigint NOT NULL CHECK (bytes > 0 AND bytes <= 25165824),
+  sha256 text NOT NULL CHECK (sha256 ~ '^[a-f0-9]{64}$'),
+  storage_key text NOT NULL CHECK (btrim(storage_key) <> ''),
+  range_from text,
+  range_to text,
+  note text NOT NULL DEFAULT '' CHECK (char_length(note) <= 200),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  expires_at timestamptz NOT NULL,
+  deleted_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_crm_sample_mail_owner
+  ON crm_sample_mail_packages(owner_user_id, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_sample_mail_expiry
+  ON crm_sample_mail_packages(expires_at) WHERE deleted_at IS NULL;
+`;
+
+// server/adapters/postgres/sample-mail-repository.ts
+var SAMPLE_ROOT = process.env.PROSPECTOR_SAMPLE_MAIL_ROOT ?? (0, import_node_path7.join)(process.cwd(), "data", "sample-mail");
+var SCHEMA_LOCK = 19041075;
+var BASE64_CHARS2 = /^[A-Za-z0-9+/]+={0,2}$/;
+var meta = (row2) => ({
+  packageId: String(row2.packageId),
+  accountEmail: String(row2.accountEmail),
+  filename: String(row2.filename),
+  messageCount: Number(row2.messageCount),
+  bytes: Number(row2.bytes),
+  sha256: String(row2.sha256),
+  rangeFrom: row2.rangeFrom ?? null,
+  rangeTo: row2.rangeTo ?? null,
+  note: String(row2.note ?? ""),
+  createdAt: new Date(row2.createdAt).toISOString(),
+  expiresAt: new Date(row2.expiresAt).toISOString()
+});
+var COLUMNS3 = `package_id AS "packageId",account_email AS "accountEmail",filename,message_count AS "messageCount",
+  bytes,sha256,storage_key AS "storageKey",range_from AS "rangeFrom",range_to AS "rangeTo",note,
+  created_at AS "createdAt",expires_at AS "expiresAt"`;
+var SELECT3 = `SELECT ${COLUMNS3} FROM crm_sample_mail_packages`;
+var PostgresSampleMailRepository = class {
+  constructor(pool, log) {
+    this.pool = pool;
+    this.log = log;
+    assertCenterDatabasePool(pool);
+  }
+  async migrate() {
+    let client;
+    try {
+      client = await this.pool.connect();
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock($1)", [SCHEMA_LOCK]);
+      await client.query(SAMPLE_MAIL_SCHEMA_SQL);
+      await client.query("COMMIT");
+      return success(void 0);
+    } catch (error) {
+      if (client)
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+        }
+      this.log.write("ERROR", "sample-mail.migrate", `\u6837\u4F8B\u90AE\u4EF6\u8FC1\u79FB\u5931\u8D25 ${SAMPLE_MAIL_SCHEMA_VERSION} (${error instanceof Error ? error.name : "unknown"})`);
+      return failure("DATABASE_ERROR", "\u6837\u4F8B\u90AE\u4EF6\u8FC1\u79FB\u5931\u8D25");
+    } finally {
+      client?.release();
+    }
+  }
+  async actor(client, tokenHash) {
+    const row2 = (await client.query(`SELECT u.user_id AS "userId",u.identity_admin AS "identityAdmin"
+      FROM public.identity_sessions s JOIN public.identity_users u USING(user_id)
+      WHERE s.token_hash=$1 AND s.client='api' AND s.revoked_at IS NULL AND s.expires_at>now()
+        AND u.active AND NOT u.must_change_password AND s.security_revision=u.security_revision`, [tokenHash])).rows[0];
+    return row2 ? { userId: String(row2.userId), identityAdmin: Boolean(row2.identityAdmin) } : null;
+  }
+  async authorize(tokenHash, work) {
+    let client;
+    try {
+      client = await this.pool.connect();
+      const actor = await this.actor(client, tokenHash);
+      if (!actor)
+        return failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709\u6837\u4F8B\u90AE\u4EF6\u6743\u9650");
+      return await work(client, actor);
+    } catch (error) {
+      this.log.write("ERROR", "sample-mail.auth", `\u6837\u4F8B\u90AE\u4EF6\u9274\u6743\u5931\u8D25 (${error instanceof Error ? error.message : "unknown"})`);
+      return failure("DATABASE_ERROR", "\u6837\u4F8B\u90AE\u4EF6\u9274\u6743\u5931\u8D25");
+    } finally {
+      client?.release();
+    }
+  }
+  upload(tokenHash, input) {
+    return this.authorize(tokenHash, async (client, actor) => {
+      if (!BASE64_CHARS2.test(input.base64))
+        return failure("INVALID_INPUT", "\u6837\u4F8B\u5185\u5BB9\u7F16\u7801\u65E0\u6548");
+      const data = Buffer.from(input.base64, "base64");
+      if (!data.length || data.length > SAMPLE_MAIL_LIMITS.packageBytes)
+        return failure("INVALID_INPUT", "\u6837\u4F8B\u5305\u5927\u5C0F\u65E0\u6548");
+      const sha256 = (0, import_node_crypto38.createHash)("sha256").update(data).digest("hex");
+      const duplicate = (await client.query(`${SELECT3} WHERE owner_user_id=$1 AND sha256=$2 AND deleted_at IS NULL AND expires_at>now() ORDER BY created_at DESC LIMIT 1`, [actor.userId, sha256])).rows[0];
+      if (duplicate)
+        return success(meta(duplicate));
+      const packageId = (0, import_node_crypto38.randomUUID)();
+      const storageKey = `${actor.userId}/${packageId}.json`;
+      const target = (0, import_node_path7.join)(SAMPLE_ROOT, storageKey);
+      const temp = `${target}.${(0, import_node_crypto38.randomUUID)()}.tmp`;
+      await (0, import_promises4.mkdir)((0, import_node_path7.dirname)(target), { recursive: true });
+      await (0, import_promises4.writeFile)(temp, data, { mode: 384 });
+      await (0, import_promises4.rename)(temp, target);
+      const inserted = (await client.query(
+        `INSERT INTO crm_sample_mail_packages
+        (package_id,owner_user_id,account_email,filename,message_count,bytes,sha256,storage_key,range_from,range_to,note,expires_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now() + ($12 || ' days')::interval)
+        RETURNING ${COLUMNS3}`,
+        [
+          packageId,
+          actor.userId,
+          input.accountEmail.trim().toLowerCase(),
+          input.filename.trim(),
+          input.messageCount,
+          data.length,
+          sha256,
+          storageKey,
+          input.rangeFrom ?? null,
+          input.rangeTo ?? null,
+          (input.note ?? "").trim(),
+          String(SAMPLE_MAIL_LIMITS.retention_days)
+        ]
+      )).rows[0];
+      const stale = (await client.query(`SELECT package_id AS "packageId",storage_key AS "storageKey" FROM (
+          SELECT package_id,storage_key,row_number() OVER (ORDER BY created_at DESC) AS rn
+          FROM crm_sample_mail_packages WHERE owner_user_id=$1 AND deleted_at IS NULL AND expires_at>now()
+        ) ranked WHERE rn > $2`, [actor.userId, SAMPLE_MAIL_LIMITS.max_packages_per_owner])).rows;
+      for (const row2 of stale) {
+        await client.query("UPDATE crm_sample_mail_packages SET deleted_at=now() WHERE package_id=$1", [row2.packageId]);
+        await (0, import_promises4.unlink)((0, import_node_path7.join)(SAMPLE_ROOT, String(row2.storageKey))).catch(() => {
+        });
+      }
+      return success(meta(inserted));
+    });
+  }
+  list(tokenHash) {
+    return this.authorize(tokenHash, async (client, actor) => {
+      const rows = (await client.query(`${SELECT3}
+        WHERE deleted_at IS NULL AND expires_at>now() ${actor.identityAdmin ? "" : "AND owner_user_id=$1"}
+        ORDER BY created_at DESC LIMIT 200`, actor.identityAdmin ? [] : [actor.userId])).rows;
+      return success(rows.map(meta));
+    });
+  }
+  read(tokenHash, packageId) {
+    return this.authorize(tokenHash, async (client, actor) => {
+      const row2 = (await client.query(`${SELECT3} WHERE package_id=$1 AND deleted_at IS NULL AND expires_at>now()`, [packageId])).rows[0];
+      if (!row2)
+        return failure("NOT_FOUND", "\u6837\u4F8B\u5305\u4E0D\u5B58\u5728\u6216\u5DF2\u8FC7\u671F");
+      if (!actor.identityAdmin && String((await client.query("SELECT owner_user_id FROM crm_sample_mail_packages WHERE package_id=$1", [packageId])).rows[0]?.owner_user_id) !== actor.userId) {
+        return failure("FORBIDDEN", "\u65E0\u6743\u8BFB\u53D6\u8BE5\u6837\u4F8B\u5305");
+      }
+      try {
+        return success({ meta: meta(row2), data: await (0, import_promises4.readFile)((0, import_node_path7.join)(SAMPLE_ROOT, row2.storageKey)) });
+      } catch {
+        return failure("NOT_FOUND", "\u6837\u4F8B\u5305\u5185\u5BB9\u4E0D\u5B58\u5728");
+      }
+    });
+  }
+  remove(tokenHash, packageId) {
+    return this.authorize(tokenHash, async (client, actor) => {
+      const row2 = (await client.query('SELECT owner_user_id AS "owner",storage_key AS "key" FROM crm_sample_mail_packages WHERE package_id=$1 AND deleted_at IS NULL', [packageId])).rows[0];
+      if (!row2)
+        return failure("NOT_FOUND", "\u6837\u4F8B\u5305\u4E0D\u5B58\u5728");
+      if (!actor.identityAdmin && String(row2.owner) !== actor.userId)
+        return failure("FORBIDDEN", "\u65E0\u6743\u5220\u9664\u8BE5\u6837\u4F8B\u5305");
+      await client.query("UPDATE crm_sample_mail_packages SET deleted_at=now() WHERE package_id=$1", [packageId]);
+      await (0, import_promises4.unlink)((0, import_node_path7.join)(SAMPLE_ROOT, String(row2.key))).catch(() => {
+      });
+      return success(void 0);
+    });
+  }
+};
+
+// server/services/sample-mail.ts
+var UUID15 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function createSampleMailService(repo, tokens) {
+  return {
+    upload(token, value2) {
+      return validSampleMailUpload(value2) ? repo.upload(tokens.hash(token), value2) : Promise.resolve(failure("INVALID_INPUT", "\u6837\u4F8B\u90AE\u4EF6\u53C2\u6570\u65E0\u6548"));
+    },
+    list(token) {
+      return repo.list(tokens.hash(token));
+    },
+    read(token, packageId) {
+      return UUID15.test(packageId) ? repo.read(tokens.hash(token), packageId) : Promise.resolve(failure("INVALID_INPUT", "\u6837\u4F8B\u5305\u7F16\u53F7\u65E0\u6548"));
+    },
+    remove(token, packageId) {
+      return UUID15.test(packageId) ? repo.remove(tokens.hash(token), packageId) : Promise.resolve(failure("INVALID_INPUT", "\u6837\u4F8B\u5305\u7F16\u53F7\u65E0\u6548"));
+    }
+  };
+}
+
+// server/transport/sample-mail-http.ts
+var JSON_LIMIT = Math.ceil(SAMPLE_MAIL_LIMITS.packageBytes / 3) * 4 + 64 * 1024;
+function createSampleMailHandler(service) {
+  return async (request2, response) => {
+    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`);
+    const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (request2.method === "GET" && url.pathname === SAMPLE_MAIL_ROUTES.packages) {
+      send(response, await service.list(token));
+      return;
+    }
+    if (request2.method === "POST" && url.pathname === SAMPLE_MAIL_ROUTES.upload) {
+      const parsed = await body(request2, JSON_LIMIT);
+      if (!parsed.ok) {
+        send(response, parsed);
+        return;
+      }
+      send(response, await service.upload(token, parsed.data));
+      return;
+    }
+    const file = /^\/api\/crm\/sample-mail\/([^/]+)\/file$/.exec(url.pathname);
+    if (request2.method === "GET" && file) {
+      const result2 = await service.read(token, file[1]);
+      if (!result2.ok) {
+        send(response, result2);
+        return;
+      }
+      send(response, { ok: true, data: { meta: result2.data.meta, base64: Buffer.from(result2.data.data).toString("base64") } });
+      return;
+    }
+    const item = /^\/api\/crm\/sample-mail\/([^/]+)$/.exec(url.pathname);
+    if (request2.method === "DELETE" && item) {
+      send(response, await service.remove(token, item[1]));
+      return;
+    }
+    send(response, failure("NOT_FOUND", "\u6837\u4F8B\u90AE\u4EF6\u63A5\u53E3\u4E0D\u5B58\u5728"));
+  };
+}
+
 // server/services/contact-mail-analysis.ts
-var UUID15 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID16 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var HASH = /^[a-f0-9]{64}$/i;
 var TOKEN5 = /^[A-Za-z0-9_-]{43}$/;
 function record13(value2) {
@@ -21430,7 +21767,7 @@ function confidence(value2) {
   return typeof value2 === "number" && Number.isFinite(value2) && value2 >= 0 && value2 <= 1;
 }
 function base(value2) {
-  return Number.isSafeInteger(value2.contactId) && Number(value2.contactId) > 0 && typeof value2.customerId === "string" && UUID15.test(value2.customerId) && text14(value2.mailboxKey, 128, 1) && text14(value2.messageKey, 256, 1) && typeof value2.contentHash === "string" && HASH.test(value2.contentHash);
+  return Number.isSafeInteger(value2.contactId) && Number(value2.contactId) > 0 && typeof value2.customerId === "string" && UUID16.test(value2.customerId) && text14(value2.mailboxKey, 128, 1) && text14(value2.messageKey, 256, 1) && typeof value2.contentHash === "string" && HASH.test(value2.contentHash);
 }
 function signals(value2) {
   return Array.isArray(value2) && value2.length <= CONTACT_MAIL_ANALYSIS_LIMITS.signals && value2.every((signal) => record13(signal) && keys8(signal, ["code", "label", "confidence", "evidence"]) && MAIL_INTENT_CODES.includes(signal.code) && text14(signal.label, CONTACT_MAIL_ANALYSIS_LIMITS.label, 1) && confidence(signal.confidence) && text14(signal.evidence, CONTACT_MAIL_ANALYSIS_LIMITS.evidenceItem, 1));
@@ -21543,7 +21880,7 @@ function createContactMailAnalysisHandler(service) {
 }
 
 // server/services/customer-status.ts
-var UUID16 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID17 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function record14(value2) {
   return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
 }
@@ -21557,15 +21894,15 @@ function createCustomerStatusService(repo, tokens) {
   const run2 = (token, action) => /^[A-Za-z0-9_-]{43}$/.test(token) ? action(tokens.hash(token)) : Promise.resolve(failure("UNAUTHORIZED", "\u4F1A\u8BDD\u65E0\u6548"));
   return {
     view(token, customerId) {
-      return UUID16.test(customerId) ? run2(token, (hash) => repo.view(hash, customerId)) : Promise.resolve(failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728"));
+      return UUID17.test(customerId) ? run2(token, (hash) => repo.view(hash, customerId)) : Promise.resolve(failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728"));
     },
     correct(token, input) {
-      if (!record14(input) || !UUID16.test(String(input.customerId ?? "")) || !Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 0 || !CUSTOMER_STATUSES.includes(input.status) || !text15(input.reason, CUSTOMER_STATUS_LIMITS.reason) || !key(input.idempotencyKey) || input.contactId !== void 0 && (!Number.isSafeInteger(input.contactId) || Number(input.contactId) < 1))
+      if (!record14(input) || !UUID17.test(String(input.customerId ?? "")) || !Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 0 || !CUSTOMER_STATUSES.includes(input.status) || !text15(input.reason, CUSTOMER_STATUS_LIMITS.reason) || !key(input.idempotencyKey) || input.contactId !== void 0 && (!Number.isSafeInteger(input.contactId) || Number(input.contactId) < 1))
         return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u72B6\u6001\u7EA0\u6B63\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.correct(hash, input));
     },
     resumeAi(token, input) {
-      if (!record14(input) || !UUID16.test(String(input.customerId ?? "")) || !Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 1 || !key(input.idempotencyKey))
+      if (!record14(input) || !UUID17.test(String(input.customerId ?? "")) || !Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 1 || !key(input.idempotencyKey))
         return Promise.resolve(failure("INVALID_INPUT", "\u6062\u590D AI \u7EF4\u62A4\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.resumeAi(hash, input));
     }
@@ -21607,7 +21944,7 @@ function createCustomerStatusHandler(service) {
 }
 
 // server/adapters/postgres/team-attention-repository.ts
-var import_node_crypto38 = require("node:crypto");
+var import_node_crypto39 = require("node:crypto");
 var ITEM_COLUMNS = `i.item_id AS "itemId",i.target_member_user_id AS "targetMemberUserId",target.display_name AS "targetMemberName",i.source_supervisor_user_id AS "sourceSupervisorUserId",source.display_name AS "sourceSupervisorName",i.customer_id AS "customerId",co.name AS "customerName",i.contact_id AS "contactId",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),NULLIF(ct.email,''),'\u8054\u7CFB\u4EBA') AS "contactName",ct.email AS "contactEmail",i.mail_event_id AS "mailEventId",i.analysis_id AS "analysisId",i.reason,i.priority,i.status,i.note,i.result,i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt",i.acknowledged_at AS "acknowledgedAt",i.resolved_at AS "resolvedAt",i.dismissed_at AS "dismissedAt"`;
 var ITEM_JOINS = `FROM crm_team_attention_items i JOIN public.identity_users target ON target.user_id=i.target_member_user_id JOIN public.identity_users source ON source.user_id=i.source_supervisor_user_id JOIN crm_customers c ON c.customer_id=i.customer_id JOIN companies co ON co.id=c.company_id JOIN contacts ct ON ct.id=i.contact_id`;
 function iso4(value2) {
@@ -21617,7 +21954,7 @@ function optionalIso(value2) {
   return value2 ? new Date(value2).toISOString() : null;
 }
 function digest(value2) {
-  return (0, import_node_crypto38.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+  return (0, import_node_crypto39.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
 }
 function oversight(actor) {
   return actor.roles.includes("admin") || actor.roles.includes("operations");
@@ -21801,7 +22138,7 @@ var PostgresTeamAttentionRepository = class {
 };
 
 // server/services/team-attention.ts
-var UUID17 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID18 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var TOKEN7 = /^[A-Za-z0-9_-]{43}$/;
 function record15(value2) {
   return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
@@ -21816,7 +22153,7 @@ function optionalText(value2, maximum) {
   return value2 === void 0 || text16(value2, maximum);
 }
 function uuid4(value2) {
-  return typeof value2 === "string" && UUID17.test(value2);
+  return typeof value2 === "string" && UUID18.test(value2);
 }
 function query(value2) {
   if (!record15(value2) || !keys9(value2, ["status", "reason", "targetMemberUserId", "limit", "offset"]))
@@ -21870,7 +22207,7 @@ function createTeamAttentionService(repo, tokens) {
     },
     transition(token, itemId, action, value2) {
       const parsed = transition(value2);
-      if (!parsed || !UUID17.test(itemId) || parsed.action !== action)
+      if (!parsed || !UUID18.test(itemId) || parsed.action !== action)
         return Promise.resolve(failure("INVALID_INPUT", "\u5173\u6CE8\u9879\u72B6\u6001\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.transition(hash, { ...parsed, itemId }));
     }
@@ -22012,7 +22349,7 @@ function customerGradeFor(signals2) {
 }
 
 // server/adapters/postgres/team-monitoring-schema.ts
-var import_node_crypto39 = require("node:crypto");
+var import_node_crypto40 = require("node:crypto");
 var TEAM_MONITORING_SCHEMA_VERSION = "061-team-monitoring";
 var TEAM_MONITORING_LOCK = 610061;
 var TEAM_MONITORING_SQL = `
@@ -22068,7 +22405,7 @@ CREATE INDEX idx_crm_team_monitoring_tasks_responsible
   WHERE status='open' AND source_responsible_user_id IS NOT NULL;
 `;
 function checksum2() {
-  return (0, import_node_crypto39.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
+  return (0, import_node_crypto40.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
 }
 async function migrateTeamMonitoringSchema(client) {
   const digest2 = checksum2();
@@ -22852,7 +23189,7 @@ var PostgresTeamMonitoringRepository = class {
 
 // server/services/team-monitoring.ts
 var TOKEN9 = /^[A-Za-z0-9_-]{43}$/;
-var UUID18 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID19 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function record16(value2) {
   return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
 }
@@ -22871,9 +23208,9 @@ function page(value2) {
 function overviewQuery(value2) {
   if (!record16(value2) || !keys10(value2, ["teamId", "memberUserId", "limit", "offset", "unitLimit", "unitOffset"]))
     return void 0;
-  if (value2.teamId !== void 0 && (typeof value2.teamId !== "string" || !UUID18.test(value2.teamId)))
+  if (value2.teamId !== void 0 && (typeof value2.teamId !== "string" || !UUID19.test(value2.teamId)))
     return void 0;
-  if (value2.memberUserId !== void 0 && (typeof value2.memberUserId !== "string" || !UUID18.test(value2.memberUserId)))
+  if (value2.memberUserId !== void 0 && (typeof value2.memberUserId !== "string" || !UUID19.test(value2.memberUserId)))
     return void 0;
   const limit = value2.limit ?? TEAM_MONITORING_LIMITS.page;
   const offset = value2.offset ?? 0;
@@ -22891,13 +23228,13 @@ function overviewQuery(value2) {
   };
 }
 function contactQuery(value2) {
-  if (!record16(value2) || !keys10(value2, ["customerId", "limit", "offset"]) || typeof value2.customerId !== "string" || !UUID18.test(value2.customerId))
+  if (!record16(value2) || !keys10(value2, ["customerId", "limit", "offset"]) || typeof value2.customerId !== "string" || !UUID19.test(value2.customerId))
     return void 0;
   const paging = page({ limit: value2.limit, offset: value2.offset });
   return paging ? { customerId: value2.customerId, ...paging } : void 0;
 }
 function mailQuery(value2) {
-  if (!record16(value2) || !keys10(value2, ["contactId", "customerId"]) || typeof value2.customerId !== "string" || !UUID18.test(value2.customerId))
+  if (!record16(value2) || !keys10(value2, ["contactId", "customerId"]) || typeof value2.customerId !== "string" || !UUID19.test(value2.customerId))
     return void 0;
   if (!Number.isSafeInteger(value2.contactId) || Number(value2.contactId) < 1)
     return void 0;
@@ -22912,7 +23249,7 @@ function createTeamMonitoringService(repo, tokens) {
     },
     member(token, userId, value2) {
       const parsed = page(value2);
-      if (!UUID18.test(userId) || !parsed)
+      if (!UUID19.test(userId) || !parsed)
         return Promise.resolve(failure("INVALID_INPUT", "\u6210\u5458\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.member(hash, userId, parsed.limit, parsed.offset));
     },
@@ -22925,7 +23262,7 @@ function createTeamMonitoringService(repo, tokens) {
     },
     mail(token, eventId, value2) {
       const parsed = mailQuery(value2);
-      if (!UUID18.test(eventId) || !parsed)
+      if (!UUID19.test(eventId) || !parsed)
         return Promise.resolve(failure("INVALID_INPUT", "\u90AE\u4EF6\u76D1\u63A7\u67E5\u8BE2\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.mail(hash, eventId, parsed.contactId, parsed.customerId));
     }
@@ -23012,10 +23349,10 @@ function createTeamMonitoringHandler(service) {
 }
 
 // server/adapters/postgres/sales-performance-repository.ts
-var import_node_crypto41 = require("node:crypto");
+var import_node_crypto42 = require("node:crypto");
 
 // server/adapters/postgres/sales-performance-schema.ts
-var import_node_crypto40 = require("node:crypto");
+var import_node_crypto41 = require("node:crypto");
 var SALES_PERFORMANCE_SCHEMA_VERSION = "062-sales-performance-customer-grade";
 var SALES_PERFORMANCE_SCHEMA_LOCK = 620062;
 var SALES_PERFORMANCE_SQL = `
@@ -23104,7 +23441,7 @@ CREATE INDEX idx_crm_sales_perf_customer_origin_source
   ON crm_customers(origin,source,customer_id);
 `;
 function checksum3() {
-  return (0, import_node_crypto40.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
+  return (0, import_node_crypto41.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
 }
 async function migrateSalesPerformanceSchema(client) {
   const digest2 = checksum3();
@@ -23711,7 +24048,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto41.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto42.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, OVERRIDE_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -23747,7 +24084,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto41.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto42.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, CLEAR_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -23775,7 +24112,7 @@ var PostgresSalesPerformanceRepository = class {
 
 // server/services/sales-performance.ts
 var TOKEN11 = /^[A-Za-z0-9_-]{43}$/;
-var UUID19 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+var UUID20 = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 var MILLISECONDS_PER_DAY = 864e5;
 function record17(value2) {
   return !!value2 && typeof value2 === "object" && !Array.isArray(value2);
@@ -23790,7 +24127,7 @@ function optionalText2(value2, maximum) {
   return value2 === void 0 || text17(value2, maximum);
 }
 function uuid5(value2) {
-  return typeof value2 === "string" && UUID19.test(value2);
+  return typeof value2 === "string" && UUID20.test(value2);
 }
 function page2(value2) {
   const limit = value2.limit ?? SALES_PERFORMANCE_LIMITS.page;
@@ -23886,13 +24223,13 @@ function createSalesPerformanceService(repo, tokens, clock) {
     },
     setCustomerGradeOverride(token, customerId, value2) {
       const parsed = setBody(value2);
-      if (!UUID19.test(customerId) || !parsed)
+      if (!UUID20.test(customerId) || !parsed)
         return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u7B49\u7EA7\u8986\u76D6\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.setCustomerGradeOverride(hash, { customerId, ...parsed, grade: parsed.grade }));
     },
     clearCustomerGradeOverride(token, customerId, value2) {
       const parsed = clearBody(value2);
-      if (!UUID19.test(customerId) || !parsed)
+      if (!UUID20.test(customerId) || !parsed)
         return Promise.resolve(failure("INVALID_INPUT", "\u5BA2\u6237\u7B49\u7EA7\u6E05\u9664\u53C2\u6570\u65E0\u6548"));
       return run2(token, (hash) => repo.clearCustomerGradeOverride(hash, { customerId, ...parsed }));
     }
@@ -23970,9 +24307,9 @@ function createSalesPerformanceHandler(service) {
 }
 
 // server/adapters/online-instance.ts
-var import_node_crypto42 = require("node:crypto");
+var import_node_crypto43 = require("node:crypto");
 var INSTANCE_ID_PATTERN = /^[a-f0-9]{64}$/;
-function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto42.randomBytes)(32).toString("hex")) {
+function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto43.randomBytes)(32).toString("hex")) {
   const configured = env.PROSPECTOR_ONLINE_INSTANCE?.trim();
   if (configured) {
     if (!INSTANCE_ID_PATTERN.test(configured))
@@ -23989,7 +24326,9 @@ function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_
 var EXIT_FAILED = 1;
 var SHUTDOWN_TIMEOUT_MS = 5e3;
 async function main() {
-  const config = readOnlineConfig(), pool = new Pool(await resolveOnlineDatabaseConfig());
+  const config = readOnlineConfig(), databaseConfig = await resolveOnlineDatabaseConfig();
+  serverLog.write("INFO", "identity.runtime", `\u6570\u636E\u5E93\u8FDE\u63A5\u914D\u7F6E ${describePostgresConnection(databaseConfig)}`);
+  const pool = new Pool(databaseConfig);
   let started = false;
   try {
     const crm = new PostgresCrmRepository(pool, serverLog), repo = new PostgresAuthRepository(pool, serverLog);
@@ -24063,6 +24402,9 @@ async function main() {
     const aiRepo = new PostgresAiRepository(pool, serverLog);
     if (!(await aiRepo.migrate()).ok)
       throw new Error("AI \u7BA1\u7406\u8FC1\u79FB\u88AB\u62D2\u7EDD");
+    const sampleMailRepo = new PostgresSampleMailRepository(pool, serverLog);
+    if (!(await sampleMailRepo.migrate()).ok)
+      throw new Error("\u6837\u4F8B\u90AE\u4EF6\u8FC1\u79FB\u88AB\u62D2\u7EDD");
     const ai = createAiService(aiRepo);
     const salesCaseRepo = new PostgresSalesCaseRepository(pool, serverLog);
     if (!(await salesCaseRepo.migrate()).ok)
@@ -24073,6 +24415,7 @@ async function main() {
     const taskService = createTaskService(taskRepo, tokenAdapter);
     const tasks = createTaskHandler(taskService);
     const teams = createTeamHandler(createTeamService(teamRepo, tokenAdapter));
+    const sampleMail = createSampleMailHandler(createSampleMailService(sampleMailRepo, tokenAdapter));
     const contactShares = createContactSharingHandler(createContactSharingService(leadRepo, tokenAdapter));
     const contactAssignments = createContactAssignmentHandler(createContactAssignmentService(leadRepo, tokenAdapter));
     const sendAcceptance2 = createSendAcceptanceHandler(createSendAcceptanceService(leadRepo, tokenAdapter));
@@ -24111,6 +24454,10 @@ async function main() {
       }
       if (isTeamRoute(route)) {
         await teams(request2, response);
+        return;
+      }
+      if (route === SAMPLE_MAIL_ROUTES.packages || route === SAMPLE_MAIL_ROUTES.upload || route.startsWith("/api/crm/sample-mail/")) {
+        await sampleMail(request2, response);
         return;
       }
       if (Object.values(SEND_ACCEPTANCE_ROUTES).some((path4) => path4 === route)) {
@@ -24165,7 +24512,7 @@ async function main() {
     };
     const offlineIssuer = loadOfflineAccessIssuer(onlineRuntimeDirectory(), config.public_origin ?? `http://${config.host}:${config.port}`);
     const desktop = createDesktopAuthHandler(createDesktopSessionService(repo, passwords, tokenAdapter, clock, config.session_ttl_seconds, offlineIssuer), gate, config);
-    const server = createOnlineServer(auth, gate, config, serverLog, instanceId, createAdminHandler(auth, admin, tokenAdapter, gate, config, createAdminStatic(), createPasswordChangeService(repo, repo, passwords, tokenAdapter, auth), dashboard, dataBrowser, ai), collaboration, desktop);
+    const server = createOnlineServer(auth, gate, config, serverLog, instanceId, createAdminHandler(auth, admin, tokenAdapter, gate, config, createAdminStatic(void 0, { navigator: config.navigator_entry_url ?? config.navigator_url ?? "" }), createPasswordChangeService(repo, repo, passwords, tokenAdapter, auth), dashboard, dataBrowser, ai), collaboration, desktop);
     await new Promise((resolve3, reject) => {
       server.once("error", reject);
       server.listen(config.port, config.host, resolve3);

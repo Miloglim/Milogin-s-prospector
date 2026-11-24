@@ -6,6 +6,7 @@ import {
 } from "../../core/crm";
 import { CRM_SCHEMA_SQL, CRM_SCHEMA_VERSION, CRM_SCHEMA_LOCK } from "./schema";
 import { assertCenterDatabasePool } from "./config";
+import { postgresErrorDiagnostic } from "./diagnostics";
 
 type Row = Record<string, unknown>;
 const COMPANY_COLUMNS = `id, name, domain, industry, country, size, backcheck_data AS "backcheckData",
@@ -32,21 +33,26 @@ export class PostgresCrmRepository implements CrmRepository {
     assertCenterDatabasePool(pool);
     pool.on("error", error => { this.log.write("ERROR", "crm.pg.pool", `闲置连接错误 code=${sqlCode(error)}`); });
   }
-  private async execute<T>(context: string, action: () => Promise<Result<T>>): Promise<Result<T>> {
+  private async execute<T>(context: string, action: () => Promise<Result<T>>, detail?: () => string): Promise<Result<T>> {
     try { return await action(); }
     catch (error) {
       const code = sqlCode(error);
-      this.log.write("ERROR", context, `数据库操作失败 code=${code} message=${error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500)}`);
+      const diagnosticDetail = detail?.();
+      const diagnostic = detail ? ` ${postgresErrorDiagnostic(error)}` : ` code=${code}`;
+      this.log.write("ERROR", context, `数据库操作失败${diagnosticDetail ? ` ${diagnosticDetail}` : ""}${diagnostic}`);
       if (code === EMAIL_CONFLICT) return failure("CONFLICT", "资料已存在，未覆盖现有记录");
       if (code === FOREIGN_KEY_ERROR || code === CHECK_ERROR) return failure("INVALID_INPUT", "资料引用或约束无效");
       return failure("DATABASE_ERROR", "数据库操作失败，请检查测试服务状态");
     }
   }
-  private async transaction<T>(action: (client: PoolClient) => Promise<Result<T>>): Promise<Result<T>> {
+  private async transaction<T>(action: (client: PoolClient) => Promise<Result<T>>, phase?: (value: string) => void): Promise<Result<T>> {
+    phase?.("connect");
     const client = await this.pool.connect();
     try {
+      phase?.("begin");
       await client.query("BEGIN");
       const result = await action(client);
+      if (result.ok) phase?.("commit");
       await client.query(result.ok ? "COMMIT" : "ROLLBACK");
       return result;
     } catch (error) {
@@ -56,21 +62,34 @@ export class PostgresCrmRepository implements CrmRepository {
     } finally { client.release(); }
   }
   migrate(): Promise<Result<void>> {
+    const startedAt = Date.now();
+    let currentPhase = "connect";
+    const detail = () => `phase=${currentPhase} elapsed_ms=${Date.now() - startedAt}`;
     return this.execute("crm.pg.migrate", () => this.transaction(async client => {
+      currentPhase = "advisory_lock";
       await client.query("SELECT pg_advisory_xact_lock($1)", [CRM_SCHEMA_LOCK]);
+      currentPhase = "ensure_migration_table";
       await client.query(`CREATE TABLE IF NOT EXISTS crm_schema_migrations (
         version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
       const checksum = createHash("sha256").update(CRM_SCHEMA_SQL).digest("hex");
+      currentPhase = "checksum";
       const existing = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [CRM_SCHEMA_VERSION]);
       if (existing.rows.length) {
         if (existing.rows[0].checksum !== checksum) return failure("CONFLICT", "已应用迁移校验不一致，拒绝覆盖");
       } else {
+        currentPhase = "apply_schema";
         await client.query(CRM_SCHEMA_SQL);
+        currentPhase = "record_version";
         await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES ($1,$2)", [CRM_SCHEMA_VERSION, checksum]);
         this.log.write("INFO", "crm.pg.migrate", `迁移完成 version=${CRM_SCHEMA_VERSION}`);
       }
       return success(undefined);
-    }));
+    }, value => { currentPhase = value; }), detail).then(result => {
+      if (!result.ok && result.error.code !== "DATABASE_ERROR") {
+        this.log.write("ERROR", "crm.pg.migrate", `迁移被拒绝 ${detail()} code=${result.error.code} message=${result.error.message}`);
+      }
+      return result;
+    });
   }
   createCompany(input: CompanyDraft): Promise<Result<Company>> {
     return this.execute("crm.pg.company", async () => {

@@ -104,4 +104,17 @@ describe("ACK operational HTTP compatibility", () => {
     if (!address || typeof address === "string") throw new Error("missing TCP address");
     expect(await responseWithHost(`http://127.0.0.1:${address.port}`, "/actuator/prometheus", "foreign.example")).toMatchObject({ status: 200 });
   });
+
+  it("rejects a foreign Host by default but allows it when explicitly configured", async () => {
+    const strict = await start(async () => success(undefined));
+    expect(await responseWithHost(strict, "/actuator/prometheus", "foreign.example")).toMatchObject({ status: 403 });
+
+    const service = { ready: async () => success(undefined) } as AuthService;
+    const relaxed = createOnlineServer(service, gate, { ...ONLINE_DEFAULTS, allow_any_host: true }, logger);
+    servers.push(relaxed);
+    await new Promise<void>(resolve => relaxed.listen(0, "127.0.0.1", resolve));
+    const address = relaxed.address();
+    if (!address || typeof address === "string") throw new Error("missing TCP address");
+    expect(await responseWithHost(`http://127.0.0.1:${address.port}`, "/actuator/prometheus", "foreign.example")).toMatchObject({ status: 200 });
+  });
 });

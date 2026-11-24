@@ -46,6 +46,20 @@ function productionPool(host: string, port: number, user: string, password: stri
   };
 }
 
+export function describePostgresConnection(config: PoolConfig): string {
+  const options = typeof config.options === "string" ? config.options : "";
+  const searchPath = /(?:^|\s)-c\s+search_path=([^\s]+)/.exec(options)?.[1] || "default";
+  return [
+    `host=${String(config.host || "default")}`,
+    `port=${String(config.port || DEFAULT_PRODUCTION_PORT)}`,
+    `database=${String(config.database || "default")}`,
+    `timeout_ms=${String(config.connectionTimeoutMillis || 0)}`,
+    `application=${String(config.application_name || "default")}`,
+    `search_path=${searchPath}`,
+    `ssl=${config.ssl ? "true" : "false"}`,
+  ].join(" ");
+}
+
 /** No environment DSN fallback: this node may only connect to its isolated test instance. */
 export function readTestDatabaseConfig(): PoolConfig {
   const value = JSON.parse(readFileSync(path.resolve(CRM_CONFIG_RELATIVE_PATH), "utf8")) as Record<string, unknown>;
