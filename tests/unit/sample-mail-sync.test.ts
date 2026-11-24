@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const dir = vi.hoisted(() => ({ path: '' }));
-vi.mock('electron', () => ({ app: { getPath: () => dir.path } }));
 vi.mock('../../src/main/logger', () => ({ Log: { info: vi.fn(), warn: vi.fn() } }));
 vi.mock('../../src/main/services/sample-mail.service', () => ({
   autoSampleMailBatch: vi.fn(),
@@ -38,7 +37,7 @@ describe('one-shot sample mail sync', () => {
       messageIds: rows.map(row => row.id),
     }));
     const upload = vi.fn(async () => ({ ok: true, data: { packageId: 'p' } }));
-    startSampleMailAutoSync({ currentIdentity: () => ({ userId: 'u', baseUrl: 'http://x' }), isOnline: () => true, sampleMailUpload: upload } as never);
+    startSampleMailAutoSync({ currentIdentity: () => ({ userId: 'u', baseUrl: 'http://x' }), isOnline: () => true, sampleMailUpload: upload } as never, join(dir.path, 'sample-mail-sync.json'));
     await vi.advanceTimersByTimeAsync(20_000);
     expect(upload).toHaveBeenCalledTimes(10);
     const state = JSON.parse(readFileSync(join(dir.path, 'sample-mail-sync.json'), 'utf8')) as { done: boolean; uploadedIds: number[] };
