@@ -125,10 +125,19 @@ function AiManagement({ policies, usage, models, events, loading, error, onReloa
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<React.Key[]>([]);
   const [saving, setSaving] = useState(false);
+  const policyInput = (row: AiPolicyRow, reason: string) => ({
+    userId: row.userId,
+    enabled: row.enabled,
+    dailyTokenLimit: Math.max(0, Math.floor(row.dailyTokenLimit || 0)),
+    monthlyTokenLimit: Math.max(0, Math.floor(row.monthlyTokenLimit || 0)),
+    maxOutputTokens: Math.min(32768, Math.max(128, Math.floor(row.maxOutputTokens || 2048))),
+    allowedFeatures: row.allowedFeatures,
+    reason,
+  });
   const savePolicy = async (row: AiPolicyRow, reason: string) => {
     setSaving(true);
     try {
-      await api.updateAiPolicy({ userId: row.userId, enabled: row.enabled, dailyTokenLimit: row.dailyTokenLimit, monthlyTokenLimit: row.monthlyTokenLimit, maxOutputTokens: row.maxOutputTokens, allowedFeatures: row.allowedFeatures, reason });
+      await api.updateAiPolicy(policyInput(row, reason));
       await onSaved();
     } catch (cause) {
       window.alert(cause instanceof Error ? cause.message : 'AI 策略保存失败');
@@ -142,7 +151,7 @@ function AiManagement({ policies, usage, models, events, loading, error, onReloa
     try {
       for (const userId of selected) {
         const row = policies.find(item => item.userId === userId);
-        if (row) await api.updateAiPolicy({ userId: row.userId, enabled, dailyTokenLimit: row.dailyTokenLimit, monthlyTokenLimit: row.monthlyTokenLimit, maxOutputTokens: row.maxOutputTokens, allowedFeatures: row.allowedFeatures, reason: enabled ? '批量启用 AI' : '批量停用 AI' });
+        if (row) await api.updateAiPolicy(policyInput({ ...row, enabled }, enabled ? '批量启用 AI' : '批量停用 AI'));
       }
       setSelected([]);
       await onSaved();
@@ -191,11 +200,11 @@ function AiManagement({ policies, usage, models, events, loading, error, onReloa
         { title:'档案', width:180, render:(_:unknown,row:AiModelProfile)=><Input defaultValue={row.label} onChange={e=>{row.label=e.target.value;}} /> },
         { title:'模型标识', width:160, render:(_:unknown,row:AiModelProfile)=><Input defaultValue={row.modelName} onChange={e=>{row.modelName=e.target.value;}} /> },
         { title:'Base URL', width:240, render:(_:unknown,row:AiModelProfile)=><Input defaultValue={row.baseUrl} onChange={e=>{row.baseUrl=e.target.value;}} /> },
-        { title:'密钥环境变量', width:160, render:(_:unknown,row:AiModelProfile)=><Input defaultValue={row.keyEnv} onChange={e=>{row.keyEnv=e.target.value;}} /> },
+        { title:'密钥环境变量', width:160, render:(_:unknown,row:AiModelProfile)=><Input defaultValue={row.keyEnv} placeholder="CENTER_AI_API_KEY" onChange={e=>{row.keyEnv=e.target.value;}} /> },
         { title:'功能', width:240, render:(_:unknown,row:AiModelProfile)=><Select mode="multiple" style={{width:'100%'}} defaultValue={row.allowedFeatures} options={AI_FEATURES} onChange={v=>{row.allowedFeatures=v;}} /> },
         { title:'默认', width:70, render:(_:unknown,row:AiModelProfile)=><Switch defaultChecked={row.isDefault} onChange={v=>{row.isDefault=v;}} /> },
         { title:'启用', width:70, render:(_:unknown,row:AiModelProfile)=><Switch defaultChecked={row.enabled} onChange={v=>{row.enabled=v;}} /> },
-        { title:'操作', width:80, render:(_:unknown,row:AiModelProfile)=><Button type="link" onClick={async()=>{await api.saveAiModel(row);await onReload();}}>保存</Button> },
+        { title:'操作', width:80, render:(_:unknown,row:AiModelProfile)=><Button type="link" onClick={async()=>{try{await api.saveAiModel(row);await onReload();}catch(cause){window.alert(cause instanceof Error?cause.message:String(cause));}}}>保存</Button> },
       ]} />
     </Card>
     <Card title="AI 请求回执" style={{ marginTop: 12 }}>

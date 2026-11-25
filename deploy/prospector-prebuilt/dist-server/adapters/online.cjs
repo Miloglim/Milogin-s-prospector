@@ -17846,10 +17846,10 @@ function mapPolicy(row2) {
     return { userId: "", ...DEFAULT_POLICY };
   return {
     userId: String(row2.user_id),
-    enabled: Boolean(row2.enabled),
-    dailyTokenLimit: Number(row2.daily_token_limit),
-    monthlyTokenLimit: Number(row2.monthly_token_limit),
-    maxOutputTokens: Number(row2.max_output_tokens),
+    enabled: row2.enabled == null ? DEFAULT_POLICY.enabled : Boolean(row2.enabled),
+    dailyTokenLimit: row2.daily_token_limit == null ? DEFAULT_POLICY.dailyTokenLimit : Number(row2.daily_token_limit),
+    monthlyTokenLimit: row2.monthly_token_limit == null ? DEFAULT_POLICY.monthlyTokenLimit : Number(row2.monthly_token_limit),
+    maxOutputTokens: row2.max_output_tokens == null ? DEFAULT_POLICY.maxOutputTokens : Number(row2.max_output_tokens),
     allowedFeatures: row2.allowed_features || DEFAULT_POLICY.allowedFeatures,
     updatedAt: row2.updated_at ? new Date(row2.updated_at).toISOString() : null,
     updatedBy: row2.updated_by ? String(row2.updated_by) : null

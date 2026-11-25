@@ -78,10 +78,10 @@ function mapPolicy(row: any): AiUserPolicy {
   if (!row) return { userId: '', ...DEFAULT_POLICY };
   return {
     userId: String(row.user_id),
-    enabled: Boolean(row.enabled),
-    dailyTokenLimit: Number(row.daily_token_limit),
-    monthlyTokenLimit: Number(row.monthly_token_limit),
-    maxOutputTokens: Number(row.max_output_tokens),
+    enabled: row.enabled == null ? DEFAULT_POLICY.enabled : Boolean(row.enabled),
+    dailyTokenLimit: row.daily_token_limit == null ? DEFAULT_POLICY.dailyTokenLimit : Number(row.daily_token_limit),
+    monthlyTokenLimit: row.monthly_token_limit == null ? DEFAULT_POLICY.monthlyTokenLimit : Number(row.monthly_token_limit),
+    maxOutputTokens: row.max_output_tokens == null ? DEFAULT_POLICY.maxOutputTokens : Number(row.max_output_tokens),
     allowedFeatures: (row.allowed_features || DEFAULT_POLICY.allowedFeatures) as AiFeature[],
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
     updatedBy: row.updated_by ? String(row.updated_by) : null,
