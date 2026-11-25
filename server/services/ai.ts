@@ -20,7 +20,7 @@ async function resolveModel(repo: AiRepository, feature: AiChatInput['feature'])
     const cfg = upstreamConfig();
     return cfg.baseUrl && cfg.apiKey && cfg.model ? { profile: null as AiModelProfile | null, baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: 'chat_completions' as const, maxOutputTokens: 2048 } : null;
   }
-  const key = readEnvironmentSecret(selected.keyEnv) || readEnvironmentSecret('CENTER_AI_API_KEY');
+  const key = (await repo.modelApiKey(selected.modelId)) || readEnvironmentSecret(selected.keyEnv) || readEnvironmentSecret('CENTER_AI_API_KEY');
   return key ? { profile: selected, baseUrl: selected.baseUrl.replace(/\/$/, ''), apiKey: key, model: selected.modelName, wireApi: selected.wireApi, maxOutputTokens: selected.maxOutputTokens } : null;
 }
 
@@ -192,7 +192,7 @@ export function createAiService(repo: AiRepository) {
     },
     async saveModel(identity: Identity, input: AiModelProfile) {
       if (!canManageAi(identity)) return { ok: false as const, error: 'FORBIDDEN' as const };
-      return { ok: true as const, data: await repo.saveModel(input) };
+      return { ok: true as const, data: await repo.saveModel(input, input.apiKey) };
     },
   };
 }

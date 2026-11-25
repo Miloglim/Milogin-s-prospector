@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Alert, Button, Card, Col, Drawer, Empty, Input, InputNumber, Row, Select, Space, Spin, Statistic, Switch, Table, Tag, Typography, theme } from 'antd';
+import { Alert, Button, Card, Col, Drawer, Empty, Input, InputNumber, Row, Select, Space, Spin, Statistic, Switch, Table, Tag, Typography, message, theme } from 'antd';
 import { api, ApiError, type Identity } from './api';
 import type { ProductInfo } from '../server/core/admin';
 import type { NavigatorDashboard } from '../server/core/navigator';
@@ -139,6 +139,7 @@ function AiManagement({ policies, usage, models, events, loading, error, onReloa
     try {
       await api.updateAiPolicy(policyInput(row, reason));
       await onSaved();
+      void message.success('AI 策略已保存');
     } catch (cause) {
       window.alert(cause instanceof Error ? cause.message : 'AI 策略保存失败');
     } finally {
@@ -155,6 +156,7 @@ function AiManagement({ policies, usage, models, events, loading, error, onReloa
       }
       setSelected([]);
       await onSaved();
+      void message.success('AI 策略已保存');
     } catch (cause) {
       window.alert(cause instanceof Error ? cause.message : '批量操作失败');
     } finally {
@@ -195,16 +197,16 @@ function AiManagement({ policies, usage, models, events, loading, error, onReloa
         <Space><Button type="primary" loading={saving} onClick={async () => { await savePolicy(editing, '中心管理台编辑单用户 AI 策略'); setEditing(null); }}>保存</Button><Button onClick={() => setEditing(null)}>取消</Button></Space>
       </Space>}
     </Drawer>
-    <Card title="模型档案" style={{ marginTop: 12 }} extra={<Button type="primary" onClick={async()=>{await api.saveAiModel({modelId:`model-${Date.now()}`,label:'新模型',baseUrl:'https://api.example.com/v1',modelName:'model-name',wireApi:'chat_completions',keyEnv:'CENTER_AI_API_KEY',allowedFeatures:[...AI_FEATURES.map(x=>x.value)],enabled:false,isDefault:false,maxOutputTokens:2048,updatedAt:null});await onReload();}}>新增模型档案</Button>}>
-      <Table rowKey="modelId" size="small" dataSource={models} locale={{ emptyText: '还没有模型档案，点击右上角“新增模型档案”' }} pagination={false} scroll={{ x: 920 }} columns={[
+    <Card title="模型档案" style={{ marginTop: 12 }} extra={<Button type="primary" onClick={async()=>{await api.saveAiModel({modelId:`model-${Date.now()}`,label:'GPT-5.6 Luna',baseUrl:'https://sub2api.iyunquna.com/v1',modelName:'gpt-5.6-luna',wireApi:'responses',keyEnv:'CENTER_AI_API_KEY',allowedFeatures:[...AI_FEATURES.map(x=>x.value)],enabled:true,isDefault:true,maxOutputTokens:2048,updatedAt:null});await onReload();}}>新增模型档案</Button>}>
+      <Table rowKey="modelId" size="small" dataSource={models} locale={{ emptyText: '还没有模型档案，点击右上角“新增模型档案”' }} pagination={false} scroll={{ x: 1100 }} columns={[
         { title:'档案', width:180, render:(_:unknown,row:AiModelProfile)=><Input defaultValue={row.label} onChange={e=>{row.label=e.target.value;}} /> },
         { title:'模型标识', width:160, render:(_:unknown,row:AiModelProfile)=><Input defaultValue={row.modelName} onChange={e=>{row.modelName=e.target.value;}} /> },
         { title:'Base URL', width:240, render:(_:unknown,row:AiModelProfile)=><Input defaultValue={row.baseUrl} onChange={e=>{row.baseUrl=e.target.value;}} /> },
-        { title:'密钥环境变量', width:160, render:(_:unknown,row:AiModelProfile)=><Input defaultValue={row.keyEnv} placeholder="CENTER_AI_API_KEY" onChange={e=>{row.keyEnv=e.target.value;}} /> },
+        { title:'API 密钥', width:210, render:(_:unknown,row:AiModelProfile)=><Input.Password defaultValue="" placeholder={row.hasApiKey?'已保存，留空不修改':'直接填 API 密钥'} onChange={e=>{row.apiKey=e.target.value;}} /> },
         { title:'功能', width:240, render:(_:unknown,row:AiModelProfile)=><Select mode="multiple" style={{width:'100%'}} defaultValue={row.allowedFeatures} options={AI_FEATURES} onChange={v=>{row.allowedFeatures=v;}} /> },
         { title:'默认', width:70, render:(_:unknown,row:AiModelProfile)=><Switch defaultChecked={row.isDefault} onChange={v=>{row.isDefault=v;}} /> },
         { title:'启用', width:70, render:(_:unknown,row:AiModelProfile)=><Switch defaultChecked={row.enabled} onChange={v=>{row.enabled=v;}} /> },
-        { title:'操作', width:80, render:(_:unknown,row:AiModelProfile)=><Button type="link" onClick={async()=>{try{await api.saveAiModel(row);await onReload();}catch(cause){window.alert(cause instanceof Error?cause.message:String(cause));}}}>保存</Button> },
+        { title:'操作', width:80, render:(_:unknown,row:AiModelProfile)=><Button type="link" onClick={async()=>{try{await api.saveAiModel(row);await onReload();void message.success('模型档案已保存');}catch(cause){window.alert(cause instanceof Error?cause.message:String(cause));}}}>保存</Button> },
       ]} />
     </Card>
     <Card title="AI 请求回执" style={{ marginTop: 12 }}>

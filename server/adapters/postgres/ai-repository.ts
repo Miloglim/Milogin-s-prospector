@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import type { CrmRole } from '../../core/auth';
 import type { AiFeature, AiModelProfile, AiPolicyRow, AiPolicyUpdate, AiRepository, AiUsageEvent, AiUsageReceipt, AiUsageSummary, AiUserPolicy } from '../../core/ai';
+import { decryptAiSecret, encryptAiSecret } from '../ai-secret';
 
 export const AI_SCHEMA_VERSION = '074-ai-user-policies';
 export const AI_OPERATIONS_SCHEMA_VERSION = '075-ai-operations';
+export const AI_SECRET_SCHEMA_VERSION = '083-ai-model-secret';
 const AI_SQL = `
 CREATE TABLE IF NOT EXISTS public.ai_user_policies (
   user_id uuid PRIMARY KEY REFERENCES public.identity_users(user_id),
@@ -64,6 +66,10 @@ CREATE TABLE IF NOT EXISTS public.ai_policy_audit (
 CREATE INDEX IF NOT EXISTS idx_ai_policy_audit_target ON public.ai_policy_audit(target_user_id,created_at DESC);
 `;
 
+const AI_SECRET_SQL = ` 
+ALTER TABLE public.ai_model_profiles ADD COLUMN IF NOT EXISTS api_key_ciphertext text;
+`;
+
 const DEFAULT_POLICY: Omit<AiUserPolicy, 'userId'> = {
   enabled: false,
   dailyTokenLimit: 200000,
@@ -119,6 +125,21 @@ export class PostgresAiRepository implements AiRepository {
           await client.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)', [AI_OPERATIONS_SCHEMA_VERSION, operationChecksum]);
           await client.query('COMMIT');
           this.log.write('INFO', 'ai.migrate', `迁移完成 version=${AI_OPERATIONS_SCHEMA_VERSION}`);
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      }
+      const secretChecksum = createHash('sha256').update(AI_SECRET_SQL).digest('hex');
+      const secretOld = await client.query('SELECT checksum FROM crm_schema_migrations WHERE version=$1', [AI_SECRET_SCHEMA_VERSION]);
+      if (secretOld.rows.length && secretOld.rows[0].checksum !== secretChecksum) return { ok: false as const, error: 'AI 密钥存储迁移校验不一致' };
+      if (!secretOld.rows.length) {
+        await client.query('BEGIN');
+        try {
+          await client.query(AI_SECRET_SQL);
+          await client.query('INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)', [AI_SECRET_SCHEMA_VERSION, secretChecksum]);
+          await client.query('COMMIT');
+          this.log.write('INFO', 'ai.migrate', `迁移完成 version=${AI_SECRET_SCHEMA_VERSION}`);
         } catch (error) {
           await client.query('ROLLBACK');
           throw error;
@@ -224,18 +245,24 @@ export class PostgresAiRepository implements AiRepository {
   }
 
   async listModels(): Promise<AiModelProfile[]> {
-    const result = await this.pool.query('SELECT * FROM public.ai_model_profiles ORDER BY is_default DESC,label ASC');
-    return result.rows.map(r => ({ modelId: r.model_id, label: r.label, baseUrl: r.base_url, modelName: r.model_name, wireApi: r.wire_api, keyEnv: r.key_env, allowedFeatures: r.allowed_features, enabled: Boolean(r.enabled), isDefault: Boolean(r.is_default), maxOutputTokens: Number(r.max_output_tokens), updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null }));
+    const result = await this.pool.query('SELECT *, (api_key_ciphertext IS NOT NULL) AS has_api_key FROM public.ai_model_profiles ORDER BY is_default DESC,label ASC');
+    return result.rows.map(r => ({ modelId: r.model_id, label: r.label, baseUrl: r.base_url, modelName: r.model_name, wireApi: r.wire_api, keyEnv: r.key_env, allowedFeatures: r.allowed_features, enabled: Boolean(r.enabled), isDefault: Boolean(r.is_default), maxOutputTokens: Number(r.max_output_tokens), updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null, hasApiKey: Boolean(r.has_api_key) }));
   }
 
-  async saveModel(model: AiModelProfile): Promise<AiModelProfile> {
+  async saveModel(model: AiModelProfile, apiKey?: string | null): Promise<AiModelProfile> {
     if (model.isDefault) await this.pool.query('UPDATE public.ai_model_profiles SET is_default=false');
+    const encrypted = apiKey && apiKey.trim() ? encryptAiSecret(apiKey.trim()) : null;
     await this.pool.query(`
-      INSERT INTO public.ai_model_profiles(model_id,label,base_url,model_name,wire_api,key_env,allowed_features,enabled,is_default,max_output_tokens,updated_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,clock_timestamp())
-      ON CONFLICT(model_id) DO UPDATE SET label=excluded.label,base_url=excluded.base_url,model_name=excluded.model_name,wire_api=excluded.wire_api,key_env=excluded.key_env,allowed_features=excluded.allowed_features,enabled=excluded.enabled,is_default=excluded.is_default,max_output_tokens=excluded.max_output_tokens,updated_at=clock_timestamp()
-    `, [model.modelId, model.label, model.baseUrl, model.modelName, model.wireApi, model.keyEnv, model.allowedFeatures, model.enabled, model.isDefault, model.maxOutputTokens]);
+      INSERT INTO public.ai_model_profiles(model_id,label,base_url,model_name,wire_api,key_env,allowed_features,enabled,is_default,max_output_tokens,api_key_ciphertext,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,clock_timestamp())
+      ON CONFLICT(model_id) DO UPDATE SET label=excluded.label,base_url=excluded.base_url,model_name=excluded.model_name,wire_api=excluded.wire_api,key_env=excluded.key_env,allowed_features=excluded.allowed_features,enabled=excluded.enabled,is_default=excluded.is_default,max_output_tokens=excluded.max_output_tokens,api_key_ciphertext=COALESCE(excluded.api_key_ciphertext,public.ai_model_profiles.api_key_ciphertext),updated_at=clock_timestamp()
+    `, [model.modelId, model.label, model.baseUrl, model.modelName, model.wireApi, model.keyEnv, model.allowedFeatures, model.enabled, model.isDefault, model.maxOutputTokens, encrypted]);
     const rows = await this.listModels();
     return rows.find(row => row.modelId === model.modelId)!;
+  }
+
+  async modelApiKey(modelId: string): Promise<string | null> {
+    const result = await this.pool.query('SELECT api_key_ciphertext FROM public.ai_model_profiles WHERE model_id=$1', [modelId]);
+    return decryptAiSecret(result.rows[0]?.api_key_ciphertext);
   }
 }

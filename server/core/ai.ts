@@ -90,6 +90,10 @@ export interface AiModelProfile {
   isDefault: boolean;
   maxOutputTokens: number;
   updatedAt: string | null;
+  /** Whether an encrypted API key is stored on the server. Never carries the key itself. */
+  hasApiKey?: boolean;
+  /** Write-only field accepted by the admin form; never returned by listModels. */
+  apiKey?: string | null;
 }
 
 export interface AiUsageReceipt extends AiUsageEvent {
@@ -123,7 +127,8 @@ export interface AiRepository {
   usageEvents(input: { userId?: string; feature?: AiFeature; status?: 'ok' | 'error' | 'blocked'; days: number; limit: number; offset: number }): Promise<AiUsageReceipt[]>;
   receipts(userId: string, limit: number): Promise<AiUsageReceipt[]>;
   listModels(): Promise<AiModelProfile[]>;
-  saveModel(model: AiModelProfile): Promise<AiModelProfile>;
+  saveModel(model: AiModelProfile, apiKey?: string | null): Promise<AiModelProfile>;
+  modelApiKey(modelId: string): Promise<string | null>;
   recordUsage(event: Omit<AiUsageEvent, 'eventId' | 'createdAt'>): Promise<void>;
 }
 

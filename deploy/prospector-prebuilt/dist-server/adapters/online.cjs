@@ -1215,7 +1215,7 @@ var require_utils2 = __commonJS({
     var nodeCrypto = require("crypto");
     module2.exports = {
       postgresMd5PasswordHash,
-      randomBytes: randomBytes4,
+      randomBytes: randomBytes5,
       deriveKey,
       sha256,
       hashByName,
@@ -1225,7 +1225,7 @@ var require_utils2 = __commonJS({
     var webCrypto = nodeCrypto.webcrypto || globalThis.crypto;
     var subtleCrypto = webCrypto.subtle;
     var textEncoder = new TextEncoder();
-    function randomBytes4(length) {
+    function randomBytes5(length) {
       return webCrypto.getRandomValues(Buffer.alloc(length));
     }
     async function md5(string2) {
@@ -3494,7 +3494,7 @@ var require_split2 = __commonJS({
 var require_helper = __commonJS({
   "node_modules/pgpass/lib/helper.js"(exports2, module2) {
     "use strict";
-    var path4 = require("path");
+    var path5 = require("path");
     var Stream = require("stream").Stream;
     var split = require_split2();
     var util = require("util");
@@ -3533,7 +3533,7 @@ var require_helper = __commonJS({
     };
     module2.exports.getFileName = function(rawEnv) {
       var env = rawEnv || process.env;
-      var file = env.PGPASSFILE || (isWin ? path4.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path4.join(env.HOME || "./", ".pgpass"));
+      var file = env.PGPASSFILE || (isWin ? path5.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path5.join(env.HOME || "./", ".pgpass"));
       return file;
     };
     module2.exports.usePgPass = function(stats, fname) {
@@ -3665,7 +3665,7 @@ var require_helper = __commonJS({
 var require_lib = __commonJS({
   "node_modules/pgpass/lib/index.js"(exports2, module2) {
     "use strict";
-    var path4 = require("path");
+    var path5 = require("path");
     var fs = require("fs");
     var helper = require_helper();
     module2.exports = function(connInfo, cb) {
@@ -5790,29 +5790,29 @@ async function body(request2, maximum) {
 }
 function createOnlineServer(service, gate, config, log, instanceId = "integration", browser, crm, desktop) {
   const dispatch = async (request2, response) => {
-    const path4 = request2.url ?? "", method = request2.method;
+    const path5 = request2.url ?? "", method = request2.method;
     if (process.env.PROSPECTOR_CENTER_HTTP_LOG === "1")
-      log.write("INFO", "identity.http", `\u8BF7\u6C42 ${loggable(method)} ${loggable(path4)} host=${loggable(request2.headers.host)} remote=${loggable(request2.socket.remoteAddress)} ua=${loggable(request2.headers["user-agent"])} version=${centerVersion()}`);
-    if ((method === "GET" || method === "HEAD") && path4 === ACTUATOR_INFO_PATH) {
+      log.write("INFO", "identity.http", `\u8BF7\u6C42 ${loggable(method)} ${loggable(path5)} host=${loggable(request2.headers.host)} remote=${loggable(request2.socket.remoteAddress)} ua=${loggable(request2.headers["user-agent"])} version=${centerVersion()}`);
+    if ((method === "GET" || method === "HEAD") && path5 === ACTUATOR_INFO_PATH) {
       await sendActuatorInfo(response, service, method === "HEAD");
       return;
     }
-    if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.live) {
+    if ((method === "GET" || method === "HEAD") && path5 === API_ROUTES.live) {
       send(response, success({ status: "live", instanceId, pid: process.pid, version: centerVersion() }));
       return;
     }
-    if ((method === "GET" || method === "HEAD") && path4 === API_ROUTES.ready) {
+    if ((method === "GET" || method === "HEAD") && path5 === API_ROUTES.ready) {
       send(response, await service.ready());
       return;
     }
     const localHost = `${request2.socket.localAddress}:${request2.socket.localPort}`;
     const publicHost = config.public_origin ? new URL(config.public_origin).host : "";
     if (!config.allow_any_host && request2.headers.host !== localHost && (!publicHost || request2.headers.host !== publicHost)) {
-      log.write("WARN", "identity.http", `\u62D2\u7EDD Host host=${loggable(request2.headers.host)} url=${loggable(path4)} remote=${loggable(request2.socket.remoteAddress)} expected=${loggable(publicHost || localHost)} version=${centerVersion()}`);
+      log.write("WARN", "identity.http", `\u62D2\u7EDD Host host=${loggable(request2.headers.host)} url=${loggable(path5)} remote=${loggable(request2.socket.remoteAddress)} expected=${loggable(publicHost || localHost)} version=${centerVersion()}`);
       send(response, failure("FORBIDDEN", "\u670D\u52A1 Host \u65E0\u6548"));
       return;
     }
-    if (browser && (path4.startsWith("/admin-api/") || path4 === "/" || path4.startsWith("/?") || path4.startsWith("/assets/"))) {
+    if (browser && (path5.startsWith("/admin-api/") || path5 === "/" || path5.startsWith("/?") || path5.startsWith("/assets/"))) {
       await browser(request2, response);
       return;
     }
@@ -5820,22 +5820,22 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
       send(response, failure("FORBIDDEN", "\u5F53\u524D\u4EC5\u63A5\u53D7\u672C\u673A\u975E\u6D4F\u89C8\u5668\u8DE8\u7AD9\u8BF7\u6C42"));
       return;
     }
-    if (method === "GET" && path4 === ACTUATOR_PROMETHEUS_PATH) {
+    if (method === "GET" && path5 === ACTUATOR_PROMETHEUS_PATH) {
       sendPrometheus(response);
       return;
     }
-    if (desktop && path4.startsWith("/api/auth/desktop/")) {
+    if (desktop && path5.startsWith("/api/auth/desktop/")) {
       await desktop(request2, response);
       return;
     }
-    if (crm && (path4.startsWith("/api/crm/") && path4 !== API_ROUTES.crmAccess || path4.startsWith("/api/ai/"))) {
+    if (crm && (path5.startsWith("/api/crm/") && path5 !== API_ROUTES.crmAccess || path5.startsWith("/api/ai/"))) {
       await crm(request2, response);
       return;
     }
     const authorization = request2.headers.authorization ?? "";
     const token = /^Bearer ([A-Za-z0-9_-]+)$/.exec(authorization)?.[1] ?? "";
     let result2;
-    if (method === "POST" && path4 === API_ROUTES.login) {
+    if (method === "POST" && path5 === API_ROUTES.login) {
       const input = await body(request2, config.request_body_bytes);
       if (!input.ok)
         result2 = input;
@@ -5843,26 +5843,26 @@ function createOnlineServer(service, gate, config, log, instanceId = "integratio
         const email3 = input.data && typeof input.data === "object" && "email" in input.data && typeof input.data.email === "string" ? input.data.email.trim().toLowerCase() : "invalid";
         result2 = gate.allow(email3, request2.socket.remoteAddress ?? "unknown") ? await service.login(input.data) : failure("RATE_LIMITED", "\u767B\u5F55\u5C1D\u8BD5\u8FC7\u591A\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
       }
-    } else if (method === "GET" && path4 === API_ROUTES.me)
+    } else if (method === "GET" && path5 === API_ROUTES.me)
       result2 = await service.me(token);
-    else if (method === "GET" && path4 === API_ROUTES.accountProfile)
+    else if (method === "GET" && path5 === API_ROUTES.accountProfile)
       result2 = await service.accountProfile(token);
-    else if (method === "POST" && path4 === API_ROUTES.accountProfile) {
+    else if (method === "POST" && path5 === API_ROUTES.accountProfile) {
       const input = await body(request2, config.request_body_bytes);
       result2 = input.ok ? await service.updateAccountProfile(token, input.data) : input;
-    } else if (method === "POST" && path4 === API_ROUTES.accountGrowth) {
+    } else if (method === "POST" && path5 === API_ROUTES.accountGrowth) {
       const input = await body(request2, config.request_body_bytes);
       result2 = input.ok ? await service.accountGrowth(token, input.data) : input;
-    } else if (method === "POST" && path4 === API_ROUTES.accountPassword) {
+    } else if (method === "POST" && path5 === API_ROUTES.accountPassword) {
       const input = await body(request2, config.request_body_bytes);
       result2 = input.ok ? await service.changeAccountPassword(token, input.data) : input;
-    } else if (method === "POST" && path4 === API_ROUTES.logout)
+    } else if (method === "POST" && path5 === API_ROUTES.logout)
       result2 = await service.logout(token);
-    else if (method === "GET" && path4 === API_ROUTES.users)
+    else if (method === "GET" && path5 === API_ROUTES.users)
       result2 = await service.users(token);
-    else if (method === "GET" && path4 === API_ROUTES.crmAccess)
+    else if (method === "GET" && path5 === API_ROUTES.crmAccess)
       result2 = await service.crmAccess(token);
-    else if (method === "GET" && path4 === API_ROUTES.navigatorAccess)
+    else if (method === "GET" && path5 === API_ROUTES.navigatorAccess)
       result2 = await service.navigatorAccess(token);
     else
       result2 = failure("NOT_FOUND", "\u63A5\u53E3\u4E0D\u5B58\u5728");
@@ -5969,17 +5969,17 @@ function createContactSharingService(repo, tokens) {
 // server/transport/contact-sharing-http.ts
 function createContactSharingHandler(service) {
   return async (req, res) => {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host}`), token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1] ?? "", path4 = url.pathname;
-    if (req.method === "GET" && path4 === CONTACT_SHARING_ROUTES.members) {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host}`), token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1] ?? "", path5 = url.pathname;
+    if (req.method === "GET" && path5 === CONTACT_SHARING_ROUTES.members) {
       send(res, await service.shareMembers(token));
       return;
     }
-    if (req.method === "POST" && path4 === CONTACT_SHARING_ROUTES.team) {
+    if (req.method === "POST" && path5 === CONTACT_SHARING_ROUTES.team) {
       const parsed = await body(req, LEAD_LIMITS.bodyBytes);
       send(res, parsed.ok ? await service.shareTeam(token, parsed.data) : parsed);
       return;
     }
-    if (req.method === "GET" && path4 === CONTACT_SHARING_ROUTES.shares) {
+    if (req.method === "GET" && path5 === CONTACT_SHARING_ROUTES.shares) {
       const query2 = {};
       for (const [k, v] of url.searchParams) {
         if (k in query2) {
@@ -5997,11 +5997,11 @@ function createContactSharingHandler(service) {
         send(res, parsed);
         return;
       }
-      if (path4 === CONTACT_SHARING_ROUTES.shares) {
+      if (path5 === CONTACT_SHARING_ROUTES.shares) {
         send(res, await service.createShare(token, parsed.data));
         return;
       }
-      const match = /^\/api\/crm\/contact-shares\/([^/]+)\/(accept|reject|revoke|update)$/.exec(path4);
+      const match = /^\/api\/crm\/contact-shares\/([^/]+)\/(accept|reject|revoke|update)$/.exec(path5);
       if (match) {
         if (!parsed.data || typeof parsed.data !== "object" || Array.isArray(parsed.data) || "shareId" in parsed.data && parsed.data.shareId !== match[1]) {
           send(res, failure("INVALID_INPUT", "\u8DEF\u5F84\u4E0E\u7F16\u53F7\u4E0D\u4E00\u81F4"));
@@ -8965,8 +8965,8 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
     response.setHeader("Referrer-Policy", "no-referrer");
     response.setHeader("X-Frame-Options", "DENY");
     response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`), path4 = url.pathname, method = request2.method;
-    if (!path4.startsWith("/admin-api/")) {
+    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`), path5 = url.pathname, method = request2.method;
+    if (!path5.startsWith("/admin-api/")) {
       if (method !== "GET" && method !== "HEAD") {
         send(response, failure("NOT_FOUND", "\u9875\u9762\u4E0D\u5B58\u5728"));
         return;
@@ -8983,14 +8983,14 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, failure("FORBIDDEN", "\u7BA1\u7406\u64CD\u4F5C\u5FC5\u987B\u6765\u81EA\u540C\u6E90\u9875\u9762"));
       return;
     }
-    if (method === "POST" && path4 !== ADMIN_ROUTES.login && path4 !== ADMIN_ROUTES.consume) {
+    if (method === "POST" && path5 !== ADMIN_ROUTES.login && path5 !== ADMIN_ROUTES.consume) {
       const submitted = request2.headers["x-csrf-token"];
       if (!token || typeof submitted !== "string" || !CSRF.test(submitted) || submitted !== csrf) {
         send(response, failure("FORBIDDEN", "\u7BA1\u7406\u64CD\u4F5C\u6821\u9A8C\u5931\u8D25\uFF0C\u8BF7\u5237\u65B0\u9875\u9762"));
         return;
       }
     }
-    if (method === "POST" && path4 === ADMIN_ROUTES.login) {
+    if (method === "POST" && path5 === ADMIN_ROUTES.login) {
       const input = await body(request2, config.request_body_bytes);
       if (!input.ok) {
         send(response, input);
@@ -9010,7 +9010,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, success({ identity: result2.data.identity, expiresAt: result2.data.expiresAt, csrf: tokens.hash(`csrf:${result2.data.token}`) }));
       return;
     }
-    if (method === "POST" && path4 === ADMIN_ROUTES.consume) {
+    if (method === "POST" && path5 === ADMIN_ROUTES.consume) {
       if (!gate.allow("challenge-consume", address)) {
         send(response, failure("RATE_LIMITED", "\u5BC6\u7801\u8BBE\u7F6E\u5C1D\u8BD5\u8FC7\u591A"));
         return;
@@ -9023,18 +9023,18 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, failure("UNAUTHORIZED", "\u8BF7\u5148\u767B\u5F55\u7BA1\u7406\u5E73\u53F0"));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.me) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.me) {
       const result2 = await auth.me(token, "browser");
       send(response, result2.ok ? success({ identity: result2.data, csrf }) : result2);
       return;
     }
-    if (method === "POST" && path4 === ADMIN_ROUTES.logout) {
+    if (method === "POST" && path5 === ADMIN_ROUTES.logout) {
       const result2 = await auth.logout(token, "browser");
       response.setHeader("Set-Cookie", `${COOKIE}=; ${cookieFlags}; Max-Age=0`);
       send(response, result2);
       return;
     }
-    if (method === "POST" && path4 === ADMIN_ROUTES.password) {
+    if (method === "POST" && path5 === ADMIN_ROUTES.password) {
       if (!passwordChange) {
         send(response, failure("UNAVAILABLE", "\u6539\u5BC6\u670D\u52A1\u4E0D\u53EF\u7528"));
         return;
@@ -9050,7 +9050,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, result2);
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.users) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.users) {
       const limit = Number(url.searchParams.get("limit") ?? ADMIN_LIMITS.page), offset = Number(url.searchParams.get("offset") ?? 0);
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > ADMIN_LIMITS.pageMax || !Number.isSafeInteger(offset) || offset < 0) {
         send(response, failure("INVALID_INPUT", "\u5206\u9875\u53C2\u6570\u65E0\u6548"));
@@ -9059,15 +9059,15 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, await admin.users(token, { search: url.searchParams.get("search") ?? "", limit, offset, ...url.searchParams.has("productId") ? { productId: url.searchParams.get("productId") } : {}, ...url.searchParams.has("state") ? { state: url.searchParams.get("state") } : {} }));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.products) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.products) {
       send(response, await admin.products(token));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.dashboard) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.dashboard) {
       send(response, dashboard ? await dashboard.dashboard(token) : failure("UNAVAILABLE", "\u6570\u636E\u770B\u677F\u6682\u4E0D\u53EF\u7528"));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.aiPolicies) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.aiPolicies) {
       if (!ai) {
         send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
         return;
@@ -9081,7 +9081,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.aiUsage) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.aiUsage) {
       if (!ai) {
         send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
         return;
@@ -9100,7 +9100,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.aiModels) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.aiModels) {
       if (!ai) {
         send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
         return;
@@ -9114,7 +9114,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.aiUsageEvents) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.aiUsageEvents) {
       if (!ai) {
         send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
         return;
@@ -9134,7 +9134,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
       return;
     }
-    if (method === "POST" && path4 === ADMIN_ROUTES.aiPolicy) {
+    if (method === "POST" && path5 === ADMIN_ROUTES.aiPolicy) {
       if (!ai) {
         send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
         return;
@@ -9161,7 +9161,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
       return;
     }
-    if (method === "POST" && path4 === ADMIN_ROUTES.aiModel) {
+    if (method === "POST" && path5 === ADMIN_ROUTES.aiModel) {
       if (!ai) {
         send(response, failure("UNAVAILABLE", "AI \u7BA1\u7406\u670D\u52A1\u4E0D\u53EF\u7528"));
         return;
@@ -9172,7 +9172,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
         return;
       }
       const v = input.data;
-      if (!record3(v) || typeof v.modelId !== "string" || !v.modelId.trim() || typeof v.label !== "string" || !v.label.trim() || typeof v.baseUrl !== "string" || !/^https?:\/\//.test(v.baseUrl) || typeof v.modelName !== "string" || !v.modelName.trim() || typeof v.keyEnv !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(v.keyEnv) || !AI_WIRE_APIS.includes(v.wireApi) || !Array.isArray(v.allowedFeatures) || v.allowedFeatures.some((feature) => !AI_FEATURES.includes(feature)) || typeof v.enabled !== "boolean" || typeof v.isDefault !== "boolean" || !Number.isSafeInteger(v.maxOutputTokens) || v.maxOutputTokens < 128 || v.maxOutputTokens > 32768) {
+      if (!record3(v) || typeof v.modelId !== "string" || !v.modelId.trim() || typeof v.label !== "string" || !v.label.trim() || typeof v.baseUrl !== "string" || !/^https?:\/\//.test(v.baseUrl) || typeof v.modelName !== "string" || !v.modelName.trim() || typeof v.keyEnv !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(v.keyEnv) || !AI_WIRE_APIS.includes(v.wireApi) || !Array.isArray(v.allowedFeatures) || v.allowedFeatures.some((feature) => !AI_FEATURES.includes(feature)) || typeof v.enabled !== "boolean" || typeof v.isDefault !== "boolean" || !Number.isSafeInteger(v.maxOutputTokens) || v.maxOutputTokens < 128 || v.maxOutputTokens > 32768 || v.apiKey !== void 0 && v.apiKey !== null && (typeof v.apiKey !== "string" || v.apiKey.length > 2e3)) {
         send(response, failure("INVALID_INPUT", "AI \u6A21\u578B\u914D\u7F6E\u65E0\u6548"));
         return;
       }
@@ -9185,7 +9185,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, result2.ok ? success(result2.data) : failure("FORBIDDEN", "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709 AI \u7BA1\u7406\u6743\u9650"));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.operations) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.operations) {
       if (!dashboard) {
         send(response, failure("UNAVAILABLE", "\u7CFB\u7EDF\u8FD0\u884C\u670D\u52A1\u6682\u4E0D\u53EF\u7528"));
         return;
@@ -9198,7 +9198,7 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, success({ ...result2.data, checks: [...result2.data.checks, await navigatorHealth(config)] }));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.data) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.data) {
       if (!dataBrowser) {
         send(response, failure("UNAVAILABLE", "\u6570\u636E\u6D4F\u89C8\u670D\u52A1\u6682\u4E0D\u53EF\u7528"));
         return;
@@ -9221,19 +9221,19 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
       send(response, await dataBrowser.page(token, { table: url.searchParams.get("table") ?? "", search: url.searchParams.get("search") ?? "", limit, offset, ...sort ? { sort } : {}, ...direction ? { direction } : {} }));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.navigatorDashboard) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.navigatorDashboard) {
       send(response, await navigatorDashboard(config, token));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.sessions) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.sessions) {
       send(response, await admin.sessions(token, url.searchParams.get("userId") ?? ""));
       return;
     }
-    if (method === "GET" && path4 === ADMIN_ROUTES.audit) {
+    if (method === "GET" && path5 === ADMIN_ROUTES.audit) {
       send(response, await admin.audit(token, url.searchParams.get("productId") ?? void 0, url.searchParams.get("userId") ?? void 0));
       return;
     }
-    if (method === "POST" && path4 === ADMIN_ROUTES.mutate) {
+    if (method === "POST" && path5 === ADMIN_ROUTES.mutate) {
       if (!gate.allow(`management:${tokens.hash(token)}`, address)) {
         send(response, failure("RATE_LIMITED", "\u91CD\u65B0\u8BA4\u8BC1\u5C1D\u8BD5\u8FC7\u591A"));
         return;
@@ -9262,8 +9262,8 @@ function createAdminHandler(auth, admin, tokens, gate, config, staticHandler, pa
 var import_promises2 = require("node:fs/promises");
 var import_node_path4 = require("node:path");
 var TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".woff2": "font/woff2", ".woff": "font/woff" };
-function inside(root, path4) {
-  const part = (0, import_node_path4.relative)(root, path4);
+function inside(root, path5) {
+  const part = (0, import_node_path4.relative)(root, path5);
   return part !== "" && !part.startsWith("..") && !(0, import_node_path4.isAbsolute)(part);
 }
 function createAdminStatic(root = (0, import_node_path4.resolve)(__dirname, "../../dist-admin"), links = {}) {
@@ -15517,8 +15517,8 @@ function createContactAssignmentService(repo, tokens) {
 // server/transport/crm-lifecycle-http.ts
 function createLifecycleHandler(service) {
   return async (req, res) => {
-    const url = new URL(req.url ?? "/", "http://localhost"), path4 = url.pathname, token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1] ?? "";
-    const company = /^\/api\/crm\/companies\/(\d+)(?:\/(delete))?$/.exec(path4);
+    const url = new URL(req.url ?? "/", "http://localhost"), path5 = url.pathname, token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1] ?? "";
+    const company = /^\/api\/crm\/companies\/(\d+)(?:\/(delete))?$/.exec(path5);
     if (req.method === "GET") {
       const q = {};
       for (const [k, v] of url.searchParams) {
@@ -15528,7 +15528,7 @@ function createLifecycleHandler(service) {
         }
         q[k] = ["limit", "offset"].includes(k) ? Number(v) : v;
       }
-      if (path4 === COMPANY_ROUTE) {
+      if (path5 === COMPANY_ROUTE) {
         send(res, await service.companies(token, q));
         return;
       }
@@ -15547,11 +15547,11 @@ function createLifecycleHandler(service) {
         send(res, p);
         return;
       }
-      if (path4 === CONTACT_DELETE_ROUTE) {
+      if (path5 === CONTACT_DELETE_ROUTE) {
         send(res, await service.deleteContacts(token, p.data));
         return;
       }
-      if (path4 === COMPANY_ROUTE) {
+      if (path5 === COMPANY_ROUTE) {
         send(res, await service.createCompany(token, p.data));
         return;
       }
@@ -15571,16 +15571,16 @@ function createLifecycleHandler(service) {
 // server/transport/contact-assignments-http.ts
 function createContactAssignmentHandler(service) {
   return async (req, res) => {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host}`), path4 = url.pathname, token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1] ?? "";
-    if (/^\/api\/crm\/leads\/[^/]+\/assign$/.test(path4)) {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host}`), path5 = url.pathname, token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization ?? "")?.[1] ?? "";
+    if (/^\/api\/crm\/leads\/[^/]+\/assign$/.test(path5)) {
       send(res, failure("CONFLICT", "\u8BF7\u4F7F\u7528\u8054\u7CFB\u4EBA\u5206\u914D\u8BF7\u6C42\u5E76\u7B49\u5F85\u63A5\u6536"));
       return;
     }
-    if (path4 === CONTACT_DELETE_ROUTE || path4 === COMPANY_ROUTE || path4.startsWith(COMPANY_ROUTE + "/")) {
+    if (path5 === CONTACT_DELETE_ROUTE || path5 === COMPANY_ROUTE || path5.startsWith(COMPANY_ROUTE + "/")) {
       await createLifecycleHandler(service)(req, res);
       return;
     }
-    if (req.method === "GET" && path4 === CONTACT_ASSIGNMENT_ROUTES.assignments) {
+    if (req.method === "GET" && path5 === CONTACT_ASSIGNMENT_ROUTES.assignments) {
       const query2 = {};
       for (const [k, v] of url.searchParams) {
         if (k in query2) {
@@ -15592,7 +15592,7 @@ function createContactAssignmentHandler(service) {
       send(res, await service.assignments(token, query2));
       return;
     }
-    if (req.method === "GET" && path4 === CONTACT_ASSIGNMENT_ROUTES.groups) {
+    if (req.method === "GET" && path5 === CONTACT_ASSIGNMENT_ROUTES.groups) {
       const query2 = {};
       for (const [k, v] of url.searchParams) {
         if (k in query2) {
@@ -15604,7 +15604,7 @@ function createContactAssignmentHandler(service) {
       send(res, await service.assignmentGroups(token, query2));
       return;
     }
-    const monitor = new RegExp("^" + CONTACT_ASSIGNMENT_ROUTES.monitor + "/(\\d+)$").exec(path4);
+    const monitor = new RegExp("^" + CONTACT_ASSIGNMENT_ROUTES.monitor + "/(\\d+)$").exec(path5);
     if (req.method === "GET" && monitor) {
       if ([...url.searchParams.keys()].some((k) => k !== "customerId") || url.searchParams.getAll("customerId").length !== 1) {
         send(res, failure("INVALID_INPUT", "\u76D1\u7763\u8054\u7CFB\u4EBA\u53C2\u6570\u65E0\u6548"));
@@ -15613,7 +15613,7 @@ function createContactAssignmentHandler(service) {
       send(res, await service.contactMonitorDetail(token, { contactId: Number(monitor[1]), customerId: url.searchParams.get("customerId") }));
       return;
     }
-    const contact2 = /^\/api\/crm\/contacts\/(\d+)(?:\/(update|followups|company))?$/.exec(path4);
+    const contact2 = /^\/api\/crm\/contacts\/(\d+)(?:\/(update|followups|company))?$/.exec(path5);
     if (req.method === "GET" && contact2 && !contact2[2]) {
       if ([...url.searchParams.keys()].some((k) => k !== "customerId") || url.searchParams.getAll("customerId").length !== 1) {
         send(res, failure("INVALID_INPUT", "\u8054\u7CFB\u4EBA\u53C2\u6570\u65E0\u6548"));
@@ -15628,15 +15628,15 @@ function createContactAssignmentHandler(service) {
         send(res, parsed);
         return;
       }
-      if (path4 === CONTACT_ASSIGNMENT_ROUTES.assignments) {
+      if (path5 === CONTACT_ASSIGNMENT_ROUTES.assignments) {
         send(res, await service.createAssignments(token, parsed.data));
         return;
       }
-      if (path4 === CONTACT_ASSIGNMENT_ROUTES.expire) {
+      if (path5 === CONTACT_ASSIGNMENT_ROUTES.expire) {
         send(res, await service.expire(token, parsed.data));
         return;
       }
-      const transfer = /^\/api\/crm\/contact-assignments\/([^/]+)\/transfer$/.exec(path4), decision2 = /^\/api\/crm\/contact-assignments\/([^/]+)\/(accept|reject|cancel)$/.exec(path4), groupDecision = /^\/api\/crm\/contact-assignments\/groups\/([^/]+)\/(accept|reject|cancel)$/.exec(path4), field = transfer || decision2 ? "requestId" : groupDecision ? "groupId" : "contactId", id = transfer || decision2 || groupDecision ? (transfer ?? decision2 ?? groupDecision)[1] : contact2 ? Number(contact2[1]) : void 0;
+      const transfer = /^\/api\/crm\/contact-assignments\/([^/]+)\/transfer$/.exec(path5), decision2 = /^\/api\/crm\/contact-assignments\/([^/]+)\/(accept|reject|cancel)$/.exec(path5), groupDecision = /^\/api\/crm\/contact-assignments\/groups\/([^/]+)\/(accept|reject|cancel)$/.exec(path5), field = transfer || decision2 ? "requestId" : groupDecision ? "groupId" : "contactId", id = transfer || decision2 || groupDecision ? (transfer ?? decision2 ?? groupDecision)[1] : contact2 ? Number(contact2[1]) : void 0;
       if (transfer || decision2 || groupDecision || contact2?.[2]) {
         if (!parsed.data || typeof parsed.data !== "object" || Array.isArray(parsed.data) || field in parsed.data && parsed.data[field] !== id) {
           send(res, failure("INVALID_INPUT", "\u8DEF\u5F84\u4E0E\u7F16\u53F7\u4E0D\u4E00\u81F4"));
@@ -15676,9 +15676,9 @@ function createContactMailHandler(service) {
 // server/transport/crm-http.ts
 function createCrmHandler(service) {
   return async (request2, response) => {
-    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`), path4 = url.pathname, method = request2.method;
+    const url = new URL(request2.url ?? "/", `http://${request2.headers.host}`), path5 = url.pathname, method = request2.method;
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
-    if (method === "GET" && path4 === CENTER_CONTACT_ROUTE) {
+    if (method === "GET" && path5 === CENTER_CONTACT_ROUTE) {
       const query2 = {};
       for (const [key2, value2] of url.searchParams) {
         if (key2 in query2) {
@@ -15690,7 +15690,7 @@ function createCrmHandler(service) {
       send(response, await service.contacts(token, query2));
       return;
     }
-    if (method === "GET" && path4 === CENTER_CONTACT_GROUP_ROUTE) {
+    if (method === "GET" && path5 === CENTER_CONTACT_GROUP_ROUTE) {
       const query2 = {};
       for (const [key2, value2] of url.searchParams) {
         if (key2 in query2) {
@@ -15702,19 +15702,19 @@ function createCrmHandler(service) {
       send(response, await service.contactGroups(token, query2));
       return;
     }
-    if (method === "GET" && path4 === LEAD_ROUTES.members) {
+    if (method === "GET" && path5 === LEAD_ROUTES.members) {
       send(response, await service.members(token, { search: url.searchParams.get("search") ?? "", limit: Number(url.searchParams.get("limit") ?? LEAD_LIMITS.page), offset: Number(url.searchParams.get("offset") ?? 0) }));
       return;
     }
-    if (method === "GET" && path4 === LEAD_ROUTES.bootstrap) {
+    if (method === "GET" && path5 === LEAD_ROUTES.bootstrap) {
       send(response, await service.bootstrap(token));
       return;
     }
-    if (method === "GET" && path4 === LEAD_ROUTES.leads) {
+    if (method === "GET" && path5 === LEAD_ROUTES.leads) {
       send(response, await service.list(token, { view: url.searchParams.get("view") ?? "mine", search: url.searchParams.get("search") ?? "", limit: Number(url.searchParams.get("limit") ?? LEAD_LIMITS.page), offset: Number(url.searchParams.get("offset") ?? 0), ...url.searchParams.has("assignment") ? { assignment: url.searchParams.get("assignment") } : {}, ...url.searchParams.has("followupOnly") ? { followupOnly: url.searchParams.get("followupOnly") === "true" ? true : url.searchParams.get("followupOnly") === "false" ? false : url.searchParams.get("followupOnly") } : {}, ...url.searchParams.has("stage") ? { stage: url.searchParams.get("stage") } : {} }));
       return;
     }
-    const detail = /^\/api\/crm\/leads\/([^/]+)$/.exec(path4);
+    const detail = /^\/api\/crm\/leads\/([^/]+)$/.exec(path5);
     if (method === "GET" && detail) {
       send(response, await service.detail(token, detail[1]));
       return;
@@ -15725,24 +15725,24 @@ function createCrmHandler(service) {
         send(response, input);
         return;
       }
-      if (path4 === LEAD_ROUTES.leads) {
+      if (path5 === LEAD_ROUTES.leads) {
         send(response, await service.createCustomer(token, input.data));
         return;
       }
-      if (path4 === LEAD_ROUTES.imports) {
+      if (path5 === LEAD_ROUTES.imports) {
         send(response, await service.importRows(token, input.data));
         return;
       }
-      if (path4 === WORKBOOK_IMPORT_ROUTE) {
+      if (path5 === WORKBOOK_IMPORT_ROUTE) {
         send(response, await service.importWorkbook(token, input.data));
         return;
       }
-      const publish = /^\/api\/crm\/imports\/([^/]+)\/publish$/.exec(path4);
+      const publish = /^\/api\/crm\/imports\/([^/]+)\/publish$/.exec(path5);
       if (publish) {
         send(response, await service.publish(token, publish[1], input.data));
         return;
       }
-      const action = /^\/api\/crm\/leads\/([^/]+)\/(claim|followups|update|assign)$/.exec(path4);
+      const action = /^\/api\/crm\/leads\/([^/]+)\/(claim|followups|update|assign)$/.exec(path5);
       if (action) {
         if (!input.data || typeof input.data !== "object" || Array.isArray(input.data) || "customerId" in input.data && input.data.customerId !== action[1]) {
           send(response, failure("INVALID_INPUT", "\u8DEF\u5F84\u4E0E\u5BA2\u6237\u7F16\u53F7\u4E0D\u4E00\u81F4"));
@@ -16164,7 +16164,7 @@ function createNotificationService(repo, tokens) {
 function createEventsHandler(service) {
   let streams = 0;
   return async (request2, response) => {
-    const url = new URL(request2.url ?? "/", "http://localhost"), path4 = url.pathname;
+    const url = new URL(request2.url ?? "/", "http://localhost"), path5 = url.pathname;
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
     if (!token) {
       send(response, failure("UNAUTHORIZED", "\u8BF7\u5148\u767B\u5F55"));
@@ -16172,20 +16172,20 @@ function createEventsHandler(service) {
     }
     const latest = url.searchParams.get("latest");
     const query2 = { deviceId: url.searchParams.get("deviceId") ?? "", after: url.searchParams.get("after") ?? "0", limit: Number(url.searchParams.get("limit") ?? NOTIFICATION_LIMITS.page), ...latest === "true" ? { latest: true } : latest === "false" ? { latest: false } : {} };
-    if (request2.method === "GET" && path4 === NOTIFICATION_ROUTES.feed) {
+    if (request2.method === "GET" && path5 === NOTIFICATION_ROUTES.feed) {
       send(response, await service.feed(token, query2));
       return;
     }
-    if (request2.method === "POST" && path4 === NOTIFICATION_ROUTES.readAll) {
+    if (request2.method === "POST" && path5 === NOTIFICATION_ROUTES.readAll) {
       send(response, await service.readAll(token));
       return;
     }
-    const read2 = /^\/api\/crm\/notifications\/([^/]+)\/read$/.exec(path4);
+    const read2 = /^\/api\/crm\/notifications\/([^/]+)\/read$/.exec(path5);
     if (request2.method === "POST" && read2) {
       send(response, await service.read(token, read2[1]));
       return;
     }
-    if (request2.method !== "GET" || path4 !== NOTIFICATION_ROUTES.events) {
+    if (request2.method !== "GET" || path5 !== NOTIFICATION_ROUTES.events) {
       send(response, failure("NOT_FOUND", "\u901A\u77E5\u63A5\u53E3\u4E0D\u5B58\u5728"));
       return;
     }
@@ -16558,8 +16558,8 @@ function createDesktopSessionService(repo, passwords, tokens, clock, ttlSeconds,
 // server/transport/desktop-auth-http.ts
 function createDesktopAuthHandler(service, gate, config) {
   return async (request2, response) => {
-    const path4 = request2.url ?? "", token = /^Bearer ([A-Za-z0-9_-]+)$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
-    if (request2.method === "GET" && path4 === DESKTOP_AUTH_ROUTES.me) {
+    const path5 = request2.url ?? "", token = /^Bearer ([A-Za-z0-9_-]+)$/.exec(request2.headers.authorization ?? "")?.[1] ?? "";
+    if (request2.method === "GET" && path5 === DESKTOP_AUTH_ROUTES.me) {
       send(response, await service.me(token));
       return;
     }
@@ -16572,38 +16572,38 @@ function createDesktopAuthHandler(service, gate, config) {
       send(response, input);
       return;
     }
-    if (path4 === DESKTOP_AUTH_ROUTES.register) {
+    if (path5 === DESKTOP_AUTH_ROUTES.register) {
       const email3 = input.data && typeof input.data === "object" && "email" in input.data && typeof input.data.email === "string" ? input.data.email.trim().toLowerCase() : "invalid";
       send(response, gate.allow(`register:${email3}`, request2.socket.remoteAddress ?? "unknown") ? await service.register(input.data) : failure("RATE_LIMITED", "\u8BF7\u6C42\u8FC7\u591A\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"));
       return;
     }
-    if (path4 === DESKTOP_AUTH_ROUTES.login) {
+    if (path5 === DESKTOP_AUTH_ROUTES.login) {
       const email3 = input.data && typeof input.data === "object" && "email" in input.data && typeof input.data.email === "string" ? input.data.email.trim().toLowerCase() : "invalid";
       send(response, gate.allow(email3, request2.socket.remoteAddress ?? "unknown") ? await service.login(input.data) : failure("RATE_LIMITED", "\u767B\u5F55\u5C1D\u8BD5\u8FC7\u591A\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"));
       return;
     }
-    if (path4 === DESKTOP_HANDOFF_ROUTES.begin) {
+    if (path5 === DESKTOP_HANDOFF_ROUTES.begin) {
       const email3 = input.data && typeof input.data === "object" && "email" in input.data && typeof input.data.email === "string" ? input.data.email.trim().toLowerCase() : "invalid";
       send(response, gate.allow(email3, request2.socket.remoteAddress ?? "unknown") ? await service.beginHandoff(input.data) : failure("RATE_LIMITED", "\u767B\u5F55\u5C1D\u8BD5\u8FC7\u591A\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"));
       return;
     }
-    if (path4 === DESKTOP_AUTH_ROUTES.refresh)
+    if (path5 === DESKTOP_AUTH_ROUTES.refresh)
       send(response, await service.refresh(input.data));
-    else if (path4 === DESKTOP_AUTH_ROUTES.logout)
+    else if (path5 === DESKTOP_AUTH_ROUTES.logout)
       send(response, await service.logout(input.data));
-    else if (path4 === DESKTOP_AUTH_ROUTES.password)
+    else if (path5 === DESKTOP_AUTH_ROUTES.password)
       send(response, await service.changePassword(token, input.data));
-    else if (path4 === DESKTOP_HANDOFF_ROUTES.status)
+    else if (path5 === DESKTOP_HANDOFF_ROUTES.status)
       send(response, await service.handoffStatus(input.data));
-    else if (path4 === DESKTOP_HANDOFF_ROUTES.pending)
+    else if (path5 === DESKTOP_HANDOFF_ROUTES.pending)
       send(response, await service.pendingHandoff(input.data));
-    else if (path4 === DESKTOP_HANDOFF_ROUTES.prepare)
+    else if (path5 === DESKTOP_HANDOFF_ROUTES.prepare)
       send(response, await service.prepareHandoff(input.data));
-    else if (path4 === DESKTOP_HANDOFF_ROUTES.complete)
+    else if (path5 === DESKTOP_HANDOFF_ROUTES.complete)
       send(response, await service.completeHandoff(input.data));
-    else if (path4 === DESKTOP_HANDOFF_ROUTES.takeover)
+    else if (path5 === DESKTOP_HANDOFF_ROUTES.takeover)
       send(response, await service.takeoverHandoff(input.data));
-    else if (path4 === DESKTOP_HANDOFF_ROUTES.cancel)
+    else if (path5 === DESKTOP_HANDOFF_ROUTES.cancel)
       send(response, await service.cancelHandoff(input.data));
     else
       send(response, failure("NOT_FOUND", "\u63A5\u53E3\u4E0D\u5B58\u5728"));
@@ -16648,11 +16648,11 @@ function createOfflineAccessIssuer(privateKey, issuer) {
     }
   };
 }
-function readPrivateKey(path4) {
-  const info = (0, import_node_fs4.lstatSync)(path4);
+function readPrivateKey(path5) {
+  const info = (0, import_node_fs4.lstatSync)(path5);
   if (!info.isFile() || info.isSymbolicLink() || info.size > PRIVATE_KEY_BYTES)
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u6587\u4EF6\u65E0\u6548");
-  const key2 = (0, import_node_crypto27.createPrivateKey)((0, import_node_fs4.readFileSync)(path4));
+  const key2 = (0, import_node_crypto27.createPrivateKey)((0, import_node_fs4.readFileSync)(path5));
   if (key2.type !== "private" || key2.asymmetricKeyType !== "ed25519")
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u7C7B\u578B\u65E0\u6548");
   return key2;
@@ -16661,9 +16661,9 @@ function loadOfflineAccessIssuer(runtimeDirectory, issuer) {
   const directory = (0, import_node_path5.resolve)(runtimeDirectory), info = (0, import_node_fs4.lstatSync)(directory);
   if (!info.isDirectory() || info.isSymbolicLink())
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u76EE\u5F55\u65E0\u6548");
-  const path4 = (0, import_node_path5.join)(directory, OFFLINE_ACCESS_KEY_FILE);
+  const path5 = (0, import_node_path5.join)(directory, OFFLINE_ACCESS_KEY_FILE);
   try {
-    return createOfflineAccessIssuer(readPrivateKey(path4), issuer);
+    return createOfflineAccessIssuer(readPrivateKey(path5), issuer);
   } catch (error) {
     if (error.code !== "ENOENT")
       throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u8BFB\u53D6\u5931\u8D25");
@@ -16673,7 +16673,7 @@ function loadOfflineAccessIssuer(runtimeDirectory, issuer) {
   (0, import_node_fs4.writeFileSync)(temporary, generated, { flag: "wx", mode: PRIVATE_FILE_MODE2 });
   try {
     try {
-      (0, import_node_fs4.linkSync)(temporary, path4);
+      (0, import_node_fs4.linkSync)(temporary, path5);
     } catch (error) {
       if (error.code !== "EEXIST")
         throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u4FDD\u5B58\u5931\u8D25");
@@ -16682,7 +16682,7 @@ function loadOfflineAccessIssuer(runtimeDirectory, issuer) {
     (0, import_node_fs4.unlinkSync)(temporary);
   }
   try {
-    return createOfflineAccessIssuer(readPrivateKey(path4), issuer);
+    return createOfflineAccessIssuer(readPrivateKey(path5), issuer);
   } catch {
     throw new Error("\u79BB\u7EBF\u7B7E\u540D\u5BC6\u94A5\u8BFB\u53D6\u5931\u8D25");
   }
@@ -17421,8 +17421,8 @@ function createContactChangeService(repo, tokens) {
 // server/transport/contact-change-http.ts
 function createContactChangeHandler(service) {
   return async (request2, response) => {
-    const path4 = new URL(request2.url ?? "/", "http://localhost").pathname;
-    if (request2.method !== "GET" || path4 !== CONTACT_CHANGE_ROUTE) {
+    const path5 = new URL(request2.url ?? "/", "http://localhost").pathname;
+    if (request2.method !== "GET" || path5 !== CONTACT_CHANGE_ROUTE) {
       send(response, failure("NOT_FOUND", "\u8054\u7CFB\u4EBA\u53D8\u5316\u63A5\u53E3\u4E0D\u5B58\u5728"));
       return;
     }
@@ -17772,9 +17772,69 @@ function createCampaignHandler(service) {
 }
 
 // server/adapters/postgres/ai-repository.ts
+var import_node_crypto35 = require("node:crypto");
+
+// server/adapters/ai-secret.ts
 var import_node_crypto34 = require("node:crypto");
+var import_node_fs5 = require("node:fs");
+var import_node_path6 = __toESM(require("node:path"));
+var KEY_FILE = "ai-model-keys.key";
+var VERSION = "v1";
+var cachedKey = null;
+function runtimeDir() {
+  return process.env.PROSPECTOR_CENTER_RUNTIME_DIR || (process.env.ProgramData ? import_node_path6.default.join(process.env.ProgramData, "MiloginCenter") : import_node_path6.default.join(process.cwd(), ".runtime"));
+}
+function masterKey() {
+  if (cachedKey)
+    return cachedKey;
+  const configured = process.env.CENTER_AI_ENCRYPTION_KEY?.trim();
+  if (configured) {
+    const value3 = Buffer.from(configured, "base64");
+    if (value3.length !== 32)
+      throw new Error("CENTER_AI_ENCRYPTION_KEY \u5FC5\u987B\u662F 32 \u5B57\u8282 base64");
+    cachedKey = value3;
+    return cachedKey;
+  }
+  const file = import_node_path6.default.join(runtimeDir(), KEY_FILE);
+  if ((0, import_node_fs5.existsSync)(file)) {
+    const value3 = (0, import_node_fs5.readFileSync)(file);
+    if (value3.length !== 32)
+      throw new Error("AI \u5BC6\u94A5\u52A0\u5BC6\u6587\u4EF6\u65E0\u6548");
+    cachedKey = value3;
+    return cachedKey;
+  }
+  (0, import_node_fs5.mkdirSync)(runtimeDir(), { recursive: true });
+  const value2 = (0, import_node_crypto34.randomBytes)(32);
+  (0, import_node_fs5.writeFileSync)(file, value2, { mode: 384 });
+  cachedKey = value2;
+  return cachedKey;
+}
+function encryptAiSecret(plain) {
+  const iv = (0, import_node_crypto34.randomBytes)(12);
+  const cipher = (0, import_node_crypto34.createCipheriv)("aes-256-gcm", masterKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [VERSION, iv.toString("base64url"), tag.toString("base64url"), encrypted.toString("base64url")].join(".");
+}
+function decryptAiSecret(value2) {
+  if (!value2)
+    return null;
+  const [version4, iv, tag, encrypted] = value2.split(".");
+  if (version4 !== VERSION || !iv || !tag || !encrypted)
+    return null;
+  try {
+    const decipher = (0, import_node_crypto34.createDecipheriv)("aes-256-gcm", masterKey(), Buffer.from(iv, "base64url"));
+    decipher.setAuthTag(Buffer.from(tag, "base64url"));
+    return Buffer.concat([decipher.update(Buffer.from(encrypted, "base64url")), decipher.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+// server/adapters/postgres/ai-repository.ts
 var AI_SCHEMA_VERSION = "074-ai-user-policies";
 var AI_OPERATIONS_SCHEMA_VERSION = "075-ai-operations";
+var AI_SECRET_SCHEMA_VERSION = "083-ai-model-secret";
 var AI_SQL = `
 CREATE TABLE IF NOT EXISTS public.ai_user_policies (
   user_id uuid PRIMARY KEY REFERENCES public.identity_users(user_id),
@@ -17832,6 +17892,9 @@ CREATE TABLE IF NOT EXISTS public.ai_policy_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_policy_audit_target ON public.ai_policy_audit(target_user_id,created_at DESC);
 `;
+var AI_SECRET_SQL = ` 
+ALTER TABLE public.ai_model_profiles ADD COLUMN IF NOT EXISTS api_key_ciphertext text;
+`;
 var DEFAULT_POLICY = {
   enabled: false,
   dailyTokenLimit: 2e5,
@@ -17863,7 +17926,7 @@ var PostgresAiRepository = class {
   async migrate() {
     const client = await this.pool.connect();
     try {
-      const checksum4 = (0, import_node_crypto34.createHash)("sha256").update(AI_SQL).digest("hex");
+      const checksum4 = (0, import_node_crypto35.createHash)("sha256").update(AI_SQL).digest("hex");
       const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [AI_SCHEMA_VERSION]);
       if (old.rows.length && old.rows[0].checksum !== checksum4)
         return { ok: false, error: "AI \u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4" };
@@ -17879,7 +17942,7 @@ var PostgresAiRepository = class {
           throw error;
         }
       }
-      const operationChecksum = (0, import_node_crypto34.createHash)("sha256").update(AI_OPERATIONS_SQL).digest("hex");
+      const operationChecksum = (0, import_node_crypto35.createHash)("sha256").update(AI_OPERATIONS_SQL).digest("hex");
       const operationOld = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [AI_OPERATIONS_SCHEMA_VERSION]);
       if (operationOld.rows.length && operationOld.rows[0].checksum !== operationChecksum)
         return { ok: false, error: "AI \u8FD0\u8425\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4" };
@@ -17890,6 +17953,22 @@ var PostgresAiRepository = class {
           await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [AI_OPERATIONS_SCHEMA_VERSION, operationChecksum]);
           await client.query("COMMIT");
           this.log.write("INFO", "ai.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${AI_OPERATIONS_SCHEMA_VERSION}`);
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        }
+      }
+      const secretChecksum = (0, import_node_crypto35.createHash)("sha256").update(AI_SECRET_SQL).digest("hex");
+      const secretOld = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [AI_SECRET_SCHEMA_VERSION]);
+      if (secretOld.rows.length && secretOld.rows[0].checksum !== secretChecksum)
+        return { ok: false, error: "AI \u5BC6\u94A5\u5B58\u50A8\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4" };
+      if (!secretOld.rows.length) {
+        await client.query("BEGIN");
+        try {
+          await client.query(AI_SECRET_SQL);
+          await client.query("INSERT INTO crm_schema_migrations(version,checksum) VALUES($1,$2)", [AI_SECRET_SCHEMA_VERSION, secretChecksum]);
+          await client.query("COMMIT");
+          this.log.write("INFO", "ai.migrate", `\u8FC1\u79FB\u5B8C\u6210 version=${AI_SECRET_SCHEMA_VERSION}`);
         } catch (error) {
           await client.query("ROLLBACK");
           throw error;
@@ -17987,19 +18066,24 @@ var PostgresAiRepository = class {
     return this.usageEvents({ userId, days: 30, limit, offset: 0 });
   }
   async listModels() {
-    const result2 = await this.pool.query("SELECT * FROM public.ai_model_profiles ORDER BY is_default DESC,label ASC");
-    return result2.rows.map((r) => ({ modelId: r.model_id, label: r.label, baseUrl: r.base_url, modelName: r.model_name, wireApi: r.wire_api, keyEnv: r.key_env, allowedFeatures: r.allowed_features, enabled: Boolean(r.enabled), isDefault: Boolean(r.is_default), maxOutputTokens: Number(r.max_output_tokens), updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null }));
+    const result2 = await this.pool.query("SELECT *, (api_key_ciphertext IS NOT NULL) AS has_api_key FROM public.ai_model_profiles ORDER BY is_default DESC,label ASC");
+    return result2.rows.map((r) => ({ modelId: r.model_id, label: r.label, baseUrl: r.base_url, modelName: r.model_name, wireApi: r.wire_api, keyEnv: r.key_env, allowedFeatures: r.allowed_features, enabled: Boolean(r.enabled), isDefault: Boolean(r.is_default), maxOutputTokens: Number(r.max_output_tokens), updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null, hasApiKey: Boolean(r.has_api_key) }));
   }
-  async saveModel(model) {
+  async saveModel(model, apiKey) {
     if (model.isDefault)
       await this.pool.query("UPDATE public.ai_model_profiles SET is_default=false");
+    const encrypted = apiKey && apiKey.trim() ? encryptAiSecret(apiKey.trim()) : null;
     await this.pool.query(`
-      INSERT INTO public.ai_model_profiles(model_id,label,base_url,model_name,wire_api,key_env,allowed_features,enabled,is_default,max_output_tokens,updated_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,clock_timestamp())
-      ON CONFLICT(model_id) DO UPDATE SET label=excluded.label,base_url=excluded.base_url,model_name=excluded.model_name,wire_api=excluded.wire_api,key_env=excluded.key_env,allowed_features=excluded.allowed_features,enabled=excluded.enabled,is_default=excluded.is_default,max_output_tokens=excluded.max_output_tokens,updated_at=clock_timestamp()
-    `, [model.modelId, model.label, model.baseUrl, model.modelName, model.wireApi, model.keyEnv, model.allowedFeatures, model.enabled, model.isDefault, model.maxOutputTokens]);
+      INSERT INTO public.ai_model_profiles(model_id,label,base_url,model_name,wire_api,key_env,allowed_features,enabled,is_default,max_output_tokens,api_key_ciphertext,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,clock_timestamp())
+      ON CONFLICT(model_id) DO UPDATE SET label=excluded.label,base_url=excluded.base_url,model_name=excluded.model_name,wire_api=excluded.wire_api,key_env=excluded.key_env,allowed_features=excluded.allowed_features,enabled=excluded.enabled,is_default=excluded.is_default,max_output_tokens=excluded.max_output_tokens,api_key_ciphertext=COALESCE(excluded.api_key_ciphertext,public.ai_model_profiles.api_key_ciphertext),updated_at=clock_timestamp()
+    `, [model.modelId, model.label, model.baseUrl, model.modelName, model.wireApi, model.keyEnv, model.allowedFeatures, model.enabled, model.isDefault, model.maxOutputTokens, encrypted]);
     const rows = await this.listModels();
     return rows.find((row2) => row2.modelId === model.modelId);
+  }
+  async modelApiKey(modelId) {
+    const result2 = await this.pool.query("SELECT api_key_ciphertext FROM public.ai_model_profiles WHERE model_id=$1", [modelId]);
+    return decryptAiSecret(result2.rows[0]?.api_key_ciphertext);
   }
 };
 
@@ -18058,7 +18142,7 @@ async function resolveModel(repo, feature) {
     const cfg = upstreamConfig();
     return cfg.baseUrl && cfg.apiKey && cfg.model ? { profile: null, baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, wireApi: "chat_completions", maxOutputTokens: 2048 } : null;
   }
-  const key2 = readEnvironmentSecret(selected.keyEnv) || readEnvironmentSecret("CENTER_AI_API_KEY");
+  const key2 = await repo.modelApiKey(selected.modelId) || readEnvironmentSecret(selected.keyEnv) || readEnvironmentSecret("CENTER_AI_API_KEY");
   return key2 ? { profile: selected, baseUrl: selected.baseUrl.replace(/\/$/, ""), apiKey: key2, model: selected.modelName, wireApi: selected.wireApi, maxOutputTokens: selected.maxOutputTokens } : null;
 }
 function estimateTokens(text18) {
@@ -18248,7 +18332,7 @@ function createAiService(repo) {
     async saveModel(identity, input) {
       if (!canManageAi(identity))
         return { ok: false, error: "FORBIDDEN" };
-      return { ok: true, data: await repo.saveModel(input) };
+      return { ok: true, data: await repo.saveModel(input, input.apiKey) };
     }
   };
 }
@@ -18363,7 +18447,7 @@ function createAiHandler(auth, ai) {
 }
 
 // server/services/sales-cases.ts
-var import_node_crypto35 = require("node:crypto");
+var import_node_crypto36 = require("node:crypto");
 var DEFAULT_LIMIT = 25;
 var MAX_LIMIT = 100;
 function createSalesCaseService(repo, tokens) {
@@ -18435,7 +18519,7 @@ function createSalesCaseService(repo, tokens) {
       if (value2.expiresAt !== void 0 && value2.expiresAt !== null && (typeof value2.expiresAt !== "string" || !Number.isFinite(Date.parse(value2.expiresAt))))
         return Promise.resolve(failure("INVALID_INPUT", "\u5EFA\u8BAE\u6709\u6548\u671F\u65E0\u6548"));
       const parsed = {
-        proposalId: (0, import_node_crypto35.randomUUID)(),
+        proposalId: (0, import_node_crypto36.randomUUID)(),
         proposalType: value2.proposalType,
         payload: value2.payload,
         evidence: value2.evidence,
@@ -18547,7 +18631,7 @@ function createSalesCaseHandler(service) {
 }
 
 // server/adapters/postgres/quote-case-repository.ts
-var import_node_crypto36 = require("node:crypto");
+var import_node_crypto37 = require("node:crypto");
 
 // server/core/quote-case.ts
 var QUOTE_CASE_STATES = [
@@ -18777,8 +18861,8 @@ var PostgresQuoteCaseRepository = class {
       let quoteId;
       let version4;
       if (!current) {
-        quoteCaseId = (0, import_node_crypto36.randomUUID)();
-        quoteId = (0, import_node_crypto36.randomUUID)();
+        quoteCaseId = (0, import_node_crypto37.randomUUID)();
+        quoteId = (0, import_node_crypto37.randomUUID)();
         version4 = 1;
         await client.query(
           `INSERT INTO crm_quote_cases(quote_case_id,case_id,message_key,thread_key,state,fields_json,missing_fields_json,selected_quote_json)
@@ -18814,7 +18898,7 @@ var PostgresQuoteCaseRepository = class {
         `INSERT INTO crm_quote_revisions(revision_id,quote_id,version,status,fields_json,selected_candidate_json,candidates_json,subject,body,actor_user_id,reason)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
-          (0, import_node_crypto36.randomUUID)(),
+          (0, import_node_crypto37.randomUUID)(),
           quoteId,
           version4,
           nextState,
@@ -18872,7 +18956,7 @@ var PostgresQuoteCaseRepository = class {
       )).rows[0];
       if (pendingReview)
         return failure("CONFLICT", "\u62A5\u4EF7\u5DF2\u5728\u5BA1\u6838\u4E2D");
-      const reviewId = (0, import_node_crypto36.randomUUID)();
+      const reviewId = (0, import_node_crypto37.randomUUID)();
       const row2 = (await client.query(
         `INSERT INTO crm_quote_review_requests(review_id,quote_id,requested_by,reviewer_user_id,status,reason,linked_message_id,linked_task_id)
          VALUES($1,$2,$3,$4,'pending',$5,$6,$7) RETURNING *`,
@@ -19313,9 +19397,9 @@ function createQuoteHandler(service) {
 }
 
 // server/adapters/postgres/team-repository.ts
-var import_node_crypto37 = require("node:crypto");
+var import_node_crypto38 = require("node:crypto");
 var import_promises3 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 var import_node_zlib = require("node:zlib");
 
 // server/core/organization.ts
@@ -19377,8 +19461,8 @@ var TEAM_ROUTES = {
   archive: "/api/crm/team-conversations/archive",
   events: "/api/crm/team-events"
 };
-function isTeamRoute(path4) {
-  return Object.values(TEAM_ROUTES).some((route) => path4 === route || path4.startsWith(`${route}/`));
+function isTeamRoute(path5) {
+  return Object.values(TEAM_ROUTES).some((route) => path5 === route || path5.startsWith(`${route}/`));
 }
 var TEAM_LIMITS = {
   name: 80,
@@ -19998,7 +20082,7 @@ ALTER TABLE crm_team_messages ADD CONSTRAINT crm_team_messages_kind_check CHECK(
 `;
 
 // server/adapters/postgres/team-repository.ts
-var TEAM_FILE_ROOT = process.env.PROSPECTOR_FILE_ROOT ?? (0, import_node_path6.join)(process.cwd(), "data", "team-files");
+var TEAM_FILE_ROOT = process.env.PROSPECTOR_FILE_ROOT ?? (0, import_node_path7.join)(process.cwd(), "data", "team-files");
 var TEAM_FILE_MIME = /* @__PURE__ */ new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "text/plain", "text/csv", "application/zip", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]);
 var BASE64_CHARS = /^[A-Za-z0-9+/]*={0,2}$/;
 var TEAM_ARCHIVE_MESSAGE_LIMIT = 2e4;
@@ -20190,7 +20274,7 @@ var PostgresTeamRepository = class {
         [TEAM_ARCHIVE_VERSION, TEAM_ARCHIVE_SQL],
         [TEAM_EMAIL_REFERENCE_VERSION, TEAM_EMAIL_REFERENCE_SQL]
       ]) {
-        const checksum4 = (0, import_node_crypto37.createHash)("sha256").update(sql).digest("hex");
+        const checksum4 = (0, import_node_crypto38.createHash)("sha256").update(sql).digest("hex");
         const old = await client.query("SELECT checksum FROM crm_schema_migrations WHERE version=$1", [version4]);
         if (old.rows.length && old.rows[0].checksum !== checksum4)
           return failure("CONFLICT", `\u7EC4\u7EC7\u8FC1\u79FB\u6821\u9A8C\u4E0D\u4E00\u81F4: ${version4}`);
@@ -20436,7 +20520,7 @@ var PostgresTeamRepository = class {
     return row2.count === userIds2.length;
   }
   async cache(client, actorId, operation, key2, input) {
-    const digest2 = (0, import_node_crypto37.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+    const digest2 = (0, import_node_crypto38.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
     const old = (await client.query("SELECT digest,response FROM crm_org_idempotency WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3 FOR UPDATE", [actorId, operation, key2])).rows[0];
     if (!old)
       return { state: "new", digest: digest2 };
@@ -20484,13 +20568,13 @@ var PostgresTeamRepository = class {
         return failure("CONFLICT", "\u540C\u4E00\u5C42\u7EA7\u5DF2\u5B58\u5728\u540C\u540D\u7EC4\u7EC7");
       if (!await this.validInvitees(client, input.inviteeUserIds, kind))
         return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
-      const teamId = (0, import_node_crypto37.randomUUID)();
+      const teamId = (0, import_node_crypto38.randomUUID)();
       await client.query("INSERT INTO crm_org_units(unit_id,kind,parent_unit_id,name,created_by) VALUES($1,$2,$3,$4,$5)", [teamId, kind, parentUnitId, name, actor.userId]);
       const assigned = await this.insertAssignment(client, leaderUserId, teamId, kind, "leader");
       if (!assigned.ok)
         return assigned;
       for (const inviteeUserId of input.inviteeUserIds)
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)", [(0, import_node_crypto37.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4)", [(0, import_node_crypto38.randomUUID)(), teamId, actor.userId, inviteeUserId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
@@ -20515,7 +20599,7 @@ var PostgresTeamRepository = class {
       if (!await this.validInvitees(client, input.userIds, team.kind))
         return failure("INVALID_INPUT", "\u9080\u8BF7\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
       for (const inviteeUserId of input.userIds)
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto37.randomUUID)(), teamId, actor.userId, inviteeUserId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto38.randomUUID)(), teamId, actor.userId, inviteeUserId]);
       const context = await this.contextIn(client, actor);
       if (!context.ok)
         return context;
@@ -20708,7 +20792,7 @@ var PostgresTeamRepository = class {
       if (input.action === "add") {
         if (!await this.validInvitees(client, [input.userId], team.kind))
           return failure("INVALID_INPUT", "\u6210\u5458\u5DF2\u6709\u5F52\u5C5E\u6216\u4E0D\u53EF\u7528");
-        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto37.randomUUID)(), teamId, actor.userId, input.userId]);
+        await client.query("INSERT INTO crm_org_invitations(invitation_id,unit_id,inviter_user_id,invitee_user_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [(0, import_node_crypto38.randomUUID)(), teamId, actor.userId, input.userId]);
       } else {
         const existing = await this.assignment(client, input.userId, teamId);
         if (existing?.role !== "member")
@@ -20754,7 +20838,7 @@ var PostgresTeamRepository = class {
         if (occupied.rows.length)
           return failure("CONFLICT", "\u6210\u5458\u5DF2\u7ECF\u5728\u5176\u4ED6\u5C55\u793A\u5206\u7EC4");
       }
-      const groupId = input.groupId ?? (0, import_node_crypto37.randomUUID)();
+      const groupId = input.groupId ?? (0, import_node_crypto38.randomUUID)();
       if (!input.groupId)
         await client.query("INSERT INTO crm_org_member_groups(group_id,unit_id,name) VALUES($1,$2,$3)", [groupId, teamId, input.name.trim()]);
       await client.query("DELETE FROM crm_org_member_group_members WHERE group_id=$1", [groupId]);
@@ -20951,15 +21035,15 @@ var PostgresTeamRepository = class {
       const data = Buffer.from(input.base64, "base64");
       if (!data.length || data.length > TEAM_LIMITS.fileBytes)
         return failure("INVALID_INPUT", "\u6587\u4EF6\u5927\u5C0F\u65E0\u6548");
-      const sha256 = (0, import_node_crypto37.createHash)("sha256").update(data).digest("hex");
+      const sha256 = (0, import_node_crypto38.createHash)("sha256").update(data).digest("hex");
       const existing = await client.query('SELECT file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt" FROM crm_team_files WHERE team_id=$1 AND purpose=$2 AND sha256=$3 AND deleted_at IS NULL', [input.teamId, "team_attachment", sha256]);
       if (existing.rows[0])
         return success({ ...existing.rows[0], bytes: Number(existing.rows[0].bytes), createdAt: new Date(existing.rows[0].createdAt).toISOString() });
-      const fileId = (0, import_node_crypto37.randomUUID)();
+      const fileId = (0, import_node_crypto38.randomUUID)();
       const storageKey = `${input.teamId}/${sha256}`;
-      const target = (0, import_node_path6.join)(TEAM_FILE_ROOT, storageKey);
-      const temp = `${target}.${(0, import_node_crypto37.randomUUID)()}.tmp`;
-      await (0, import_promises3.mkdir)((0, import_node_path6.dirname)(target), { recursive: true });
+      const target = (0, import_node_path7.join)(TEAM_FILE_ROOT, storageKey);
+      const temp = `${target}.${(0, import_node_crypto38.randomUUID)()}.tmp`;
+      await (0, import_promises3.mkdir)((0, import_node_path7.dirname)(target), { recursive: true });
       await (0, import_promises3.writeFile)(temp, data, { mode: 384 });
       await (0, import_promises3.rename)(temp, target);
       const inserted = await client.query('INSERT INTO crm_team_files(file_id,team_id,purpose,filename,mime_type,bytes,sha256,storage_key,owner_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(team_id,purpose,sha256) DO UPDATE SET filename=crm_team_files.filename RETURNING file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt"', [fileId, input.teamId, "team_attachment", input.filename.trim(), input.mimeType, data.length, sha256, storageKey, actor.userId]);
@@ -20979,7 +21063,7 @@ var PostgresTeamRepository = class {
         return failure("FORBIDDEN", "\u65E0\u6743\u8BFB\u53D6\u8BE5\u6587\u4EF6");
       let data;
       try {
-        data = await (0, import_promises3.readFile)((0, import_node_path6.join)(TEAM_FILE_ROOT, String(row2.storageKey)));
+        data = await (0, import_promises3.readFile)((0, import_node_path7.join)(TEAM_FILE_ROOT, String(row2.storageKey)));
       } catch {
         return failure("NOT_FOUND", "\u6587\u4EF6\u5185\u5BB9\u4E0D\u5B58\u5728");
       }
@@ -20996,15 +21080,15 @@ var PostgresTeamRepository = class {
         return failure("INVALID_INPUT", "\u5F52\u6863\u8303\u56F4\u8FC7\u5927\uFF0C\u8BF7\u7F29\u5C0F\u65F6\u95F4\u8303\u56F4");
       const lines = messages.rows.map((row3) => JSON.stringify({ ...row3, createdAt: new Date(row3.createdAt).toISOString() })).join("\n");
       const data = (0, import_node_zlib.gzipSync)(Buffer.from(lines, "utf8"));
-      const sha256 = (0, import_node_crypto37.createHash)("sha256").update(data).digest("hex");
+      const sha256 = (0, import_node_crypto38.createHash)("sha256").update(data).digest("hex");
       const existing = await client.query('SELECT file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt" FROM crm_team_files WHERE team_id=$1 AND purpose=$2 AND sha256=$3 AND deleted_at IS NULL', [input.teamId, "team_archive", sha256]);
       if (existing.rows[0])
         return success({ ...existing.rows[0], bytes: Number(existing.rows[0].bytes), createdAt: new Date(existing.rows[0].createdAt).toISOString(), messageCount: messages.rows.length });
-      const fileId = (0, import_node_crypto37.randomUUID)();
+      const fileId = (0, import_node_crypto38.randomUUID)();
       const filename = `team-archive-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.jsonl.gz`;
       const storageKey = `${input.teamId}/archives/${sha256}.jsonl.gz`;
-      const target = (0, import_node_path6.join)(TEAM_FILE_ROOT, storageKey);
-      await (0, import_promises3.mkdir)((0, import_node_path6.dirname)(target), { recursive: true });
+      const target = (0, import_node_path7.join)(TEAM_FILE_ROOT, storageKey);
+      await (0, import_promises3.mkdir)((0, import_node_path7.dirname)(target), { recursive: true });
       await (0, import_promises3.writeFile)(target, data, { mode: 384 });
       const inserted = await client.query('INSERT INTO crm_team_files(file_id,team_id,purpose,filename,mime_type,bytes,sha256,storage_key,owner_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(team_id,purpose,sha256) DO UPDATE SET filename=crm_team_files.filename RETURNING file_id AS "fileId",team_id AS "teamId",filename,mime_type AS "mimeType",bytes,sha256,created_at AS "createdAt"', [fileId, input.teamId, "team_archive", filename, "application/gzip", data.length, sha256, storageKey, actor.userId]);
       const row2 = inserted.rows[0];
@@ -21480,9 +21564,9 @@ function createTeamHandler(service) {
 }
 
 // server/adapters/postgres/sample-mail-repository.ts
-var import_node_crypto38 = require("node:crypto");
+var import_node_crypto39 = require("node:crypto");
 var import_promises4 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 
 // server/core/sample-mail.ts
 var SAMPLE_MAIL_ROUTES = {
@@ -21533,7 +21617,7 @@ CREATE INDEX IF NOT EXISTS idx_crm_sample_mail_expiry
 `;
 
 // server/adapters/postgres/sample-mail-repository.ts
-var SAMPLE_ROOT = process.env.PROSPECTOR_SAMPLE_MAIL_ROOT ?? (0, import_node_path7.join)(process.cwd(), "data", "sample-mail");
+var SAMPLE_ROOT = process.env.PROSPECTOR_SAMPLE_MAIL_ROOT ?? (0, import_node_path8.join)(process.cwd(), "data", "sample-mail");
 var SCHEMA_LOCK = 19041075;
 var BASE64_CHARS2 = /^[A-Za-z0-9+/]+={0,2}$/;
 var meta = (row2) => ({
@@ -21609,15 +21693,15 @@ var PostgresSampleMailRepository = class {
       const data = Buffer.from(input.base64, "base64");
       if (!data.length || data.length > SAMPLE_MAIL_LIMITS.packageBytes)
         return failure("INVALID_INPUT", "\u6837\u4F8B\u5305\u5927\u5C0F\u65E0\u6548");
-      const sha256 = (0, import_node_crypto38.createHash)("sha256").update(data).digest("hex");
+      const sha256 = (0, import_node_crypto39.createHash)("sha256").update(data).digest("hex");
       const duplicate = (await client.query(`${SELECT3} WHERE owner_user_id=$1 AND sha256=$2 AND deleted_at IS NULL AND expires_at>now() ORDER BY created_at DESC LIMIT 1`, [actor.userId, sha256])).rows[0];
       if (duplicate)
         return success(meta(duplicate));
-      const packageId = (0, import_node_crypto38.randomUUID)();
+      const packageId = (0, import_node_crypto39.randomUUID)();
       const storageKey = `${actor.userId}/${packageId}.json`;
-      const target = (0, import_node_path7.join)(SAMPLE_ROOT, storageKey);
-      const temp = `${target}.${(0, import_node_crypto38.randomUUID)()}.tmp`;
-      await (0, import_promises4.mkdir)((0, import_node_path7.dirname)(target), { recursive: true });
+      const target = (0, import_node_path8.join)(SAMPLE_ROOT, storageKey);
+      const temp = `${target}.${(0, import_node_crypto39.randomUUID)()}.tmp`;
+      await (0, import_promises4.mkdir)((0, import_node_path8.dirname)(target), { recursive: true });
       await (0, import_promises4.writeFile)(temp, data, { mode: 384 });
       await (0, import_promises4.rename)(temp, target);
       const inserted = (await client.query(
@@ -21646,7 +21730,7 @@ var PostgresSampleMailRepository = class {
         ) ranked WHERE rn > $2`, [actor.userId, SAMPLE_MAIL_LIMITS.max_packages_per_owner])).rows;
       for (const row2 of stale) {
         await client.query("UPDATE crm_sample_mail_packages SET deleted_at=now() WHERE package_id=$1", [row2.packageId]);
-        await (0, import_promises4.unlink)((0, import_node_path7.join)(SAMPLE_ROOT, String(row2.storageKey))).catch(() => {
+        await (0, import_promises4.unlink)((0, import_node_path8.join)(SAMPLE_ROOT, String(row2.storageKey))).catch(() => {
         });
       }
       return success(meta(inserted));
@@ -21669,7 +21753,7 @@ var PostgresSampleMailRepository = class {
         return failure("FORBIDDEN", "\u65E0\u6743\u8BFB\u53D6\u8BE5\u6837\u4F8B\u5305");
       }
       try {
-        return success({ meta: meta(row2), data: await (0, import_promises4.readFile)((0, import_node_path7.join)(SAMPLE_ROOT, row2.storageKey)) });
+        return success({ meta: meta(row2), data: await (0, import_promises4.readFile)((0, import_node_path8.join)(SAMPLE_ROOT, row2.storageKey)) });
       } catch {
         return failure("NOT_FOUND", "\u6837\u4F8B\u5305\u5185\u5BB9\u4E0D\u5B58\u5728");
       }
@@ -21683,7 +21767,7 @@ var PostgresSampleMailRepository = class {
       if (!actor.identityAdmin && String(row2.owner) !== actor.userId)
         return failure("FORBIDDEN", "\u65E0\u6743\u5220\u9664\u8BE5\u6837\u4F8B\u5305");
       await client.query("UPDATE crm_sample_mail_packages SET deleted_at=now() WHERE package_id=$1", [packageId]);
-      await (0, import_promises4.unlink)((0, import_node_path7.join)(SAMPLE_ROOT, String(row2.key))).catch(() => {
+      await (0, import_promises4.unlink)((0, import_node_path8.join)(SAMPLE_ROOT, String(row2.key))).catch(() => {
       });
       return success(void 0);
     });
@@ -21944,7 +22028,7 @@ function createCustomerStatusHandler(service) {
 }
 
 // server/adapters/postgres/team-attention-repository.ts
-var import_node_crypto39 = require("node:crypto");
+var import_node_crypto40 = require("node:crypto");
 var ITEM_COLUMNS = `i.item_id AS "itemId",i.target_member_user_id AS "targetMemberUserId",target.display_name AS "targetMemberName",i.source_supervisor_user_id AS "sourceSupervisorUserId",source.display_name AS "sourceSupervisorName",i.customer_id AS "customerId",co.name AS "customerName",i.contact_id AS "contactId",COALESCE(NULLIF(concat_ws(' ',ct.first_name,ct.last_name),''),NULLIF(ct.email,''),'\u8054\u7CFB\u4EBA') AS "contactName",ct.email AS "contactEmail",i.mail_event_id AS "mailEventId",i.analysis_id AS "analysisId",i.reason,i.priority,i.status,i.note,i.result,i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt",i.acknowledged_at AS "acknowledgedAt",i.resolved_at AS "resolvedAt",i.dismissed_at AS "dismissedAt"`;
 var ITEM_JOINS = `FROM crm_team_attention_items i JOIN public.identity_users target ON target.user_id=i.target_member_user_id JOIN public.identity_users source ON source.user_id=i.source_supervisor_user_id JOIN crm_customers c ON c.customer_id=i.customer_id JOIN companies co ON co.id=c.company_id JOIN contacts ct ON ct.id=i.contact_id`;
 function iso4(value2) {
@@ -21954,7 +22038,7 @@ function optionalIso(value2) {
   return value2 ? new Date(value2).toISOString() : null;
 }
 function digest(value2) {
-  return (0, import_node_crypto39.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
+  return (0, import_node_crypto40.createHash)("sha256").update(JSON.stringify(value2)).digest("hex");
 }
 function oversight(actor) {
   return actor.roles.includes("admin") || actor.roles.includes("operations");
@@ -22349,7 +22433,7 @@ function customerGradeFor(signals2) {
 }
 
 // server/adapters/postgres/team-monitoring-schema.ts
-var import_node_crypto40 = require("node:crypto");
+var import_node_crypto41 = require("node:crypto");
 var TEAM_MONITORING_SCHEMA_VERSION = "061-team-monitoring";
 var TEAM_MONITORING_LOCK = 610061;
 var TEAM_MONITORING_SQL = `
@@ -22405,7 +22489,7 @@ CREATE INDEX idx_crm_team_monitoring_tasks_responsible
   WHERE status='open' AND source_responsible_user_id IS NOT NULL;
 `;
 function checksum2() {
-  return (0, import_node_crypto40.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
+  return (0, import_node_crypto41.createHash)("sha256").update(TEAM_MONITORING_SQL).digest("hex");
 }
 async function migrateTeamMonitoringSchema(client) {
   const digest2 = checksum2();
@@ -23349,10 +23433,10 @@ function createTeamMonitoringHandler(service) {
 }
 
 // server/adapters/postgres/sales-performance-repository.ts
-var import_node_crypto42 = require("node:crypto");
+var import_node_crypto43 = require("node:crypto");
 
 // server/adapters/postgres/sales-performance-schema.ts
-var import_node_crypto41 = require("node:crypto");
+var import_node_crypto42 = require("node:crypto");
 var SALES_PERFORMANCE_SCHEMA_VERSION = "062-sales-performance-customer-grade";
 var SALES_PERFORMANCE_SCHEMA_LOCK = 620062;
 var SALES_PERFORMANCE_SQL = `
@@ -23441,7 +23525,7 @@ CREATE INDEX idx_crm_sales_perf_customer_origin_source
   ON crm_customers(origin,source,customer_id);
 `;
 function checksum3() {
-  return (0, import_node_crypto41.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
+  return (0, import_node_crypto42.createHash)("sha256").update(SALES_PERFORMANCE_SQL).digest("hex");
 }
 async function migrateSalesPerformanceSchema(client) {
   const digest2 = checksum3();
@@ -24048,7 +24132,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto42.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto43.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, OVERRIDE_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -24084,7 +24168,7 @@ var PostgresSalesPerformanceRepository = class {
       const access2 = await this.accessibleCustomer(client, actor, input.customerId);
       if (!access2)
         return failure("NOT_FOUND", "\u5BA2\u6237\u4E0D\u5B58\u5728\u6216\u4E0D\u5728\u6388\u6743\u8303\u56F4");
-      const digest2 = (0, import_node_crypto42.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
+      const digest2 = (0, import_node_crypto43.createHash)("sha256").update(JSON.stringify(input)).digest("hex");
       const replay = (await client.query(`SELECT digest,response FROM crm_customer_grade_override_idempotency
         WHERE actor_id=$1 AND operation=$2 AND idempotency_key=$3`, [actor.userId, CLEAR_OPERATION, input.idempotencyKey])).rows[0];
       if (replay)
@@ -24307,9 +24391,9 @@ function createSalesPerformanceHandler(service) {
 }
 
 // server/adapters/online-instance.ts
-var import_node_crypto43 = require("node:crypto");
+var import_node_crypto44 = require("node:crypto");
 var INSTANCE_ID_PATTERN = /^[a-f0-9]{64}$/;
-function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto43.randomBytes)(32).toString("hex")) {
+function resolveOnlineInstanceId(env = process.env, generate = () => (0, import_node_crypto44.randomBytes)(32).toString("hex")) {
   const configured = env.PROSPECTOR_ONLINE_INSTANCE?.trim();
   if (configured) {
     if (!INSTANCE_ID_PATTERN.test(configured))
@@ -24460,7 +24544,7 @@ async function main() {
         await sampleMail(request2, response);
         return;
       }
-      if (Object.values(SEND_ACCEPTANCE_ROUTES).some((path4) => path4 === route)) {
+      if (Object.values(SEND_ACCEPTANCE_ROUTES).some((path5) => path5 === route)) {
         await sendAcceptance2(request2, response);
         return;
       }

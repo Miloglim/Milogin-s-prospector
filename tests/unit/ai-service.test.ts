@@ -22,6 +22,7 @@ function repo(overrides: Partial<AiRepository> = {}) {
     receipts: async () => [],
     listModels: async () => [],
     saveModel: async model => model,
+    modelApiKey: async () => null,
     recordUsage: async event => { events.push(event); },
     ...overrides,
   };
