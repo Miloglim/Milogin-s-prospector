@@ -359,7 +359,7 @@ export function createInboxAnalysisService(options: { model?: InboxAnalysisModel
     enqueueRecent(limit = DEFAULT_LIMIT) {
       const rows = raw().prepare(`SELECT i.id FROM inbox_messages i
         LEFT JOIN inbox_mail_analyses a ON a.message_id=i.id
-        WHERE i.classification!='sent' AND (a.message_id IS NULL OR a.status='pending')
+        WHERE i.classification!='sent' AND (a.message_id IS NULL OR a.status IN ('pending','failed'))
         ORDER BY i.received_at DESC LIMIT ?`).all(limit) as Array<{ id: number }>;
       let count = 0;
       for (const row of rows) {

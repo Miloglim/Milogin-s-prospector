@@ -35,6 +35,8 @@ function createRendererPush() {
 let inboxAnalysis: InboxAnalysisService | null = null;
 let inquiryQuote: InquiryQuoteService | null = null;
 let inboxAnalysisNotifyTimer: ReturnType<typeof setTimeout> | null = null;
+let lastFailedAnalysisRetryAt = 0;
+const FAILED_ANALYSIS_RETRY_INTERVAL_MS = 60_000;
 
 export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
   const pushToRenderer = createRendererPush();
@@ -148,7 +150,14 @@ export function registerInboxIPC(networkAllowed: () => boolean = () => true) {
   ipcMain.handle(IPC.INBOX.TODO_STATE, async (_e, input: InboxTodoStateRequest) => InboxService.setInboxTodoState(input));
   ipcMain.handle(IPC.INBOX.TODO_STATE_BATCH, async (_e, input: InboxTodoBatchRequest) => InboxService.setInboxTodoStateBatch(input));
   ipcMain.handle(IPC.INBOX.CONVERSATION_STATE_BATCH, async (_e, input: InboxConversationStateBatchRequest) => InboxService.setInboxConversationStateBatch(input));
-  ipcMain.handle(IPC.INBOX.ANALYSIS_STATUS, () => okResult(inboxAnalysis?.status() ?? { enabled: false, pending: 0, ready: 0, failed: 0 }));
+  ipcMain.handle(IPC.INBOX.ANALYSIS_STATUS, () => {
+    const status = inboxAnalysis?.status() ?? { enabled: false, pending: 0, ready: 0, failed: 0 };
+    if (inboxAnalysis && status.enabled && status.failed > 0 && Date.now() - lastFailedAnalysisRetryAt >= FAILED_ANALYSIS_RETRY_INTERVAL_MS) {
+      lastFailedAnalysisRetryAt = Date.now();
+      setTimeout(() => { try { inboxAnalysis?.enqueueRecent(200); } catch (error) { Log.warn('inbox.analysis', `失败分析自动重试入队失败: ${error instanceof Error ? error.message : String(error)}`); } }, 0);
+    }
+    return okResult(status);
+  });
   ipcMain.handle(IPC.INBOX.ANALYSIS_RUN, async (_e, messageId?: number) => {
     if (!inboxAnalysis) return failResult('收件箱分析服务未启动');
     if (messageId !== undefined) {
