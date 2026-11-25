@@ -3,6 +3,7 @@ import { canManageAi, type AiChatInput, type AiModelProfile, type AiRepository, 
 import { readEnvironmentSecret } from '../adapters/environment-secret';
 
 const PROVIDER_TIMEOUT_MS = 90_000;
+const AI_RELAY_BASE = (process.env.CENTER_AI_RELAY_BASE || '').trim().replace(/\/$/, '');
 
 function upstreamConfig() {
   const baseUrl = (process.env.CENTER_AI_BASE_URL || '').trim().replace(/\/$/, '');
@@ -146,7 +147,7 @@ export function createAiService(repo: AiRepository) {
         const maxTokens = Math.min(input.max_tokens || checked.policy.maxOutputTokens, checked.policy.maxOutputTokens, cfg.maxOutputTokens, input.feature === 'agent' ? 1400 : cfg.maxOutputTokens);
         const tools = wireApi === 'responses' ? responsesTools(input.tools) : input.tools;
         const toolChoice = wireApi === 'responses' ? responsesToolChoice(input.tool_choice) : input.tool_choice;
-        const response = await fetch(`${cfg.baseUrl}/${wireApi === 'responses' ? 'responses' : 'chat/completions'}`, {
+        const response = await fetch(`${AI_RELAY_BASE || cfg.baseUrl}/${wireApi === 'responses' ? 'responses' : 'chat/completions'}`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify(wireApi === 'responses'

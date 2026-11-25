@@ -18129,6 +18129,7 @@ function readEnvironmentSecret(name) {
 
 // server/services/ai.ts
 var PROVIDER_TIMEOUT_MS = 9e4;
+var AI_RELAY_BASE = (process.env.CENTER_AI_RELAY_BASE || "").trim().replace(/\/$/, "");
 function upstreamConfig() {
   const baseUrl = (process.env.CENTER_AI_BASE_URL || "").trim().replace(/\/$/, "");
   const apiKey = readEnvironmentSecret("CENTER_AI_API_KEY");
@@ -18278,7 +18279,7 @@ function createAiService(repo) {
         const maxTokens = Math.min(input.max_tokens || checked.policy.maxOutputTokens, checked.policy.maxOutputTokens, cfg.maxOutputTokens, input.feature === "agent" ? 1400 : cfg.maxOutputTokens);
         const tools = wireApi === "responses" ? responsesTools(input.tools) : input.tools;
         const toolChoice = wireApi === "responses" ? responsesToolChoice(input.tool_choice) : input.tool_choice;
-        const response = await fetch(`${cfg.baseUrl}/${wireApi === "responses" ? "responses" : "chat/completions"}`, {
+        const response = await fetch(`${AI_RELAY_BASE || cfg.baseUrl}/${wireApi === "responses" ? "responses" : "chat/completions"}`, {
           method: "POST",
           headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify(wireApi === "responses" ? { model: cfg.model, input: responsesInput(input.messages), max_output_tokens: maxTokens, ...input.feature === "agent" ? { reasoning: { effort: "none" } } : {}, ...tools?.length ? { tools } : {}, ...toolChoice === void 0 ? {} : { tool_choice: toolChoice } } : { model: cfg.model, messages: input.messages, max_tokens: maxTokens, ...input.temperature === void 0 ? {} : { temperature: input.temperature }, ...tools?.length ? { tools } : {}, ...toolChoice === void 0 ? {} : { tool_choice: toolChoice } }),
